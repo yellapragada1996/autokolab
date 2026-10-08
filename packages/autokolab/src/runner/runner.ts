@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
+import { ProjectView, type AgentStatus, type Comment, type Ticket } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -10,11 +11,13 @@ import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { claudeInvocation, codexInvocation, runEngine } from "./engines.js";
 import { installHook } from "./githook.js";
-import { BLOCKED_PREFIX, buildPrompt } from "./prompt.js";
-import { clonePath, currentBranch, ensureClone, ensureWorktree, pruneWorktrees, type Worktree } from "./repos.js";
+import { BLOCKED_PREFIX, buildPrompt, buildTicketPrompt } from "./prompt.js";
+import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone who can instruct sends
-// it work, starts the agent headless in that thread's own worktree. One task at a time per agent.
+// it work, starts the agent headless in that thread's own worktree. It also works the project
+// board: tickets assigned to it in Ready, and people's comments on its open tickets. One task at a
+// time per agent; room instructions go first.
 
 /** Kinds from an instructor, addressed to this agent, that start or continue work. */
 const DIRECT_KINDS: MessageKind[] = ["task", "chat", "answer", "review", "decision", "question"];
@@ -29,18 +32,38 @@ interface Job {
   message: Message;
 }
 
+interface TicketJob {
+  project: ProjectView;
+  ticket: Ticket;
+  /** People's comments that started this run (a follow-up), if any. */
+  comments: Comment[];
+}
+
+/** Per agent, on this machine: the engine session for each ticket and the last comment handled. */
+interface TicketState {
+  sessions: Record<string, string>;
+  seen: Record<string, number>;
+}
+
+const PROJECTS_RELOAD_MS = 5 * 60_000;
+
 export class Runner {
   private queue: Job[] = [];
   private busy = false;
   private polling: Promise<void> | null = null;
   private pollAgain = false;
   private lastSeenId = 0;
-  private current: { job: Job; abort: AbortController } | null = null;
+  /** The run in progress: a room instruction or a ticket. */
+  private current: { what: string; abort: AbortController } | null = null;
   private stopping = false;
   private channels: RealtimeChannel[] = [];
   private timers: NodeJS.Timeout[] = [];
   private hooked = new Set<string>();
   private logDir: string;
+  private projects: ProjectView[] = [];
+  private projectsLoadedAt = 0;
+  private ticketChannels: RealtimeChannel[] = [];
+  private isAgentRow = true;
 
   constructor(
     private ak: AutoKolab,
@@ -84,8 +107,14 @@ export class Runner {
     this.timers.push(
       setInterval(() => {
         void ak.heartbeat(this.stateNow()).catch((e) => this.log(`Heartbeat failed: ${e.message}`));
+        void this.touchAgent();
       }, HEARTBEAT_MS),
     );
+    await this.loadProjects();
+    if (this.projects.length) {
+      this.log(`Projects: ${this.projects.map((p) => p.project.name).join(", ")}`);
+      await this.setStatus(ak.me.paused ? "paused" : "idle");
+    }
     this.poll();
     void this.introduce().catch((e) => this.log(`Couldn't introduce myself yet: ${(e as Error).message}`));
   }
@@ -218,6 +247,7 @@ export class Runner {
 
   private async onPauseChange(paused: boolean): Promise<void> {
     await this.ak.heartbeat(this.stateNow()).catch(() => undefined);
+    if (!this.current) await this.setStatus(paused ? "paused" : "idle");
     if (paused && this.current) {
       this.log("Paused by owner: stopping the current task.");
       this.current.abort.abort();
@@ -240,6 +270,20 @@ export class Runner {
           this.log(`#${job.message.id} failed to start: ${msg}`);
           await this.ak.updateRun(job.run.id, { state: "failed", summary: msg.slice(0, 16000), finished_at: now() }).catch(() => undefined);
           await this.say(job.message.room_id, job.run.thread_root, job.message.sender_id, `Couldn't start #${job.message.id}: ${msg}`);
+        });
+      }
+      // Then the board: follow-ups on its tickets, then the next Ready ticket.
+      while (!this.queue.length && !this.ak.me.paused && !this.stopping && !this.overLimit()) {
+        const tj = await this.nextTicket().catch((e) => {
+          this.log(`Couldn't check the board: ${(e as Error).message}`);
+          return null;
+        });
+        if (!tj) break;
+        await this.executeTicket(tj).catch(async (e) => {
+          const msg = (e as Error).message;
+          this.log(`${tj.ticket.key} failed to start: ${msg}`);
+          await tj.project.update(tj.ticket.key, { needs_human: `I couldn't start: ${msg}`.slice(0, 1000) }).catch(() => undefined);
+          await this.setStatus("blocked", `Couldn't start ${tj.ticket.key}`, tj.ticket.id);
         });
       }
     } finally {
@@ -284,7 +328,7 @@ export class Runner {
     const logFile = join(this.logDir, `${room.name}-run${run.id}-msg${m.id}.log`);
 
     const abort = new AbortController();
-    this.current = { job, abort };
+    this.current = { what: `#${m.id}`, abort };
     await ak.updateRun(run.id, { state: "running", branch: worktree.branch, started_at: now() });
     await ak.heartbeat("working").catch(() => undefined);
     this.log(`Working on #${m.id} in ${room.name} (${worktree.branch})${resume ? ", continuing session" : ""}.`);
@@ -328,6 +372,164 @@ export class Runner {
     this.log(`#${m.id} ${state}.${result.costUsd !== undefined ? ` (estimated API cost $${result.costUsd.toFixed(2)})` : ""}`);
   }
 
+
+  // ------------------------------------------------------------ project board
+
+  private async loadProjects(): Promise<void> {
+    this.projectsLoadedAt = Date.now();
+    const views = await ProjectView.all(this.ak.sb, this.ak.me.id).catch(() => [] as ProjectView[]);
+    const known = new Set(this.projects.map((p) => p.project.id));
+    const changed = views.length !== this.projects.length || views.some((v) => !known.has(v.project.id));
+    this.projects = views;
+    if (!changed) return;
+    for (const ch of this.ticketChannels) void this.ak.sb.removeChannel(ch);
+    this.ticketChannels = views.map((v) => v.onChange(() => void this.work()));
+    // First run on this machine: comments from before don't start work.
+    const st = this.ticketState();
+    for (const v of views) {
+      for (const { ticket, comments } of await v.newHumanComments(st.seen).catch(() => [])) {
+        if (st.seen[ticket.id] === undefined) st.seen[ticket.id] = comments[comments.length - 1].id;
+      }
+    }
+    this.saveTicketState(st);
+  }
+
+  private ticketStatePath(): string {
+    return join(stateDir(), "tickets", `${this.ak.me.id}.json`);
+  }
+
+  private ticketState(): TicketState {
+    try {
+      return { sessions: {}, seen: {}, ...(JSON.parse(readFileSync(this.ticketStatePath(), "utf8")) as Partial<TicketState>) };
+    } catch {
+      return { sessions: {}, seen: {} };
+    }
+  }
+
+  private saveTicketState(st: TicketState): void {
+    mkdirSync(join(stateDir(), "tickets"), { recursive: true });
+    writeFileSync(this.ticketStatePath(), JSON.stringify(st, null, 2));
+  }
+
+  private async nextTicket(): Promise<TicketJob | null> {
+    if (Date.now() - this.projectsLoadedAt > PROJECTS_RELOAD_MS) await this.loadProjects();
+    if (!this.projects.length) return null;
+    const st = this.ticketState();
+    for (const project of this.projects) {
+      const [first] = await project.newHumanComments(st.seen);
+      if (first) return { project, ticket: first.ticket, comments: first.comments };
+    }
+    for (const project of this.projects) {
+      const ticket = await project.claimNext();
+      if (ticket) return { project, ticket, comments: [] };
+    }
+    return null;
+  }
+
+  /** What this agent is doing, for the board and People. Quietly does nothing for v1-only agents. */
+  private async setStatus(status: AgentStatus, note: string | null = null, ticketId: string | null = null): Promise<void> {
+    if (!this.isAgentRow || !this.projects.length) return;
+    try {
+      await this.projects[0].status(status, note, ticketId);
+    } catch (e) {
+      if ((e as Error).message.includes("only agents")) this.isAgentRow = false;
+    }
+  }
+
+  /** Keep "last seen" fresh without changing what the agent said it's doing. */
+  private async touchAgent(): Promise<void> {
+    if (!this.isAgentRow || !this.projects.length) return;
+    const { data } = await this.ak.sb.from("agents").select("status, status_note, current_ticket_id").eq("id", this.ak.me.id).maybeSingle();
+    if (data) await this.setStatus(data.status as AgentStatus, data.status_note, data.current_ticket_id);
+  }
+
+  private async executeTicket(job: TicketJob): Promise<void> {
+    const { ak, cfg } = this;
+    const { project: p } = job;
+    let t = job.ticket;
+    const repo = p.project.repo;
+    if (!repo) throw new Error(`${p.project.name} isn't linked to a GitHub repo yet (set it on autokolab.com).`);
+
+    const st = this.ticketState();
+    if (job.comments.length) st.seen[t.id] = job.comments[job.comments.length - 1].id;
+    this.saveTicketState(st);
+
+    ensureClone(repo);
+    if (!this.hooked.has(repo)) {
+      installHook(clonePath(repo), cfg.limits.protected_branches);
+      this.hooked.add(repo);
+    }
+    const worktree = ensureTicketWorktree(ak.me.name, repo, t.key, t.branch ?? ticketBranch(t.key, t.title));
+    if (t.branch !== worktree.branch) t = await p.update(t.key, { branch: worktree.branch });
+
+    await p.loadNames();
+    const resume = st.sessions[t.id] ?? null;
+    const commentsText = job.comments.length ? job.comments.map((c) => `${p.nameOf(c.author_id)}: ${c.body}`).join("\n\n") : null;
+    const prompt = buildTicketPrompt({
+      myName: ak.me.name,
+      ownerName: ak.ownerName(ak.me),
+      projectName: p.project.name,
+      key: t.key,
+      brief: resume && commentsText ? "" : await p.brief(),
+      ticket: resume && commentsText ? "" : await p.ticketText(t.key),
+      cfg,
+      worktree,
+      followUp: Boolean(resume),
+      newComments: commentsText,
+    });
+    const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
+    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, resume) : codexInvocation(cfg, mcp, resume, worktree.path);
+    const logFile = join(this.logDir, `${p.project.slug}-${t.key}-${Date.now()}.log`);
+
+    const abort = new AbortController();
+    this.current = { what: t.key, abort };
+    await ak.heartbeat("working").catch(() => undefined);
+    await this.setStatus("planning", job.comments.length ? "Reading new comments" : "Reading the ticket", t.id);
+    this.log(`Working on ${t.key} in ${p.project.name} (${worktree.branch})${job.comments.length ? " after new comments" : ""}${resume ? ", continuing session" : ""}.`);
+
+    let result;
+    const startedAt = Date.now();
+    try {
+      result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal });
+    } finally {
+      this.current = null;
+      this.addUsage((Date.now() - startedAt) / 1000);
+    }
+
+    if (result.sessionId) {
+      const s2 = this.ticketState();
+      s2.sessions[t.id] = result.sessionId;
+      this.saveTicketState(s2);
+    }
+
+    const text = redactSecrets(result.finalText.trim()).slice(0, 12000);
+    const after = await p.ticket(t.key);
+    let outcome: string;
+    if (result.aborted) {
+      outcome = "stopped";
+      await p.comment(t.key, `Stopped: ${this.stopping ? "my runner was shut down" : `${ak.ownerName(ak.me)} paused me`}.${text ? `\n\nWhere it got to:\n${text}` : ""}`).catch(() => undefined);
+    } else if (result.timedOut || result.isError) {
+      outcome = "failed";
+      const why = result.timedOut ? `hit the ${cfg.limits.max_minutes}-minute limit` : "the run failed";
+      await p.comment(t.key, `Stopped: ${why}.${text ? `\n\n${text}` : ""}`).catch(() => undefined);
+      await p.update(t.key, { needs_human: `I stopped: ${why}. Comment here to have me continue, or check the log on ${ak.ownerName(ak.me)}'s computer.` }).catch(() => undefined);
+    } else if (text.startsWith(BLOCKED_PREFIX)) {
+      outcome = "blocked";
+      const q = text.slice(BLOCKED_PREFIX.length).trim();
+      await p.update(t.key, { needs_human: q.slice(0, 1000) || "I'm blocked; see my comment." }).catch(() => undefined);
+      if (q.length > 1000) await p.comment(t.key, q).catch(() => undefined);
+    } else {
+      outcome = "done";
+      if (text) await p.comment(t.key, text).catch((e) => this.log(`Couldn't comment on ${t.key}: ${(e as Error).message}`));
+      // Agents without the AutoKolab tools can still finish: a PR link in the final message moves the ticket.
+      const pr = text.match(new RegExp(`https://github\\.com/${repo.replace(/[.]/g, "\\.")}/pull/\\d+`, "i"))?.[0];
+      if (pr && after.status === "in_progress" && !after.pr_url) await p.update(t.key, { status: "review", pr_url: pr }).catch(() => undefined);
+    }
+    await this.setStatus(ak.me.paused ? "paused" : "idle");
+    await ak.heartbeat(this.stateNow()).catch(() => undefined);
+    this.log(`${t.key} ${outcome}.${result.costUsd !== undefined ? ` (estimated API cost $${result.costUsd.toFixed(2)})` : ""}`);
+  }
+
   private async say(roomId: string, thread: number, to: string | null, body: string): Promise<void> {
     try {
       await this.ak.room(roomId).post({ body, kind: "status", to, thread });
@@ -352,6 +554,7 @@ export class Runner {
       while ((this.current || this.busy) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
     }
     await this.ak.heartbeat("offline").catch(() => undefined);
+    await this.setStatus("offline");
     await this.ak.close();
   }
 }

@@ -79,12 +79,24 @@ export function worktreePath(agent: string, repo: string, threadRoot: number): s
 
 /** The worktree for this agent's task thread; follow-ups in the thread reuse it. */
 export function ensureWorktree(agent: string, repo: string, threadRoot: number): Worktree {
-  const clone = ensureClone(repo);
-  const path = worktreePath(agent, repo, threadRoot);
-  const branch = `ak/${agent}/t${threadRoot}`;
+  return attachWorktree(ensureClone(repo), worktreePath(agent, repo, threadRoot), `ak/${agent}/t${threadRoot}`);
+}
+
+/** The worktree for one ticket, on the ticket's branch (continuing it if it's already on GitHub). */
+export function ensureTicketWorktree(agent: string, repo: string, key: string, branch: string): Worktree {
+  return attachWorktree(ensureClone(repo), join(dataDir(), "worktrees", agent, repo.replace("/", "-"), key), branch);
+}
+
+/** "VV-12" + "Add Google sign-in!" → "vv-12-add-google-sign-in". */
+export function ticketBranch(key: string, title: string): string {
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").split("-").slice(0, 6).join("-");
+  return `${key.toLowerCase()}${slug ? `-${slug}` : ""}`.slice(0, 60).replace(/-+$/, "");
+}
+
+function attachWorktree(clone: string, path: string, branch: string): Worktree {
   const base = defaultBranch(clone);
   if (existsSync(join(path, ".git"))) {
-    // Follow-up in the same thread: bring in what others have pushed since, without touching the work.
+    // A follow-up: bring in what others have pushed since, without touching the work.
     try {
       git(path, "fetch", "--quiet", "--prune", "origin");
     } catch {
@@ -99,8 +111,9 @@ export function ensureWorktree(agent: string, repo: string, threadRoot: number):
   }
   git(clone, "worktree", "prune");
   mkdirSync(dirname(path), { recursive: true });
-  const branchExists = spawnSync("git", ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: clone }).status === 0;
-  if (branchExists) git(clone, "worktree", "add", path, branch);
+  const has = (ref: string) => spawnSync("git", ["rev-parse", "--verify", "--quiet", ref], { cwd: clone }).status === 0;
+  if (has(`refs/heads/${branch}`)) git(clone, "worktree", "add", path, branch);
+  else if (has(`refs/remotes/origin/${branch}`)) git(clone, "worktree", "add", "-b", branch, path, `origin/${branch}`);
   else git(clone, "worktree", "add", "-b", branch, path, `origin/${base}`);
   return { path, branch, base, created: true };
 }

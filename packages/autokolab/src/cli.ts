@@ -384,8 +384,9 @@ program
   .description("MCP server for Claude Code / Codex (they start it; not for typing)")
   .addOption(profileOpt())
   .option("-r, --room <room>", "fixed room instead of detecting from the repo")
+  .option("--project <project>", "fixed project instead of detecting from the repo")
   .action(async (o) => {
-    await runMcpServer(o.profile, o.room).catch((e) => {
+    await runMcpServer(o.profile, o.room, o.project).catch((e) => {
       console.error(`autokolab mcp: ${(e as Error).message}`);
       process.exit(1);
     });

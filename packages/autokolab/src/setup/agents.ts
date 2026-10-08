@@ -48,8 +48,8 @@ export function installedEngines(): Engine[] {
   return (["claude", "codex"] as Engine[]).filter((e) => engineBin(e));
 }
 
-export function mcpArgs(profile: string, room?: string): string[] {
-  return [CLI_PATH, "mcp", "--profile", profile, ...(room ? ["--room", room] : [])];
+export function mcpArgs(profile: string, room?: string, project?: string): string[] {
+  return [CLI_PATH, "mcp", "--profile", profile, ...(room ? ["--room", room] : []), ...(project ? ["--project", project] : [])];
 }
 
 export type RegisterResult = "added" | "updated" | "unchanged" | "not-installed" | "failed";
@@ -111,9 +111,17 @@ const END = "<!-- autokolab:end -->";
 export const AGENT_INSTRUCTIONS = `## Working with AutoKolab
 
 This repository is worked on by several people and AI agents on different machines, coordinated
-through AutoKolab (a shared chat room and bulletin board) via the \`autokolab\` MCP tools. Everyone
-works on this same repo, everyone can read every message in the room, and everyone's code is here on
-GitHub, so build on each other's work.
+through AutoKolab (a project board, a Project Guide, decisions and a shared chat room) via the
+\`autokolab\` MCP tools. Everyone works on this same repo, everyone can read every ticket and message,
+and everyone's code is here on GitHub, so build on each other's work.
+
+**Project board:** start with \`project_brief\`: the concept, architecture and rules everyone follows,
+the decisions in force, the board and your tickets. Tickets are the source of truth for work. Read one
+with \`ticket_get\` before working on it; comments from people are instructions for that ticket. While
+working, keep it current: \`ticket_update\` (status, branch, \`needs_human\` for a question),
+\`ticket_steps\` (plan, then mark each step), \`ticket_comment\`. Done means every "done means" item is
+true, a pull request is open and the ticket is in review with its \`pr_url\`. New work you find:
+\`ticket_create\`. Choices others must build on: \`decision_add\`.
 
 **Start of every session:** \`whoami\` (your name, role, who can instruct), then \`room_read\`,
 \`work_log\` (what each agent has done, on which branch) and \`board_list\`. To read someone's code:

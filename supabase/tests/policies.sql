@@ -212,6 +212,67 @@ update public.profiles set name = 'hijack' where id = '00000000-0000-0000-0000-0
 reset role;
 select pg_temp.expect((select name from public.profiles where id = '00000000-0000-0000-0000-0000000000b1') = 'Octo', 'others cannot edit your profile');
 
+-- ------------------------------------------------ v2 workspace: projects, tickets, guide, decisions
+reset role;
+-- Octo (b1) owns a project; Mona (b2) is a person who signed in but isn't in it yet.
+-- Agent c1 (Octo's Claude) and c2 (an outsider's agent) are Auth users with agents rows.
+insert into public.agents (id, owner_profile_id, owner_label, vendor, display_name) values
+  ('00000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-0000000000b1', 'octo', 'claude', 'Octo''s Claude'),
+  ('00000000-0000-0000-0000-0000000000c2', null, 'eve', 'codex', 'Eve''s Codex');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+select pg_temp.expect((public.create_project('Vajra Vision', 'Octo/Vajra-Vision', 'vv')).ticket_prefix = 'VV', 'owner creates a project');
+select pg_temp.expect((select count(*) from public.project_members) = 1, 'owner is the first member');
+select pg_temp.expect((select count(*) from public.project_guides) = 1, 'a guide is started');
+select pg_temp.expect_error($q$select public.create_project('Vajra Vision', 'x/y', 'VX')$q$, 'AUTOKOLAB_TAKEN');
+-- add the agent (by the service, as pairing will) and Mona (by GitHub login)
+reset role;
+insert into public.project_members (project_id, actor_id, actor_type) select id, '00000000-0000-0000-0000-0000000000c1', 'agent' from public.projects;
+set role authenticated;
+select pg_temp.expect((public.add_project_person((select id from public.projects), 'MONA')).name = 'mona', 'owner adds a person by GitHub login');
+select pg_temp.expect_error($q$select public.add_project_person((select id from public.projects), 'nobody')$q$, 'AUTOKOLAB_NOT_FOUND');
+-- tickets get sequential keys; assignee must be in the project
+select pg_temp.expect((public.create_ticket((select id from public.projects), 'Login screen', '', 'feature', 'high', 'ready',
+  '00000000-0000-0000-0000-0000000000c1', null, array['auth'], array['Google button on /login'])).key = 'VV-1', 'first ticket is VV-1');
+select pg_temp.expect((public.create_ticket((select id from public.projects), 'OAuth callback')).key = 'VV-2', 'second ticket is VV-2');
+select pg_temp.expect_error($q$select public.create_ticket((select id from public.projects), 'x', '', 'task', 'none', 'backlog', '00000000-0000-0000-0000-0000000000c2')$q$, 'AUTOKOLAB_BAD_ASSIGNEE');
+select pg_temp.expect((select assignee_type from public.tickets where key = 'VV-1') = 'agent', 'assignee type is filled in');
+select pg_temp.expect_error($q$select public.create_ticket((select id from public.projects), 'leak sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAA')$q$, 'AUTOKOLAB_SECRET');
+-- links, decisions
+insert into public.ticket_links (ticket_id, blocked_by) select a.id, b.id from public.tickets a, public.tickets b where a.key = 'VV-2' and b.key = 'VV-1';
+select pg_temp.expect((public.create_decision((select id from public.projects), 'Use Supabase Auth')).key = 'DEC-1', 'decisions are numbered');
+update public.project_guides set concept = 'Behavior-based CCTV alerts', rules = 'Never touch .env.prod';
+-- the agent works the ticket: status, steps, comment; history records it all
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000c1';
+select pg_temp.expect((select count(*) from public.tickets) = 2, 'agent sees the project tickets');
+select pg_temp.expect((select rules from public.project_guides) = 'Never touch .env.prod', 'agent reads the guide');
+update public.tickets set status = 'in_progress', branch = 'vv-1-login' where key = 'VV-1';
+insert into public.ticket_steps (ticket_id, idx, label, status) select id, 0, 'Button component', 'now' from public.tickets where key = 'VV-1';
+update public.ticket_steps set status = 'done';
+insert into public.ticket_comments (ticket_id, author_id, author_type, body) select id, '00000000-0000-0000-0000-0000000000c1', 'agent', 'Started; using components/ui/Button.' from public.tickets where key = 'VV-1';
+select pg_temp.expect((public.agent_status('building', 'VV-1', (select id from public.tickets where key = 'VV-1'))).status = 'building', 'agent reports status');
+select pg_temp.expect((select started_at is not null from public.tickets where key = 'VV-1'), 'start time recorded');
+select pg_temp.expect((select string_agg(kind, ',' order by id) from public.ticket_events where ticket_id = (select id from public.tickets where key = 'VV-1'))
+  = 'created,status,branch,step,comment', 'history records every change');
+select pg_temp.expect_error($q$insert into public.ticket_comments (ticket_id, author_id, author_type, body) select id, '00000000-0000-0000-0000-0000000000b1', 'human', 'impersonating' from public.tickets limit 1$q$, 'row-level security');
+select pg_temp.expect_error($q$update public.tickets set key = 'XX-9'$q$, 'permission denied');
+select pg_temp.expect_error($q$select public.create_project('Agent project', 'a/b', 'AP')$q$, 'AUTOKOLAB_FORBIDDEN');
+-- outsiders see nothing
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000c2';
+select pg_temp.expect((select count(*) from public.tickets) = 0, 'outside agent sees no tickets');
+select pg_temp.expect((select count(*) from public.project_guides) = 0, 'outside agent sees no guide');
+update public.tickets set status = 'done';
+select pg_temp.expect_error($q$select public.create_ticket((select id from public.projects limit 1), 'x')$q$, 'AUTOKOLAB_FORBIDDEN|null');
+-- people in the project see each other's profiles; Mona can work tickets but not add people
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect((select count(*) from public.profiles) = 2, 'members see each other''s profiles');
+select pg_temp.expect((select count(*) from public.agents) = 1, 'members see the project''s agents');
+select pg_temp.expect_error($q$select public.add_project_person((select id from public.projects), 'octo')$q$, 'AUTOKOLAB_FORBIDDEN');
+update public.tickets set status = 'review' where key = 'VV-1';
+select pg_temp.expect((select status from public.tickets where key = 'VV-1') = 'review', 'members move tickets');
+reset role;
+select pg_temp.expect((select status from public.tickets where key = 'VV-1') = 'review', 'outsider update had no effect');
+
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
 select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from unnest(array[

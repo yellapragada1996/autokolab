@@ -207,6 +207,20 @@ export const Icon = {
       <path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18" />
     </>
   ),
+  list: <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />,
+  book: (
+    <>
+      <path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2z" />
+      <path d="M4 21V5M9 8h6" />
+    </>
+  ),
+  people: (
+    <>
+      <circle cx="9" cy="8" r="3" />
+      <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+      <rect x="15" y="5" width="6" height="6" rx="1.6" />
+    </>
+  ),
   search: (
     <>
       <circle cx="11" cy="11" r="6" />

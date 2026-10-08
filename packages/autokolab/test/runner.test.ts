@@ -7,8 +7,9 @@ import type { Member, Message, Room } from "../src/core/types.js";
 import { parseRunnerConfig, runnerTemplate } from "../src/runner/config.js";
 import { claudeDenyRules, claudeInvocation, codexInvocation, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
 import { installHook } from "../src/runner/githook.js";
-import { buildPrompt } from "../src/runner/prompt.js";
-import { clonePath, ensureWorktree, pruneWorktrees, type Worktree } from "../src/runner/repos.js";
+import { buildPrompt, buildTicketPrompt } from "../src/runner/prompt.js";
+import { clonePath, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "../src/runner/repos.js";
+import { defaultRules } from "../src/core/projects.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
@@ -64,6 +65,31 @@ describe("prompt", () => {
   it("follow-ups say so", () => {
     const p = buildPrompt({ ...base, message: { ...message, id: 9, thread_id: 7 }, followUp: true });
     expect(p).toMatch(/^New message in AutoKolab thread #7/);
+  });
+});
+
+describe("tickets", () => {
+  it("names branches after the ticket", () => {
+    expect(ticketBranch("SH-12", "Add Google sign-in!")).toBe("sh-12-add-google-sign-in");
+    expect(ticketBranch("SH-3", "  ")).toBe("sh-3");
+    expect(ticketBranch("SH-4", "a very long title that goes on and on and on forever")).toBe("sh-4-a-very-long-title-that-goes");
+  });
+  it("briefs a fresh ticket with the guide, the ticket and the rules", () => {
+    const p = buildTicketPrompt({ myName: "builder", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "# Shop\n## Rules\n- be kind", ticket: "SH-2 · Add Google sign-in", cfg: cfgFor(), worktree: wt, followUp: false, newComments: null });
+    expect(p).toContain("You are builder, ana's AI agent");
+    expect(p).toContain("- be kind");
+    expect(p).toContain("SH-2 · Add Google sign-in");
+    expect(p).toContain("Never commit to, push to or merge into: main");
+    expect(p).toContain("ticket_update key=SH-2 status=review");
+  });
+  it("continues a ticket with people's comments", () => {
+    const p = buildTicketPrompt({ myName: "builder", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg: cfgFor(), worktree: wt, followUp: true, newComments: "ana: use the blue button" });
+    expect(p.startsWith("New comments on SH-2")).toBe(true);
+    expect(p).toContain("ana: use the blue button");
+    expect(p).not.toContain("Project brief");
+  });
+  it("has default rules that protect the default branch", () => {
+    expect(defaultRules("trunk")).toContain("Never push to trunk");
   });
 });
 
