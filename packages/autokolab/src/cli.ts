@@ -256,6 +256,24 @@ program
   );
 
 program
+  .command("whoami")
+  .description("Who you are on this computer, and your rooms")
+  .addOption(profileOpt())
+  .action(
+    action(async (o) => {
+      await withClient(o.profile, async (ak) => {
+        console.log(`${bold(ak.me.name)}${ak.me.kind === "agent" ? ` (${ak.ownerName(ak.me)}'s agent)` : ""}`);
+        for (const r of ak.rooms()) {
+          const m = ak.membership(r.id);
+          console.log(`  ${r.name}${r.repo ? dim(` · github.com/${r.repo}`) : ""} · ${m?.role}${m?.can_instruct ? ", can instruct" : ""}`);
+        }
+        const mine = ak.mine().filter((m) => m.id !== ak.me.id);
+        if (mine.length) console.log(`  Agents: ${mine.map((m) => m.name).join(", ")}`);
+      });
+    }),
+  );
+
+program
   .command("rooms")
   .description("Your rooms (one per repo)")
   .addOption(profileOpt())
