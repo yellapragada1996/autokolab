@@ -85,12 +85,20 @@ describe("engine command lines", () => {
   });
   it("codex: exec in the worktree, MCP via -c, prompt on stdin, resume", () => {
     const cfg = parseRunnerConfig(`agent_id = "${AID}"\nengine = "codex"`, "lee-codex");
-    const inv = codexInvocation(cfg, mcp, "thread-9", "/tmp/wt");
-    expect(inv.args[0]).toBe("exec");
-    expect(inv.args.slice(inv.args.indexOf("-C"), inv.args.indexOf("-C") + 2)).toEqual(["-C", "/tmp/wt"]);
-    expect(inv.args).toContain('mcp_servers.autokolab.command="/usr/bin/node"');
-    expect(inv.args).toContain('mcp_servers.autokolab.args=["/opt/autokolab/cli.js","mcp","--profile","lee-claude"]');
-    expect(inv.args.slice(-3)).toEqual(["resume", "thread-9", "-"]);
+    const first = codexInvocation(cfg, mcp, null, "/tmp/wt");
+    expect(first.args[0]).toBe("exec");
+    expect(first.args.slice(first.args.indexOf("-C"), first.args.indexOf("-C") + 2)).toEqual(["-C", "/tmp/wt"]);
+    expect(first.args).toContain('mcp_servers.autokolab.command="/usr/bin/node"');
+    expect(first.args).toContain('mcp_servers.autokolab.args=["/opt/autokolab/cli.js","mcp","--profile","lee-claude"]');
+    expect(first.args).toContain('sandbox_mode="workspace-write"');
+    expect(first.args.at(-1)).toBe("-");
+    // `codex exec resume` takes neither -C nor -s: everything goes through -c.
+    const next = codexInvocation(cfg, mcp, "thread-9", "/tmp/wt");
+    expect(next.args.slice(0, 2)).toEqual(["exec", "resume"]);
+    expect(next.args).not.toContain("-C");
+    expect(next.args).not.toContain("-s");
+    expect(next.args).toContain('sandbox_mode="workspace-write"');
+    expect(next.args.slice(-2)).toEqual(["thread-9", "-"]);
   });
 });
 

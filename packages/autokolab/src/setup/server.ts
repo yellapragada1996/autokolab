@@ -7,6 +7,8 @@ import { readConfigFile, stateDir } from "../core/config.js";
 import * as actions from "./actions.js";
 import { githubStatus, installGh, startGitHubSignIn } from "./machine.js";
 import { startNotifier } from "./notify.js";
+import { connectFromConfig } from "../core/node.js";
+import { connectAgents } from "./connect.js";
 import { runAll, type Runner } from "../runner/runner.js";
 import { runnerFiles } from "../runner/config.js";
 import { serviceEvents, serviceStatus } from "./service.js";
@@ -209,9 +211,22 @@ export async function runApp(opts: { noBrowser?: boolean; invite?: string } = {}
   let runners: Runner[] = [];
   let starting = false;
   const tryRunners = async () => {
-    if (runners.length || starting || serviceStatus() === "running" || !runnerFiles().length) return;
+    if (runners.length || starting || serviceStatus() === "running" || !readConfigFile().me) return;
     starting = true;
     try {
+      // Give any follower agent on this machine its runner (e.g. after its role changed).
+      if (!runnerFiles().length) {
+        const ak = await connectFromConfig();
+        try {
+          connectAgents(ak, readConfigFile());
+        } finally {
+          await ak.close();
+        }
+      }
+      if (!runnerFiles().length) {
+        starting = false;
+        return;
+      }
       runners = await runAll();
     } catch {
       runners = [];

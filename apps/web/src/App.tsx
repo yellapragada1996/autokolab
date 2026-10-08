@@ -602,7 +602,11 @@ function Composer({
 
   if (view.myRole() === "observer") return <div className="composer muted small">You can read this room but not post.</div>;
 
-  const mentioned = others.find((m) => new RegExp(`(^|\\s)@${m.name}\\b`).test(body));
+  // Longest names first, and a name only counts if it isn't part of a longer one
+  // ("@lee" must not match "@lee-codex").
+  const mentioned = [...others]
+    .sort((a, b) => b.name.length - a.name.length)
+    .find((m) => new RegExp(`(^|\\s)@${m.name}(?![a-z0-9-])`).test(body));
   const send = async () => {
     const text = body.trim();
     if (!text) return;

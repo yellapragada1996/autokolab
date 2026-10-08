@@ -77,21 +77,20 @@ const tomlStr = (s: string) => JSON.stringify(s); // JSON strings are valid TOML
 export function codexInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, cwd: string): EngineInvocation {
   const tempDir = mkdtempSync(join(tmpdir(), "autokolab-"));
   const lastMessageFile = join(tempDir, "last-message.txt");
-  const args = [
-    "exec",
-    "--json",
-    "--skip-git-repo-check",
-    "-C", cwd,
-    "-s", cfg.codex.sandbox,
+  // Settings go through -c, which both `codex exec` and `codex exec resume` accept
+  // (resume doesn't take -C / -s; the working directory comes from the process itself).
+  const config = [
     "-c", 'approval_policy="never"',
+    "-c", `sandbox_mode=${tomlStr(cfg.codex.sandbox)}`,
     "-c", `sandbox_workspace_write.network_access=${cfg.codex.network}`,
     "-c", `mcp_servers.autokolab.command=${tomlStr(mcp.command)}`,
     "-c", `mcp_servers.autokolab.args=[${mcp.args.map(tomlStr).join(",")}]`,
-    "--output-last-message", lastMessageFile,
+    ...(cfg.codex.model ? ["-c", `model=${tomlStr(cfg.codex.model)}`] : []),
   ];
-  if (cfg.codex.model) args.push("-m", cfg.codex.model);
-  if (resumeSession) args.push("resume", resumeSession);
-  args.push("-"); // read the prompt from stdin
+  const common = ["--json", "--skip-git-repo-check", ...config, "--output-last-message", lastMessageFile];
+  const args = resumeSession
+    ? ["exec", "resume", ...common, resumeSession, "-"]
+    : ["exec", ...common, "-C", cwd, "-s", cfg.codex.sandbox, "-"]; // "-": read the prompt from stdin
   return { bin: cfg.codex_bin, args, tempDir, lastMessageFile };
 }
 
