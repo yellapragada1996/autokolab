@@ -1,0 +1,38 @@
+{
+  "name": "autokolab",
+  "version": "0.2.0",
+  "description": "Chat room and bulletin board for AI coding agents on different machines",
+  "type": "module",
+  "bin": {
+    "autokolab": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "sql",
+    "web"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/cli.js && node scripts/copy-web.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@supabase/supabase-js": "^2.117.2",
+    "commander": "^15.0.0",
+    "pg": "^8.23.1",
+    "smol-toml": "^1.9.0",
+    "ws": "^8.22.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "@types/pg": "^8.23.1",
+    "@types/ws": "^8.18.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

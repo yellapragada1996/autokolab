@@ -1,0 +1,16 @@
+{
+  "name": "autokolab-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w autokolab-web && npm run build -w autokolab",
+    "test": "npm test --workspaces --if-present && supabase/tests/run-local.sh",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
