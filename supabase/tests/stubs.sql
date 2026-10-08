@@ -7,6 +7,12 @@ do $$ begin
 end $$;
 
 create schema if not exists auth;
+-- Stand-in for Supabase's auth.users (only the columns AutoKolab reads).
+create table if not exists auth.users (
+  id uuid primary key,
+  raw_app_meta_data jsonb not null default '{}'::jsonb,
+  raw_user_meta_data jsonb not null default '{}'::jsonb
+);
 create or replace function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
 $$;

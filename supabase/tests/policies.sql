@@ -190,6 +190,28 @@ select pg_temp.expect((select count(*) from public.members) = 7, 'service role s
 update public.room_members set can_instruct = false where member_id = '00000000-0000-0000-0000-000000000005';
 reset role;
 
+-- ------------------------------------------------ v2 profiles: GitHub sign-ins only, own row only
+reset role;
+insert into auth.users (id, raw_app_meta_data, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000b1', '{"provider":"github"}', '{"user_name":"octo","full_name":"Octo Cat","avatar_url":"https://x/a.png"}'),
+  ('00000000-0000-0000-0000-0000000000b2', '{"provider":"github"}', '{"user_name":"mona"}'),
+  ('00000000-0000-0000-0000-0000000000b3', '{"provider":"email"}', '{}');
+select pg_temp.expect((select name from public.profiles where id = '00000000-0000-0000-0000-0000000000b1') = 'Octo Cat', 'profile from GitHub full name');
+select pg_temp.expect((select name from public.profiles where id = '00000000-0000-0000-0000-0000000000b2') = 'mona', 'falls back to GitHub login');
+select pg_temp.expect(not exists (select 1 from public.profiles where id = '00000000-0000-0000-0000-0000000000b3'), 'non-GitHub logins get no profile');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+select pg_temp.expect((select count(*) from public.profiles) = 1, 'you see only your own profile');
+update public.profiles set name = 'Octo', timezone = 'Europe/Stockholm', city = 'Gothenburg', onboarded = true;
+select pg_temp.expect((select city from public.profiles) = 'Gothenburg', 'you can edit your profile');
+select pg_temp.expect_error($q$update public.profiles set github_login = 'someone-else'$q$, 'permission denied');
+select pg_temp.expect_error($q$insert into public.profiles (id, name) values ('00000000-0000-0000-0000-0000000000b3', 'x')$q$, 'permission denied');
+select pg_temp.expect((public.ensure_my_profile()).name = 'Octo', 'ensure_my_profile returns your profile');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+update public.profiles set name = 'hijack' where id = '00000000-0000-0000-0000-0000000000b1';
+reset role;
+select pg_temp.expect((select name from public.profiles where id = '00000000-0000-0000-0000-0000000000b1') = 'Octo', 'others cannot edit your profile');
+
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
 select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from unnest(array[
