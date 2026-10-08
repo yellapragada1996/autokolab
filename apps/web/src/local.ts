@@ -56,6 +56,8 @@ export interface GitHubStatus {
   login: string | null;
   canInstallGh: boolean;
   deviceCode?: string;
+  signingIn?: boolean;
+  error?: string;
 }
 
 export interface RepoState {

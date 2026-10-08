@@ -783,12 +783,30 @@ function Access({ onDone }: { onDone: () => void }) {
                   <Copy text={gh.deviceCode} />
                 </div>
               </div>
+            ) : gh.signingIn ? (
+              <p className="small muted">Starting GitHub sign-in…</p>
             ) : (
-              <div className="row">
-                <button className="primary" disabled={busy} onClick={() => void run(async () => (await local.githubSignIn(), refresh()))}>
-                  Sign in with GitHub
-                </button>
-              </div>
+              <>
+                <div className="row">
+                  <button className="primary" disabled={busy} onClick={() => void run(async () => (await local.githubSignIn(), refresh()))}>
+                    {busy ? "Starting…" : "Sign in with GitHub"}
+                  </button>
+                </div>
+                {gh.error && (
+                  <p className="small">
+                    <span className="error">GitHub sign-in didn't start: {gh.error}</span>
+                  </p>
+                )}
+                <details open={!!gh.error}>
+                  <summary className="small muted" style={{ cursor: "pointer" }}>
+                    Or sign in from Terminal
+                  </summary>
+                  <p className="small" style={{ marginTop: 8 }}>
+                    Open the Terminal app and run <span className="mono">gh auth login</span>. Choose GitHub.com, then HTTPS, then Yes, then
+                    "Login with a web browser", and follow the steps. This page notices when you're done.
+                  </p>
+                </details>
+              </>
             )}
           </div>
         )}

@@ -113,9 +113,14 @@ export interface GitHubStatus {
   canInstallGh: boolean;
   /** One-time code to type at github.com/login/device while signing in. */
   deviceCode?: string;
+  /** A sign-in was started and is waiting for GitHub. */
+  signingIn?: boolean;
+  /** Why the last sign-in attempt failed, in GitHub's own words. */
+  error?: string;
 }
 
 let ghSignIn: { proc: ChildProcess; code?: string } | null = null;
+let ghError: string | undefined;
 
 export function githubStatus(): GitHubStatus {
   const gh = which("gh");
@@ -126,9 +131,20 @@ export function githubStatus(): GitHubStatus {
   if (login && ghSignIn) {
     ghSignIn.proc.kill();
     ghSignIn = null;
+  }
+  if (login) {
+    ghError = undefined;
     spawnSync("gh", ["auth", "setup-git"], QUIET); // let plain git use the same sign-in
   }
-  return { ghInstalled: true, signedIn: !!login, login, canInstallGh, deviceCode: !login ? ghSignIn?.code : undefined };
+  return {
+    ghInstalled: true,
+    signedIn: !!login,
+    login,
+    canInstallGh,
+    deviceCode: !login ? ghSignIn?.code : undefined,
+    signingIn: !login && !!ghSignIn,
+    error: !login && !ghSignIn ? ghError : undefined,
+  };
 }
 
 export function installGh(): Promise<void> {
@@ -140,34 +156,74 @@ export function installGh(): Promise<void> {
   });
 }
 
-/** GitHub's device sign-in: shows a code, opens github.com/login/device. */
-export function startGitHubSignIn(): Promise<GitHubStatus> {
-  if (!which("gh")) throw new Error("Install GitHub's tool first.");
-  ghSignIn?.proc.kill();
-  const proc = spawn("gh", ["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web", "--skip-ssh-key"], {
-    stdio: ["pipe", "pipe", "pipe"],
-    env: { ...process.env, GH_BROWSER: "true", BROWSER: "true" }, // we open the page ourselves
-  });
-  const entry: { proc: ChildProcess; code?: string } = { proc };
-  ghSignIn = entry;
-  return new Promise((resolve) => {
+const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\r/g, "");
+
+/**
+ * Run `gh auth login --web` and wait for its one-time code. Works with old and new versions of gh:
+ * first as a plain background process; if gh insists on a terminal (older versions), again inside
+ * a pseudo-terminal using the system's `script` command.
+ */
+function ghLoginAttempt(viaTerminal: boolean): Promise<{ proc: ChildProcess; code: string }> {
+  const args = ["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web"];
+  const env = { ...process.env, GH_BROWSER: "true", BROWSER: "true" }; // we open the page ourselves
+  let proc: ChildProcess;
+  if (!viaTerminal) proc = spawn("gh", args, { stdio: ["pipe", "pipe", "pipe"], env });
+  else if (which("python3")) proc = spawn("python3", ["-c", "import pty,sys; pty.spawn(sys.argv[1:])", "gh", ...args], { stdio: ["pipe", "pipe", "pipe"], env });
+  else if (platform() === "darwin") proc = spawn("script", ["-q", "/dev/null", "gh", ...args], { stdio: ["pipe", "pipe", "pipe"], env });
+  else proc = spawn("script", ["-qec", ["gh", ...args].join(" "), "/dev/null"], { stdio: ["pipe", "pipe", "pipe"], env });
+  return new Promise((resolve, reject) => {
     let out = "";
+    let answered = false;
     const onData = (d: Buffer) => {
-      out += d.toString();
+      out += stripAnsi(d.toString());
+      // Older versions ask before signing in; say yes to using GitHub for git, too.
+      if (!answered && /Authenticate Git with your GitHub credentials/i.test(out)) {
+        answered = true;
+        proc.stdin!.write("Y\n");
+      }
       const code = out.match(/one-time code:\s*([A-Z0-9]{4}-[A-Z0-9]{4})/)?.[1];
-      if (code && !entry.code) {
-        entry.code = code;
-        proc.stdin!.write("\n");
-        openBrowser("https://github.com/login/device");
+      if (code) {
+        proc.stdin!.write("\n"); // "Press Enter to open github.com in your browser…"
+        resolve({ proc, code });
       }
     };
     proc.stdout!.on("data", onData);
     proc.stderr!.on("data", onData);
-    proc.on("close", () => {
+    proc.on("error", (e) => reject(e));
+    proc.on("close", () => reject(new Error(out.trim().split("\n").filter(Boolean).slice(-2).join(" ") || "GitHub's tool stopped without a code.")));
+    setTimeout(() => reject(new Error("GitHub didn't answer in time.")), 20_000).unref();
+  });
+}
+
+/** GitHub's device sign-in: shows a code, opens github.com/login/device. */
+export async function startGitHubSignIn(): Promise<GitHubStatus> {
+  if (!which("gh")) throw new Error("Install GitHub's tool first.");
+  ghSignIn?.proc.kill();
+  ghSignIn = null;
+  ghError = undefined;
+  let attempt: { proc: ChildProcess; code: string } | null = null;
+  try {
+    attempt = await ghLoginAttempt(false);
+  } catch (first) {
+    if (which("python3") || which("script")) {
+      try {
+        attempt = await ghLoginAttempt(true);
+      } catch (second) {
+        ghError = (second as Error).message || (first as Error).message;
+      }
+    } else {
+      ghError = (first as Error).message;
+    }
+  }
+  if (attempt) {
+    const entry = { proc: attempt.proc, code: attempt.code };
+    ghSignIn = entry;
+    attempt.proc.on("close", () => {
       if (ghSignIn === entry) ghSignIn = null;
     });
-    setTimeout(() => resolve(githubStatus()), 2500);
-  });
+    openBrowser("https://github.com/login/device");
+  }
+  return githubStatus();
 }
 
 export function canRead(repo: string): boolean {
