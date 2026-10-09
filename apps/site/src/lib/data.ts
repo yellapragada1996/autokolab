@@ -55,7 +55,22 @@ export interface Agent {
   status_note: string | null;
   current_ticket_id: string | null;
   last_seen_at: string | null;
+  /** Set from AutoKolab (schema 10); null means the agent's machine decides. */
+  model: string | null;
+  effort: Effort | null;
+  /** The profile or agent that last set model/effort, and when. */
+  model_set_by: string | null;
+  model_set_at: string | null;
 }
+
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof EFFORTS)[number];
+
+/** Suggestions only: the model box also takes any name typed in, since these lists go stale. */
+export const MODEL_CHOICES: Record<Agent["vendor"], string[]> = {
+  claude: ["opus", "sonnet", "haiku", "fable", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1"],
+  codex: ["gpt-5-codex", "gpt-5"],
+};
 
 export interface Member {
   actor_id: string;
@@ -185,6 +200,14 @@ export async function people(projectId: string): Promise<People> {
     profiles: new Map(check<Profile[]>(profiles as never).map((p) => [p.id, p])),
     agents: new Map(check<Agent[]>(agents as never).map((a) => [a.id, a])),
   };
+}
+
+/**
+ * Set an agent's model and effort (its owner, or the project's lead). The function sets both at
+ * once, so pass the current value of the one that isn't changing; null hands it back to the machine.
+ */
+export async function setAgentModel(agentId: string, model: string | null, effort: Effort | null): Promise<Agent> {
+  return check(await supabase.rpc("set_agent_model", { p_agent: agentId, p_model: model, p_effort: effort }));
 }
 
 // ------------------------------------------------------------------ joining

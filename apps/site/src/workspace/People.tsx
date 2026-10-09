@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addPerson, createInvite, inviteLink, invites as listInvites, revokeInvite, setLead, showCode, type Agent, type Invite } from "../lib/data";
+import { addPerson, createInvite, EFFORTS, inviteLink, invites as listInvites, MODEL_CHOICES, revokeInvite, setAgentModel, setLead, showCode, type Agent, type Effort, type Invite } from "../lib/data";
 import { placeLine } from "../lib/place";
 import { go, onNav } from "../lib/router";
 import { AgentMark, Avatar, Button } from "../ui";
@@ -99,6 +99,7 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
                   {a.vendor === "claude" ? "Claude Code" : "Codex"} · {a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : a.owner_label ? `${a.owner_label}'s` : "shared"}
                   {a.last_seen_at ? ` · seen ${ago(a.last_seen_at)}` : " · not connected yet"}
                 </span>
+                <AgentModel ws={ws} agent={a} mine={a.owner_profile_id === me} />
               </span>
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
                 {isOwner && (
@@ -125,6 +126,107 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
         )}
       </section>
     </div>
+  );
+}
+
+/** "Sonnet · medium effort"; a part not set from AutoKolab is left to the agent's machine. */
+export function modelText(model: string | null, effort: string | null): string | null {
+  if (!model && !effort) return null;
+  const name = model ? (/^[a-z]+$/.test(model) ? model[0].toUpperCase() + model.slice(1) : model) : "Model set on this machine";
+  return effort ? `${name} · ${effort} effort` : name;
+}
+
+const fieldStyle = { height: 28, borderRadius: 6, border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)", fontSize: 13, padding: "0 8px" } as const;
+
+/**
+ * The agent's model and effort. Everyone in the project sees them; only the agent's owner gets the
+ * control (the project's lead changes them with its own tool). Who set them last shows underneath.
+ */
+function AgentModel({ ws, agent: a, mine }: { ws: Workspace; agent: Agent; mine: boolean }) {
+  const [model, setModel] = useState(a.model ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => setModel(a.model ?? ""), [a.model]);
+
+  // set_agent_model sets both at once: always send the current value of the one not being changed.
+  const save = async (nextModel: string | null, nextEffort: Effort | null) => {
+    if (nextModel === a.model && nextEffort === a.effort) return;
+    setBusy(true);
+    setErr("");
+    try {
+      await setAgentModel(a.id, nextModel, nextEffort);
+      await ws.reload();
+    } catch (e) {
+      setErr((e as Error).message);
+      setModel(a.model ?? "");
+    }
+    setBusy(false);
+  };
+  const commitModel = () => void save(model.trim() || null, a.effort);
+
+  const setBy = a.model_set_by && (a.model || a.effort) ? `Set by ${ws.nameOf(a.model_set_by)}${a.model_set_at ? ` · ${ago(a.model_set_at)}` : ""}` : null;
+  const text = modelText(a.model, a.effort);
+
+  if (!mine) {
+    return (
+      <span style={{ fontSize: 13, display: "flex", flexDirection: "column" }}>
+        <span style={{ color: text ? "var(--text-2)" : "var(--muted)" }}>{text ?? "Set on this machine"}</span>
+        {setBy && <span style={{ fontSize: 12, color: "var(--faint)" }}>{setBy}</span>}
+      </span>
+    );
+  }
+
+  const listId = `models-${a.id}`;
+  return (
+    <span style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4 }}>
+      <span style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <label style={{ fontSize: 12, color: "var(--muted)", display: "flex", gap: 6, alignItems: "center" }}>
+          Model
+          <input
+            list={listId}
+            value={model}
+            disabled={busy}
+            placeholder="Set on this machine"
+            onChange={(e) => setModel(e.target.value)}
+            onBlur={commitModel}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitModel();
+              }
+              if (e.key === "Escape") setModel(a.model ?? "");
+            }}
+            style={{ ...fieldStyle, width: 170, fontFamily: "var(--mono)" }}
+          />
+          <datalist id={listId}>
+            {MODEL_CHOICES[a.vendor].map((m) => (
+              <option key={m} value={m} />
+            ))}
+          </datalist>
+        </label>
+        <label style={{ fontSize: 12, color: "var(--muted)", display: "flex", gap: 6, alignItems: "center" }}>
+          Effort
+          <select value={a.effort ?? ""} disabled={busy} onChange={(e) => void save(a.model, (e.target.value || null) as Effort | null)} style={fieldStyle}>
+            <option value="">Set on this machine</option>
+            {EFFORTS.map((x) => (
+              <option key={x} value={x}>
+                {x}
+              </option>
+            ))}
+          </select>
+        </label>
+      </span>
+      {err ? (
+        <span role="alert" style={{ fontSize: 12, color: "var(--danger)" }}>
+          {err}
+        </span>
+      ) : (
+        setBy && <span style={{ fontSize: 12, color: "var(--faint)" }}>{setBy}</span>
+      )}
+      <span style={{ fontSize: 12, color: "var(--faint)" }}>
+        Applies from its next run. Your machine can ignore this: set <code style={{ fontFamily: "var(--mono)" }}>model_locked = true</code> in this agent's runner settings. Sessions you open yourself in {a.vendor === "claude" ? "Claude Code" : "Codex"} use whatever you pick there.
+      </span>
+    </span>
   );
 }
 
