@@ -442,6 +442,59 @@ set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000003';
 select pg_temp.expect_error($q$select public.link_my_profile((select code from pair2))$q$, 'only a person');
 reset role;
 
+-- ------------------------------------------------ each agent's model and effort (schema 10)
+reset role;
+-- Octo (b1) owns two projects. In Modelz, e1 (Octo's) is the lead, e2 (Mona's) and e4 are workers.
+-- In Otherz, e3 is the lead; e2 isn't in it.
+insert into public.agents (id, owner_profile_id, owner_label, vendor, display_name) values
+  ('00000000-0000-0000-0000-0000000000e1', '00000000-0000-0000-0000-0000000000b1', 'octo', 'claude', 'Modelz lead'),
+  ('00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000b2', 'mona', 'codex', 'Mona''s worker'),
+  ('00000000-0000-0000-0000-0000000000e3', null, 'eve', 'claude', 'Otherz lead'),
+  ('00000000-0000-0000-0000-0000000000e4', null, 'eve', 'codex', 'Another worker');
+insert into public.projects (id, name, slug, ticket_prefix, owner_id) values
+  ('00000000-0000-0000-0000-0000000000f1', 'Modelz', 'modelz', 'MZ', '00000000-0000-0000-0000-0000000000b1'),
+  ('00000000-0000-0000-0000-0000000000f2', 'Otherz', 'otherz', 'OZ', '00000000-0000-0000-0000-0000000000b1');
+insert into public.project_members (project_id, actor_id, actor_type) values
+  ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000e1', 'agent'),
+  ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000e2', 'agent'),
+  ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000e4', 'agent'),
+  ('00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-0000000000e3', 'agent');
+update public.projects set lead_agent_id = '00000000-0000-0000-0000-0000000000e1' where slug = 'modelz';
+update public.projects set lead_agent_id = '00000000-0000-0000-0000-0000000000e3' where slug = 'otherz';
+select pg_temp.expect((select model is null and effort is null and model_set_by is null from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'model and effort start unset');
+set role authenticated;
+-- the owner sets both
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect((select model = 'gpt-6.1-sol' and effort = 'high' and model_set_by = '00000000-0000-0000-0000-0000000000b2' and model_set_at is not null
+  from public.set_agent_model('00000000-0000-0000-0000-0000000000e2', 'gpt-6.1-sol', 'high')), 'the owner sets model and effort');
+select pg_temp.expect_error($q$select public.set_agent_model('00000000-0000-0000-0000-0000000000e2', 'gpt-6.1-sol', 'extreme')$q$, 'check constraint');
+select pg_temp.expect_error($q$select public.set_agent_model('00000000-0000-0000-0000-0000000000e2', repeat('m', 61), null)$q$, 'check constraint');
+select pg_temp.expect_error($q$select public.set_agent_model('00000000-0000-0000-0000-0000000000e2', 'sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAA', null)$q$, 'AUTOKOLAB_SECRET');
+-- no direct writes, not even by the owner
+select pg_temp.expect_error($q$update public.agents set model = 'opus' where id = '00000000-0000-0000-0000-0000000000e2'$q$, 'permission denied');
+select pg_temp.expect_error($q$update public.agents set effort = 'max', model_set_by = null where id = '00000000-0000-0000-0000-0000000000e2'$q$, 'permission denied');
+-- the project's lead sets it, and clears it with null
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select pg_temp.expect((select model = 'gpt-6.1' and effort = 'xhigh' and model_set_by = '00000000-0000-0000-0000-0000000000e1'
+  from public.set_agent_model('00000000-0000-0000-0000-0000000000e2', 'gpt-6.1', 'xhigh')), 'the project''s lead sets model and effort');
+select pg_temp.expect((select model is null and effort is null and model_set_by = '00000000-0000-0000-0000-0000000000e1'
+  from public.set_agent_model('00000000-0000-0000-0000-0000000000e2', null, null)), 'null clears them');
+select pg_temp.expect((select effort = 'low' from public.set_agent_model('00000000-0000-0000-0000-0000000000e1', 'opus', 'low')), 'the lead sets its own');
+-- everyone else is refused
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e4';
+select pg_temp.expect_error($q$select public.set_agent_model('00000000-0000-0000-0000-0000000000e2', 'opus', 'max')$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e3';
+select pg_temp.expect_error($q$select public.set_agent_model('00000000-0000-0000-0000-0000000000e2', 'opus', 'max')$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+select pg_temp.expect_error($q$select public.set_agent_model('00000000-0000-0000-0000-0000000000e2', 'opus', 'max')$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+select pg_temp.expect_error($q$select public.set_agent_model('00000000-0000-0000-0000-0000000000e2', 'opus', 'max')$q$, 'AUTOKOLAB_FORBIDDEN');
+select pg_temp.expect_error($q$select public.set_agent_model(gen_random_uuid(), 'opus', 'max')$q$, 'AUTOKOLAB_FORBIDDEN');
+set role anon;
+select pg_temp.expect_error($q$select public.set_agent_model('00000000-0000-0000-0000-0000000000e2', 'opus', 'max')$q$, 'permission denied');
+reset role;
+select pg_temp.expect((select model is null and effort is null from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'refused calls changed nothing');
+
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
 select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from unnest(array[
