@@ -8,6 +8,7 @@ import { randomBytes } from "node:crypto";
 // /api/connect handler, reusing an agent, refusing other people's codes, and the lead. Everything
 // runs as throwaway accounts and is deleted at the end. Needs Node 22+ and a built helper:
 //   npm run build -w autokolab && node --experimental-strip-types scripts/e2e-join.mjs
+//   E2E_SITE=https://autokolab.vercel.app node --experimental-strip-types scripts/e2e-join.mjs   (the live site)
 import { fileURLToPath } from "node:url";
 const ROOT = fileURLToPath(new URL("..", import.meta.url)).replace(/\/$/, "");
 const env = Object.fromEntries(readFileSync(`${ROOT}/.env`, "utf8").split("\n").filter(l => /^[A-Z_]+=/.test(l)).map(l => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).trim().replace(/^"|"$/g, "")]));
@@ -74,7 +75,9 @@ try {
     const r = { statusCode: 200, status(n) { this.statusCode = n; return this; }, setHeader: (k, v) => res.setHeader(k, v), json(b) { res.writeHead(this.statusCode, { "content-type": "application/json" }); res.end(JSON.stringify(b)); } };
     await handler({ method: req.method, body: JSON.parse(body || "{}") }, r);
   }).listen(0);
-  const site = `http://127.0.0.1:${server.address().port}`;
+  // E2E_SITE=https://… tests a deployed site's /api/connect instead of the local handler.
+  const site = process.env.E2E_SITE ?? `http://127.0.0.1:${server.address().port}`;
+  console.log(`  (connect service: ${site})`);
   const { runConnect } = await import(`${ROOT}/packages/autokolab/dist/setup/pair.js`);
   const first = await runConnect(pairing.code, { site, engines: ["codex"], setupTools: false });
   const agent = first.agents[0];
