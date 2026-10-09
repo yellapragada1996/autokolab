@@ -19,7 +19,7 @@ const REVIEWER = "00000000-0000-0000-0000-0000000000c2";
 const LEAD = "00000000-0000-0000-0000-0000000000c3";
 const SPARE = "00000000-0000-0000-0000-0000000000c4";
 
-const project: Project = { id: "demo", name: "Shop", slug: "shop", repo: "ana/shop", default_branch: "main", ticket_prefix: "SH", owner_id: ANA, lead_agent_id: LEAD, room_id: "room", created_at: iso(9000) };
+const project: Project = { id: "demo", name: "Shop", slug: "shop", repo: "ana/shop", default_branch: "main", ticket_prefix: "SH", owner_id: ANA, lead_agent_id: LEAD, room_id: "room", created_at: iso(9000), merge_policy: "auto_safe" };
 
 const profile: Profile = { id: ANA, github_login: "ana", name: "Ana", avatar_url: null, timezone: "America/Toronto", city: "Toronto", onboarded: true };
 
@@ -68,7 +68,22 @@ const tickets: Ticket[] = [
   }),
   ticket(3, { title: "Remember me for 30 days", status: "ready", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", priority: "medium", labels: ["auth"] }),
   ticket(4, { title: "Pick the session store", status: "in_progress", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", needs_human: "Redis or Postgres for sessions? Postgres is simpler, Redis is faster.", priority: "high" }),
-  ticket(5, { title: "Checkout shows the wrong tax for Ontario", status: "review", type: "bug", priority: "urgent", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/41", labels: ["checkout"] }),
+  ticket(5, { title: "Checkout shows the wrong tax for Ontario", status: "review", type: "bug", priority: "urgent", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/41", labels: ["checkout"], approved_sha: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912", approved_by: LEAD, approved_at: iso(5) }),
+  ticket(10, {
+    title: "Store sessions in Postgres",
+    status: "review",
+    type: "feature",
+    priority: "high",
+    parent_id: "t1",
+    assignee_id: REVIEWER,
+    assignee_type: "agent",
+    pr_url: "https://github.com/ana/shop/pull/43",
+    labels: ["auth"],
+    approved_sha: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+    approved_by: LEAD,
+    approved_at: iso(12),
+    needs_human: "Ready to merge — needs your OK: a database change (db/migrations/004_sessions.sql).",
+  }),
   ticket(6, { title: "Order history page", status: "backlog", type: "feature", priority: "low" }),
   ticket(7, { title: "Upgrade to React 19", status: "backlog", type: "chore", assignee_id: LEE, assignee_type: "human" }),
   ticket(8, { title: "Product search", status: "done", type: "feature", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(300) }),
