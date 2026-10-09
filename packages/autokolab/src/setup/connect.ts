@@ -5,9 +5,9 @@ import { CLIENT_ENGINE, register, type Engine } from "./agents.js";
 import { info, ok, warn } from "./ui.js";
 
 // Connect this machine's agents: register the MCP server with Claude Code / Codex and give each
-// follower agent a runner with safe default limits, so it carries out instructions while its person
-// is away. Lead agents don't need one: their person talks to them in Claude Code / Codex directly,
-// and they reach the others through the AutoKolab tools. Idempotent; used by `join`, `init`, `setup`.
+// agent that leads or follows in a room a runner with safe default limits, so it works while its
+// person is away. Followers carry out instructions; the lead answers the team, triages workers'
+// questions and works its own tickets (DEC-17). Idempotent; used by `join`, `init`, `setup`.
 
 export const ENGINE_LABEL: Record<Engine, string> = { claude: "Claude Code", codex: "Codex" };
 export const INSTALL: Record<Engine, string> = {
@@ -15,8 +15,14 @@ export const INSTALL: Record<Engine, string> = {
   codex: "npm install -g @openai/codex",
 };
 
+/** Room roles whose agents get a runner: both leads and followers work in the background. */
+export function needsRunner(roles: (string | undefined)[]): boolean {
+  return roles.some((r) => r === "lead" || r === "follower");
+}
+
+/** Connects every agent on this machine; returns the ones that run in the background. */
 export function connectAgents(ak: AutoKolab, cfg: ConfigFile): { id: string; name: string; engine: Engine }[] {
-  const followers: { id: string; name: string; engine: Engine }[] = [];
+  const runners: { id: string; name: string; engine: Engine }[] = [];
   for (const p of profilesOf(cfg).filter((x) => x.kind === "agent")) {
     const engine = CLIENT_ENGINE[p.client ?? ""];
     if (!engine) continue;
@@ -25,12 +31,11 @@ export function connectAgents(ak: AutoKolab, cfg: ConfigFile): { id: string; nam
     else if (r.result === "failed") warn(`Couldn't connect ${ENGINE_LABEL[engine]}: ${r.detail}`);
     else ok(`${ENGINE_LABEL[engine]} connected as ${p.name}`);
 
-    const follows = ak.rooms().some((room) => ak.membership(room.id, p.id)?.role === "follower");
-    if (follows) {
-      followers.push({ id: p.id, name: p.name, engine });
+    if (needsRunner(ak.rooms().map((room) => ak.membership(room.id, p.id)?.role))) {
+      runners.push({ id: p.id, name: p.name, engine });
       const created = ensureRunnerConfig(p.id, p.name, engine);
       if (created) info(`Safe default limits for ${p.name}: ${created}`);
     }
   }
-  return followers;
+  return runners;
 }

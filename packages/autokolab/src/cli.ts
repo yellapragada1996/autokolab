@@ -145,8 +145,8 @@ program
     action(async () => {
       const cfg = readConfigFile();
       await withClient(cfg.me, async (ak) => {
-        const followers = connectAgents(ak, cfg);
-        if (followers.length && serviceStatus() !== "not-installed") installService();
+        const runners = connectAgents(ak, cfg);
+        if (runners.length && serviceStatus() !== "not-installed") installService();
       });
     }),
   );

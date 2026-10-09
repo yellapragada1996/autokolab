@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, ProjectView, type AgentStatus, type Comment, type Ticket } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, ProjectView, untriaged, type AgentStatus, type Comment, type Ticket } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -11,13 +11,14 @@ import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { claudeInvocation, codexInvocation, runEngine, type EngineRun, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
-import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildTicketPrompt, parseOutcome } from "./prompt.js";
+import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
 import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
 // teammate asks it something, starts the agent headless in that thread's own worktree. It also
-// works the project board: tickets assigned to it in Ready, and people's comments on its open
-// tickets. One task at a time per agent; room instructions go first.
+// works the project board: tickets assigned to it in Ready, and comments on its open tickets. A
+// project's lead also answers workers' questions on their tickets ("Needs you"). One task at a time
+// per agent: room messages first, then the lead's triage, then its own tickets.
 
 /** Kinds addressed to everyone that continue work in a thread this agent is already on. */
 const THREAD_KINDS: MessageKind[] = ["task", "chat", "answer", "review", "decision"];
@@ -130,10 +131,20 @@ interface TicketJob {
   comments: Comment[];
 }
 
-/** Per agent, on this machine: the engine session for each ticket and the last comment handled. */
+/** A worker's question on a ticket, for the project's lead to answer or bring to its person. */
+interface TriageJob {
+  project: ProjectView;
+  ticket: Ticket;
+}
+
+/**
+ * Per agent, on this machine: the engine session for each ticket, the last comment handled, and
+ * (for a lead) the question text on each worker's ticket it already triaged.
+ */
 interface TicketState {
   sessions: Record<string, string>;
   seen: Record<string, number>;
+  triaged?: Record<string, string>;
 }
 
 const PROJECTS_RELOAD_MS = 5 * 60_000;
@@ -402,8 +413,16 @@ export class Runner {
           await this.say(job.message.room_id, job.run.thread_root, job.message.sender_id, `Couldn't start #${job.message.id}: ${msg}`);
         });
       }
-      // Then the board: follow-ups on its tickets, then the next Ready ticket.
+      // Then the board: workers' questions (for a lead), follow-ups on its tickets, the next Ready ticket.
       while (!this.queue.length && !this.ak.me.paused && !this.stopping && !this.overLimit()) {
+        const q = await this.nextQuestion().catch((e) => {
+          this.log(`Couldn't check workers' questions: ${(e as Error).message}`);
+          return null;
+        });
+        if (q) {
+          await this.executeTriage(q).catch((e) => this.log(`Couldn't look at ${q.ticket.key}'s question: ${(e as Error).message}`));
+          continue;
+        }
         const tj = await this.nextTicket().catch((e) => {
           this.log(`Couldn't check the board: ${(e as Error).message}`);
           return null;
@@ -508,6 +527,11 @@ export class Runner {
         if (st.seen[ticket.id] === undefined) st.seen[ticket.id] = comments[comments.length - 1].id;
       }
     }
+    // Likewise for a lead: questions already waiting when this first runs are left to people.
+    if (!st.triaged) {
+      st.triaged = {};
+      for (const v of views) for (const t of await v.openQuestions().catch(() => [])) st.triaged[t.id] = t.needs_human!;
+    }
     this.saveTicketState(st);
   }
 
@@ -549,6 +573,27 @@ export class Runner {
       if (ticket) return { project, ticket, comments: [] };
     }
     return null;
+  }
+
+  /**
+   * For a lead: the next worker's question it hasn't looked at. Each question text is handled once;
+   * once a ticket's question is cleared or changed, its old entry is dropped.
+   */
+  private async nextQuestion(): Promise<TriageJob | null> {
+    if (Date.now() - this.projectsLoadedAt > PROJECTS_RELOAD_MS) await this.loadProjects();
+    const leading = this.projects.filter((p) => p.iAmLead);
+    if (!leading.length) return null;
+    const st = this.ticketState();
+    const handled = st.triaged ?? {};
+    const open: TriageJob[] = [];
+    for (const project of leading) for (const ticket of await project.openQuestions()) open.push({ project, ticket });
+    const kept = Object.fromEntries(open.filter((j) => handled[j.ticket.id] === j.ticket.needs_human).map((j) => [j.ticket.id, j.ticket.needs_human!]));
+    if (Object.keys(kept).length !== Object.keys(handled).length) {
+      st.triaged = kept;
+      this.saveTicketState(st);
+    }
+    const next = untriaged(open.map((j) => j.ticket), handled)[0];
+    return next ? open.find((j) => j.ticket.id === next.id)! : null;
   }
 
   /** What this agent is doing, for the board and People. Quietly does nothing for v1-only agents. */
@@ -704,6 +749,58 @@ export class Runner {
     await this.setStatus(ak.me.paused ? "paused" : "idle");
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
     this.log(`${t.key} ${outcome}.${result.costUsd !== undefined ? ` (estimated API cost $${result.costUsd.toFixed(2)})` : ""}`);
+  }
+
+  /** The lead looks at one worker's question: answers it on the ticket, or asks its person once. */
+  private async executeTriage(job: TriageJob): Promise<void> {
+    const { ak, cfg } = this;
+    const { project: p, ticket: t } = job;
+    // Handled once, whatever happens below, so a failing run can't loop.
+    const st = this.ticketState();
+    st.triaged = { ...(st.triaged ?? {}), [t.id]: t.needs_human! };
+    this.saveTicketState(st);
+
+    const repo = p.project.repo;
+    if (!repo) return;
+    ensureClone(repo);
+    if (!this.hooked.has(repo)) {
+      installHook(clonePath(repo), cfg.limits.protected_branches);
+      this.hooked.add(repo);
+    }
+    // Its own worktree to read the code in, never its person's checkout.
+    const worktree = ensureTicketWorktree(ak.me.name, repo, "triage", `ak/${ak.me.name}/triage`);
+    await p.loadNames();
+    const prompt = buildTriagePrompt({
+      myName: ak.me.name,
+      ownerName: ak.ownerName(ak.me),
+      projectName: p.project.name,
+      key: t.key,
+      assignee: p.nameOf(t.assignee_id),
+      question: t.needs_human!,
+      ticket: await p.ticketText(t.key),
+      repoPath: worktree.path,
+    });
+    const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
+    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, null) : codexInvocation(cfg, mcp, null, worktree.path);
+    const logFile = join(this.logDir, `${p.project.slug}-${t.key}-triage-${Date.now()}.log`);
+
+    const abort = new AbortController();
+    this.current = { what: `${t.key}'s question`, abort };
+    await ak.heartbeat("working").catch(() => undefined);
+    await this.setStatus("planning", `Looking at ${p.nameOf(t.assignee_id)}'s question on ${t.key}`);
+    this.log(`Looking at the question on ${t.key} in ${p.project.name}.`);
+    let result: EngineRun;
+    const startedAt = Date.now();
+    try {
+      result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal });
+    } finally {
+      this.current = null;
+      this.addUsage((Date.now() - startedAt) / 1000);
+    }
+    await this.setStatus(ak.me.paused ? "paused" : "idle");
+    await ak.heartbeat(this.stateNow()).catch(() => undefined);
+    const said = redactSecrets(result.finalText.trim()).split("\n")[0].slice(0, 200);
+    this.log(`${t.key} question: ${result.aborted ? "stopped" : result.timedOut ? "hit the time limit" : result.isError ? "failed" : said || "done"}.`);
   }
 
   private async say(roomId: string, thread: number, to: string | null, body: string): Promise<void> {

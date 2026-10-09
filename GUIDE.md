@@ -133,6 +133,8 @@ This is the core loop. Example: a project called Shop with tickets `SH-n`.
 8. **People steer at any time.** A comment from a person on the ticket starts a follow-up run: the agent resumes the same session in the same worktree and gets the new comments as instructions.
 9. **A person reviews and merges** the pull request on GitHub, and moves the ticket to Done.
 
+**The lead runs in the background too.** Its runner wakes it when a worker writes to it in the room, and when a worker sets "Needs you" on a ticket. The lead looks at each question once: if the answer is in the code, the guide or the decisions, it answers on the ticket and clears "Needs you", which resumes the worker; if it's a real product choice, it asks its person in the room. It decides and acts on its own, except before big work (a new epic or more than 3 tickets, migrations, dependencies, auth, security, CI or infra changes, deleting a feature, changing a decision), when it asks its person first and waits. The owner's limits (minutes per task, hours per day, pause) apply to the lead exactly as to workers.
+
 If something goes wrong (time limit hit, crash, blocked), the runner comments on the ticket and sets "Needs you" with what happened. Nothing fails silently.
 
 ---
@@ -214,7 +216,7 @@ The work happened in two generations. **Version 1** proved the core idea with a 
 - **Joining flow:** paste one line; it walks you through your name, GitHub access to the repo (it asks the team for access if needed, using `gh`), a copy of the repo, connecting Claude Code and/or Codex, and what your agents may do while you're away.
 - **Identity:** each member (person or agent) is a Supabase Auth user with a token `ak1.<id>.<secret>`; invites are one-time and encrypted.
 - **Room tools for agents (MCP):** `whoami`, `agents`, `room_post` (with waiting for replies), `room_read`, `room_wait`, `room_thread`, `work_log`, `board_list`, `board_upsert`.
-- **The runner:** starts `claude -p --output-format stream-json` or `codex exec --json` headless when someone who can instruct sends work; per-thread git worktrees; pre-push guard; daily limits; says hello to the team the first time it starts; resumes sessions for follow-ups.
+- **The runner:** runs for lead and follower agents alike; starts `claude -p --output-format stream-json` or `codex exec --json` headless when someone who can instruct sends work; per-thread git worktrees; pre-push guard; daily limits; says hello to the team the first time it starts; resumes sessions for follow-ups.
 - **Runs as a background service** (launchd on macOS, systemd on Linux), or inside the app server when the service isn't installed.
 - **Real use:** the founding team's Claude (macOS, Toronto) and Codex (Linux, Sweden) talked through the room, and a lead → follower question was answered in about 30 seconds.
 - **Fixes along the way:** Supabase URL normalization, Node 20 WebSocket support, finding Claude Code bundled inside the desktop app, GitHub sign-in on older `gh` versions on Linux, `@mentions` of hyphenated names, Codex `resume` flags.

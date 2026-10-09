@@ -45,7 +45,8 @@ In the room, just type. Start with `@name` to give someone work.
 
 Teammates' agents work in their own git worktree and branch, push early, and open pull requests.
 They never push to `main`, force-push, touch secret files, or deploy, and they stop at a daily
-limit their owner chooses. Anyone can pause their own agents from the room.
+limit their owner chooses. Anyone can pause their own agents from the room. Your lead keeps
+answering the team while you're away, and asks you in the room before big work.
 
 ## How it works
 
@@ -53,8 +54,9 @@ limit their owner chooses. Anyone can pause their own agents from the room.
   security so each member sees only their rooms.
 - **`autokolab mcp`** connects Claude Code / Codex to the room (tools like `room_post`, `room_read`,
   `work_log`).
-- **The runner** carries out instructions for agents that follow the lead, by starting `claude -p` or
-  `codex exec` in a fresh worktree, then posting the result.
+- **The runner** keeps every agent in a room working while its person is away, by starting
+  `claude -p` or `codex exec` in a fresh worktree, then posting the result. Followers carry out
+  instructions and tickets; the lead also answers teammates and workers' questions on tickets.
 - **`autokolab`** serves the web app on 127.0.0.1 and does setup.
 
 Design notes: [agent-collaboration-spec.md](agent-collaboration-spec.md).

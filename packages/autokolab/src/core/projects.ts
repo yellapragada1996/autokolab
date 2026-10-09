@@ -85,7 +85,12 @@ interface Guide {
   rules: string;
 }
 
-/** Used when a project has no rules written yet. Same as the website's recommended rules. */
+/** DEC-17: the lead acts on its own and asks its person only before big work. */
+export const BIG_WORK = "a new epic or more than 3 tickets, migrations, dependencies, auth/security/CI/infra changes, deleting a feature, or changing a decision";
+export function leadAutonomy(person: string): string {
+  return `You run unattended too, while ${person} is away. Decide and act on your own (answer workers, delegate, create and assign tickets, review), then say what you did. Before big work (${BIG_WORK}), post one kind=question to ${person} in the room and stop; their reply in that thread resumes you.`;
+}
+
 /** What the lead does. Shown to the lead in project_brief. */
 export function leadGuide(project: string, people: string[]): string {
   const who = people.length ? `${people.join(" and ")} ${people.length === 1 ? "talks" : "talk"}` : "The people on this project talk";
@@ -99,9 +104,11 @@ export function leadGuide(project: string, people: string[]): string {
    - Blocked by: tickets that must land first. If two tickets touch the same files, order them with blocked_by instead of running them in parallel.
 4. Assign each ticket to a worker agent (see Agents below: status and open tickets) and put it in Ready so it starts now, or Backlog if it shouldn't start yet. Spread the work; don't stack one agent while another is idle.
 5. Tell your person what you created: keys, who has what, and the order.
-6. Follow up whenever your person comes back or asks: check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. Review pull requests against "done means" and comment what's missing. Record settled choices with decision_add.`;
+6. Follow up whenever your person comes back or asks: check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. Review pull requests against "done means" and comment what's missing. Record settled choices with decision_add.
+7. ${leadAutonomy("your person")}`;
 }
 
+/** Used when a project has no rules written yet. Same as the website's recommended rules. */
 export function defaultRules(defaultBranch: string): string {
   return [
     "- Only work on tickets assigned to you that are in Ready or In progress.",
@@ -472,6 +479,12 @@ export class ProjectView {
     return out;
   }
 
+  /** For the lead: workers' tickets in this project with a question for a person. Empty for anyone else. */
+  async openQuestions(): Promise<Ticket[]> {
+    if (!this.iAmLead) return [];
+    return questionsForLead(await this.tickets(), this.meId);
+  }
+
   /** "raghavendra (person)", "raghavendra-claude (lead agent)" or "ana-codex (agent)". */
   authorLabel(c: Pick<Comment, "author_id" | "author_type">): string {
     return `${this.nameOf(c.author_id)} (${authorKind(c, this.leadId)})`;
@@ -607,6 +620,21 @@ export function agentStreak(comments: Pick<Comment, "author_type">[]): number {
 /** Only agents spoke since last time, and agents have commented AGENT_COMMENT_LIMIT times in a row. */
 export function agentsLooping(all: Pick<Comment, "author_type">[], fresh: Pick<Comment, "author_type">[]): boolean {
   return !fresh.some((c) => c.author_type === "human") && agentStreak(all) >= AGENT_COMMENT_LIMIT;
+}
+
+/**
+ * Open tickets the lead should triage: someone else's, with "Needs you" set. The agents-looping
+ * question is left for a person, since the lead answering would only add to the back and forth.
+ */
+export function questionsForLead(tickets: Ticket[], leadId: string): Ticket[] {
+  return tickets.filter(
+    (t) => t.needs_human && t.needs_human !== AGENT_LOOP_QUESTION && t.assignee_id !== leadId && !["done", "canceled"].includes(t.status) && t.type !== "epic",
+  );
+}
+
+/** The questions not yet triaged: each ticket's question text is handled once. */
+export function untriaged<T extends Pick<Ticket, "id" | "needs_human">>(questions: T[], handled: Record<string, string>): T[] {
+  return questions.filter((t) => handled[t.id] !== t.needs_human);
 }
 
 export function authorKind(c: Pick<Comment, "author_id" | "author_type">, leadId: string | null): "person" | "lead agent" | "agent" {

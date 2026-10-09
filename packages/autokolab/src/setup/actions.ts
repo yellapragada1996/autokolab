@@ -26,7 +26,7 @@ import { detectRepo, gitRoot, roomNameFor } from "../core/repo.js";
 import type { InvitePayload } from "../core/invite.js";
 import { findAccess } from "../runner/repos.js";
 import { CLI_PATH, CLIENT_ENGINE, ENGINE_CLIENT, engineBin, installedEngines, register, writeInstructions, type Engine } from "./agents.js";
-import { connectAgents, ENGINE_LABEL } from "./connect.js";
+import { connectAgents, ENGINE_LABEL, needsRunner } from "./connect.js";
 import { localTimezone, renameLocally, suggestedPersonName } from "./naming.js";
 import { installService, serviceStatus } from "./service.js";
 import {
@@ -64,7 +64,7 @@ export interface SetupState {
   agents: { id: string; name: string; engine: Engine; needsName: boolean; installed: boolean }[];
   engines: Record<Engine, boolean>;
   rooms: { id: string; name: string; repo: string | null; canRead: boolean | null }[];
-  /** Follower agents on this machine (they need the background runner to work while you're away). */
+  /** Agents on this machine that lead or follow in a room (they need the background runner to work while you're away). */
   followers: number;
   service: "running" | "stopped" | "not-installed";
   /** Fully set up: a named person with at least one room. */
@@ -106,7 +106,7 @@ export async function getState(): Promise<SetupState> {
         const m = ak.member(p.id);
         if (!engine || !m || m.revoked) continue;
         state.agents.push({ id: m.id, name: m.name, engine, needsName: placeholder(m.name), installed: engines[engine] });
-        if (ak.rooms().some((r) => ak!.membership(r.id, m.id)?.role === "follower")) state.followers++;
+        if (needsRunner(ak.rooms().map((r) => ak!.membership(r.id, m.id)?.role))) state.followers++;
       }
       state.rooms = ak.rooms().map((r) => ({ id: r.id, name: r.name, repo: r.repo, canRead: null }));
     } catch (e) {
@@ -603,10 +603,10 @@ export async function finishMachine(input: { background?: boolean; maxHoursPerDa
   const cfg = readConfigFile();
   const ak = await connectFromConfig(cfg.me);
   try {
-    const followers = connectAgents(ak, cfg);
-    if (input.maxHoursPerDay) for (const f of followers) setDailyLimit(f.id, input.maxHoursPerDay);
+    const runners = connectAgents(ak, cfg);
+    if (input.maxHoursPerDay) for (const f of runners) setDailyLimit(f.id, input.maxHoursPerDay);
     let service: string = serviceStatus();
-    if (followers.length && input.background) {
+    if (runners.length && input.background) {
       const s = installService();
       if (!s.ok) throw new UserError(s.message);
       service = "running";
