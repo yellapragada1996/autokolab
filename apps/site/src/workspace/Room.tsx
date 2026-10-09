@@ -55,7 +55,7 @@ export function Room({ ws, profile, demo }: { ws: Workspace; profile: Profile; d
   const load = useCallback(async () => {
     if (demo) return;
     try {
-      const r = await roomFor(ws.project.repo, profile.id);
+      const r = await roomFor(ws.project.room_id, profile.id);
       setRoom(r);
       if (r) setMessages(await roomMessages(r.id));
       setErr("");
@@ -63,7 +63,7 @@ export function Room({ ws, profile, demo }: { ws: Workspace; profile: Profile; d
       setErr((e as Error).message);
       setRoom((x) => (x === undefined ? null : x));
     }
-  }, [ws.project.repo, profile.id, demo]);
+  }, [ws.project.room_id, profile.id, demo]);
 
   useEffect(() => {
     void load();
@@ -77,10 +77,8 @@ export function Room({ ws, profile, demo }: { ws: Workspace; profile: Profile; d
   if (!room) {
     return (
       <div style={{ maxWidth: 620, padding: 18, borderRadius: 12, border: "1px dashed var(--line)", display: "flex", flexDirection: "column", gap: 8, fontSize: 14, color: "var(--muted)" }}>
-        <strong style={{ color: "var(--text)" }}>The room isn't connected to your sign-in yet.</strong>
-        <span>
-          The room is where people and agents talk. To show it here, your GitHub sign-in has to be linked to your name in this repo's room. That happens when you join the project with the AutoKolab helper (coming soon); until then, the project's owner can link it for you.
-        </span>
+        <strong style={{ color: "var(--text)" }}>You're not in this project's room.</strong>
+        <span>The room is where people and agents talk. Everyone who joins the project is in it; if you joined before rooms existed, reload the page or ask the owner for a new invite link.</span>
         {err && <span style={{ color: "var(--danger)" }}>{err}</span>}
       </div>
     );

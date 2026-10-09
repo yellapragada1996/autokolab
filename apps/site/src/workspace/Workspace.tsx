@@ -7,6 +7,7 @@ import { CommandPalette, useCommandPalette, type Command } from "../ui/CommandPa
 import { Backlog } from "./Backlog";
 import { Board, Card, EmptyBoard } from "./Board";
 import { ago, KeyText, LeadBadge, StatusIcon } from "./bits";
+import { ConnectAgents } from "./Connect";
 import { Decisions } from "./Decisions";
 import { Room } from "./Room";
 import type { Room as RoomData, RoomMessage } from "../lib/room";
@@ -19,7 +20,7 @@ import { useWorkspace, type Workspace as WS } from "./useWorkspace";
 
 // The project workspace: sidebar (projects, views, people and agents) and the current view.
 
-type View = "overview" | "room" | "board" | "backlog" | "list" | "guide" | "decisions" | "people";
+type View = "overview" | "room" | "board" | "backlog" | "list" | "guide" | "decisions" | "people" | "connect";
 
 const NAV: { id: View; label: string; icon: React.ReactNode; sub: string }[] = [
   { id: "overview", label: "Overview", icon: Icon.home, sub: "What needs you, what's moving, what just happened" },
@@ -99,7 +100,12 @@ export function Workspace({
   }, [ws, project, projects, onSignOut, onEditProfile]);
 
   const nav = NAV.find((n) => n.id === route.view);
-  const title = route.view === "ticket" ? null : nav;
+  const title =
+    route.view === "ticket"
+      ? null
+      : route.view === "connect"
+        ? { label: "Connect your agents", sub: "Bring your Claude Code and Codex into this project with one terminal line" }
+        : nav;
 
   return (
     <div style={{ minHeight: "100%", display: "flex", flexWrap: "wrap", alignItems: "stretch" }}>
@@ -112,7 +118,7 @@ export function Workspace({
               <h1 style={{ fontSize: 19, fontWeight: 600 }}>{title.label}</h1>
               <span style={{ fontSize: 13, color: "var(--faint)" }}>{title.sub}</span>
             </div>
-            {!["board", "backlog", "list", "room"].includes(route.view) && (
+            {!["board", "backlog", "list", "room", "connect"].includes(route.view) && (
               <Button variant="primary" size="sm" onClick={() => setNewTicket({})}>
                 Create <kbd style={{ font: "500 11px var(--mono)", opacity: 0.7 }}>C</kbd>
               </Button>
@@ -125,6 +131,8 @@ export function Workspace({
             <p style={{ color: "var(--faint)" }}>Loading {project.name}…</p>
           ) : route.view === "ticket" ? (
             <TicketPage ws={ws} me={me} ticketKey={route.key} />
+          ) : route.view === "connect" ? (
+            <ConnectAgents ws={ws} me={me} />
           ) : route.view === "room" ? (
             <Room ws={ws} profile={profile} demo={demoRoom} />
           ) : route.view === "board" ? (
@@ -326,8 +334,8 @@ function Overview({ ws, me }: { ws: WS; me: string }) {
   const g = ws.guide;
   const setup = [
     { done: !!g && !!(g.concept.trim() || g.rules.trim()), label: "Write the Project Guide", sub: "The concept and rules every agent reads first", to: "guide" as const },
-    { done: ws.people.members.filter((m) => m.actor_type === "human").length > 1, label: "Add the people you work with", sub: "By GitHub username", to: "people" as const },
-    { done: agents.length > 0, label: "Connect an agent", sub: "Claude Code or Codex, through the AutoKolab helper", to: "people" as const },
+    { done: agents.some((a) => a.owner_profile_id === me), label: "Connect your agents", sub: "One terminal line brings in your Claude Code and Codex", to: "connect" as const },
+    { done: ws.people.members.filter((m) => m.actor_type === "human").length > 1, label: "Invite the people you work with", sub: "Send them a link; they join with GitHub", to: "people" as const },
     { done: !!ws.project.lead_agent_id, label: "Pick the lead agent", sub: "Your own agent: you talk to it, it writes the tickets and assigns them", to: "people" as const },
     { done: ws.tickets.length > 0, label: "Ask the lead for the first piece of work", sub: "It plans it into tickets for the worker agents", to: "board" as const },
   ];

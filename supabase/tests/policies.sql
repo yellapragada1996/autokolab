@@ -289,11 +289,13 @@ select pg_temp.expect((select lead_agent_id from public.projects) is null, 'a le
 -- ------------------------------------------------ the room on the website (schema 6)
 reset role;
 -- Octo's website sign-in (b1) is linked to room member ana; Mona's (b2) to the observer.
+update public.members set profile_id = null where profile_id in ('00000000-0000-0000-0000-0000000000b1', '00000000-0000-0000-0000-0000000000b2');
 update public.members set profile_id = '00000000-0000-0000-0000-0000000000b1' where name = 'ana';
 update public.members set profile_id = '00000000-0000-0000-0000-0000000000b2' where name = 'watcher';
 set role authenticated;
 set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
-select pg_temp.expect((select count(*) from public.rooms) = 1, 'website user sees the linked member''s room only');
+select pg_temp.expect((select count(*) from public.rooms where name = 'app') = 1, 'website user sees the linked member''s room');
+select pg_temp.expect((select count(*) from public.rooms where name = 'other') = 0, 'but not other rooms');
 select pg_temp.expect((select count(*) from public.messages where room_id = '00000000-0000-0000-0000-0000000000a2') = 0, 'website user sees no other rooms'' messages');
 select pg_temp.expect((select count(*) from public.messages) > 0, 'website user reads the room');
 select pg_temp.expect((select count(*) from public.members where name = 'lee-codex') = 1, 'website user sees the room''s members');
@@ -306,6 +308,96 @@ set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
 select pg_temp.expect_error($q$select public.web_post('00000000-0000-0000-0000-0000000000a1', 'hi')$q$, 'AUTOKOLAB_FORBIDDEN');
 set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b3';
 select pg_temp.expect((select count(*) from public.messages) = 0, 'an unlinked sign-in sees no messages');
+reset role;
+
+-- ------------------------------------------------ joining: rooms, invite links, pairing (schema 7)
+reset role;
+select pg_temp.expect((select room_id is not null from public.projects where slug = 'vajra-vision' or ticket_prefix = 'VV' limit 1), 'existing projects got a room');
+insert into auth.users (id, raw_app_meta_data, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000b4', '{"provider":"github"}', '{"user_name":"Zed_Dev"}');
+set role authenticated;
+-- Zed creates a project: it gets its own room and Zed is in it.
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b4';
+select pg_temp.expect((public.create_project('Joinly', 'zed/joinly', 'JN')).room_id is not null, 'a new project gets a room');
+reset role;
+select pg_temp.expect((select r.name from public.rooms r join public.projects p on p.room_id = r.id where p.slug = 'joinly') = 'joinly', 'the room is named after the project');
+select pg_temp.expect(exists (select 1 from public.members m join public.room_members rm on rm.member_id = m.id join public.projects p on p.room_id = rm.room_id
+  where p.slug = 'joinly' and m.name = 'zed-dev' and rm.role = 'human' and rm.can_instruct), 'the owner is in the room, named from GitHub');
+-- invites: only the owner makes them
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect_error($q$select public.create_invite((select id from public.projects where slug = 'joinly'))$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b4';
+create temp table inv as select * from public.create_invite((select id from public.projects where slug = 'joinly'), 7, 2);
+grant select on inv to public;
+select pg_temp.expect((select length(code) from inv) = 8, 'invite codes are 8 characters');
+select pg_temp.expect((select count(*) from public.project_invites) = 1, 'the owner sees their invites');
+-- the join page can show what it's for before signing in
+set role anon;
+select pg_temp.expect((public.peek_project_invite((select lower(substr(code, 1, 4)) || '-' || substr(code, 5) from inv)) ->> 'project') = 'Joinly', 'anyone with the link sees the project name (codes ignore case and dashes)');
+select pg_temp.expect((public.peek_project_invite('NOPE1234')) is null, 'unknown codes show nothing');
+-- Mona joins with the link: she's in the project and its room
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect((public.accept_invite((select code from inv))).slug = 'joinly', 'joining with the link');
+select pg_temp.expect((public.accept_invite((select code from inv))).slug = 'joinly', 'joining twice is harmless');
+select pg_temp.expect((select count(*) from public.project_members pm join public.projects p on p.id = pm.project_id where p.slug = 'joinly' and pm.actor_id = '00000000-0000-0000-0000-0000000000b2') = 1, 'Mona is a project member');
+select pg_temp.expect((select count(*) from public.messages m join public.projects p on p.room_id = m.room_id where p.slug = 'joinly') = 0, 'Mona can read the new room (empty)');
+reset role;
+select pg_temp.expect(exists (select 1 from public.room_members rm join public.projects p on p.room_id = rm.room_id
+  where p.slug = 'joinly' and rm.member_id = (select id from public.members where profile_id = '00000000-0000-0000-0000-0000000000b2')), 'and in its room');
+select pg_temp.expect((select uses from public.project_invites where code = (select code from inv)) = 1, 'the invite counts its uses');
+-- limits: used up, cancelled, expired
+update public.project_invites set uses = 2 where code = (select code from inv);
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+select pg_temp.expect_error($q$select public.accept_invite((select code from inv))$q$, 'used up');
+reset role;
+update public.project_invites set uses = 0, revoked = true where code = (select code from inv);
+set role authenticated;
+select pg_temp.expect_error($q$select public.accept_invite((select code from inv))$q$, 'cancelled');
+reset role;
+update public.project_invites set revoked = false, expires_at = now() - interval '1 minute' where code = (select code from inv);
+set role authenticated;
+select pg_temp.expect_error($q$select public.accept_invite((select code from inv))$q$, 'expired');
+select pg_temp.expect_error($q$select public.accept_invite('ZZZZZZZZ')$q$, 'AUTOKOLAB_NOT_FOUND');
+-- pairing: a member gets a code; outsiders can't
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+select pg_temp.expect_error($q$select public.create_pairing((select id from public.projects where slug = 'joinly'))$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+create temp table pair as select * from public.create_pairing((select id from public.projects where slug = 'joinly'));
+grant select on pair to public;
+select pg_temp.expect_error($q$select public.pair_new_agent((select code from pair), gen_random_uuid(), 'codex', 'mona-codex')$q$, 'permission denied');
+-- the server pairs a new agent for Mona: it's on the board and in the room
+set role service_role;
+select pg_temp.expect((public.pair_new_agent((select code from pair), '00000000-0000-0000-0000-0000000000d1', 'codex', 'Mona Codex')) ->> 'name' = 'mona-codex', 'the server pairs a new agent');
+reset role;
+select pg_temp.expect((select owner_profile_id from public.agents where id = '00000000-0000-0000-0000-0000000000d1') = '00000000-0000-0000-0000-0000000000b2', 'the agent belongs to Mona');
+select pg_temp.expect((select owner_id from public.members where id = '00000000-0000-0000-0000-0000000000d1') = (select id from public.members where profile_id = '00000000-0000-0000-0000-0000000000b2'), 'and to her room identity');
+select pg_temp.expect(exists (select 1 from public.room_members rm join public.projects p on p.room_id = rm.room_id
+  where p.slug = 'joinly' and rm.member_id = '00000000-0000-0000-0000-0000000000d1' and rm.role = 'follower' and not rm.can_instruct), 'the agent joins the room as a worker');
+-- an agent that already exists joins by itself, but only with its owner's code
+insert into public.members (id, name, kind, owner_id, client) values ('00000000-0000-0000-0000-0000000000d2', 'mona-claude', 'agent', (select id from public.members where profile_id = '00000000-0000-0000-0000-0000000000b2'), 'claude-code');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000d2';
+select pg_temp.expect((public.pair_existing_agent((select code from pair))) ->> 'slug' = 'joinly', 'an existing agent joins with its owner''s code');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000001';
+select pg_temp.expect_error($q$select public.pair_existing_agent((select code from pair))$q$, 'belongs to someone else');
+-- picking the lead makes it lead the room
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b4';
+update public.projects set lead_agent_id = '00000000-0000-0000-0000-0000000000d2' where slug = 'joinly';
+reset role;
+select pg_temp.expect((select rm.role::text || rm.can_instruct::text from public.room_members rm join public.projects p on p.room_id = rm.room_id
+  where p.slug = 'joinly' and rm.member_id = '00000000-0000-0000-0000-0000000000d2') = 'leadtrue', 'the lead leads the room');
+set role authenticated;
+update public.projects set lead_agent_id = '00000000-0000-0000-0000-0000000000d1' where slug = 'joinly';
+reset role;
+select pg_temp.expect((select rm.role::text from public.room_members rm join public.projects p on p.room_id = rm.room_id
+  where p.slug = 'joinly' and rm.member_id = '00000000-0000-0000-0000-0000000000d2') = 'follower', 'the old lead goes back to worker');
+-- codes expire
+update public.device_pairings set expires_at = now() - interval '1 minute';
+set role service_role;
+select pg_temp.expect_error($q$select public.pair_new_agent((select code from pair), gen_random_uuid(), 'claude', 'late')$q$, 'expired');
 reset role;
 
 -- ------------------------------------------------ secret patterns match the client-side list

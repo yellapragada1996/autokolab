@@ -1,11 +1,12 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { myProjects, type Project } from "./lib/data";
-import { go, useRoute } from "./lib/router";
+import { go, parse, useRoute } from "./lib/router";
 import { myProfile, saveProfile, signOut, supabase, type Profile } from "./lib/session";
 import { SignIn } from "./screens/SignIn";
 import { Welcome } from "./screens/Welcome";
 import { Button } from "./ui";
 import { CreateProject } from "./workspace/CreateProject";
+import { JoinPage } from "./workspace/Join";
 import { Workspace } from "./workspace/Workspace";
 
 const DemoWorkspace = import.meta.env.DEV ? lazy(() => import("./workspace/demo")) : null;
@@ -52,7 +53,12 @@ export function App() {
       </Suspense>
     ) : null;
   }
-  if (view.kind === "signed-out") return <SignIn error={view.error} />;
+  if (view.kind === "signed-out") {
+    // An invite link opened before signing in: show what it's for, then sign in from there.
+    const r = parse(location.pathname);
+    if (r.view === "join" && !view.error) return <JoinPage code={r.code} profile={null} />;
+    return <SignIn error={view.error} />;
+  }
   if (view.kind === "welcome") {
     return (
       <Welcome
@@ -108,10 +114,11 @@ function Projects({ profile, onSignOut, onEditProfile }: { profile: Profile; onS
     );
   }
   if (!projects) return <Centered>Loading your projects…</Centered>;
+  if (route.view === "join") return <JoinPage code={route.code} profile={profile} onJoined={load} />;
 
   const created = async (p: Project) => {
     await load();
-    go({ view: "guide", project: p.slug });
+    go({ view: "connect", project: p.slug });
   };
 
   if (!projects.length || route.view === "new-project") {

@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { addPerson, setLead, type Agent } from "../lib/data";
+import { useEffect, useState } from "react";
+import { addPerson, createInvite, inviteLink, invites as listInvites, revokeInvite, setLead, showCode, type Agent, type Invite } from "../lib/data";
 import { placeLine } from "../lib/place";
-import { onNav } from "../lib/router";
+import { go, onNav } from "../lib/router";
 import { AgentMark, Avatar, Button } from "../ui";
 import { ago, KeyText, LeadBadge } from "./bits";
 import type { Workspace } from "./useWorkspace";
@@ -69,6 +69,7 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
             </div>
           );
         })}
+        {isOwner && <InvitePanel ws={ws} />}
         {isOwner && <AddPerson ws={ws} />}
       </section>
 
@@ -78,6 +79,11 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
           The <strong style={{ color: "var(--text)" }}>lead</strong> is the agent you talk to (in Claude Code, for example). It turns what you ask for into complete tickets and assigns them to the other agents, the workers, who pick them up and do them.
         </p>
         {leadErr && <p style={{ color: "var(--danger)", fontSize: 14 }}>{leadErr}</p>}
+        <div>
+          <Button variant="secondary" size="sm" onClick={() => go({ view: "connect", project: ws.project.slug })}>
+            Connect your agents
+          </Button>
+        </div>
         {agents.map((a) => {
           const st = agentOnline(a) ? agentStatusText[a.status] : agentStatusText.offline;
           const cur = a.current_ticket_id ? ws.byId.get(a.current_ticket_id) : undefined;
@@ -114,10 +120,99 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
         })}
         {!agents.length && (
           <div style={{ padding: 16, borderRadius: 12, border: "1px dashed var(--line)", fontSize: 14, color: "var(--muted)" }}>
-            No agents yet. Connect Claude Code or Codex on your computer with the AutoKolab helper and they join here.
+            No agents yet. Use "Connect your agents": one terminal line brings in your Claude Code or Codex.
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+/** Invite links: send one in any chat; people sign in with GitHub and join with one click. */
+function InvitePanel({ ws }: { ws: Workspace }) {
+  const [list, setList] = useState<Invite[]>([]);
+  const [made, setMade] = useState<Invite | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [days, setDays] = useState(7);
+  const [err, setErr] = useState("");
+  const load = async () => {
+    try {
+      setList(await listInvites(ws.project.id));
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+  useEffect(() => {
+    void load();
+  }, [ws.project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const make = async () => {
+    try {
+      setErr("");
+      setCopied(false);
+      const inv = await createInvite(ws.project.id, days);
+      setMade(inv);
+      await load();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+  const copy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      setErr("Couldn't copy; select the link and copy it.");
+    }
+  };
+  const active = list.filter((i) => !i.revoked && Date.parse(i.expires_at) > Date.now() && (i.max_uses === null || i.uses < i.max_uses));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "14px 16px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line)" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 15, fontWeight: 600, flex: 1 }}>Invite people</span>
+        <label style={{ fontSize: 13, color: "var(--muted)", display: "flex", gap: 6, alignItems: "center" }}>
+          Link works for
+          <select value={days} onChange={(e) => setDays(Number(e.target.value))} style={{ height: 30, borderRadius: 6, border: "1px solid var(--line)", background: "var(--bg)", fontSize: 13 }}>
+            <option value={1}>1 day</option>
+            <option value={7}>7 days</option>
+            <option value={30}>30 days</option>
+          </select>
+        </label>
+        <Button size="sm" variant="primary" onClick={() => void make()}>
+          Create invite link
+        </Button>
+      </div>
+      {made && (
+        <div style={{ display: "flex", gap: 8, alignItems: "stretch", flexWrap: "wrap" }}>
+          <code style={{ flex: "1 1 300px", padding: "10px 12px", borderRadius: 8, background: "var(--bg)", border: "1px solid var(--line-strong)", font: "13px var(--mono)", overflowX: "auto", whiteSpace: "nowrap" }}>{inviteLink(made.code)}</code>
+          <Button size="sm" variant="secondary" onClick={() => void copy(inviteLink(made.code))} style={{ height: "auto" }}>
+            {copied ? "Copied" : "Copy link"}
+          </Button>
+        </div>
+      )}
+      <span style={{ fontSize: 13, color: err ? "var(--danger)" : "var(--faint)" }}>
+        {err || "Send the link in any chat. They sign in with GitHub, join with one click, then connect their own agents. To push code they also need access to the repo on GitHub."}
+      </span>
+      {active.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {active.map((i) => (
+            <div key={i.code} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 13, color: "var(--muted)" }}>
+              <span style={{ fontFamily: "var(--mono)", color: "var(--text-2)" }}>{showCode(i.code)}</span>
+              <span>
+                used {i.uses}
+                {i.max_uses ? ` of ${i.max_uses}` : ""} · expires {new Date(i.expires_at).toLocaleDateString()}
+              </span>
+              <button type="button" onClick={() => void copy(inviteLink(i.code))} style={{ border: 0, background: "none", color: "var(--muted)", cursor: "pointer", fontSize: 13, padding: 0 }}>
+                Copy
+              </button>
+              <button type="button" onClick={async () => (await revokeInvite(i.code), await load())} style={{ border: 0, background: "none", color: "var(--danger)", cursor: "pointer", fontSize: 13, padding: 0 }}>
+                Cancel
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -143,7 +238,7 @@ function AddPerson({ ws }: { ws: Workspace }) {
   };
   return (
     <form onSubmit={add} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", borderRadius: 12, border: "1px dashed var(--line)" }}>
-      <span style={{ fontSize: 14, fontWeight: 500 }}>Add a person</span>
+      <span style={{ fontSize: 14, fontWeight: 500 }}>Or add someone who already signed in</span>
       <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input value={login} onChange={(e) => setLogin(e.target.value)} placeholder="GitHub username" aria-label="GitHub username" style={{ flex: "1 1 220px", height: 36, padding: "0 12px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--bg)", fontSize: 14 }} />
         <Button type="submit" size="sm" variant="primary" disabled={busy || !login.trim()} style={{ height: 36 }}>

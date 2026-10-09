@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # Installs (or updates) AutoKolab and puts the `autokolab` command on your PATH. macOS and Linux.
 #
-#   ~/.autokolab/scripts/install.sh               install, then open AutoKolab
-#   ~/.autokolab/scripts/install.sh akinv_…       install, then open the join page for this invite
+#   ~/.autokolab/scripts/install.sh                 install, then open AutoKolab
+#   ~/.autokolab/scripts/install.sh akinv_…         install, then open the join page for this invite
+#   ~/.autokolab/scripts/install.sh connect CODE    install, then connect this computer's agents to a
+#                                                   project (the website's line runs this)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 INVITE="${1:-}"
+CONNECT=""
+if [ "$INVITE" = "connect" ]; then CONNECT="${2:-}"; INVITE=""; fi
 
 say() { printf '\n  %s\n' "$*"; }
 fail() { printf '\n  %s\n\n' "$*" >&2; exit 1; }
@@ -38,6 +42,11 @@ case ":$PATH:" in
     fi
     ;;
 esac
+
+if [ -n "$CONNECT" ]; then
+  say "Installed."
+  exec "$bin_dir/autokolab" connect "$CONNECT"
+fi
 
 say "Installed. Opening AutoKolab in your browser…"
 if [ -n "$INVITE" ]; then

@@ -43,10 +43,10 @@ function check<T>(r: { data: T | null; error: { message: string } | null }): T {
   return r.data as T;
 }
 
-/** The room for a project's repo, or null when your sign-in isn't linked to it. */
-export async function roomFor(repo: string | null, profileId: string): Promise<Room | null> {
-  if (!repo) return null;
-  const room = check<{ id: string; name: string; repo: string | null } | null>(await supabase.from("rooms").select("id, name, repo").eq("repo", repo).maybeSingle());
+/** A project's room, or null when your sign-in isn't in it. */
+export async function roomFor(roomId: string | null, profileId: string): Promise<Room | null> {
+  if (!roomId) return null;
+  const room = check<{ id: string; name: string; repo: string | null } | null>(await supabase.from("rooms").select("id, name, repo").eq("id", roomId).maybeSingle());
   if (!room) return null;
   const rm = check<{ member_id: string; role: RoomMember["role"]; can_instruct: boolean }[]>(await supabase.from("room_members").select("member_id, role, can_instruct").eq("room_id", room.id));
   const ids = rm.map((r) => r.member_id);

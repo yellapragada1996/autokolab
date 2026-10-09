@@ -40,6 +40,8 @@ export interface Project {
   owner_id: string;
   /** The agent that writes tickets and assigns them. */
   lead_agent_id: string | null;
+  /** The project's room (live chat). */
+  room_id: string | null;
   created_at: string;
 }
 
@@ -184,6 +186,68 @@ export async function people(projectId: string): Promise<People> {
     agents: new Map(check<Agent[]>(agents as never).map((a) => [a.id, a])),
   };
 }
+
+// ------------------------------------------------------------------ joining
+
+export interface Invite {
+  code: string;
+  project_id: string;
+  created_at: string;
+  expires_at: string;
+  max_uses: number | null;
+  uses: number;
+  revoked: boolean;
+}
+
+export interface InvitePeek {
+  project: string;
+  slug: string;
+  repo: string | null;
+  invited_by: string | null;
+  people: number;
+  agents: number;
+  valid: boolean;
+  reason: "revoked" | "expired" | "used" | null;
+  member: boolean;
+}
+
+/** "7KQM2PXA" → "7KQM-2PXA", easier to read out. */
+export const showCode = (c: string) => `${c.slice(0, 4)}-${c.slice(4)}`;
+export const inviteLink = (c: string) => `${location.origin}/j/${showCode(c)}`;
+
+export async function createInvite(projectId: string, days = 7, maxUses: number | null = null): Promise<Invite> {
+  return check(await supabase.rpc("create_invite", { p_project: projectId, p_days: days, p_max_uses: maxUses }));
+}
+
+export async function invites(projectId: string): Promise<Invite[]> {
+  return check(await supabase.from("project_invites").select("*").eq("project_id", projectId).order("created_at", { ascending: false }));
+}
+
+export async function revokeInvite(code: string): Promise<void> {
+  check(await supabase.rpc("revoke_invite", { p_code: code }));
+}
+
+export async function peekInvite(code: string): Promise<InvitePeek | null> {
+  return check(await supabase.rpc("peek_project_invite", { p_code: code }));
+}
+
+export async function acceptInvite(code: string): Promise<Project> {
+  return check(await supabase.rpc("accept_invite", { p_code: code }));
+}
+
+export interface Pairing {
+  code: string;
+  project_id: string;
+  expires_at: string;
+  used_at: string | null;
+}
+
+export async function createPairing(projectId: string): Promise<Pairing> {
+  return check(await supabase.rpc("create_pairing", { p_project: projectId }));
+}
+
+/** The one terminal line that installs the helper and connects this computer's agents. */
+export const connectLine = (code: string) => `curl -fsSL ${location.origin}/install.sh | bash -s -- ${showCode(code)}`;
 
 export async function setLead(projectId: string, agentId: string | null): Promise<void> {
   check(await supabase.from("projects").update({ lead_agent_id: agentId }).eq("id", projectId));

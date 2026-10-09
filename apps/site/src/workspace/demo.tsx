@@ -18,7 +18,7 @@ const BUILDER = "00000000-0000-0000-0000-0000000000c1";
 const REVIEWER = "00000000-0000-0000-0000-0000000000c2";
 const LEAD = "00000000-0000-0000-0000-0000000000c3";
 
-const project: Project = { id: "demo", name: "Shop", slug: "shop", repo: "ana/shop", default_branch: "main", ticket_prefix: "SH", owner_id: ANA, lead_agent_id: LEAD, created_at: iso(9000) };
+const project: Project = { id: "demo", name: "Shop", slug: "shop", repo: "ana/shop", default_branch: "main", ticket_prefix: "SH", owner_id: ANA, lead_agent_id: LEAD, room_id: "room", created_at: iso(9000) };
 
 const profile: Profile = { id: ANA, github_login: "ana", name: "Ana", avatar_url: null, timezone: "America/Toronto", city: "Toronto", onboarded: true };
 
@@ -165,6 +165,6 @@ export default function DemoWorkspace() {
       childrenOf: (tid) => tickets.filter((t) => t.parent_id === tid),
     };
   }, []);
-  const r = route.view === "home" || route.view === "new-project" ? ({ view: "overview", project: "shop" } as const) : route;
+  const r = route.view === "home" || route.view === "new-project" || route.view === "join" ? ({ view: "overview", project: "shop" } as const) : route;
   return <Workspace project={project} projects={[project]} route={r} profile={profile} demo={ws} demoRoom={demoRoom} onSignOut={() => undefined} onEditProfile={() => undefined} />;
 }

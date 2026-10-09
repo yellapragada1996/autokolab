@@ -8,6 +8,7 @@ import { connectFromConfig } from "./core/node.js";
 import { resolveRoom } from "./core/repo.js";
 import { BULLETIN_STATES, MESSAGE_KINDS, type Message } from "./core/types.js";
 import { runMcpServer } from "./mcp/server.js";
+import { runConnect } from "./setup/pair.js";
 import { runAll } from "./runner/runner.js";
 import { connectAgents } from "./setup/connect.js";
 import { runInit } from "./setup/init.js";
@@ -378,6 +379,17 @@ program
       console.log(installService().message);
     }),
   );
+
+program
+  .command("connect <code>")
+  .description("Connect this computer's agents to a project (the website gives you this line)")
+  .option("--site <url>", "the AutoKolab website", undefined)
+  .action(async (code: string, o: { site?: string }) => {
+    await runConnect(code, { site: o.site }).catch((e) => {
+      console.error(`\n  ${(e as Error).message}\n`);
+      process.exit(1);
+    });
+  });
 
 program
   .command("mcp")

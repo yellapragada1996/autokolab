@@ -5,23 +5,26 @@ import { useEffect, useState } from "react";
 export type Route =
   | { view: "home" }
   | { view: "new-project" }
-  | { view: "overview" | "room" | "board" | "backlog" | "list" | "guide" | "decisions" | "people"; project: string }
+  | { view: "join"; code: string }
+  | { view: "overview" | "room" | "board" | "backlog" | "list" | "guide" | "decisions" | "people" | "connect"; project: string }
   | { view: "ticket"; project: string; key: string };
 
 export function parse(path: string): Route {
   const parts = path.split("/").filter(Boolean);
   if (parts[0] === "new") return { view: "new-project" };
+  if (parts[0] === "j" && parts[1]) return { view: "join", code: parts[1].toUpperCase().replace(/[^A-Z0-9]/g, "") };
   if (parts[0] !== "p" || !parts[1]) return { view: "home" };
   const project = parts[1];
   const v = parts[2] ?? "overview";
   if (v === "t" && parts[3]) return { view: "ticket", project, key: parts[3].toUpperCase() };
-  if (["overview", "room", "board", "backlog", "list", "guide", "decisions", "people"].includes(v)) return { view: v as "board", project };
+  if (["overview", "room", "board", "backlog", "list", "guide", "decisions", "people", "connect"].includes(v)) return { view: v as "board", project };
   return { view: "overview", project };
 }
 
 export function href(r: Route): string {
   if (r.view === "home") return "/";
   if (r.view === "new-project") return "/new";
+  if (r.view === "join") return `/j/${r.code}`;
   if (r.view === "ticket") return `/p/${r.project}/t/${r.key}`;
   return `/p/${r.project}/${r.view}`;
 }

@@ -48,3 +48,5 @@ h1, h2, h3, p { margin: 0; }
   .room-main { order: -2; min-height: 70vh; }
   .room-right { order: -1; }
 }
+
+@keyframes ak-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
