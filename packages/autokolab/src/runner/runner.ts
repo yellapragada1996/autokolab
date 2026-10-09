@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, ProjectView, untriaged, type AgentStatus, type Comment, type Ticket } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, MODEL_CHANGE_PREFIX, ProjectView, untriaged, type AgentStatus, type Comment, type Ticket } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -76,10 +76,13 @@ export function shouldWake(m: Pick<Message, "sender_id" | "to_id" | "thread_id" 
   return no;
 }
 
-/** Progress pings a runner posts for its agent. They're news, not a question to answer. */
+/**
+ * Progress pings a runner posts for its agent, and the lead's notice that it changed an agent's
+ * model. They're news, not a question to answer.
+ */
 export function isRunnerNotice(body: string): boolean {
   const first = body.trim();
-  return /^(Started on|Picked up|Queued) #\d+/.test(first) || isPauseNotice(first);
+  return /^(Started on|Picked up|Queued) #\d+/.test(first) || isPauseNotice(first) || first.startsWith(MODEL_CHANGE_PREFIX);
 }
 
 export function pauseNotice(turns: number): string {

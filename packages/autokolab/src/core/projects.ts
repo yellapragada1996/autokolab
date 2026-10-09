@@ -28,6 +28,27 @@ export interface Project {
   ticket_prefix: string;
   /** The agent that turns people's requests into tickets and assigns them. */
   lead_agent_id: string | null;
+  /** The project's room (schema 7). */
+  room_id: string | null;
+}
+
+/** How hard an agent thinks: the five levels both Claude Code and Codex accept (schema 10). */
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof EFFORTS)[number];
+
+/** An agent's model and effort as set on AutoKolab (schema 10); null means its machine decides. */
+export interface AgentModel {
+  model: string | null;
+  effort: string | null;
+  model_set_by: string | null;
+}
+
+interface AgentInfo extends AgentModel {
+  status: AgentStatus;
+  status_note: string | null;
+  last_seen_at: string | null;
+  vendor: string;
+  owner_label: string;
 }
 
 export interface Ticket {
@@ -105,7 +126,8 @@ export function leadGuide(project: string, people: string[]): string {
 4. Assign each ticket to a worker agent (see Agents below: status and open tickets) and put it in Ready so it starts now, or Backlog if it shouldn't start yet. Spread the work; don't stack one agent while another is idle.
 5. Tell your person what you created: keys, who has what, and the order.
 6. Follow up whenever your person comes back or asks: check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. Review pull requests against "done means" and comment what's missing. Record settled choices with decision_add.
-7. ${leadAutonomy("your person")}`;
+7. ${leadAutonomy("your person")}
+8. You may change a worker's model and effort with agent_model when the work calls for it: stronger (e.g. opus, high) for hard, risky or wide changes; lighter (e.g. sonnet or haiku, low/medium) for routine, small or docs work. Prefer changing it right before assigning the ticket, and always give the reason. Owners can lock their machine (model_locked), in which case your change won't take effect there.`;
 }
 
 /** Used when a project has no rules written yet. Same as the website's recommended rules. */
@@ -136,7 +158,7 @@ const rank = (p: Priority) => PRIORITIES.indexOf(p);
 
 export class ProjectView {
   private names = new Map<string, { name: string; type: "human" | "agent" }>();
-  private agentInfo = new Map<string, { status: AgentStatus; status_note: string | null; last_seen_at: string | null; vendor: string; owner_label: string }>();
+  private agentInfo = new Map<string, AgentInfo>();
 
   private constructor(
     readonly sb: SupabaseClient,
@@ -146,7 +168,7 @@ export class ProjectView {
 
   /** Projects this member is in. Empty if the server doesn't have projects yet. */
   static async mine(sb: SupabaseClient): Promise<Project[]> {
-    const r = await sb.from("projects").select("id, name, slug, repo, default_branch, ticket_prefix, lead_agent_id").order("created_at");
+    const r = await sb.from("projects").select("id, name, slug, repo, default_branch, ticket_prefix, lead_agent_id, room_id").order("created_at");
     if (r.error) return [];
     return r.data as Project[];
   }
@@ -181,14 +203,15 @@ export class ProjectView {
     const agents = members.filter((m) => m.actor_type === "agent").map((m) => m.actor_id);
     const [p, a] = await Promise.all([
       humans.length ? this.sb.from("profiles").select("id, name, github_login").in("id", humans) : Promise.resolve({ data: [], error: null }),
-      agents.length ? this.sb.from("agents").select("id, display_name, status, status_note, last_seen_at, vendor, owner_label").in("id", agents) : Promise.resolve({ data: [], error: null }),
+      // "*": model and effort only exist from schema 10, and this must keep working before it.
+      agents.length ? this.sb.from("agents").select("*").in("id", agents) : Promise.resolve({ data: [], error: null }),
     ]);
     this.names.clear();
     for (const x of check<{ id: string; name: string }[]>(p as never)) this.names.set(x.id, { name: x.name, type: "human" });
     this.agentInfo.clear();
-    for (const x of check<{ id: string; display_name: string; status: AgentStatus; status_note: string | null; last_seen_at: string | null; vendor: string; owner_label: string }[]>(a as never)) {
+    for (const x of check<(AgentInfo & { id: string; display_name: string })[]>(a as never)) {
       this.names.set(x.id, { name: x.display_name, type: "agent" });
-      this.agentInfo.set(x.id, x);
+      this.agentInfo.set(x.id, { ...x, model: x.model ?? null, effort: x.effort ?? null, model_set_by: x.model_set_by ?? null });
     }
   }
 
@@ -220,6 +243,29 @@ export class ProjectView {
 
   isAgent(id: string | null | undefined): boolean {
     return !!id && this.names.get(id)?.type === "agent";
+  }
+
+  /** "sonnet · medium (set by raghavendra-claude)", or "model set on its machine". Null for a non-agent. */
+  modelLine(agentId: string): string | null {
+    const a = this.agentInfo.get(agentId);
+    return a ? modelText(a, (id) => this.nameOf(id)) : null;
+  }
+
+  /**
+   * Set or clear an agent's model and effort through set_agent_model; the database decides who may
+   * (DEC-18). It sets both at once, so the value not being changed is read fresh and passed back.
+   */
+  async setModel(agentRef: string, change: ModelChange): Promise<{ agentId: string; name: string; before: AgentModel; after: AgentModel }> {
+    const id = this.resolveActor(agentRef);
+    if (!this.isAgent(id)) throw new AutoKolabError(`${this.nameOf(id)} isn't an agent. Agents here: ${[...this.agentInfo.keys()].map((x) => this.nameOf(x)).join(", ")}`);
+    if (change.model) this.noSecrets(change.model);
+    const row = check<AgentModel | null>(await this.sb.from("agents").select("*").eq("id", id).maybeSingle());
+    const before: AgentModel = { model: row?.model ?? null, effort: row?.effort ?? null, model_set_by: row?.model_set_by ?? null };
+    const next = nextModel(before, change);
+    const after = check<AgentModel>(await this.sb.rpc("set_agent_model", { p_agent: id, p_model: next.model, p_effort: next.effort }));
+    const info = this.agentInfo.get(id);
+    if (info) this.agentInfo.set(id, { ...info, model: after.model, effort: after.effort, model_set_by: after.model_set_by });
+    return { agentId: id, name: this.nameOf(id), before, after };
   }
 
   /**
@@ -522,7 +568,7 @@ export class ProjectView {
     const agentLines = [...this.agentInfo.entries()].map(([id, a]) => {
       const online = a.last_seen_at && Date.now() - Date.parse(a.last_seen_at) < 5 * 60_000 && a.status !== "offline";
       const openCount = open.filter((t) => t.assignee_id === id).length;
-      return `- ${this.nameOf(id)}${id === this.leadId ? " (lead)" : ""} · ${a.vendor === "claude" ? "Claude Code" : "Codex"} · ${a.owner_label}'s · ${online ? a.status.replace("_", " ") : "offline"}${a.status_note && online ? ` (${a.status_note})` : ""} · ${openCount} open ticket${openCount === 1 ? "" : "s"}`;
+      return `- ${this.nameOf(id)}${id === this.leadId ? " (lead)" : ""} · ${a.vendor === "claude" ? "Claude Code" : "Codex"} · ${a.owner_label}'s · ${online ? a.status.replace("_", " ") : "offline"}${a.status_note && online ? ` (${a.status_note})` : ""} · ${modelText(a, (x) => this.nameOf(x))} · ${openCount} open ticket${openCount === 1 ? "" : "s"}`;
     });
     return [
       `# ${p.name}${p.repo ? ` · github.com/${p.repo}` : ""} · tickets ${p.ticket_prefix}-n · default branch ${p.default_branch}`,
@@ -636,6 +682,39 @@ export function questionsForLead(tickets: Ticket[], leadId: string): Ticket[] {
 export function untriaged<T extends Pick<Ticket, "id" | "needs_human">>(questions: T[], handled: Record<string, string>): T[] {
   return questions.filter((t) => handled[t.id] !== t.needs_human);
 }
+
+/** A change to an agent's model and effort; what isn't named stays as it is. */
+export interface ModelChange {
+  model?: string;
+  effort?: Effort;
+  /** Both back to null: the agent's machine decides again. */
+  clear?: boolean;
+}
+
+/** The values to send to set_agent_model, which always sets both: the one not changing keeps its value. */
+export function nextModel(current: Pick<AgentModel, "model" | "effort">, change: ModelChange): { model: string | null; effort: string | null } {
+  if (change.clear) {
+    if (change.model || change.effort) throw new AutoKolabError("Pass clear on its own, or a model and/or effort, not both.");
+    return { model: null, effort: null };
+  }
+  if (!change.model && !change.effort) throw new AutoKolabError("Pass a model, an effort, or clear=true.");
+  return { model: change.model?.trim() || current.model, effort: change.effort ?? current.effort };
+}
+
+/** "sonnet · medium (set by raghavendra-claude)"; a value not set on AutoKolab is its machine's. */
+export function modelText(a: AgentModel, nameOf: (id: string) => string): string {
+  if (!a.model && !a.effort) return "model set on its machine";
+  const what = `${a.model ?? "its machine's model"} · ${a.effort ?? "its machine's effort"}`;
+  return a.model_set_by ? `${what} (set by ${nameOf(a.model_set_by)})` : what;
+}
+
+/** One line for the room: what changed and why. Applies from the agent's next run, never the one in flight. */
+export function modelChangeMessage(by: string, after: Pick<AgentModel, "model" | "effort">, reason: string): string {
+  const what = after.model || after.effort ? `switched you to ${after.model ?? "your machine's model"} · ${after.effort ? `${after.effort} effort` : "your machine's effort"}` : "handed your model and effort back to your machine";
+  return `${MODEL_CHANGE_PREFIX} ${by} ${what}: ${reason.trim().replace(/[.\s]+$/, "")}. Applies from your next run.`;
+}
+/** Marks the model-change notice, so it informs the agent without starting a run for it. */
+export const MODEL_CHANGE_PREFIX = "Model change:";
 
 export function authorKind(c: Pick<Comment, "author_id" | "author_type">, leadId: string | null): "person" | "lead agent" | "agent" {
   if (c.author_type === "human") return "person";

@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { AutoKolab, RoomView } from "../core/client.js";
 import { formatItem, formatMember, formatMessage, formatWork } from "../core/format.js";
 import { connectFromConfig } from "../core/node.js";
-import { PRIORITIES, ProjectView, STATUSES, TYPES, GUIDE_PARTS } from "../core/projects.js";
+import { EFFORTS, PRIORITIES, ProjectView, STATUSES, TYPES, GUIDE_PARTS, modelChangeMessage, type ModelChange } from "../core/projects.js";
 import { detectRepo, resolveRoom } from "../core/repo.js";
 import { BULLETIN_KINDS, BULLETIN_STATES, MESSAGE_KINDS } from "../core/types.js";
 
@@ -23,7 +23,7 @@ Chat room:
 - Call whoami first: it tells you your name, your role in this repo's room (lead or follower) and who can give instructions.
 - If you're a lead, the person talking to you directs the team through you. When they want something done by another agent, post it with room_post kind=task to that agent (set wait_s, e.g. 120, to wait for their first reply) and tell your person what was said. When your person comes back, start with room_read and summarize what the other agents said or asked; answer the others' questions in their thread (kind=answer), checking with your person when it's their call. You can also just do coding work yourself when asked.
 - At the start of a session: board_list (your open items), then room_read.
-- Lead: assign work with room_post kind=task to a follower (goal, acceptance criteria, branch name). Keep the board's task items current. Review pull requests and post kind=review with file:line findings.
+- Lead: assign work with room_post kind=task to a follower (goal, acceptance criteria, branch name). Keep the board's task items current. Review pull requests and post kind=review with file:line findings. Change a worker's model and effort with agent_model when the work calls for it (stronger for hard or risky work, lighter for routine work), always with a reason.
 - Follower: instructions from members who can instruct are your tasks. Post kind=status when you start, are blocked or are done (with PR link).
 - The room is a conversation: ask teammates directly (room_post kind=question with to=<them>), answer when they ask, review each other's branches. When you expect a reply, set wait_s (up to 300) or use room_wait; if none comes, continue with your best judgment and say what you assumed.
 - Don't post acknowledgements ("thanks", "ok"). Post only when you have something useful to add.
@@ -46,6 +46,17 @@ const ACTIVITY: Record<string, string> = {
   room_post: "Talking in the room",
   room_read: "Reading the room",
   room_wait: "Waiting for a reply",
+  agent_model: "Changing an agent's model",
+};
+
+/** agent_model's input. The database decides who may use it (the agent's owner or the project's lead). */
+export const AGENT_MODEL_INPUT = {
+  agent: z.string().min(1).describe("The agent's name, e.g. ana-codex"),
+  model: z.string().min(1).max(60).optional().describe("e.g. opus, sonnet, haiku, gpt-5-codex; leave out to keep its current model"),
+  effort: z.enum(EFFORTS).optional().describe("Leave out to keep its current effort"),
+  clear: z.boolean().optional().describe("Set both back to its machine's own choice"),
+  reason: z.string().min(1).max(300).describe("Why, in a few words; the agent and its owner see it"),
+  project: z.string().optional().describe("Project short name; defaults to the project for the repo you're working in"),
 };
 /** After this long without a tool call, an interactive agent shows as online but idle. */
 const QUIET_MS = 3 * 60_000;
@@ -163,7 +174,12 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     },
     tool(async (c, room) => {
       await c.refresh();
-      return room().members().map((m) => formatMember(c, m)).join("\n");
+      // With a project, agents also show their model and effort and who set them.
+      const project = await ProjectView.find(c.sb, c.me.id, fixedProject, detectRepo()).catch(() => null);
+      return room()
+        .members()
+        .map((m) => formatMember(c, m, project?.modelLine(m.id)))
+        .join("\n");
     }),
   );
 
@@ -501,6 +517,27 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     ptool(async (p, a: { title: string; body: string; kind: "decision" | "contract"; ticket?: string; project?: string }) => {
       const d = await p.addDecision(a.title, a.body, a.kind, a.ticket);
       return `Recorded ${d.key}: ${d.title}`;
+    }),
+  );
+
+  server.registerTool(
+    "agent_model",
+    {
+      description:
+        "Change an agent's model and effort (you must be its owner or the project's lead). Pass model and/or effort; what you leave out stays as it is. clear=true hands both back to its machine. Applies from its next run; it's told in the room, with your reason.",
+      inputSchema: AGENT_MODEL_INPUT,
+    },
+    ptool(async (p, a: ModelChange & { agent: string; reason: string; project?: string }) => {
+      const c = await ak();
+      const { agentId, name, after } = await p.setModel(a.agent, { model: a.model, effort: a.effort, clear: a.clear });
+      const room = (p.project.room_id && c.roomById(p.project.room_id)) || null;
+      let told = "";
+      try {
+        await (room ? c.room(room) : roomOf(c)).post({ kind: "status", to: agentId, body: modelChangeMessage(c.me.name, after, a.reason) });
+      } catch (e) {
+        told = ` (couldn't tell it in the room: ${(e as Error).message})`;
+      }
+      return `${name} is now on ${p.modelLine(agentId)}, from its next run.${told}`;
     }),
   );
 

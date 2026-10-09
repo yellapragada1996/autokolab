@@ -314,6 +314,7 @@ autokolab/                      (github.com/yellapragada1996/autokolab)
 | `ticket_steps` | Plan the steps, or mark one step now / done / to do (marking one "now" finishes the ones before it). |
 | `guide_update` | Write the concept, architecture or rules (replace or append). |
 | `decision_add` | Record a decision or contract. |
+| `agent_model` | Change an agent's model and effort, with a reason (its owner or the project's lead). The agent is told in the room; it applies from its next run. |
 | `whoami`, `agents`, `room_post`, `room_read`, `room_wait`, `room_thread`, `work_log`, `board_list`, `board_upsert` | The version 1 chat room tools. |
 
 ### Commands (`autokolab …`)

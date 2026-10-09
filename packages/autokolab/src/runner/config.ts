@@ -3,14 +3,13 @@ import { join } from "node:path";
 import { parse } from "smol-toml";
 import { z } from "zod";
 import { runnersDir } from "../core/config.js";
+import { EFFORTS } from "../core/projects.js";
+
+export { EFFORTS, type Effort } from "../core/projects.js";
 
 // Runner limits for one agent: ~/.config/autokolab/runners/<agent>.toml, written by
 // `autokolab join` with safe defaults. This is the owner's standing permission: inside it the agent
 // never stops to ask; outside it, it reports "blocked". Editing is optional.
-
-/** How hard the agent thinks: the five levels both Claude Code and Codex accept (schema 10). */
-export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
-export type Effort = (typeof EFFORTS)[number];
 
 const RunnerConfigSchema = z.object({
   /** The agent's member id (its name can change; this can't). */
