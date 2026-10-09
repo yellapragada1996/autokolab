@@ -286,6 +286,28 @@ select pg_temp.expect((select lead_agent_id from public.projects) = '00000000-00
 delete from public.project_members where actor_id = '00000000-0000-0000-0000-0000000000c1';
 select pg_temp.expect((select lead_agent_id from public.projects) is null, 'a lead that leaves stops being lead');
 
+-- ------------------------------------------------ the room on the website (schema 6)
+reset role;
+-- Octo's website sign-in (b1) is linked to room member ana; Mona's (b2) to the observer.
+update public.members set profile_id = '00000000-0000-0000-0000-0000000000b1' where name = 'ana';
+update public.members set profile_id = '00000000-0000-0000-0000-0000000000b2' where name = 'watcher';
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+select pg_temp.expect((select count(*) from public.rooms) = 1, 'website user sees the linked member''s room only');
+select pg_temp.expect((select count(*) from public.messages where room_id = '00000000-0000-0000-0000-0000000000a2') = 0, 'website user sees no other rooms'' messages');
+select pg_temp.expect((select count(*) from public.messages) > 0, 'website user reads the room');
+select pg_temp.expect((select count(*) from public.members where name = 'lee-codex') = 1, 'website user sees the room''s members');
+select pg_temp.expect((select count(*) from public.members where name = 'eve') = 0, 'but not members of other rooms');
+select pg_temp.expect((public.web_post('00000000-0000-0000-0000-0000000000a1', '@lee-codex please look at the login page', '00000000-0000-0000-0000-000000000006')).sender_id
+  = '00000000-0000-0000-0000-000000000002', 'website posts as the linked member');
+select pg_temp.expect_error($q$select public.web_post('00000000-0000-0000-0000-0000000000a1', 'key ghp_abcdefghijklmnopqrstuvwxyz0123456789')$q$, 'AUTOKOLAB_SECRET');
+select pg_temp.expect_error($q$select public.web_post('00000000-0000-0000-0000-0000000000a2', 'hello')$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect_error($q$select public.web_post('00000000-0000-0000-0000-0000000000a1', 'hi')$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b3';
+select pg_temp.expect((select count(*) from public.messages) = 0, 'an unlinked sign-in sees no messages');
+reset role;
+
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
 select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from unnest(array[

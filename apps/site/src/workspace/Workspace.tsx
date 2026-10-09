@@ -8,6 +8,8 @@ import { Backlog } from "./Backlog";
 import { Board, Card, EmptyBoard } from "./Board";
 import { ago, KeyText, LeadBadge, StatusIcon } from "./bits";
 import { Decisions } from "./Decisions";
+import { Room } from "./Room";
+import type { Room as RoomData, RoomMessage } from "../lib/room";
 import { GuidePage } from "./GuidePage";
 import { ListView } from "./ListView";
 import { NewTicket } from "./NewTicket";
@@ -17,10 +19,11 @@ import { useWorkspace, type Workspace as WS } from "./useWorkspace";
 
 // The project workspace: sidebar (projects, views, people and agents) and the current view.
 
-type View = "overview" | "board" | "backlog" | "list" | "guide" | "decisions" | "people";
+type View = "overview" | "room" | "board" | "backlog" | "list" | "guide" | "decisions" | "people";
 
 const NAV: { id: View; label: string; icon: React.ReactNode; sub: string }[] = [
-  { id: "overview", label: "Overview", icon: Icon.room, sub: "What needs you, what's moving, what just happened" },
+  { id: "overview", label: "Overview", icon: Icon.home, sub: "What needs you, what's moving, what just happened" },
+  { id: "room", label: "Room", icon: Icon.chat, sub: "Where people and agents talk, live. @name to talk to someone." },
   { id: "board", label: "Board", icon: Icon.board, sub: "Work in flight. Agents pick up what's in Ready; drag cards between columns and lanes." },
   { id: "backlog", label: "Backlog", icon: Icon.backlog, sub: "What's on the board, and the ranked backlog waiting for it" },
   { id: "list", label: "All issues", icon: Icon.list, sub: "Every issue, sortable" },
@@ -38,6 +41,7 @@ export function Workspace({
   onEditProfile,
   onProjectChanged,
   demo,
+  demoRoom,
 }: {
   project: Project;
   projects: Project[];
@@ -49,6 +53,7 @@ export function Workspace({
   onProjectChanged?: () => void;
   /** Development preview data instead of the live project. */
   demo?: WS;
+  demoRoom?: { room: RoomData; messages: RoomMessage[] };
 }) {
   const live = useWorkspace(demo ? null : project);
   const ws = demo ?? live.ws;
@@ -107,7 +112,7 @@ export function Workspace({
               <h1 style={{ fontSize: 19, fontWeight: 600 }}>{title.label}</h1>
               <span style={{ fontSize: 13, color: "var(--faint)" }}>{title.sub}</span>
             </div>
-            {!["board", "backlog", "list"].includes(route.view) && (
+            {!["board", "backlog", "list", "room"].includes(route.view) && (
               <Button variant="primary" size="sm" onClick={() => setNewTicket({})}>
                 Create <kbd style={{ font: "500 11px var(--mono)", opacity: 0.7 }}>C</kbd>
               </Button>
@@ -120,6 +125,8 @@ export function Workspace({
             <p style={{ color: "var(--faint)" }}>Loading {project.name}…</p>
           ) : route.view === "ticket" ? (
             <TicketPage ws={ws} me={me} ticketKey={route.key} />
+          ) : route.view === "room" ? (
+            <Room ws={ws} profile={profile} demo={demoRoom} />
           ) : route.view === "board" ? (
             <Board ws={ws} me={me} onNew={(status) => setNewTicket({ status })} />
           ) : route.view === "backlog" ? (

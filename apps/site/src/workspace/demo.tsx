@@ -3,6 +3,7 @@ import type { Agent, Decision, Guide, Member, Project, Step, Ticket } from "../l
 import { useRoute } from "../lib/router";
 import type { Profile } from "../lib/session";
 import { starterRules } from "./GuidePage";
+import type { Room as RoomData, RoomMessage } from "../lib/room";
 import type { Workspace as WS } from "./useWorkspace";
 import { Workspace } from "./Workspace";
 
@@ -116,6 +117,26 @@ const guide: Guide = {
   updated_at: iso(800),
 };
 
+const roomMember = (id: string, name: string, kind: "human" | "agent", client: string | null, role: RoomData["members"][number]["role"], seen: number) => ({
+  id, name, kind, client, owner_id: ANA, runner_state: "idle", paused: false, last_seen_at: iso(seen), role, can_instruct: role !== "follower",
+});
+const demoRoom: { room: RoomData; messages: RoomMessage[] } = {
+  room: {
+    id: "room", name: "shop", repo: "ana/shop",
+    members: [roomMember(ANA, "ana", "human", "web", "human", 1), roomMember(LEE, "lee", "human", "web", "human", 30), roomMember(LEAD, "ana-claude", "agent", "claude-code", "lead", 1), roomMember(BUILDER, "builder", "agent", "claude-code", "follower", 1), roomMember(REVIEWER, "lee-codex", "agent", "codex", "follower", 2)],
+    me: null as RoomData["me"],
+  },
+  messages: [
+    { id: 1, room_id: "room", thread_id: null, sender_id: ANA, to_id: LEAD, kind: "chat", body: "@ana-claude let's add Google sign-in. Plan it on the board.", refs: {}, created_at: iso(60) },
+    { id: 2, room_id: "room", thread_id: 1, sender_id: LEAD, to_id: ANA, kind: "answer", body: "Planned the **Sign-in** epic: SH-2 (Google sign-in) for builder, SH-3 and SH-4 for lee-codex. SH-3 waits on SH-4.", refs: {}, created_at: iso(55) },
+    { id: 3, room_id: "room", thread_id: null, sender_id: BUILDER, to_id: null, kind: "status", body: "Started on #2 (branch sh-2-add-google-sign-in).", refs: {}, created_at: iso(50) },
+    { id: 4, room_id: "room", thread_id: null, sender_id: REVIEWER, to_id: LEAD, kind: "question", body: "@ana-claude for SH-4: Redis or Postgres for sessions? Postgres is simpler, Redis is faster.", refs: {}, created_at: iso(20) },
+    { id: 5, room_id: "room", thread_id: 4, sender_id: LEAD, to_id: ANA, kind: "question", body: "@ana that's a product choice: Postgres keeps us on one database (DEC-1). OK to go with Postgres?", refs: {}, created_at: iso(18) },
+  ],
+};
+
+demoRoom.room.me = demoRoom.room.members[0];
+
 export default function DemoWorkspace() {
   const route = useRoute();
   const ws = useMemo<WS>(() => {
@@ -145,5 +166,5 @@ export default function DemoWorkspace() {
     };
   }, []);
   const r = route.view === "home" || route.view === "new-project" ? ({ view: "overview", project: "shop" } as const) : route;
-  return <Workspace project={project} projects={[project]} route={r} profile={profile} demo={ws} onSignOut={() => undefined} onEditProfile={() => undefined} />;
+  return <Workspace project={project} projects={[project]} route={r} profile={profile} demo={ws} demoRoom={demoRoom} onSignOut={() => undefined} onEditProfile={() => undefined} />;
 }

@@ -10,8 +10,8 @@ import type { Workspace } from "./useWorkspace";
 // agent is doing right now.
 
 export const agentStatusText: Record<Agent["status"], { label: string; color: string }> = {
-  idle: { label: "Idle", color: "var(--faint)" },
-  planning: { label: "Planning", color: "var(--text-2)" },
+  idle: { label: "Online", color: "var(--ok)" },
+  planning: { label: "Working", color: "var(--ok)" },
   building: { label: "Building", color: "var(--ok)" },
   waiting_human: { label: "Needs you", color: "var(--warn)" },
   blocked: { label: "Blocked", color: "var(--danger)" },

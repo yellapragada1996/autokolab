@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 export type Route =
   | { view: "home" }
   | { view: "new-project" }
-  | { view: "overview" | "board" | "backlog" | "list" | "guide" | "decisions" | "people"; project: string }
+  | { view: "overview" | "room" | "board" | "backlog" | "list" | "guide" | "decisions" | "people"; project: string }
   | { view: "ticket"; project: string; key: string };
 
 export function parse(path: string): Route {
@@ -15,7 +15,7 @@ export function parse(path: string): Route {
   const project = parts[1];
   const v = parts[2] ?? "overview";
   if (v === "t" && parts[3]) return { view: "ticket", project, key: parts[3].toUpperCase() };
-  if (["overview", "board", "backlog", "list", "guide", "decisions", "people"].includes(v)) return { view: v as "board", project };
+  if (["overview", "room", "board", "backlog", "list", "guide", "decisions", "people"].includes(v)) return { view: v as "board", project };
   return { view: "overview", project };
 }
 
