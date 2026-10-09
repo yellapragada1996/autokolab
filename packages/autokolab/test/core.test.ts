@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { formatMember } from "../src/core/format.js";
-import { EFFORTS, MODEL_CHANGE_PREFIX, leadGuide, modelChangeMessage, modelText, nextModel } from "../src/core/projects.js";
+import { EFFORTS, MODEL_CHANGE_PREFIX, leadGuide, modelChangeMessage, modelText, nextModel, shortModel } from "../src/core/projects.js";
 import type { Member } from "../src/core/types.js";
 import { AGENT_MODEL_INPUT } from "../src/mcp/server.js";
 import { isRunnerNotice } from "../src/runner/runner.js";
@@ -64,6 +64,18 @@ describe("agents' model and effort", () => {
     expect(modelText({ model: "opus", effort: null, model_set_by: "ana" }, nameOf)).toBe("opus · its machine's effort (set by ana)");
     expect(modelText({ model: null, effort: "low", model_set_by: null }, nameOf)).toBe("its machine's model · low");
     expect(modelText({ model: null, effort: null, model_set_by: "lead" }, nameOf)).toBe("model set on its machine");
+  });
+  it("adds what it last ran, with short names and the tool's default effort", () => {
+    const at = new Date(Date.now() - 2 * 3600_000).toISOString();
+    expect(modelText({ model: null, effort: null, model_set_by: null, effective_model: "claude-sonnet-5-5", effective_effort: "high", effective_at: at }, nameOf)).toBe("model set on its machine · last ran Sonnet 5.5 · high effort · 2h ago");
+    expect(modelText({ model: "opus", effort: null, model_set_by: "ana", effective_model: "claude-opus-5-5[1m]", effective_effort: null, effective_at: at }, nameOf)).toBe("opus · its machine's effort (set by ana) · last ran Opus 5.5[1m] · default effort · 2h ago");
+    expect(modelText({ model: null, effort: null, model_set_by: null, effective_model: "gpt-5.5-codex", effective_effort: "low", effective_at: at }, nameOf)).toBe("model set on its machine · last ran gpt-5.5-codex · low effort · 2h ago");
+    expect(modelText({ model: null, effort: null, model_set_by: null, effective_model: null, effective_effort: null, effective_at: null }, nameOf)).toBe("model set on its machine · last run not reported yet (its machine needs the latest AutoKolab)");
+  });
+  it("shortens known model names only", () => {
+    expect(shortModel("claude-haiku-5-5")).toBe("Haiku 5.5");
+    expect(shortModel("claude-fable-5-1")).toBe("Fable 5.1");
+    expect(shortModel("sonnet")).toBe("sonnet");
   });
   it("the agents tool adds it to agents only", () => {
     const agent = { id: "a1", name: "lee-codex", kind: "agent", owner_id: "lee", last_seen_at: null, runner_state: "offline", paused: false } as unknown as Member;
