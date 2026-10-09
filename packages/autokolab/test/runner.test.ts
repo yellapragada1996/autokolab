@@ -78,11 +78,21 @@ describe("who wakes whom", () => {
     expect(shouldWake(msg({ kind: "status", body: "Started on #12 in thread #12." }), ctx()).wake).toBe(false);
     expect(shouldWake(msg({ kind: "status", body: pauseNotice(12) }), ctx()).wake).toBe(false);
   });
-  it("instructors work exactly as before", () => {
+  it("the lead's status report to me wakes me; its runner's pings don't", () => {
+    const lead = ctx({ fromInstructor: true });
+    const from = (extra: Partial<Message>) => msg({ sender_id: LEAD, ...extra });
+    for (const kind of ["status", "handoff", "chat"] as const) {
+      expect(shouldWake(from({ kind }), lead)).toEqual({ wake: true, fromInstructor: true });
+    }
+    expect(shouldWake(from({ kind: "status", body: "Started on #12 in thread #12." }), lead).wake).toBe(false);
+    expect(shouldWake(from({ kind: "status", body: "Queued #12: Ana has paused me; I'll start when resumed." }), lead).wake).toBe(false);
+    expect(shouldWake(from({ kind: "status", to_id: null, thread_id: 5 }), { ...lead, inThread: true }).wake).toBe(false);
+  });
+  it("instructors' broadcasts and threads work as before", () => {
     const lead = ctx({ fromInstructor: true });
     const from = (extra: Partial<Message>) => msg({ sender_id: LEAD, ...extra });
     expect(shouldWake(from({ kind: "task" }), lead)).toEqual({ wake: true, fromInstructor: true });
-    expect(shouldWake(from({ kind: "status" }), lead).wake).toBe(false);
+    expect(shouldWake(from({ to_id: "someone-else", kind: "task" }), lead).wake).toBe(false);
     expect(shouldWake(from({ to_id: null, thread_id: 5, kind: "chat" }), { ...lead, inThread: true }).wake).toBe(true);
     expect(shouldWake(from({ to_id: null, thread_id: 5, kind: "question" }), { ...lead, inThread: true }).wake).toBe(false);
     expect(shouldWake(from({ to_id: null, kind: "task" }), lead).wake).toBe(false);
@@ -94,7 +104,8 @@ describe("who wakes whom", () => {
 describe("loop guard", () => {
   const humans = new Set(["ana"]);
   const isHuman = (id: string) => humans.has(id);
-  const thread = (...senders: string[]) => senders.map((sender_id) => ({ sender_id }));
+  const thread = (...senders: string[]) => senders.map((sender_id) => ({ sender_id, body: "Here's what I found." }));
+  const notice = (sender_id: string, body: string) => ({ sender_id, body });
 
   it("counts messages since the last person's", () => {
     expect(agentTurnsSinceHuman([], isHuman)).toBe(0);
@@ -107,6 +118,17 @@ describe("loop guard", () => {
     expect(agentTurnsSinceHuman(twelve.slice(0, 11), isHuman)).toBeLessThan(12);
     expect(agentTurnsSinceHuman(twelve, isHuman)).toBeGreaterThanOrEqual(12);
     expect(agentTurnsSinceHuman([...twelve, ...thread("ana", "a")], isHuman)).toBe(1);
+  });
+  it("leaves runner notices out of the count", () => {
+    const run = [
+      notice("a", "Started on #12 (branch ak/a/t12)."),
+      ...thread("a"),
+      notice("b", "Picked up #13, continuing."),
+      notice("b", "Queued #14: Ana has paused me; I'll start when resumed."),
+      ...thread("b"),
+    ];
+    expect(agentTurnsSinceHuman(run, isHuman)).toBe(2);
+    expect(agentTurnsSinceHuman([...thread("a", "b"), notice("a", pauseNotice(12))], isHuman)).toBe(2);
   });
   it("recognises its own pause notice, so it's posted once", () => {
     expect(pauseNotice(12)).toBe("Pausing this thread after 12 agent messages in a row. A person can reply to continue.");

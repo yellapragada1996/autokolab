@@ -19,8 +19,6 @@ import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWork
 // works the project board: tickets assigned to it in Ready, and people's comments on its open
 // tickets. One task at a time per agent; room instructions go first.
 
-/** Kinds from an instructor, addressed to this agent, that start or continue work. */
-const DIRECT_KINDS: MessageKind[] = ["task", "chat", "answer", "review", "decision", "question"];
 /** Kinds addressed to everyone that continue work in a thread this agent is already on. */
 const THREAD_KINDS: MessageKind[] = ["task", "chat", "answer", "review", "decision"];
 /** From a teammate, addressed to everyone: only these continue work in a thread we're on (DEC-17). */
@@ -58,23 +56,23 @@ export interface WakeDecision {
 }
 
 /**
- * Does this message wake this agent? Instructors work as they always have. Teammates (anyone else
- * in the room) wake it when they address it directly, or talk in a thread it's already working in.
+ * Does this message wake this agent? Anyone in the room wakes it by addressing it directly, any
+ * kind (so a runner's status report reaches the agent that asked), except with a runner notice.
+ * Otherwise instructors work as they always have, and teammates (anyone else in the room) wake it
+ * only by talking in a thread it's already working in.
  */
 export function shouldWake(m: Pick<Message, "sender_id" | "to_id" | "thread_id" | "kind" | "body">, ctx: WakeContext): WakeDecision {
   const from = ctx.fromInstructor;
   const no = { wake: false, fromInstructor: from };
   if (m.sender_id === ctx.meId || !ctx.senderInRoom) return { wake: false, fromInstructor: false };
+  // A runner saying "Started on #12" isn't something to answer.
+  if (isRunnerNotice(m.body)) return no;
+  if (m.to_id === ctx.meId) return { wake: true, fromInstructor: from };
+  if (m.to_id !== null) return no;
   if (from) {
-    if (m.to_id === ctx.meId) return { wake: DIRECT_KINDS.includes(m.kind), fromInstructor: true };
-    if (m.to_id !== null) return no;
     if (m.thread_id && THREAD_KINDS.includes(m.kind) && ctx.inThread) return { wake: true, fromInstructor: true };
     return { wake: m.kind === "task" && !m.thread_id && ctx.acceptBroadcastTasks, fromInstructor: true };
   }
-  // A teammate's runner saying "Started on #12" isn't something to answer.
-  if (isRunnerNotice(m.body)) return no;
-  if (m.to_id === ctx.meId) return { wake: true, fromInstructor: false };
-  if (m.to_id !== null) return no;
   if (m.thread_id && TEAMMATE_THREAD_KINDS.includes(m.kind) && ctx.inThread) return { wake: true, fromInstructor: false };
   return no;
 }
@@ -117,12 +115,12 @@ export function runOutcome(
   return { state: "done", report: text || `Done with #${ctx.messageId}.`, quiet };
 }
 
-/** The loop guard's count: messages in a thread since the last one from a person. */
-export function agentTurnsSinceHuman(thread: Pick<Message, "sender_id">[], isHuman: (senderId: string) => boolean): number {
+/** The loop guard's count: messages in a thread since the last one from a person, leaving out runner notices. */
+export function agentTurnsSinceHuman(thread: Pick<Message, "sender_id" | "body">[], isHuman: (senderId: string) => boolean): number {
   let turns = 0;
   for (let i = thread.length - 1; i >= 0; i--) {
     if (isHuman(thread[i].sender_id)) break;
-    turns++;
+    if (!isRunnerNotice(thread[i].body)) turns++;
   }
   return turns;
 }
