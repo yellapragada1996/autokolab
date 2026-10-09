@@ -136,6 +136,25 @@ export function modelText(model: string | null, effort: string | null): string |
   return effort ? `${name} · ${effort} effort` : name;
 }
 
+// "sonnet" and "claude-sonnet-5-5" are the same model; so are "opus[1m]" and "claude-opus-5-5[1m]".
+const sameModel = (asked: string, ran: string) => {
+  const a = asked.toLowerCase().replace(/\[.*\]$/, "");
+  const r = ran.toLowerCase().replace(/\[.*\]$/, "");
+  return r === a || r.includes(a) || a.includes(r);
+};
+
+/**
+ * "running Haiku": what the agent's latest run actually used, only where it differs from what was
+ * asked for on AutoKolab (AK-11). Null in the normal case, and for anything left to the machine.
+ */
+export function ranText(a: Pick<Agent, "model" | "effort" | "effective_model" | "effective_effort">): string | null {
+  const model = a.model && a.effective_model && !sameModel(a.model, a.effective_model) ? a.effective_model : null;
+  const effort = a.effort && a.effective_effort && a.effective_effort !== a.effort ? a.effective_effort : null;
+  if (!model && !effort) return null;
+  const name = model && /^[a-z]+$/.test(model) ? model[0].toUpperCase() + model.slice(1) : model;
+  return `running ${[name, effort && `${effort} effort`].filter(Boolean).join(" · ")}`;
+}
+
 const fieldStyle = { height: 28, borderRadius: 6, border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)", fontSize: 13, padding: "0 8px" } as const;
 
 /**
@@ -166,11 +185,20 @@ function AgentModel({ ws, agent: a, mine }: { ws: Workspace; agent: Agent; mine:
 
   const setBy = a.model_set_by && (a.model || a.effort) ? `Set by ${ws.nameOf(a.model_set_by)}${a.model_set_at ? ` · ${ago(a.model_set_at)}` : ""}` : null;
   const text = modelText(a.model, a.effort);
+  const ran = ranText(a);
+  const ranNote = ran && (
+    <span style={{ color: "var(--warn)" }} title="What its latest run actually used. Effort is the one its runner passed; the tool doesn't report it back.">
+      {` · ${ran}`}
+    </span>
+  );
 
   if (!mine) {
     return (
       <span style={{ fontSize: 13, display: "flex", flexDirection: "column" }}>
-        <span style={{ color: text ? "var(--text-2)" : "var(--muted)" }}>{text ?? "Set on this machine"}</span>
+        <span style={{ color: text ? "var(--text-2)" : "var(--muted)" }}>
+          {text ?? "Set on this machine"}
+          {ranNote}
+        </span>
         {setBy && <span style={{ fontSize: 12, color: "var(--faint)" }}>{setBy}</span>}
       </span>
     );
@@ -222,6 +250,11 @@ function AgentModel({ ws, agent: a, mine }: { ws: Workspace; agent: Agent; mine:
         </span>
       ) : (
         setBy && <span style={{ fontSize: 12, color: "var(--faint)" }}>{setBy}</span>
+      )}
+      {ran && (
+        <span style={{ fontSize: 12, color: "var(--warn)" }}>
+          Its latest run used {ran.replace(/^running /, "")}.
+        </span>
       )}
       <span style={{ fontSize: 12, color: "var(--faint)" }}>
         Applies from its next run. Your machine can ignore this: set <code style={{ fontFamily: "var(--mono)" }}>model_locked = true</code> in this agent's runner settings. Sessions you open yourself in {a.vendor === "claude" ? "Claude Code" : "Codex"} use whatever you pick there.

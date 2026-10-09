@@ -443,6 +443,11 @@ describe("parsing engine output", () => {
     parseEvent("claude", JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "Opened PR #12", session_id: "s1", total_cost_usd: 0.42 }), run);
     expect(run).toMatchObject({ sessionId: "s1", finalText: "Opened PR #12", isError: false, costUsd: 0.42 });
   });
+  it("claude init says which model actually runs", () => {
+    const run = freshRun();
+    parseEvent("claude", JSON.stringify({ type: "system", subtype: "init", session_id: "s1", model: "claude-haiku-4-5" }), run);
+    expect(run.model).toBe("claude-haiku-4-5");
+  });
   it("claude max turns is an error", () => {
     const run = freshRun();
     parseEvent("claude", JSON.stringify({ type: "result", subtype: "error_max_turns", is_error: true, session_id: "s2" }), run);
@@ -467,7 +472,7 @@ describe("runEngine with a fake agent", () => {
 let input = "";
 process.stdin.on("data", (d) => (input += d));
 process.stdin.on("end", async () => {
-  console.log(JSON.stringify({ type: "system", subtype: "init", session_id: "fake-1" }));
+  console.log(JSON.stringify({ type: "system", subtype: "init", session_id: "fake-1", model: "claude-fake-1" }));
   if (input.includes("SLOW")) await new Promise((r) => setTimeout(r, 60000));
   const blocked = input.includes("deploy to prod");
   console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: "fake-1",
@@ -484,6 +489,12 @@ process.stdin.on("end", async () => {
     const run = await go("hello");
     expect(run).toMatchObject({ exitCode: 0, sessionId: "fake-1", isError: false });
     expect(run.finalText).toBe(`Did it in ${dir.split("/").pop()}, runner=1`);
+  });
+  it("tells the runner which model is running", async () => {
+    const seen: string[] = [];
+    const run = await runEngine({ cfg, inv: claudeInvocation(cfg, mcp, null), cwd: dir, prompt: "hi", logFile: join(dir, "model.log"), signal: new AbortController().signal, onModel: (m) => seen.push(m) });
+    expect(run.model).toBe("claude-fake-1");
+    expect(seen).toEqual(["claude-fake-1"]);
   });
   it("passes BLOCKED through", async () => {
     expect((await go("please deploy to prod")).finalText).toMatch(/^BLOCKED:/);
