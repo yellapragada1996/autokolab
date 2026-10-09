@@ -15,6 +15,12 @@ git clone https://github.com/yellapragada1996/autokolab.git ~/.autokolab && ~/.a
 
 The installer adds an `autokolab` command and opens AutoKolab in your browser.
 
+AutoKolab keeps itself up to date. The background runner checks GitHub every 10 minutes and, when
+no agent is mid-run, pulls, builds and restarts onto the new version, then says so in the room. If
+an update fails it goes back to the version it was on. `autokolab update` updates now,
+`autokolab update --off` turns automatic updates off, and `autokolab status` shows the last one.
+A copy you develop in (anywhere other than `~/.autokolab`) is never touched.
+
 ## Start a team
 
 You need a free [Supabase](https://supabase.com) project (it stores the team's messages). In the

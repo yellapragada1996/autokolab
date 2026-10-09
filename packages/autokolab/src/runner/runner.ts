@@ -6,7 +6,7 @@ import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, MODEL_CHANGE_PREFIX, ProjectV
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
-import type { Message, MessageKind, RunState, TaskRun } from "../core/types.js";
+import type { Message, MessageKind, Room, RunState, TaskRun } from "../core/types.js";
 import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineRun, type ModelChoice, type PlanStep } from "./engines.js";
@@ -179,6 +179,10 @@ export class Runner {
   /** The run in progress: a room instruction or a ticket. */
   private current: { what: string; abort: AbortController } | null = null;
   private stopping = false;
+  /** The updater holds new runs while it pulls and builds (AK-31). */
+  private held = false;
+  /** Saying hello runs the agent outside the queue. */
+  private greeting = false;
   private channels: RealtimeChannel[] = [];
   private timers: NodeJS.Timeout[] = [];
   private hooked = new Set<string>();
@@ -296,7 +300,16 @@ export class Runner {
     const marker = join(stateDir(), "introduced", this.ak.me.id);
     if (existsSync(marker)) return;
     const room = this.ak.rooms().find((r) => r.repo);
-    if (!room) return;
+    if (!room || this.held) return;
+    this.greeting = true;
+    try {
+      await this.sayHello(room, marker);
+    } finally {
+      this.greeting = false;
+    }
+  }
+
+  private async sayHello(room: Room, marker: string): Promise<void> {
     const clone = ensureClone(room.repo!);
     const prompt =
       `You are ${this.ak.me.name}, ${this.ak.ownerName(this.ak.me)}'s AI agent, and you just joined the team working on github.com/${room.repo}. ` +
@@ -443,8 +456,24 @@ export class Runner {
     if (!paused) void this.work();
   }
 
+  /** For the updater: if no run is in progress, hold new ones until release() and say yes. */
+  holdIfIdle(): boolean {
+    if (this.busy || this.current || this.greeting) return false;
+    this.held = true;
+    return true;
+  }
+
+  release(): void {
+    this.held = false;
+    void this.work();
+  }
+
+  note(msg: string): void {
+    this.log(msg);
+  }
+
   private async work(): Promise<void> {
-    if (this.busy) return;
+    if (this.busy || this.held) return;
     this.busy = true;
     try {
       while (this.queue.length && !this.ak.me.paused && !this.stopping) {

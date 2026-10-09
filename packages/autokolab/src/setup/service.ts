@@ -33,7 +33,7 @@ export function serviceDef(): ServiceDef | null {
 <plist version="1.0"><dict>
   <key>Label</key><string>${LABEL}</string>
   <key>ProgramArguments</key><array><string>${esc(node)}</string><string>${esc(CLI_PATH)}</string><string>run</string></array>
-  <key>EnvironmentVariables</key><dict><key>PATH</key><string>${esc(path)}</string></dict>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>${esc(path)}</string><key>AUTOKOLAB_SERVICE</key><string>1</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>${esc(logs)}</string>
@@ -57,6 +57,7 @@ Wants=network-online.target
 [Service]
 ExecStart="${node}" "${CLI_PATH}" run
 Environment=PATH=${path}
+Environment=AUTOKOLAB_SERVICE=1
 Restart=always
 RestartSec=10
 
