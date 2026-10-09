@@ -21,6 +21,48 @@ export interface PromptContext {
 
 export const BLOCKED_PREFIX = "BLOCKED:";
 
+const OUTCOME_EXAMPLE = [
+  "```autokolab",
+  "status: review            (review when the PR is open; in_progress if work is left; blocked if you can't go on)",
+  "pr: <pull request link>",
+  "question: <one question for a person>",
+  "new_ticket: <title of follow-up work you found> (one line each, repeat as needed)",
+  "```",
+].join("\n");
+
+export interface Outcome {
+  /** The final message without the block. */
+  body: string;
+  status?: "review" | "in_progress" | "blocked";
+  pr?: string;
+  question?: string;
+  newTickets: string[];
+}
+
+/** Read the ```autokolab block an agent ends its final message with. */
+export function parseOutcome(text: string): Outcome {
+  const m = text.match(/```autokolab[^\n]*\n([\s\S]*?)```/i);
+  const out: Outcome = { body: (m ? text.replace(m[0], "") : text).trim(), newTickets: [] };
+  if (!m) return out;
+  const none = (v: string) => !v || /^(none|n\/a|-|no|null)\.?$/i.test(v) || /^<.*>$/.test(v);
+  for (const raw of m[1].split("\n")) {
+    const kv = raw.match(/^\s*([a-z_]+)\s*:\s*(.*?)\s*$/i);
+    if (!kv) continue;
+    const [, k, v] = kv;
+    if (none(v)) continue;
+    const key = k.toLowerCase();
+    if (key === "status") {
+      const st = v.toLowerCase().replace(/[\s-]+/g, "_").match(/^(review|in_progress|blocked)/)?.[1];
+      if (st) out.status = st as Outcome["status"];
+    } else if (key === "pr") {
+      const url = v.match(/https:\/\/github\.com\/[^\s)>\]]+\/pull\/\d+/i)?.[0];
+      if (url) out.pr = url;
+    } else if (key === "question") out.question = v.slice(0, 1000);
+    else if (key === "new_ticket") out.newTickets.push(v.slice(0, 200));
+  }
+  return out;
+}
+
 export function rulesText(cfg: RunnerConfig, wt: Worktree): string[] {
   const l = cfg.limits;
   return [
@@ -89,8 +131,11 @@ export function buildTicketPrompt(ctx: TicketPromptContext): string {
 - If you need a person's decision, ticket_update needs_human="<short question>", then carry on with whatever doesn't depend on it. If nothing can be done without the answer, end with "${BLOCKED_PREFIX} <the question>".
 - Follow the project's rules and decisions. If you settle a choice others must build on, record it with decision_add. If you find more work, create a ticket for it (ticket_create, backlog, unassigned) instead of growing this one.
 - When every "done means" item is true: run the tests and type checker, commit, push, open a pull request with "${key}" in its title, then ticket_update key=${key} status=review pr_url=<the PR link>.
-- Don't post a summary comment yourself. Your final message is posted on the ticket for you: keep it short (what you did, how you checked it, the PR link, anything left).
-- If the AutoKolab tools aren't available to you, still do the work, and put the pull request link in your final message.`;
+- Keep your own to-do list current as you work; it's shown on the ticket as its steps.
+- Don't post a summary comment yourself. Your final message is posted on the ticket for you: keep it short (what you did, how you checked it, anything left).
+- If the AutoKolab tools aren't available to you, that's fine: do the work, and the ending block below updates the ticket for you.
+- End your final message with this block, filled in (it updates the ticket; write "none" where nothing applies):
+${OUTCOME_EXAMPLE}`;
 
   if (ctx.followUp && ctx.newComments) {
     return `New comments on ${key} from people. They're instructions for this ticket:

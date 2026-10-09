@@ -118,6 +118,16 @@ function attachWorktree(clone: string, path: string, branch: string): Worktree {
   return { path, branch, base, created: true };
 }
 
+/** The latest commit in a worktree: its id and first line. */
+export function headCommit(path: string): { sha: string; subject: string } | null {
+  try {
+    const [sha, ...subject] = git(path, "log", "-1", "--format=%H %s").split(" ");
+    return { sha, subject: subject.join(" ") };
+  } catch {
+    return null;
+  }
+}
+
 export function currentBranch(path: string): string | null {
   try {
     return git(path, "branch", "--show-current") || null;

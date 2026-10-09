@@ -7,7 +7,7 @@ import type { Member, Message, Room } from "../src/core/types.js";
 import { parseRunnerConfig, runnerTemplate } from "../src/runner/config.js";
 import { claudeDenyRules, claudeInvocation, codexInvocation, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
 import { installHook } from "../src/runner/githook.js";
-import { buildPrompt, buildTicketPrompt } from "../src/runner/prompt.js";
+import { buildPrompt, buildTicketPrompt, parseOutcome } from "../src/runner/prompt.js";
 import { clonePath, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "../src/runner/repos.js";
 import { defaultRules } from "../src/core/projects.js";
 
@@ -88,8 +88,40 @@ describe("tickets", () => {
     expect(p).toContain("ana: use the blue button");
     expect(p).not.toContain("Project brief");
   });
+  it("reads the ending block", () => {
+    const o = parseOutcome("Added the button.\n\n```autokolab\nstatus: review\npr: https://github.com/ana/shop/pull/12\nquestion: none\nnew_ticket: Add retries\nnew_ticket: <title of follow-up work you found>\n```");
+    expect(o).toEqual({ body: "Added the button.", status: "review", pr: "https://github.com/ana/shop/pull/12", newTickets: ["Add retries"] });
+    expect(parseOutcome("```autokolab\nstatus: In progress\nquestion: Redis or Postgres?\n```")).toMatchObject({ status: "in_progress", question: "Redis or Postgres?" });
+    expect(parseOutcome("no block here")).toEqual({ body: "no block here", newTickets: [] });
+  });
+  it("asks for the ending block", () => {
+    const p = buildTicketPrompt({ myName: "b", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg: cfgFor(), worktree: wt, followUp: false, newComments: null });
+    expect(p).toContain("```autokolab");
+  });
   it("has default rules that protect the default branch", () => {
     expect(defaultRules("trunk")).toContain("Never push to trunk");
+  });
+});
+
+describe("the agent's own plan", () => {
+  it("reads Codex's to-do list", () => {
+    const run = freshRun();
+    const items = [{ text: "Read the code", completed: true }, { text: "Add the button", completed: false }, { text: "Test it", completed: false }];
+    parseEvent("codex", JSON.stringify({ type: "item.updated", item: { type: "todo_list", items } }), run);
+    expect(run.plan).toEqual([
+      { label: "Read the code", status: "done" },
+      { label: "Add the button", status: "now" },
+      { label: "Test it", status: "todo" },
+    ]);
+    expect(run.reportsSteps).toBeUndefined();
+    parseEvent("codex", JSON.stringify({ type: "item.completed", item: { type: "mcp_tool_call", server: "autokolab", tool: "ticket_steps", status: "completed" } }), run);
+    expect(run.reportsSteps).toBe(true);
+  });
+  it("reads Claude's TodoWrite", () => {
+    const run = freshRun();
+    const todos = [{ content: "Plan", status: "completed" }, { content: "Build", status: "in_progress" }, { content: "Ship", status: "pending" }];
+    parseEvent("claude", JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", name: "TodoWrite", input: { todos } }] } }), run);
+    expect(run.plan?.map((s) => s.status)).toEqual(["done", "now", "todo"]);
   });
 });
 

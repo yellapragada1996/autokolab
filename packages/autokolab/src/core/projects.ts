@@ -302,6 +302,28 @@ export class ProjectView {
     return this.steps(t.id);
   }
 
+  /**
+   * Mirror the agent's own to-do list onto the ticket. Same steps: only changed statuses are
+   * written (so the history shows each finished step); a new list replaces the plan.
+   */
+  async syncSteps(ref: string, plan: { label: string; status: StepStatus }[]): Promise<void> {
+    const t = await this.ticket(ref);
+    const want = plan.slice(0, 20).map((s) => ({ ...s, label: s.label.slice(0, 200) }));
+    if (!want.length) return;
+    const old = await this.steps(t.id);
+    const same = old.length === want.length && old.every((s, i) => s.label === want[i].label);
+    if (!same) {
+      check(await this.sb.from("ticket_steps").delete().eq("ticket_id", t.id));
+      check(await this.sb.from("ticket_steps").insert(want.map((s, idx) => ({ ticket_id: t.id, idx, label: s.label, status: s.status }))));
+    } else {
+      for (const [i, s] of want.entries()) {
+        if (old[i].status !== s.status) check(await this.sb.from("ticket_steps").update({ status: s.status }).eq("ticket_id", t.id).eq("idx", old[i].idx));
+      }
+    }
+    const now = want.find((s) => s.status === "now");
+    await this.status("building", now?.label ?? null, t.id).catch(() => undefined);
+  }
+
   /** Mark step n (1-based). Marking one "now" finishes the steps before it. */
   async step(ref: string, n: number, status: StepStatus, note?: string): Promise<Step[]> {
     const t = await this.ticket(ref);

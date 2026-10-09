@@ -13,7 +13,17 @@ export interface McpLaunch {
   args: string[]; // [cli.js, "mcp", "--profile", name]
 }
 
+/** One item of the agent's own to-do list, as the board shows steps. */
+export interface PlanStep {
+  label: string;
+  status: "todo" | "now" | "done";
+}
+
 export interface EngineRun {
+  /** The agent's latest to-do list (Codex's plan, Claude's TodoWrite), when it keeps one. */
+  plan?: PlanStep[];
+  /** The agent updated the ticket's steps itself with the AutoKolab tools in this run. */
+  reportsSteps?: boolean;
   sessionId: string | null;
   finalText: string;
   exitCode: number | null;
@@ -94,7 +104,29 @@ export function codexInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession
   return { bin: cfg.codex_bin, args, tempDir, lastMessageFile };
 }
 
-/** Pull session id / final text out of one JSON line of engine output. */
+const clip = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, 200);
+
+/** Codex's todo_list items → steps: done ones, then the first open one is "now". */
+function codexPlan(items: { text?: string; completed?: boolean }[]): PlanStep[] {
+  let nowSet = false;
+  return items
+    .filter((i) => typeof i.text === "string" && i.text.trim())
+    .map((i) => {
+      if (i.completed) return { label: clip(i.text!), status: "done" as const };
+      const status = nowSet ? ("todo" as const) : ("now" as const);
+      nowSet = true;
+      return { label: clip(i.text!), status };
+    });
+}
+
+/** Claude's TodoWrite todos → steps. */
+function claudePlan(todos: { content?: string; status?: string }[]): PlanStep[] {
+  return todos
+    .filter((t) => typeof t.content === "string" && t.content.trim())
+    .map((t) => ({ label: clip(t.content!), status: t.status === "completed" ? "done" : t.status === "in_progress" ? "now" : "todo" }));
+}
+
+/** Pull session id / final text / the agent's plan out of one JSON line of engine output. */
 export function parseEvent(engine: RunnerConfig["engine"], line: string, run: EngineRun): void {
   let ev: Record<string, any>;
   try {
@@ -111,7 +143,21 @@ export function parseEvent(engine: RunnerConfig["engine"], line: string, run: En
       if (!run.finalText && ev.subtype) run.finalText = `Run ended: ${ev.subtype}`;
       if (typeof ev.total_cost_usd === "number") run.costUsd = ev.total_cost_usd;
     }
+    if (ev.type === "assistant" && Array.isArray(ev.message?.content)) {
+      for (const c of ev.message.content) {
+        if (c?.type !== "tool_use") continue;
+        if (c.name === "TodoWrite" && Array.isArray(c.input?.todos)) run.plan = claudePlan(c.input.todos);
+        if (c.name === "mcp__autokolab__ticket_steps") run.reportsSteps = true;
+      }
+    }
   } else {
+    const item = ev.item;
+    if (item && /^item\.(started|updated|completed)$/.test(ev.type)) {
+      if (item.type === "todo_list" && Array.isArray(item.items)) run.plan = codexPlan(item.items);
+      if (item.type === "mcp_tool_call" && item.server === "autokolab" && item.tool === "ticket_steps" && ev.type === "item.completed" && item.status !== "failed") {
+        run.reportsSteps = true;
+      }
+    }
     if (ev.type === "thread.started" && ev.thread_id) run.sessionId = ev.thread_id;
     if (ev.type === "session_configured" && ev.session_id) run.sessionId = ev.session_id;
     if (ev.msg?.type === "session_configured" && ev.msg.session_id) run.sessionId = ev.msg.session_id;
@@ -135,6 +181,8 @@ export async function runEngine(opts: {
   logFile: string;
   signal: AbortSignal;
   onLine?: (line: string) => void;
+  /** Called whenever the agent's to-do list changes. */
+  onPlan?: (plan: PlanStep[], run: EngineRun) => void;
 }): Promise<EngineRun> {
   const { cfg, inv, prompt } = opts;
   const run: EngineRun = { sessionId: null, finalText: "", exitCode: null, timedOut: false, aborted: false, isError: false };
@@ -169,7 +217,9 @@ export async function runEngine(opts: {
     child.stdin.end(prompt);
     createInterface({ input: child.stdout }).on("line", (line) => {
       log.write(line + "\n");
+      const before = run.plan;
       parseEvent(cfg.engine, line, run);
+      if (run.plan && run.plan !== before) opts.onPlan?.(run.plan, run);
       opts.onLine?.(line);
     });
     let stderrTail = "";

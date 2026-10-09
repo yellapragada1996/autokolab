@@ -9,10 +9,10 @@ import { redactSecrets } from "../core/secrets.js";
 import type { Message, MessageKind, RunState, TaskRun } from "../core/types.js";
 import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
-import { claudeInvocation, codexInvocation, runEngine } from "./engines.js";
+import { claudeInvocation, codexInvocation, runEngine, type EngineRun, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
-import { BLOCKED_PREFIX, buildPrompt, buildTicketPrompt } from "./prompt.js";
-import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "./repos.js";
+import { BLOCKED_PREFIX, buildPrompt, buildTicketPrompt, parseOutcome } from "./prompt.js";
+import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone who can instruct sends
 // it work, starts the agent headless in that thread's own worktree. It also works the project
@@ -487,11 +487,47 @@ export class Runner {
     await this.setStatus("planning", job.comments.length ? "Reading new comments" : "Reading the ticket", t.id);
     this.log(`Working on ${t.key} in ${p.project.name} (${worktree.branch})${job.comments.length ? " after new comments" : ""}${resume ? ", continuing session" : ""}.`);
 
-    let result;
+    // Progress shows on the board even when the agent can't use the AutoKolab tools: its own
+    // to-do list becomes the ticket's steps, and without one, its latest commit is what it's doing.
+    let pendingPlan: PlanStep[] | null = null;
+    let sawPlan = false;
+    let syncing: Promise<void> = Promise.resolve();
+    const flushPlan = () => {
+      const plan = pendingPlan;
+      pendingPlan = null;
+      if (plan) syncing = syncing.then(() => p.syncSteps(t.key, plan)).catch((e) => this.log(`Couldn't update ${t.key}'s steps: ${(e as Error).message}`));
+    };
+    let lastSha = headCommit(worktree.path)?.sha;
+    const timers = [
+      setInterval(flushPlan, 3000),
+      setInterval(() => {
+        const h = headCommit(worktree.path);
+        if (!h || h.sha === lastSha) return;
+        lastSha = h.sha;
+        if (!sawPlan) void this.setStatus("building", `Committed: ${h.subject}`.slice(0, 200), t.id);
+      }, 30_000),
+    ];
+
+    let result!: EngineRun;
     const startedAt = Date.now();
     try {
-      result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal });
+      result = await runEngine({
+        cfg,
+        inv,
+        cwd: worktree.path,
+        prompt,
+        logFile,
+        signal: abort.signal,
+        onPlan: (plan, run) => {
+          sawPlan = true;
+          if (!run.reportsSteps) pendingPlan = plan;
+        },
+      });
     } finally {
+      for (const x of timers) clearInterval(x);
+      if (!result?.reportsSteps) flushPlan();
+      else pendingPlan = null;
+      await syncing;
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000);
     }
@@ -502,8 +538,11 @@ export class Runner {
       this.saveTicketState(s2);
     }
 
-    const text = redactSecrets(result.finalText.trim()).slice(0, 12000);
+    const raw = redactSecrets(result.finalText.trim()).slice(0, 12000);
+    const o = parseOutcome(raw);
+    const text = o.body;
     const after = await p.ticket(t.key);
+    const ourPr = (u?: string) => (u && u.toLowerCase().startsWith(`https://github.com/${repo}/pull/`) ? u : undefined);
     let outcome: string;
     if (result.aborted) {
       outcome = "stopped";
@@ -519,11 +558,23 @@ export class Runner {
       await p.update(t.key, { needs_human: q.slice(0, 1000) || "I'm blocked; see my comment." }).catch(() => undefined);
       if (q.length > 1000) await p.comment(t.key, q).catch(() => undefined);
     } else {
-      outcome = "done";
+      outcome = o.status === "blocked" ? "blocked" : "done";
       if (text) await p.comment(t.key, text).catch((e) => this.log(`Couldn't comment on ${t.key}: ${(e as Error).message}`));
-      // Agents without the AutoKolab tools can still finish: a PR link in the final message moves the ticket.
-      const pr = text.match(new RegExp(`https://github\\.com/${repo.replace(/[.]/g, "\\.")}/pull/\\d+`, "i"))?.[0];
-      if (pr && after.status === "in_progress" && !after.pr_url) await p.update(t.key, { status: "review", pr_url: pr }).catch(() => undefined);
+      // The ending block (or just a PR link) moves the ticket, so agents without the tools can finish too.
+      const pr = ourPr(o.pr) ?? ourPr(text.match(/https:\/\/github\.com\/[^\s)>\]]+\/pull\/\d+/i)?.[0]);
+      const change: Parameters<ProjectView["update"]>[1] = {};
+      if (o.question) change.needs_human = o.question;
+      else if (o.status === "blocked") change.needs_human = "I'm blocked; see my last comment.";
+      if (pr && !after.pr_url) change.pr_url = pr;
+      if (pr && after.status === "in_progress" && (!o.status || o.status === "review")) change.status = "review";
+      if (Object.keys(change).length) await p.update(t.key, change).catch((e) => this.log(`Couldn't update ${t.key}: ${(e as Error).message}`));
+      if (o.newTickets.length) {
+        const open = (await p.tickets()).filter((x) => !["done", "canceled"].includes(x.status)).map((x) => x.title.toLowerCase());
+        for (const title of o.newTickets) {
+          if (open.includes(title.toLowerCase())) continue;
+          await p.create({ title, description: `Found by ${ak.me.name} while working on ${t.key}.` }).catch((e) => this.log(`Couldn't create "${title}": ${(e as Error).message}`));
+        }
+      }
     }
     await this.setStatus(ak.me.paused ? "paused" : "idle");
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
