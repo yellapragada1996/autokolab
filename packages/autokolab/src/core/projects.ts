@@ -43,6 +43,12 @@ export interface AgentModel {
   model_set_by: string | null;
 }
 
+/** The model and effort a run launched with; "" means the tool's own default (schema 11). */
+export interface RanWith {
+  model: string;
+  effort: string;
+}
+
 interface AgentInfo extends AgentModel {
   status: AgentStatus;
   status_note: string | null;
@@ -481,9 +487,17 @@ export class ProjectView {
     return check(await this.sb.rpc("create_decision", { p_project: this.project.id, p_title: title, p_body: body, p_kind: kind, p_ticket: t?.id ?? null }));
   }
 
-  /** What this agent is doing, shown on the board and in People. */
-  async status(status: AgentStatus, note: string | null = null, ticketId: string | null = null): Promise<void> {
-    check(await this.sb.rpc("agent_status", { p_status: status, p_note: note, p_ticket: ticketId }));
+  /**
+   * What this agent is doing, shown on the board and in People. `ran` is the model and effort the
+   * current run launched with (schema 11; "" for the tool's own default); left out, the last one stays.
+   */
+  async status(status: AgentStatus, note: string | null = null, ticketId: string | null = null, ran?: RanWith): Promise<void> {
+    const args: Record<string, unknown> = { p_status: status, p_note: note, p_ticket: ticketId };
+    if (ran) Object.assign(args, { p_model: ran.model.slice(0, 100), p_effort: ran.effort });
+    const res = await this.sb.rpc("agent_status", args);
+    // A database before schema 11 has no p_model: still report the status.
+    if (res.error && ran && /p_model|function/i.test(res.error.message)) return this.status(status, note, ticketId);
+    check(res);
   }
 
   // ------------------------------------------------------------------ for the runner

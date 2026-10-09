@@ -31,6 +31,8 @@ export interface EngineRun {
   aborted: boolean;
   isError: boolean;
   costUsd?: number;
+  /** The model the tool says it's running (Claude Code's init event); Codex doesn't say. */
+  model?: string;
 }
 
 export interface EngineInvocation {
@@ -157,7 +159,10 @@ export function parseEvent(engine: RunnerConfig["engine"], line: string, run: En
     return;
   }
   if (engine === "claude") {
-    if (ev.type === "system" && ev.subtype === "init" && ev.session_id) run.sessionId = ev.session_id;
+    if (ev.type === "system" && ev.subtype === "init") {
+      if (ev.session_id) run.sessionId = ev.session_id;
+      if (typeof ev.model === "string" && ev.model) run.model = ev.model;
+    }
     if (ev.type === "result") {
       if (ev.session_id) run.sessionId = ev.session_id;
       if (typeof ev.result === "string") run.finalText = ev.result;
@@ -205,6 +210,8 @@ export async function runEngine(opts: {
   onLine?: (line: string) => void;
   /** Called whenever the agent's to-do list changes. */
   onPlan?: (plan: PlanStep[], run: EngineRun) => void;
+  /** Called when the tool says which model it's running. */
+  onModel?: (model: string) => void;
 }): Promise<EngineRun> {
   const { cfg, inv, prompt } = opts;
   const run: EngineRun = { sessionId: null, finalText: "", exitCode: null, timedOut: false, aborted: false, isError: false };
@@ -240,8 +247,10 @@ export async function runEngine(opts: {
     createInterface({ input: child.stdout }).on("line", (line) => {
       log.write(line + "\n");
       const before = run.plan;
+      const modelBefore = run.model;
       parseEvent(cfg.engine, line, run);
       if (run.plan && run.plan !== before) opts.onPlan?.(run.plan, run);
+      if (run.model && run.model !== modelBefore) opts.onModel?.(run.model);
       opts.onLine?.(line);
     });
     let stderrTail = "";

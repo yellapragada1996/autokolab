@@ -61,6 +61,9 @@ export interface Agent {
   /** The profile or agent that last set model/effort, and when. */
   model_set_by: string | null;
   model_set_at: string | null;
+  /** What its latest run actually used, reported by its runner (schema 11; absent before it). */
+  effective_model?: string | null;
+  effective_effort?: Effort | null;
 }
 
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;

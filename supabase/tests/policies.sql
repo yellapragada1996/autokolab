@@ -495,6 +495,36 @@ select pg_temp.expect_error($q$select public.set_agent_model('00000000-0000-0000
 reset role;
 select pg_temp.expect((select model is null and effort is null from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'refused calls changed nothing');
 
+-- ------------------------------------------------ the model a run actually used (schema 11)
+reset role;
+select pg_temp.expect((select effective_model is null and effective_effort is null and effective_at is null from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'effective model starts unset');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+select pg_temp.expect((select effective_model = 'claude-haiku-4-5' and effective_effort = 'medium' and effective_at is not null and status = 'building'
+  from public.agent_status('building', 'MZ-1', null, 'claude-haiku-4-5', 'medium')), 'the agent reports what it ran');
+select pg_temp.expect((select effective_model = 'claude-haiku-4-5' and effective_effort = 'medium' and status = 'idle'
+  from public.agent_status('idle')), 'a status without a model keeps the last one');
+select pg_temp.expect((select effective_model is null and effective_effort = 'medium'
+  from public.agent_status('idle', null, null, '', null)), 'an empty model means the tool''s default');
+select pg_temp.expect_error($q$select public.agent_status('idle', null, null, 'opus', 'extreme')$q$, 'check constraint');
+select pg_temp.expect_error($q$select public.agent_status('idle', null, null, 'sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAA', null)$q$, 'AUTOKOLAB_SECRET');
+select pg_temp.expect_error($q$update public.agents set effective_model = 'opus' where id = '00000000-0000-0000-0000-0000000000e2'$q$, 'permission denied');
+-- only the agent itself: its owner and the lead can't write it, and a person isn't an agent
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect_error($q$update public.agents set effective_model = 'opus' where id = '00000000-0000-0000-0000-0000000000e2'$q$, 'permission denied');
+select pg_temp.expect_error($q$select public.agent_status('idle', null, null, 'opus', 'max')$q$, 'AUTOKOLAB_NOT_AGENT');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select pg_temp.expect((select effective_model = 'opus' from public.agent_status('idle', null, null, 'opus', 'max')), 'the lead reports its own');
+select pg_temp.expect((select effective_model is null and effective_effort = 'medium' from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'the lead''s report changed only its own row');
+-- everyone who can see the agent can read it; others don't see the agent at all
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e4';
+select pg_temp.expect((select effective_effort = 'medium' from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'a teammate reads what ran');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e3';
+select pg_temp.expect(not exists (select 1 from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'outsiders don''t see it');
+set role anon;
+select pg_temp.expect_error($q$select public.agent_status('idle', null, null, 'opus', 'max')$q$, 'permission denied');
+reset role;
+
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
 select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from unnest(array[

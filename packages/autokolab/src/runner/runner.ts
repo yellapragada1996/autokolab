@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, MODEL_CHANGE_PREFIX, ProjectView, untriaged, type AgentStatus, type Comment, type Ticket } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, MODEL_CHANGE_PREFIX, ProjectView, untriaged, type AgentStatus, type Comment, type RanWith, type Ticket } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -287,7 +287,7 @@ export class Runner {
     const mcp = { command: process.execPath, args: mcpArgs(this.cfg.agent_id, room.name) };
     const choice = await this.modelChoice();
     const inv = this.cfg.engine === "claude" ? claudeInvocation(this.cfg, mcp, null, choice) : codexInvocation(this.cfg, mcp, null, clone, choice);
-    const result = await runEngine({ cfg: this.cfg, inv, cwd: clone, prompt, logFile: join(this.logDir, `${room.name}-hello.log`), signal: new AbortController().signal });
+    const result = await runEngine({ cfg: this.cfg, inv, cwd: clone, prompt, logFile: join(this.logDir, `${room.name}-hello.log`), signal: new AbortController().signal, onModel: this.reportModel(choice) });
     const text = redactSecrets(result.finalText.trim()).slice(0, 4000);
     if (result.isError || !text) throw new Error(text || "no reply");
     await this.ak.room(room).post({ kind: "chat", body: text });
@@ -509,7 +509,7 @@ export class Runner {
     let result;
     const startedAt = Date.now();
     try {
-      result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal });
+      result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
     } finally {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000);
@@ -619,13 +619,45 @@ export class Runner {
   }
 
   /** What this agent is doing, for the board and People. Quietly does nothing for v1-only agents. */
-  private async setStatus(status: AgentStatus, note: string | null = null, ticketId: string | null = null): Promise<void> {
-    if (!this.isAgentRow || !this.projects.length) return;
-    try {
-      await this.projects[0].status(status, note, ticketId);
-    } catch (e) {
-      if ((e as Error).message.includes("only agents")) this.isAgentRow = false;
-    }
+  private setStatus(status: AgentStatus, note: string | null = null, ticketId: string | null = null): Promise<void> {
+    return this.inOrder(async () => {
+      if (!this.isAgentRow || !this.projects.length) return;
+      try {
+        await this.projects[0].status(status, note, ticketId);
+      } catch (e) {
+        if ((e as Error).message.includes("only agents")) this.isAgentRow = false;
+      }
+    });
+  }
+
+  /** Status writes one at a time, so a model report can't put back a status that just changed. */
+  private statusQueue: Promise<void> = Promise.resolve();
+  private inOrder(fn: () => Promise<void>): Promise<void> {
+    this.statusQueue = this.statusQueue.then(fn, fn);
+    return this.statusQueue;
+  }
+
+  /**
+   * Report the model and effort a run launches with (AK-11), keeping whatever the agent says it's
+   * doing. Returns the engine's onModel: when the tool says which model it's actually running
+   * (Claude Code's init event), that replaces the one we asked for. Effort is never reported back,
+   * so it stays the one we passed.
+   */
+  private reportModel(choice: ModelChoice): (model: string) => void {
+    const ran: RanWith = { model: choice.model ?? "", effort: choice.effort ?? "" };
+    const report = (r: RanWith) =>
+      void this.inOrder(async () => {
+        if (!this.isAgentRow || !this.projects.length) return;
+        try {
+          const { data, error } = await this.ak.sb.from("agents").select("status, status_note, current_ticket_id").eq("id", this.ak.me.id).maybeSingle();
+          if (error) throw new Error(error.message);
+          if (data) await this.projects[0].status(data.status as AgentStatus, data.status_note, data.current_ticket_id, r);
+        } catch (e) {
+          this.log(`Couldn't report my model: ${(e as Error).message}`);
+        }
+      });
+    report(ran);
+    return (model) => report({ ...ran, model });
   }
 
   /** Keep "last seen" fresh without changing what the agent said it's doing. */
@@ -678,6 +710,7 @@ export class Runner {
     this.current = { what: t.key, abort };
     await ak.heartbeat("working").catch(() => undefined);
     await this.setStatus("planning", job.comments.length ? "Reading new comments" : "Reading the ticket", t.id);
+    const onModel = this.reportModel(choice);
     this.log(`Working on ${t.key} in ${p.project.name} (${worktree.branch})${job.comments.length ? " after new comments" : ""}${resume ? ", continuing session" : ""}.`);
 
     // Progress shows on the board even when the agent can't use the AutoKolab tools: its own
@@ -711,6 +744,7 @@ export class Runner {
         prompt,
         logFile,
         signal: abort.signal,
+        onModel,
         onPlan: (plan, run) => {
           sawPlan = true;
           if (!run.reportsSteps) pendingPlan = plan;
@@ -816,7 +850,7 @@ export class Runner {
     let result: EngineRun;
     const startedAt = Date.now();
     try {
-      result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal });
+      result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
     } finally {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000);
