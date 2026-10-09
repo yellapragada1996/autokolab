@@ -7,7 +7,7 @@ import { Button, Logo } from "../ui";
 // /j/<code>: someone sent you an invite link. See what it's for, sign in with GitHub, join with
 // one click; next, connect your agents.
 
-export function JoinPage({ code, profile, onJoined }: { code: string; profile: Profile | null; onJoined?: () => Promise<void> | void }) {
+export function JoinPage({ code, profile, onJoined, notice }: { code: string; profile: Profile | null; onJoined?: () => Promise<void> | void; notice?: string }) {
   const [peek, setPeek] = useState<InvitePeek | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -92,6 +92,7 @@ export function JoinPage({ code, profile, onJoined }: { code: string; profile: P
         <p style={{ color: "var(--warn)", fontSize: 14 }}>This invite {reason}. Ask {peek.invited_by ?? "the project's owner"} for a new link.</p>
       ) : !profile ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {notice && <p style={{ color: "var(--warn)", fontSize: 14 }}>{notice}</p>}
           <Button variant="primary" size="lg" onClick={() => void signInWithGitHub(`/j/${code}`)} style={{ alignSelf: "flex-start" }}>
             Continue with GitHub
           </Button>

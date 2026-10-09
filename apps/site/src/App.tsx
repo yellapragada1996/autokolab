@@ -21,10 +21,17 @@ export function App() {
       const preview = new URLSearchParams(location.search).get("preview");
       if (preview) return setView(previewView(preview));
     }
-    const { data } = await supabase.auth.getSession();
-    if (!data.session) return setView({ kind: "signed-out", error: oauthError() });
+    let session;
     try {
-      const profile = await myProfile();
+      // A sign-in that comes back with a code this browser can't use (started in another tab or
+      // on another address) can leave the auth library waiting forever. Don't wait forever.
+      session = (await withTimeout(supabase.auth.getSession(), 8000)).data.session;
+    } catch {
+      return restartSignIn("Sign-in didn't finish. Please try again.");
+    }
+    if (!session) return setView({ kind: "signed-out", error: oauthError() ?? takeSignInNotice() });
+    try {
+      const profile = await withTimeout(myProfile(), 15000);
       setView(profile.onboarded ? { kind: "app", profile } : { kind: "welcome", profile });
     } catch (e) {
       setView({ kind: "signed-out", error: (e as Error).message });
@@ -56,7 +63,7 @@ export function App() {
   if (view.kind === "signed-out") {
     // An invite link opened before signing in: show what it's for, then sign in from there.
     const r = parse(location.pathname);
-    if (r.view === "join" && !view.error) return <JoinPage code={r.code} profile={null} />;
+    if (r.view === "join") return <JoinPage code={r.code} profile={null} notice={view.error} />;
     return <SignIn error={view.error} />;
   }
   if (view.kind === "welcome") {
@@ -140,6 +147,33 @@ function Projects({ profile, onSignOut, onEditProfile }: { profile: Profile; onS
 
 function Centered({ children }: { children: React.ReactNode }) {
   return <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", gap: 14, alignItems: "center", justifyContent: "center", padding: 24, color: "var(--faint)", textAlign: "center" }}>{children}</div>;
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([p, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out")), ms))]);
+}
+
+const NOTICE = "autokolab.signInNotice";
+
+/** Throw away a half-finished sign-in and load the page fresh, with a note to show. */
+function restartSignIn(message: string): void {
+  try {
+    for (const k of Object.keys(localStorage)) if (k.startsWith("sb-") && k.includes("code-verifier")) localStorage.removeItem(k);
+    sessionStorage.setItem(NOTICE, message);
+  } catch {
+    /* private mode */
+  }
+  location.replace(location.pathname);
+}
+
+function takeSignInNotice(): string | undefined {
+  try {
+    const m = sessionStorage.getItem(NOTICE) ?? undefined;
+    sessionStorage.removeItem(NOTICE);
+    return m;
+  } catch {
+    return undefined;
+  }
 }
 
 /** GitHub sends errors back in the URL (e.g. the person pressed Cancel). */
