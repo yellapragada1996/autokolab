@@ -3,7 +3,7 @@ import { createWriteStream, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import type { RunnerConfig } from "./config.js";
+import { EFFORTS, type Effort, type RunnerConfig } from "./config.js";
 
 // Starts Claude Code or Codex headless with the task as its prompt, using their supported
 // non-interactive modes (claude -p, codex exec). The prompt goes in on stdin.
@@ -63,7 +63,24 @@ export function claudeDenyRules(cfg: RunnerConfig): string[] {
   return [...new Set([...rules, ...cfg.claude.disallowed_tools])];
 }
 
-export function claudeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null): EngineInvocation {
+/** The model and effort one run uses; unset means the tool's own default. */
+export interface ModelChoice {
+  model?: string;
+  effort?: Effort;
+}
+
+/**
+ * Database first (set on AutoKolab by the owner or the project's lead), then the toml, then the
+ * tool's own default, value by value. With model_locked the toml has the last word (DEC-18).
+ */
+export function chooseModel(cfg: RunnerConfig, fromDb: { model: string | null; effort: string | null } | null): ModelChoice {
+  const toml = cfg.engine === "claude" ? cfg.claude : cfg.codex;
+  const db = cfg.model_locked ? null : fromDb;
+  const effort = db?.effort && (EFFORTS as readonly string[]).includes(db.effort) ? (db.effort as Effort) : toml.effort;
+  return { model: db?.model || toml.model, effort };
+}
+
+export function claudeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, choice: ModelChoice = chooseModel(cfg, null)): EngineInvocation {
   const tempDir = mkdtempSync(join(tmpdir(), "autokolab-"));
   const mcpConfig = join(tempDir, "mcp.json");
   writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { autokolab: { command: mcp.command, args: mcp.args } } }));
@@ -75,7 +92,9 @@ export function claudeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSessio
     "--max-turns", String(cfg.limits.max_turns),
     "--mcp-config", mcpConfig,
   ];
-  if (cfg.claude.model) args.push("--model", cfg.claude.model);
+  // On every launch, resumes included: a resumed session switches to the model given here (AK-7).
+  if (choice.model) args.push("--model", choice.model);
+  if (choice.effort) args.push("--effort", choice.effort);
   if (resumeSession) args.push("--resume", resumeSession);
   args.push("--allowedTools", ...cfg.claude.allowed_tools, "mcp__autokolab");
   args.push("--disallowedTools", ...claudeDenyRules(cfg));
@@ -84,7 +103,7 @@ export function claudeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSessio
 
 const tomlStr = (s: string) => JSON.stringify(s); // JSON strings are valid TOML basic strings
 
-export function codexInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, cwd: string): EngineInvocation {
+export function codexInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, cwd: string, choice: ModelChoice = chooseModel(cfg, null)): EngineInvocation {
   const tempDir = mkdtempSync(join(tmpdir(), "autokolab-"));
   const lastMessageFile = join(tempDir, "last-message.txt");
   // Settings go through -c, which both `codex exec` and `codex exec resume` accept
@@ -95,7 +114,10 @@ export function codexInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession
     "-c", `sandbox_workspace_write.network_access=${cfg.codex.network}`,
     "-c", `mcp_servers.autokolab.command=${tomlStr(mcp.command)}`,
     "-c", `mcp_servers.autokolab.args=[${mcp.args.map(tomlStr).join(",")}]`,
-    ...(cfg.codex.model ? ["-c", `model=${tomlStr(cfg.codex.model)}`] : []),
+    // Model and effort go with the other -c settings, after `resume` on a resume. Whether Codex
+    // honours them there or only before `resume` is being checked in AK-20.
+    ...(choice.model ? ["-c", `model=${tomlStr(choice.model)}`] : []),
+    ...(choice.effort ? ["-c", `model_reasoning_effort=${tomlStr(choice.effort)}`] : []),
   ];
   const common = ["--json", "--skip-git-repo-check", ...config, "--output-last-message", lastMessageFile];
   const args = resumeSession

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Member, Message, Room } from "../src/core/types.js";
 import { parseRunnerConfig, runnerTemplate } from "../src/runner/config.js";
-import { claudeDenyRules, claudeInvocation, codexInvocation, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
+import { chooseModel, claudeDenyRules, claudeInvocation, codexInvocation, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
 import { installHook } from "../src/runner/githook.js";
 import { buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "../src/runner/prompt.js";
 import { needsRunner } from "../src/setup/connect.js";
@@ -379,6 +379,60 @@ describe("engine command lines", () => {
     expect(next.args).not.toContain("-s");
     expect(next.args).toContain('sandbox_mode="workspace-write"');
     expect(next.args.slice(-2)).toEqual(["thread-9", "-"]);
+  });
+});
+
+describe("model and effort", () => {
+  const codexCfg = (extra = "") => parseRunnerConfig(`agent_id = "${AID}"\nengine = "codex"\n${extra}`, "lee-codex");
+  const db = (model: string | null, effort: string | null) => ({ model, effort });
+
+  it("takes AutoKolab's value first, then the toml, then the tool's default, value by value", () => {
+    const toml = cfgFor(`[claude]\nmodel = "sonnet"\neffort = "medium"`);
+    expect(chooseModel(toml, db("opus", "high"))).toEqual({ model: "opus", effort: "high" });
+    expect(chooseModel(toml, db("opus", null))).toEqual({ model: "opus", effort: "medium" });
+    expect(chooseModel(toml, db(null, "low"))).toEqual({ model: "sonnet", effort: "low" });
+    expect(chooseModel(toml, null)).toEqual({ model: "sonnet", effort: "medium" });
+    expect(chooseModel(cfgFor(), db(null, null))).toEqual({ model: undefined, effort: undefined });
+    expect(chooseModel(codexCfg(`[codex]\nmodel = "gpt-5-codex"\neffort = "xhigh"`), db(null, null))).toEqual({ model: "gpt-5-codex", effort: "xhigh" });
+  });
+  it("model_locked keeps the toml's values, whatever AutoKolab says", () => {
+    const locked = cfgFor(`model_locked = true\n[claude]\nmodel = "haiku"`);
+    expect(locked.model_locked).toBe(true);
+    expect(cfgFor().model_locked).toBe(false);
+    expect(chooseModel(locked, db("opus", "max"))).toEqual({ model: "haiku", effort: undefined });
+  });
+  it("the toml accepts the five effort levels only", () => {
+    for (const e of ["low", "medium", "high", "xhigh", "max"]) expect(cfgFor(`[claude]\neffort = "${e}"`).claude.effort).toBe(e);
+    expect(() => cfgFor(`[claude]\neffort = "ultracode"`)).toThrow(/effort/);
+    expect(() => codexCfg(`[codex]\neffort = "ultra"`)).toThrow(/effort/);
+  });
+  it("the template shows the new keys and no longer says a restart is needed for them", () => {
+    const t = runnerTemplate(AID, "claude");
+    expect(t).toMatch(/^# model_locked = true /m);
+    expect(t).toMatch(/^# effort = "high" /m);
+    expect(t).toMatch(/set on AutoKolab .* apply from the next run, no restart/s);
+    expect(parseRunnerConfig(t.replace("# model_locked", "model_locked").replace(/^# effort/gm, "effort"), "x").model_locked).toBe(true);
+  });
+  it("claude: --model and --effort on every launch, before --resume", () => {
+    for (const resume of [null, "sess-1"]) {
+      const a = claudeInvocation(cfgFor(), mcp, resume, { model: "opus", effort: "xhigh" }).args;
+      expect(a.slice(a.indexOf("--model"), a.indexOf("--model") + 4)).toEqual(["--model", "opus", "--effort", "xhigh"]);
+      if (resume) expect(a.indexOf("--resume")).toBeGreaterThan(a.indexOf("--effort"));
+    }
+    const plain = claudeInvocation(cfgFor(), mcp, null, {}).args;
+    expect(plain).not.toContain("--model");
+    expect(plain).not.toContain("--effort");
+    // Without a choice, the toml's values are used.
+    expect(claudeInvocation(cfgFor(`[claude]\nmodel = "sonnet"\neffort = "low"`), mcp, null).args).toEqual(expect.arrayContaining(["--model", "sonnet", "--effort", "low"]));
+  });
+  it("codex: model and model_reasoning_effort through -c on every launch, resumes included", () => {
+    for (const resume of [null, "thread-9"]) {
+      const a = codexInvocation(codexCfg(), mcp, resume, "/tmp/wt", { model: "gpt-5-codex", effort: "high" }).args;
+      expect(a).toEqual(expect.arrayContaining(["-c", 'model="gpt-5-codex"', "-c", 'model_reasoning_effort="high"']));
+      if (resume) expect(a.indexOf('model="gpt-5-codex"')).toBeGreaterThan(a.indexOf("resume"));
+    }
+    const plain = codexInvocation(codexCfg(), mcp, null, "/tmp/wt", {}).args;
+    expect(plain.some((x) => x.startsWith("model"))).toBe(false);
   });
 });
 
