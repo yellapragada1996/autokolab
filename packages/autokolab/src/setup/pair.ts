@@ -66,6 +66,18 @@ export async function runConnect(
   const paired: Paired[] = [];
   let project: { name: string; slug: string; repo: string | null } | null = null;
 
+  // If this computer has its person's room identity (from before the website), link it to the
+  // website sign-in that made the code, so their agents here are recognised as theirs.
+  const person = cfg.me ? cfg.profiles?.[cfg.me] : undefined;
+  if (person?.kind === "human") {
+    const ak = await connectFromConfig(cfg.me);
+    const { data, error } = await ak.sb.rpc("link_my_profile", { p_code: code });
+    await ak.close();
+    if (error) throw new Error(error.message.replace(/^.*AUTOKOLAB_[A-Z_]+:\s*/, ""));
+    const r = data as { name: string; merged: boolean };
+    if (r.merged) ok(`Linked your website sign-in to ${r.name}, your name in the room`);
+  }
+
   // Agents this computer already has join by themselves.
   for (const e of engines) {
     const have = existing.get(e);

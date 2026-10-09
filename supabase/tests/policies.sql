@@ -400,6 +400,48 @@ set role service_role;
 select pg_temp.expect_error($q$select public.pair_new_agent((select code from pair), gen_random_uuid(), 'claude', 'late')$q$, 'expired');
 reset role;
 
+-- ------------------------------------------------ one person, one identity (schema 8)
+reset role;
+-- Lee had a room identity (member 004, owns lee-claude and lee-codex) before the website. Lee signs
+-- in with GitHub (b5), joins Joinly with a link (the website makes a second identity), then runs the
+-- connect line on the computer that has the old identity.
+insert into auth.users (id, raw_app_meta_data, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000b5', '{"provider":"github"}', '{"user_name":"lee-gh"}');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b4';
+create temp table inv2 as select * from public.create_invite((select id from public.projects where slug = 'joinly'));
+grant select on inv2 to public;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b5';
+select public.accept_invite((select code from inv2));
+select public.web_post((select room_id from public.projects where slug = 'joinly'), 'hi from the website');
+create temp table pair2 as select * from public.create_pairing((select id from public.projects where slug = 'joinly'));
+grant select on pair2 to public;
+reset role;
+select pg_temp.expect((select name from public.members where profile_id = '00000000-0000-0000-0000-0000000000b5') = 'lee-gh', 'joining made a website identity');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000004';
+select pg_temp.expect((public.link_my_profile((select code from pair2))) ->> 'merged' = 'true', 'the old identity links and merges the website one');
+reset role;
+select pg_temp.expect((select id from public.members where profile_id = '00000000-0000-0000-0000-0000000000b5') = '00000000-0000-0000-0000-000000000004', 'the sign-in now points at the old identity');
+select pg_temp.expect(not exists (select 1 from public.members where name = 'lee-gh'), 'the duplicate is gone');
+select pg_temp.expect((select sender_id from public.messages where body = 'hi from the website') = '00000000-0000-0000-0000-000000000004', 'its messages moved over');
+select pg_temp.expect(exists (select 1 from public.room_members rm join public.projects p on p.room_id = rm.room_id where p.slug = 'joinly' and rm.member_id = '00000000-0000-0000-0000-000000000004'), 'and its room');
+set role authenticated;
+reset role;
+insert into public.members (id, name, kind, owner_id, client) values ('00000000-0000-0000-0000-0000000000d3', 'lee-claude-2', 'agent', '00000000-0000-0000-0000-000000000004', 'claude-code');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000d3';
+select pg_temp.expect((public.pair_existing_agent((select code from pair2))) ->> 'name' = 'lee-claude-2', 'then Lee''s existing agent joins');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000003';
+select pg_temp.expect_error($q$select public.pair_existing_agent((select code from pair2))$q$, 'retired');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000004';
+select pg_temp.expect((public.link_my_profile((select code from pair2))) ->> 'merged' = 'false', 'linking again is harmless');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000002';
+select pg_temp.expect_error($q$select public.link_my_profile((select code from pair2))$q$, 'someone else');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000003';
+select pg_temp.expect_error($q$select public.link_my_profile((select code from pair2))$q$, 'only a person');
+reset role;
+
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
 select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from unnest(array[
