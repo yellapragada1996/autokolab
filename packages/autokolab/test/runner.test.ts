@@ -421,20 +421,23 @@ describe("model and effort", () => {
   const codexCfg = (extra = "") => parseRunnerConfig(`agent_id = "${AID}"\nengine = "codex"\n${extra}`, "lee-codex");
   const db = (model: string | null, effort: string | null) => ({ model, effort });
 
-  it("takes AutoKolab's value first, then the toml, then the tool's default, value by value", () => {
-    const toml = cfgFor(`[claude]\nmodel = "sonnet"\neffort = "medium"`);
-    expect(chooseModel(toml, db("opus", "high"))).toEqual({ model: "opus", effort: "high" });
-    expect(chooseModel(toml, db("opus", null))).toEqual({ model: "opus", effort: "medium" });
+  it("takes AutoKolab's value first, then the toml, then the tool's default model and medium effort", () => {
+    const toml = cfgFor(`[claude]\nmodel = "sonnet"\neffort = "high"`);
+    expect(chooseModel(toml, db("opus", "low"))).toEqual({ model: "opus", effort: "low" });
+    expect(chooseModel(toml, db("opus", null))).toEqual({ model: "opus", effort: "high" });
     expect(chooseModel(toml, db(null, "low"))).toEqual({ model: "sonnet", effort: "low" });
-    expect(chooseModel(toml, null)).toEqual({ model: "sonnet", effort: "medium" });
-    expect(chooseModel(cfgFor(), db(null, null))).toEqual({ model: undefined, effort: undefined });
+    expect(chooseModel(toml, null)).toEqual({ model: "sonnet", effort: "high" });
+    expect(chooseModel(cfgFor(), db(null, null))).toEqual({ model: undefined, effort: "medium" });
+    expect(chooseModel(cfgFor(), null)).toEqual({ model: undefined, effort: "medium" });
+    expect(chooseModel(codexCfg(), db(null, null))).toEqual({ model: undefined, effort: "medium" });
     expect(chooseModel(codexCfg(`[codex]\nmodel = "gpt-5-codex"\neffort = "xhigh"`), db(null, null))).toEqual({ model: "gpt-5-codex", effort: "xhigh" });
   });
   it("model_locked keeps the toml's values, whatever AutoKolab says", () => {
     const locked = cfgFor(`model_locked = true\n[claude]\nmodel = "haiku"`);
     expect(locked.model_locked).toBe(true);
     expect(cfgFor().model_locked).toBe(false);
-    expect(chooseModel(locked, db("opus", "max"))).toEqual({ model: "haiku", effort: undefined });
+    expect(chooseModel(locked, db("opus", "max"))).toEqual({ model: "haiku", effort: "medium" });
+    expect(chooseModel(cfgFor(`model_locked = true\n[claude]\neffort = "low"`), db(null, "max"))).toEqual({ model: undefined, effort: "low" });
   });
   it("the toml accepts the five effort levels only", () => {
     for (const e of ["low", "medium", "high", "xhigh", "max"]) expect(cfgFor(`[claude]\neffort = "${e}"`).claude.effort).toBe(e);
@@ -459,6 +462,12 @@ describe("model and effort", () => {
     expect(plain).not.toContain("--effort");
     // Without a choice, the toml's values are used.
     expect(claudeInvocation(cfgFor(`[claude]\nmodel = "sonnet"\neffort = "low"`), mcp, null).args).toEqual(expect.arrayContaining(["--model", "sonnet", "--effort", "low"]));
+    // Nothing set anywhere: no --model, but --effort medium, resumes included (AK-23).
+    for (const resume of [null, "sess-1"]) {
+      const a = claudeInvocation(cfgFor(), mcp, resume).args;
+      expect(a).not.toContain("--model");
+      expect(a.slice(a.indexOf("--effort"), a.indexOf("--effort") + 2)).toEqual(["--effort", "medium"]);
+    }
   });
   it("codex: model and model_reasoning_effort through -c on every launch, resumes included", () => {
     for (const resume of [null, "thread-9"]) {
@@ -468,6 +477,12 @@ describe("model and effort", () => {
     }
     const plain = codexInvocation(codexCfg(), mcp, null, "/tmp/wt", {}).args;
     expect(plain.some((x) => x.startsWith("model"))).toBe(false);
+    // Nothing set anywhere: medium effort, no model, resumes included (AK-23).
+    for (const resume of [null, "thread-9"]) {
+      const a = codexInvocation(codexCfg(), mcp, resume, "/tmp/wt").args;
+      expect(a).toEqual(expect.arrayContaining(["-c", 'model_reasoning_effort="medium"']));
+      expect(a.some((x) => x.startsWith("model="))).toBe(false);
+    }
   });
 });
 
