@@ -525,6 +525,79 @@ set role anon;
 select pg_temp.expect_error($q$select public.agent_status('idle', null, null, 'opus', 'max')$q$, 'permission denied');
 reset role;
 
+-- ------------------------------------------------ merge setting and approvals (schema 12)
+reset role;
+-- Modelz (f1): Octo (b1) owns it, Mona (b2) is a person member, e1 leads, e2 and e4 are workers.
+-- Zed (b4) is a person outside it; e3 leads another project.
+insert into public.project_members (project_id, actor_id, actor_type, role) values
+  ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000b1', 'human', 'owner'),
+  ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000b2', 'human', 'member');
+insert into public.tickets (id, project_id, number, key, title, reporter_id, pr_url) values
+  ('00000000-0000-0000-0000-0000000000a9', '00000000-0000-0000-0000-0000000000f1', 1, 'MZ-1', 'Merge me',
+   '00000000-0000-0000-0000-0000000000e1', 'https://github.com/octo/modelz/pull/1');
+select pg_temp.expect((select merge_policy = 'auto_safe' from public.projects where slug = 'modelz'), 'projects start on auto_safe');
+select pg_temp.expect((select approved_sha is null and merge_ok_by is null from public.tickets where key = 'MZ-1'), 'tickets start unapproved');
+set role authenticated;
+-- only the owner sets the policy
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+select pg_temp.expect((public.set_merge_policy('00000000-0000-0000-0000-0000000000f1', 'ask')).merge_policy = 'ask', 'the owner sets the merge policy');
+select pg_temp.expect_error($q$select public.set_merge_policy('00000000-0000-0000-0000-0000000000f1', 'yolo')$q$, 'AUTOKOLAB_BAD_POLICY');
+select pg_temp.expect_error($q$update public.projects set merge_policy = 'auto_all' where slug = 'modelz'$q$, 'permission denied');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect_error($q$select public.set_merge_policy('00000000-0000-0000-0000-0000000000f1', 'auto_all')$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select pg_temp.expect_error($q$select public.set_merge_policy('00000000-0000-0000-0000-0000000000f1', 'auto_all')$q$, 'AUTOKOLAB_FORBIDDEN');
+-- the lead approves an exact commit; a bad sha is refused
+select pg_temp.expect((select approved_sha = repeat('a1', 20) and approved_by = '00000000-0000-0000-0000-0000000000e1' and approved_at is not null
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('a1', 20))), 'the lead approves a commit');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', 'a1b2c3d')$q$, 'AUTOKOLAB_BAD_SHA');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('A1', 20))$q$, 'AUTOKOLAB_BAD_SHA');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', 'main')$q$, 'AUTOKOLAB_BAD_SHA');
+-- agents can't OK a merge, not even the lead
+select pg_temp.expect_error($q$select public.allow_merge('00000000-0000-0000-0000-0000000000a9')$q$, 'AUTOKOLAB_FORBIDDEN');
+-- workers, other projects' leads and outsiders can't approve
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e4';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('b2', 20))$q$, 'AUTOKOLAB_FORBIDDEN');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', null)$q$, 'AUTOKOLAB_FORBIDDEN');
+select pg_temp.expect_error($q$select public.allow_merge('00000000-0000-0000-0000-0000000000a9')$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e3';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('b2', 20))$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b4';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('b2', 20))$q$, 'AUTOKOLAB_FORBIDDEN');
+select pg_temp.expect_error($q$select public.allow_merge('00000000-0000-0000-0000-0000000000a9')$q$, 'AUTOKOLAB_FORBIDDEN');
+select pg_temp.expect_error($q$select public.set_merge_policy('00000000-0000-0000-0000-0000000000f1', 'ask')$q$, 'AUTOKOLAB_FORBIDDEN');
+select pg_temp.expect_error($q$select public.approve_ticket(gen_random_uuid(), repeat('b2', 20))$q$, 'AUTOKOLAB_FORBIDDEN');
+-- a person in the project approves and OKs the merge
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect((select approved_sha = repeat('c3', 20) and approved_by = '00000000-0000-0000-0000-0000000000b2'
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('c3', 20))), 'a person member approves');
+select pg_temp.expect((select merge_ok_by = '00000000-0000-0000-0000-0000000000b2' and merge_ok_at is not null
+  from public.allow_merge('00000000-0000-0000-0000-0000000000a9')), 'a person member OKs the merge');
+-- no direct writes, not even by members who can edit the ticket
+select pg_temp.expect_error($q$update public.tickets set approved_sha = repeat('d4', 20) where key = 'MZ-1'$q$, 'permission denied');
+select pg_temp.expect_error($q$update public.tickets set approved_by = null, approved_at = null where key = 'MZ-1'$q$, 'permission denied');
+select pg_temp.expect_error($q$update public.tickets set merge_ok_by = '00000000-0000-0000-0000-0000000000b2', merge_ok_at = now() where key = 'MZ-1'$q$, 'permission denied');
+-- the same PR link keeps the approval; a new one clears both, and history says so
+update public.tickets set status = 'review', pr_url = 'https://github.com/octo/modelz/pull/1' where key = 'MZ-1';
+select pg_temp.expect((select approved_sha = repeat('c3', 20) and merge_ok_by is not null from public.tickets where key = 'MZ-1'), 'the same PR link keeps the approval');
+update public.tickets set pr_url = 'https://github.com/octo/modelz/pull/2' where key = 'MZ-1';
+select pg_temp.expect((select approved_sha is null and approved_by is null and approved_at is null and merge_ok_by is null and merge_ok_at is null
+  from public.tickets where key = 'MZ-1'), 'a new PR link clears the approval and merge OK');
+select pg_temp.expect((select count(*) from public.ticket_events where ticket_id = '00000000-0000-0000-0000-0000000000a9'
+  and kind in ('approval', 'merge_ok') and data ->> 'reason' = 'pr_changed') = 2, 'history records the cleared approval and merge OK');
+select pg_temp.expect((select count(*) from public.ticket_events where ticket_id = '00000000-0000-0000-0000-0000000000a9' and kind = 'approval') = 3, 'history records each approval');
+-- null clears an approval
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('e5', 20));
+select pg_temp.expect((select approved_sha is null and approved_by is null and approved_at is null
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000a9', null)), 'null clears the approval');
+set role anon;
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('a1', 20))$q$, 'permission denied');
+select pg_temp.expect_error($q$select public.allow_merge('00000000-0000-0000-0000-0000000000a9')$q$, 'permission denied');
+select pg_temp.expect_error($q$select public.set_merge_policy('00000000-0000-0000-0000-0000000000f1', 'ask')$q$, 'permission denied');
+reset role;
+select pg_temp.expect((select merge_policy = 'ask' from public.projects where slug = 'modelz'), 'refused calls left the policy alone');
+
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
 select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from unnest(array[
