@@ -19,12 +19,14 @@ export function formatItem(ak: AutoKolab, b: BulletinItem): string {
   return `#${b.id} [${b.kind}/${b.state}] ${b.title}${who}${refs}${body}`;
 }
 
-export function formatMember(ak: { nameOf(id: string): string }, m: Member | RoomMemberView): string {
+/** `model`: an agent's model and effort line from its project (ProjectView.modelLine), if known. */
+export function formatMember(ak: { nameOf(id: string): string }, m: Member | RoomMemberView, model?: string | null): string {
   const seen = m.last_seen_at ? ago(m.last_seen_at) : "never";
   const role = "role" in m ? `${m.role}${m.can_instruct ? ", can instruct" : ""}` : m.kind;
   const runner = m.kind === "agent" && m.runner_state !== "offline" ? `, runner ${m.paused ? "paused" : m.runner_state}` : m.paused ? ", paused" : "";
   const owner = m.kind === "agent" ? `; ${ak.nameOf(m.owner_id)}'s agent` : "";
-  return `${m.name} (${role}${runner}${owner}; seen ${seen})`;
+  const runs = m.kind === "agent" && model ? `; ${model}` : "";
+  return `${m.name} (${role}${runner}${owner}${runs}; seen ${seen})`;
 }
 
 export function formatWork(ak: AutoKolab, e: WorkEntry): string {
