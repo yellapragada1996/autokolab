@@ -16,10 +16,12 @@ import {
   type Ticket,
   type TicketEvent,
   type TicketPatch,
+  type Status,
 } from "../lib/data";
 import { onNav } from "../lib/router";
 import { Button } from "../ui";
-import { ago, KeyText, Label, Markdown, Picker, PriorityIcon, StatusIcon, statusColor, StepProgress, TypeTag, Who } from "./bits";
+import { WhoMark } from "./Board";
+import { ago, EpicLozenge, KeyText, Label, Markdown, Picker, PriorityIcon, StatusLozenge, StepProgress, TypeIcon, TypeTag, Who } from "./bits";
 import type { Workspace } from "./useWorkspace";
 
 // One ticket (spec §11.4): where it is, the conversation and history, what done means, what it's
@@ -67,140 +69,209 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
   const parent = t.parent_id ? ws.byId.get(t.parent_id) : undefined;
   const assignee = ws.agentOf(t.assignee_id);
   const steps = detail?.steps ?? ws.steps.get(t.id) ?? [];
+  const kids = ws.childrenOf(t.id);
+  const kidsDone = kids.filter((k) => k.status === "done").length;
+  const crumb: React.CSSProperties = { color: "var(--muted)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 };
+  const plain: React.CSSProperties = { border: "1px solid transparent", background: "transparent", padding: "0 6px", marginLeft: -6 };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <nav aria-label="Breadcrumb" style={{ display: "flex", gap: 8, fontSize: 13, color: "var(--faint)", alignItems: "center" }}>
-        <a href={`/p/${ws.project.slug}/board`} onClick={onNav({ view: "board", project: ws.project.slug })} style={{ color: "var(--muted)" }}>
-          Board
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <nav aria-label="Breadcrumb" style={{ display: "flex", gap: 8, fontSize: 13, color: "var(--faint)", alignItems: "center", flexWrap: "wrap" }}>
+        <a href={`/p/${ws.project.slug}/board`} onClick={onNav({ view: "board", project: ws.project.slug })} style={crumb}>
+          {ws.project.name}
         </a>
         <span>/</span>
         {parent && (
           <>
-            <a href={`/p/${ws.project.slug}/t/${parent.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: parent.key })} style={{ color: "var(--muted)" }}>
+            <a href={`/p/${ws.project.slug}/t/${parent.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: parent.key })} style={crumb}>
+              <TypeIcon type="epic" size={14} />
               {parent.key}
             </a>
             <span>/</span>
           </>
         )}
-        <KeyText t={t} />
+        <span style={{ ...crumb, color: "var(--text-2)" }}>
+          <TypeIcon type={t.type} size={14} />
+          <KeyText t={t} style={{ color: "inherit" }} />
+        </span>
       </nav>
 
-      <EditableTitle value={t.title} onSave={(title) => save({ title })} />
+      <div style={{ display: "flex", gap: 32, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ flex: "999 1 520px", minWidth: 0, display: "flex", flexDirection: "column", gap: 22 }}>
+          <EditableTitle value={t.title} onSave={(title) => save({ title })} />
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-        <Picker label="Status" value={t.status} options={[...STATUSES, { id: "canceled", label: "Canceled" }]} onChange={(status) => save({ status })} render={<><StatusIcon status={t.status} /><span style={{ color: statusColor[t.status] }}>{statusLabel(t.status)}</span></>} />
-        <Picker label="Assignee" value={t.assignee_id ?? ""} options={[{ id: "", label: "Unassigned" }, ...ws.people.members.map((m) => ({ id: m.actor_id, label: ws.nameOf(m.actor_id) + (m.actor_type === "agent" ? " (agent)" : "") }))]} onChange={(id) => save({ assignee_id: id || null, ...(id && ws.agentOf(id) && t.status === "backlog" ? { status: "ready" as const } : {}) })} render={<Who ws={ws} id={t.assignee_id} size={18} you={me} />} />
-        <Picker label="Priority" value={t.priority} options={PRIORITIES} onChange={(priority) => save({ priority })} render={<><PriorityIcon priority={t.priority} /><span>{PRIORITIES.find((p) => p.id === t.priority)!.label}</span></>} />
-        <Picker label="Type" value={t.type} options={TYPES} onChange={(type) => save({ type })} render={<TypeTag type={t.type} />} />
-        {t.type !== "epic" && (
-          <Picker
-            label="Epic"
-            value={t.parent_id ?? ""}
-            options={[{ id: "", label: "No epic" }, ...ws.tickets.filter((x) => x.type === "epic" && x.id !== t.id).map((e) => ({ id: e.id, label: `${e.key} · ${e.title}` }))]}
-            onChange={(id) => save({ parent_id: id || null })}
-            render={<span style={{ color: parent ? "var(--text-2)" : "var(--faint)" }}>{parent ? `Epic ${parent.key}` : "No epic"}</span>}
-          />
-        )}
-        <LabelsEditor labels={t.labels} onSave={(labels) => save({ labels })} />
-      </div>
+          {t.needs_human && (
+            <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 8, background: "var(--warn-bg)", border: "1px solid var(--warn-line)" }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--warn)", flex: "none" }} />
+              <span style={{ flex: 1, fontSize: 14 }}>
+                <strong style={{ color: "var(--warn)" }}>Needs you.</strong> {t.needs_human}
+              </span>
+              <Button size="sm" variant="secondary" onClick={() => save({ needs_human: null })}>
+                Resolved
+              </Button>
+            </div>
+          )}
+          {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
 
-      {t.needs_human && (
-        <div style={{ display: "flex", gap: 12, alignItems: "center", padding: "14px 16px", borderRadius: 12, background: "var(--warn-bg)", border: "1px solid var(--warn-line)" }}>
-          <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--warn)", flex: "none" }} />
-          <span style={{ flex: 1, fontSize: 14 }}>
-            <strong style={{ color: "var(--warn)" }}>Needs you.</strong> {t.needs_human}
-          </span>
-          <Button size="sm" variant="secondary" onClick={() => save({ needs_human: null })}>
-            Resolved
-          </Button>
-        </div>
-      )}
-      {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
-
-      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
-        <div style={{ flex: "999 1 480px", minWidth: 0, display: "flex", flexDirection: "column", gap: 24 }}>
           <Panel title="Description">
-            <EditableText value={t.description} onSave={(description) => save({ description })} placeholder="What and why. Agents read this as their brief." />
+            <EditableText value={t.description} onSave={(description) => save({ description })} placeholder="Add a description. The assigned agent reads this as its brief." />
+          </Panel>
+
+          <Panel title="Done means">
+            <ListEditor items={t.done_means} onSave={(done_means) => save({ done_means })} placeholder="One acceptance check per line" />
+          </Panel>
+
+          {(t.type === "epic" || kids.length > 0) && (
+            <Panel title="Child issues" sub={kids.length ? `${kidsDone} of ${kids.length} done` : undefined}>
+              {kids.length > 0 && (
+                <div style={{ height: 6, borderRadius: 3, background: "var(--line)", overflow: "hidden" }}>
+                  <div style={{ width: `${(kidsDone / kids.length) * 100}%`, height: "100%", background: "var(--ok-dot)" }} />
+                </div>
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 1, borderRadius: 6, overflow: "hidden", border: kids.length ? "1px solid var(--line-soft)" : 0 }}>
+                {kids.map((c) => (
+                  <IssueRow key={c.id} ws={ws} t={c} me={me} />
+                ))}
+              </div>
+              {!kids.length && <p style={{ fontSize: 13, color: "var(--faint)" }}>No child issues yet. The lead adds them when it plans this epic.</p>}
+            </Panel>
+          )}
+
+          <Panel title="Linked issues">
+            <Blockers ws={ws} t={t} me={me} />
           </Panel>
 
           <Panel title="Where it is" sub="Steps, checked off as the work proves them">
             <StepsEditor steps={steps} onToggle={async (idx, status) => (await setStepStatus(t.id, idx, status), await load(), await ws.reload())} onReplace={async (s) => (await setSteps(t.id, s), await load(), await ws.reload())} />
           </Panel>
 
-          <Panel title="Activity" sub={assignee ? `Comments reach ${assignee.display_name} before its next step` : undefined}>
-            <Timeline ws={ws} me={me} detail={detail} ticket={t} onPosted={load} />
+          <Panel title="Activity">
+            <Timeline ws={ws} me={me} detail={detail} ticket={t} onPosted={load} hint={assignee ? `${assignee.display_name} reads new comments before its next step` : undefined} />
           </Panel>
         </div>
 
-        <aside style={{ flex: "1 1 280px", minWidth: 260, display: "flex", flexDirection: "column", gap: 20 }}>
-          <Panel title="Done means">
-            <ListEditor items={t.done_means} onSave={(done_means) => save({ done_means })} placeholder="One acceptance check per line" />
-          </Panel>
+        <aside style={{ flex: "1 1 300px", minWidth: 280, display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <StatusButton status={t.status} onChange={(status) => save({ status })} />
+            {assignee && t.status === "in_progress" && (
+              <span style={{ fontSize: 13, color: "var(--muted)" }}>
+                {assignee.display_name} is on it{assignee.status_note ? `: ${assignee.status_note}` : ""}
+              </span>
+            )}
+          </div>
 
-          <Panel title="Blocked by">
-            <Blockers ws={ws} t={t} />
-          </Panel>
+          <section style={{ borderRadius: 8, border: "1px solid var(--line)", overflow: "hidden" }}>
+            <h2 style={{ fontSize: 14, fontWeight: 600, padding: "10px 14px", borderBottom: "1px solid var(--line)", background: "var(--sidebar)" }}>Details</h2>
+            <dl style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: "10px 12px", margin: 0, padding: 14, fontSize: 13, alignItems: "center" }}>
+              <dt style={{ color: "var(--muted)" }}>Assignee</dt>
+              <dd style={{ margin: 0 }}>
+                <Picker
+                  label="Assignee"
+                  style={plain}
+                  value={t.assignee_id ?? ""}
+                  options={[{ id: "", label: "Unassigned" }, ...ws.people.members.map((m) => ({ id: m.actor_id, label: ws.nameOf(m.actor_id) + (m.actor_type === "agent" ? " (agent)" : "") }))]}
+                  onChange={(id) => save({ assignee_id: id || null, ...(id && ws.agentOf(id) && t.status === "backlog" ? { status: "ready" as const } : {}) })}
+                  render={<Who ws={ws} id={t.assignee_id} size={22} you={me} />}
+                />
+              </dd>
+              <dt style={{ color: "var(--muted)" }}>Reporter</dt>
+              <dd style={{ margin: 0 }}>
+                <Who ws={ws} id={t.reporter_id} size={22} you={me} />
+              </dd>
+              <dt style={{ color: "var(--muted)" }}>Priority</dt>
+              <dd style={{ margin: 0 }}>
+                <Picker label="Priority" style={plain} value={t.priority} options={PRIORITIES} onChange={(priority) => save({ priority })} render={<><PriorityIcon priority={t.priority} /><span>{PRIORITIES.find((p) => p.id === t.priority)!.label}</span></>} />
+              </dd>
+              <dt style={{ color: "var(--muted)" }}>Type</dt>
+              <dd style={{ margin: 0 }}>
+                <Picker label="Type" style={plain} value={t.type} options={TYPES} onChange={(type) => save({ type })} render={<TypeTag type={t.type} />} />
+              </dd>
+              {t.type !== "epic" && (
+                <>
+                  <dt style={{ color: "var(--muted)" }}>Parent</dt>
+                  <dd style={{ margin: 0 }}>
+                    <Picker
+                      label="Epic"
+                      style={plain}
+                      value={t.parent_id ?? ""}
+                      options={[{ id: "", label: "None" }, ...ws.tickets.filter((x) => x.type === "epic" && x.id !== t.id).map((e) => ({ id: e.id, label: `${e.key} · ${e.title}` }))]}
+                      onChange={(id) => save({ parent_id: id || null })}
+                      render={parent ? <EpicLozenge epic={parent} /> : <span style={{ color: "var(--faint)" }}>None</span>}
+                    />
+                  </dd>
+                </>
+              )}
+              <dt style={{ color: "var(--muted)" }}>Labels</dt>
+              <dd style={{ margin: 0 }}>
+                <LabelsEditor labels={t.labels} onSave={(labels) => save({ labels })} />
+              </dd>
+              <CodeLinks t={t} repo={ws.project.repo} onSave={save} />
+            </dl>
+          </section>
 
-          {ws.unblocks(t.id).length > 0 && (
-            <Panel title="Unblocks">
-              {ws.unblocks(t.id).map((u) => (
-                <TicketRow key={u.id} ws={ws} t={u} />
-              ))}
-            </Panel>
-          )}
-
-          {(t.type === "epic" || ws.childrenOf(t.id).length > 0) && (
-            <Panel title={`Tickets in this epic · ${ws.childrenOf(t.id).filter((c) => c.status === "done").length}/${ws.childrenOf(t.id).length}`}>
-              {ws.childrenOf(t.id).map((c) => (
-                <TicketRow key={c.id} ws={ws} t={c} />
-              ))}
-              {!ws.childrenOf(t.id).length && <p style={{ fontSize: 13, color: "var(--faint)" }}>Set a ticket's epic to {t.key} to add it here.</p>}
-            </Panel>
-          )}
-
-          <Panel title="Code">
-            <CodeLinks t={t} repo={ws.project.repo} onSave={save} />
-          </Panel>
-
-          <Panel title="Context it's using">
-            <p style={{ fontSize: 13, color: "var(--muted)", marginBottom: 8 }}>Every agent reads these before working on this ticket.</p>
-            <a href={`/p/${ws.project.slug}/guide`} onClick={onNav({ view: "guide", project: ws.project.slug })} style={{ display: "block", fontSize: 13, marginBottom: 6 }}>
+          <section style={{ borderRadius: 8, border: "1px solid var(--line)", padding: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+            <h2 style={{ fontSize: 14, fontWeight: 600 }}>Context it's using</h2>
+            <p style={{ fontSize: 13, color: "var(--muted)" }}>Every agent reads these before working on this ticket.</p>
+            <a href={`/p/${ws.project.slug}/guide`} onClick={onNav({ view: "guide", project: ws.project.slug })} style={{ fontSize: 13 }}>
               Project Guide: concept, architecture and rules
             </a>
             {ws.decisions.filter((d) => !d.superseded_by).slice(0, 6).map((d) => (
-              <div key={d.id} style={{ fontSize: 13, color: "var(--text-2)", padding: "3px 0" }}>
+              <div key={d.id} style={{ fontSize: 13, color: "var(--text-2)" }}>
                 <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--faint)" }}>{d.key}</span> · {d.title}
               </div>
             ))}
-          </Panel>
+          </section>
 
-          <Panel title="Details">
-            <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 12px", margin: 0, fontSize: 13 }}>
-              <dt style={{ color: "var(--faint)" }}>Reporter</dt>
-              <dd style={{ margin: 0 }}>
-                <Who ws={ws} id={t.reporter_id} size={18} you={me} />
-              </dd>
-              <dt style={{ color: "var(--faint)" }}>Created</dt>
-              <dd style={{ margin: 0 }}>{new Date(t.created_at).toLocaleString()}</dd>
-              {t.started_at && (
-                <>
-                  <dt style={{ color: "var(--faint)" }}>Started</dt>
-                  <dd style={{ margin: 0 }}>{ago(t.started_at)}</dd>
-                </>
-              )}
-              {t.completed_at && (
-                <>
-                  <dt style={{ color: "var(--faint)" }}>Done</dt>
-                  <dd style={{ margin: 0 }}>{ago(t.completed_at)}</dd>
-                </>
-              )}
-              <dt style={{ color: "var(--faint)" }}>Updated</dt>
-              <dd style={{ margin: 0 }}>{ago(t.updated_at)}</dd>
-            </dl>
-          </Panel>
+          <div style={{ fontSize: 12, color: "var(--faint)", display: "flex", flexDirection: "column", gap: 2, padding: "0 2px" }}>
+            <span>Created {new Date(t.created_at).toLocaleString()}</span>
+            <span>Updated {ago(t.updated_at)}</span>
+            {t.started_at && <span>Started {ago(t.started_at)}</span>}
+            {t.completed_at && <span>Resolved {ago(t.completed_at)}</span>}
+          </div>
         </aside>
       </div>
+    </div>
+  );
+}
+
+/** Jira's status button: the current status, click to move it. */
+function StatusButton({ status, onChange }: { status: Status; onChange: (s: Status) => void }) {
+  const blue = status === "in_progress" || status === "review";
+  const tone = status === "done" ? { bg: "#1c3a2a", fg: "#7ee2a8" } : blue ? { bg: "#0c66e4", fg: "#fff" } : { bg: "var(--surface-2)", fg: "var(--text)" };
+  return (
+    <label style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 8, height: 34, padding: "0 12px", borderRadius: 6, background: tone.bg, color: tone.fg, font: "600 13px var(--sans)", cursor: "pointer", border: "1px solid var(--line)" }}>
+      {status === "review" ? "In review" : statusLabel(status)}
+      <span aria-hidden="true" style={{ fontSize: 10, opacity: 0.8 }}>
+        ▼
+      </span>
+      <select aria-label="Status" value={status} onChange={(e) => onChange(e.target.value as Status)} style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}>
+        {[...STATUSES, { id: "canceled" as const, label: "Canceled" }].map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.id === "review" ? "In review" : s.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** One linked or child issue, Jira-style: type, key, summary, status, assignee. */
+function IssueRow({ ws, t, me, onRemove }: { ws: Workspace; t: Ticket; me: string; onRemove?: () => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 38, padding: "4px 10px", background: "var(--surface)" }}>
+      <TypeIcon type={t.type} />
+      <a href={`/p/${ws.project.slug}/t/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ display: "flex", gap: 8, alignItems: "center", flex: 1, minWidth: 0, color: "var(--text)", textDecoration: "none" }}>
+        <KeyText t={t} style={{ textDecoration: t.status === "done" ? "line-through" : "none" }} />
+        <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
+      </a>
+      <PriorityIcon priority={t.priority} />
+      <WhoMark ws={ws} id={t.assignee_id} me={me} size={20} />
+      <StatusLozenge status={t.status} needs={!!t.needs_human} />
+      {onRemove && (
+        <button type="button" aria-label={`Remove link to ${t.key}`} onClick={onRemove} style={{ border: 0, background: "none", color: "var(--faint)", cursor: "pointer", fontSize: 16 }}>
+          ×
+        </button>
+      )}
     </div>
   );
 }
@@ -381,24 +452,30 @@ function StepsEditor({ steps, onToggle, onReplace }: { steps: Step[]; onToggle: 
   );
 }
 
-function Blockers({ ws, t }: { ws: Workspace; t: Ticket }) {
+function Blockers({ ws, t, me }: { ws: Workspace; t: Ticket; me: string }) {
   const [adding, setAdding] = useState(false);
   const blockers = ws.blockersOf(t.id);
-  const candidates = ws.tickets.filter((x) => x.id !== t.id && !blockers.some((b) => b.id === x.id) && x.status !== "canceled");
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      {blockers.map((b) => (
-        <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <TicketRow ws={ws} t={b} />
-          <button type="button" aria-label={`Remove ${b.key}`} onClick={async () => (await removeBlocker(t.id, b.id), await ws.reload())} style={{ border: 0, background: "none", color: "var(--faint)", cursor: "pointer" }}>
-            ×
-          </button>
+  const blocks = ws.unblocks(t.id);
+  const candidates = ws.tickets.filter((x) => x.id !== t.id && !blockers.some((b) => b.id === x.id) && x.status !== "canceled" && x.type !== "epic");
+  const group = (label: string, list: Ticket[], remove?: (x: Ticket) => () => void) =>
+    list.length > 0 && (
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>{label}</span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 1, borderRadius: 6, overflow: "hidden", border: "1px solid var(--line-soft)" }}>
+          {list.map((x) => (
+            <IssueRow key={x.id} ws={ws} t={x} me={me} onRemove={remove?.(x)} />
+          ))}
         </div>
-      ))}
-      {!blockers.length && !adding && <p style={{ fontSize: 13, color: "var(--faint)" }}>Nothing. It can start any time.</p>}
+      </div>
+    );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {group("is blocked by", blockers, (b) => async () => (await removeBlocker(t.id, b.id), await ws.reload()))}
+      {group("blocks", blocks)}
+      {!blockers.length && !blocks.length && !adding && <p style={{ fontSize: 13, color: "var(--faint)" }}>Not linked to other issues. It can start any time.</p>}
       {adding ? (
-        <select autoFocus aria-label="Blocked by" defaultValue="" onChange={async (e) => (e.target.value && (await addBlocker(t.id, e.target.value), await ws.reload()), setAdding(false))} onBlur={() => setAdding(false)} style={{ height: 34, borderRadius: 9, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13 }}>
-          <option value="">Pick the ticket it waits for…</option>
+        <select autoFocus aria-label="Is blocked by" defaultValue="" onChange={async (e) => (e.target.value && (await addBlocker(t.id, e.target.value), await ws.reload()), setAdding(false))} onBlur={() => setAdding(false)} style={{ height: 34, borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13 }}>
+          <option value="">This issue is blocked by…</option>
           {candidates.map((c) => (
             <option key={c.id} value={c.id}>
               {c.key} · {c.title}
@@ -406,21 +483,11 @@ function Blockers({ ws, t }: { ws: Workspace; t: Ticket }) {
           ))}
         </select>
       ) : (
-        <button type="button" onClick={() => setAdding(true)} style={{ alignSelf: "flex-start", border: 0, background: "none", color: "var(--muted)", fontSize: 13, cursor: "pointer", padding: "4px 0" }}>
-          + Waits for another ticket
+        <button type="button" onClick={() => setAdding(true)} style={{ alignSelf: "flex-start", border: 0, background: "none", color: "var(--muted)", fontSize: 13, cursor: "pointer", padding: "2px 0" }}>
+          + Link an issue it's blocked by
         </button>
       )}
     </div>
-  );
-}
-
-function TicketRow({ ws, t }: { ws: Workspace; t: Ticket }) {
-  return (
-    <a href={`/p/${ws.project.slug}/t/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 8, color: "var(--text)", textDecoration: "none", background: "var(--surface)", border: "1px solid var(--line-soft)", minWidth: 0 }}>
-      <StatusIcon status={t.status} />
-      <KeyText t={t} />
-      <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
-    </a>
   );
 }
 
@@ -428,9 +495,9 @@ function CodeLinks({ t, repo, onSave }: { t: Ticket; repo: string | null; onSave
   const [pr, setPr] = useState(t.pr_url ?? "");
   useEffect(() => setPr(t.pr_url ?? ""), [t.pr_url]);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13 }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <span style={{ color: "var(--faint)", width: 56 }}>Branch</span>
+    <>
+      <dt style={{ color: "var(--muted)" }}>Branch</dt>
+      <dd style={{ margin: 0, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
         {t.branch ? (
           repo ? (
             <a href={`https://github.com/${repo}/tree/${t.branch}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
@@ -442,18 +509,18 @@ function CodeLinks({ t, repo, onSave }: { t: Ticket; repo: string | null; onSave
         ) : (
           <span style={{ color: "var(--faint)" }}>Set when work starts</span>
         )}
-      </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <span style={{ color: "var(--faint)", width: 56 }}>PR</span>
+      </dd>
+      <dt style={{ color: "var(--muted)" }}>Pull request</dt>
+      <dd style={{ margin: 0, minWidth: 0 }}>
         {t.pr_url ? (
           <a href={t.pr_url} target="_blank" rel="noreferrer">
-            {t.pr_url.replace(/^https:\/\/github\.com\//, "")}
+            {t.pr_url.replace(/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\//, "#")}
           </a>
         ) : (
-          <input value={pr} onChange={(e) => setPr(e.target.value)} onBlur={() => pr.trim() && onSave({ pr_url: pr.trim() })} placeholder="Paste a pull request link" style={{ flex: 1, height: 30, padding: "0 8px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--bg)", fontSize: 12 }} />
+          <input value={pr} onChange={(e) => setPr(e.target.value)} onBlur={() => pr.trim() && onSave({ pr_url: pr.trim() })} placeholder="None yet" style={{ width: "100%", height: 28, padding: "0 6px", borderRadius: 6, border: "1px solid transparent", background: "transparent", fontSize: 13 }} />
         )}
-      </div>
-    </div>
+      </dd>
+    </>
   );
 }
 
@@ -486,15 +553,16 @@ export function describe(ws: Workspace, e: TicketEvent): string | null {
   }
 }
 
-function Timeline({ ws, me, detail, ticket, onPosted }: { ws: Workspace; me: string; detail: { comments: Comment[]; events: TicketEvent[] } | null; ticket: Ticket; onPosted: () => Promise<void> }) {
+function Timeline({ ws, me, detail, ticket, onPosted, hint }: { ws: Workspace; me: string; detail: { comments: Comment[]; events: TicketEvent[] } | null; ticket: Ticket; onPosted: () => Promise<void>; hint?: string }) {
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [tab, setTab] = useState<"all" | "comments" | "history">("all");
   if (!detail) return <p style={{ color: "var(--faint)", fontSize: 13 }}>Loading…</p>;
   const items = [
-    ...detail.comments.map((c) => ({ at: c.created_at, id: `c${c.id}`, c })),
-    ...detail.events.filter((e) => e.kind !== "comment").map((e) => ({ at: e.created_at, id: `e${e.id}`, e })),
-  ].sort((a, b) => a.at.localeCompare(b.at));
+    ...(tab !== "history" ? detail.comments.map((c) => ({ at: c.created_at, id: `c${c.id}`, c })) : []),
+    ...(tab !== "comments" ? detail.events.filter((e) => e.kind !== "comment").map((e) => ({ at: e.created_at, id: `e${e.id}`, e })) : []),
+  ].sort((a, b) => b.at.localeCompare(a.at));
   const post = async () => {
     if (!body.trim()) return;
     setBusy(true);
@@ -508,13 +576,46 @@ function Timeline({ ws, me, detail, ticket, onPosted }: { ws: Workspace; me: str
     }
     setBusy(false);
   };
+  const tabBtn = (id: typeof tab, label: string) => (
+    <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)} style={{ height: 28, padding: "0 10px", borderRadius: 6, border: 0, background: tab === id ? "var(--surface-2)" : "transparent", color: tab === id ? "var(--text)" : "var(--muted)", fontSize: 13, fontWeight: 500, cursor: "pointer" }}>
+      {label}
+    </button>
+  );
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div role="tablist" aria-label="Show" style={{ display: "flex", gap: 4, alignItems: "center" }}>
+        <span style={{ fontSize: 13, color: "var(--faint)", marginRight: 4 }}>Show:</span>
+        {tabBtn("all", "All")}
+        {tabBtn("comments", "Comments")}
+        {tabBtn("history", "History")}
+      </div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <Who ws={ws} id={me} size={28} withName={false} you={me} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8, padding: "8px 10px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--line-strong)" }}>
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && void post()}
+            rows={2}
+            placeholder={hint ? `Add a comment. ${hint}.` : "Add a comment"}
+            aria-label="Comment"
+            style={{ border: 0, background: "transparent", fontSize: 14, resize: "vertical", outline: "none" }}
+          />
+          {(body || err) && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: err ? "var(--danger)" : "var(--faint)" }}>{err || "⌘ Enter to save · Markdown works"}</span>
+              <Button size="sm" variant="primary" disabled={busy || !body.trim()} onClick={() => void post()}>
+                Save
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
       {items.map((it) =>
         "c" in it && it.c ? (
           <div key={it.id} style={{ display: "flex", gap: 10 }}>
-            <Who ws={ws} id={it.c.author_id} size={26} withName={false} you={me} />
-            <div style={{ flex: 1, minWidth: 0, padding: "10px 12px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line-soft)" }}>
+            <Who ws={ws} id={it.c.author_id} size={28} withName={false} you={me} />
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, marginBottom: 4 }}>
                 <strong style={{ fontWeight: 600 }}>{ws.nameOf(it.c.author_id)}</strong> <span style={{ color: "var(--faint)" }}>{ago(it.c.created_at)}</span>
               </div>
@@ -522,31 +623,15 @@ function Timeline({ ws, me, detail, ticket, onPosted }: { ws: Workspace; me: str
             </div>
           </div>
         ) : "e" in it && it.e && describe(ws, it.e) ? (
-          <div key={it.id} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 13, color: "var(--muted)", paddingLeft: 4 }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--line-strong)", flex: "none", margin: "0 10px" }} />
+          <div key={it.id} style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 13, color: "var(--muted)" }}>
+            <Who ws={ws} id={it.e.actor_id} size={28} withName={false} you={me} />
             <span>
               <strong style={{ color: "var(--text-2)", fontWeight: 500 }}>{ws.nameOf(it.e.actor_id)}</strong> {describe(ws, it.e)} <span style={{ color: "var(--faint)" }}>· {ago(it.e.created_at)}</span>
             </span>
           </div>
         ) : null,
       )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "10px 12px", borderRadius: 14, background: "var(--surface)", border: "1px solid var(--line-strong)" }}>
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && (e.metaKey || e.ctrlKey) && void post()}
-          rows={2}
-          placeholder={ws.agentOf(ticket.assignee_id) ? `Steer ${ws.nameOf(ticket.assignee_id)}: it reads this before its next step` : "Write a comment"}
-          aria-label="Comment"
-          style={{ border: 0, background: "transparent", fontSize: 14, resize: "vertical", outline: "none" }}
-        />
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: err ? "var(--danger)" : "var(--faint)" }}>{err || "⌘ Enter to send · Markdown works"}</span>
-          <Button size="sm" variant="primary" disabled={busy || !body.trim()} onClick={() => void post()}>
-            Comment
-          </Button>
-        </div>
-      </div>
+      {!items.length && <p style={{ fontSize: 13, color: "var(--faint)" }}>Nothing yet.</p>}
     </div>
   );
 }

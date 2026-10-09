@@ -36,46 +36,125 @@ export function StatusIcon({ status, size = 14 }: { status: Status; size?: numbe
   );
 }
 
-export function PriorityIcon({ priority, size = 14 }: { priority: Priority; size?: number }) {
-  if (priority === "urgent") {
-    return (
-      <svg width={size} height={size} viewBox="0 0 16 16" aria-label="Urgent" style={{ flex: "none" }}>
-        <rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="var(--warn)" />
-        <path d="M8 4.5v4.5M8 11.2v.3" stroke="var(--bg)" strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  const bars = { high: 3, medium: 2, low: 1, none: 0 }[priority];
+/** Jira's priority arrows: urgent and high point up (red), medium is "=", low points down. */
+export function PriorityIcon({ priority, size = 16 }: { priority: Priority; size?: number }) {
+  const label = { urgent: "Urgent", high: "High", medium: "Medium", low: "Low", none: "No priority" }[priority];
+  const c = { urgent: "#ff5630", high: "#ff7452", medium: "#ffab00", low: "#4c9aff", none: "var(--faint)" }[priority];
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" aria-label={`${priority} priority`} style={{ flex: "none" }}>
-      {[0, 1, 2].map((i) => (
-        <rect key={i} x={2 + i * 4.5} y={11 - i * 3.5} width="3" height={3 + i * 3.5} rx="1" fill={i < bars ? "var(--text-2)" : "var(--line)"} />
-      ))}
+    <svg width={size} height={size} viewBox="0 0 16 16" role="img" aria-label={`${label} priority`} style={{ flex: "none" }}>
+      <title>{label}</title>
+      {priority === "urgent" && <path d="M3.5 8.5L8 4l4.5 4.5M3.5 12.5L8 8l4.5 4.5" stroke={c} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />}
+      {priority === "high" && <path d="M3.5 10.5L8 6l4.5 4.5" stroke={c} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />}
+      {priority === "medium" && <path d="M3.5 6.5h9M3.5 9.5h9" stroke={c} strokeWidth="1.8" strokeLinecap="round" />}
+      {priority === "low" && <path d="M3.5 5.5L8 10l4.5-4.5" stroke={c} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />}
+      {priority === "none" && <path d="M4 8h8" stroke={c} strokeWidth="1.6" strokeLinecap="round" strokeDasharray="1.5 2" />}
     </svg>
   );
 }
 
+/** Jira's issue type names: a feature is a Story. */
+export const typeLabel: Record<TicketType, string> = { feature: "Story", bug: "Bug", task: "Task", chore: "Chore", epic: "Epic" };
+
 export const typeTone: Record<TicketType, string> = {
-  feature: "var(--ok)",
-  bug: "var(--danger)",
-  task: "var(--text-2)",
-  chore: "var(--faint)",
-  epic: "#c9a7ff",
+  feature: "#63ba3c",
+  bug: "#e5493a",
+  task: "#4bade8",
+  chore: "#8993a4",
+  epic: "#904ee2",
 };
 
+/** Jira's issue type icons: a small colored square with a white symbol. */
+export function TypeIcon({ type, size = 16 }: { type: TicketType; size?: number }) {
+  const glyph = {
+    feature: <path d="M5.5 4h5v8.5L8 10.5l-2.5 2z" fill="#fff" />,
+    bug: <circle cx="8" cy="8" r="3" fill="#fff" />,
+    task: <path d="M4.8 8.2l2.2 2.2 4.2-4.6" stroke="#fff" strokeWidth="1.9" fill="none" strokeLinecap="round" strokeLinejoin="round" />,
+    chore: <path d="M5 8h6" stroke="#fff" strokeWidth="2" strokeLinecap="round" />,
+    epic: <path d="M9.2 3.5L5 9h3l-1.2 3.5L11 7H8z" fill="#fff" />,
+  }[type];
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" role="img" aria-label={typeLabel[type]} style={{ flex: "none" }}>
+      <title>{typeLabel[type]}</title>
+      <rect width="16" height="16" rx="3" fill={typeTone[type]} />
+      {glyph}
+    </svg>
+  );
+}
+
 export function TypeTag({ type }: { type: TicketType }) {
-  return <span style={{ fontSize: 12, color: typeTone[type] }}>{type[0].toUpperCase() + type.slice(1)}</span>;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+      <TypeIcon type={type} />
+      {typeLabel[type]}
+    </span>
+  );
+}
+
+/** Jira's status lozenge: grey to do, blue in progress, green done. */
+export function StatusLozenge({ status, needs }: { status: Status; needs?: boolean }) {
+  const tone = needs
+    ? { bg: "var(--warn-bg)", fg: "var(--warn)", line: "var(--warn-line)" }
+    : status === "done"
+      ? { bg: "#1c3a2a", fg: "#7ee2a8", line: "transparent" }
+      : status === "in_progress" || status === "review"
+        ? { bg: "#13294b", fg: "#85b8ff", line: "transparent" }
+        : { bg: "var(--surface-2)", fg: "var(--text-2)", line: "transparent" };
+  const text = needs ? "Needs you" : { backlog: "Backlog", ready: "Ready", in_progress: "In progress", review: "In review", done: "Done", canceled: "Canceled" }[status];
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 6px", borderRadius: 4, background: tone.bg, color: tone.fg, border: `1px solid ${tone.line}`, font: "700 11px var(--sans)", letterSpacing: "0.03em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+      {text}
+    </span>
+  );
+}
+
+/** Each epic gets its own color for its lozenge on cards (Jira-style), stable by key. */
+const EPIC_COLORS = [
+  { bg: "#1f3b2d", fg: "#8fe3b4" },
+  { bg: "#3a2a12", fg: "#f2c14e" },
+  { bg: "#13294b", fg: "#85b8ff" },
+  { bg: "#3a1f1c", fg: "#ff9a8a" },
+  { bg: "#163536", fg: "#79e2d7" },
+  { bg: "#33331a", fg: "#e2e27a" },
+];
+export function epicColor(key: string): { bg: string; fg: string } {
+  let h = 0;
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return EPIC_COLORS[h % EPIC_COLORS.length];
+}
+
+export function EpicLozenge({ epic }: { epic: Pick<Ticket, "key" | "title"> }) {
+  const c = epicColor(epic.key);
+  return (
+    <span title={`${epic.key} ${epic.title}`} style={{ display: "inline-flex", alignItems: "center", maxWidth: 170, height: 20, padding: "0 6px", borderRadius: 4, background: c.bg, color: c.fg, font: "600 11px var(--sans)", textTransform: "uppercase", letterSpacing: "0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      {epic.title}
+    </span>
+  );
 }
 
 /** A person (circle) or an agent (rounded square), with their name. */
 export function Who({ ws, id, size = 22, withName = true, you }: { ws: Workspace; id: string | null; size?: number; withName?: boolean; you?: string }) {
-  if (!id) return <span style={{ fontSize: 13, color: "var(--faint)" }}>Unassigned</span>;
+  if (!id) {
+    return withName ? (
+      <span style={{ fontSize: 13, color: "var(--faint)" }}>Unassigned</span>
+    ) : (
+      <span title="Unassigned" style={{ width: size, height: size, borderRadius: "50%", border: "1px dashed var(--line-strong)", flex: "none", display: "inline-block" }} />
+    );
+  }
   const agent = ws.agentOf(id);
   const profile = ws.people.profiles.get(id);
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
       {agent ? <AgentMark vendor={agent.vendor} size={size} /> : <Avatar name={profile?.name ?? "?"} src={profile?.avatar_url} size={size} you={id === you} />}
       {withName && <span style={{ fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ws.nameOf(id)}</span>}
+      {withName && ws.project.lead_agent_id === id && <LeadBadge />}
+    </span>
+  );
+}
+
+export function LeadBadge() {
+  return (
+    <span title="The lead writes the tickets and assigns them" style={{ display: "inline-flex", alignItems: "center", height: 18, padding: "0 5px", borderRadius: 4, background: "var(--primary)", color: "var(--on-primary)", font: "700 10px var(--sans)", letterSpacing: "0.04em", textTransform: "uppercase", flex: "none" }}>
+      Lead
     </span>
   );
 }

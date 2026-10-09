@@ -273,6 +273,19 @@ select pg_temp.expect((select status from public.tickets where key = 'VV-1') = '
 reset role;
 select pg_temp.expect((select status from public.tickets where key = 'VV-1') = 'review', 'outsider update had no effect');
 
+-- ------------------------------------------------ the project lead (schema 5)
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+update public.projects set lead_agent_id = '00000000-0000-0000-0000-0000000000c1';
+select pg_temp.expect((select lead_agent_id from public.projects) = '00000000-0000-0000-0000-0000000000c1', 'owner picks the lead');
+select pg_temp.expect_error($q$update public.projects set lead_agent_id = '00000000-0000-0000-0000-0000000000c2'$q$, 'AUTOKOLAB_BAD_LEAD');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+update public.projects set lead_agent_id = null;
+reset role;
+select pg_temp.expect((select lead_agent_id from public.projects) = '00000000-0000-0000-0000-0000000000c1', 'only the owner changes the lead');
+delete from public.project_members where actor_id = '00000000-0000-0000-0000-0000000000c1';
+select pg_temp.expect((select lead_agent_id from public.projects) is null, 'a lead that leaves stops being lead');
+
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
 select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from unnest(array[

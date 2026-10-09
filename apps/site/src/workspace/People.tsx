@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { addPerson, type Agent } from "../lib/data";
+import { addPerson, setLead, type Agent } from "../lib/data";
 import { placeLine } from "../lib/place";
 import { onNav } from "../lib/router";
 import { AgentMark, Avatar, Button } from "../ui";
-import { ago, KeyText } from "./bits";
+import { ago, KeyText, LeadBadge } from "./bits";
 import type { Workspace } from "./useWorkspace";
 
 // Who works on this project: people (circles) and their agents (rounded squares), with what each
@@ -24,7 +24,17 @@ export function agentOnline(a: Agent): boolean {
   return !!a.last_seen_at && Date.now() - Date.parse(a.last_seen_at) < 5 * 60_000 && a.status !== "offline";
 }
 
-export function People({ ws, me }: { ws: Workspace; me: string }) {
+export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string; onProjectChanged?: () => void }) {
+  const [leadErr, setLeadErr] = useState("");
+  const makeLead = async (id: string | null) => {
+    try {
+      setLeadErr("");
+      await setLead(ws.project.id, id);
+      onProjectChanged?.();
+    } catch (e) {
+      setLeadErr((e as Error).message);
+    }
+  };
   const owner = ws.people.members.find((m) => m.role === "owner")?.actor_id;
   const isOwner = owner === me;
   const humans = ws.people.members.filter((m) => m.actor_type === "human");
@@ -64,6 +74,10 @@ export function People({ ws, me }: { ws: Workspace; me: string }) {
 
       <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <h2 style={{ fontSize: 16, fontWeight: 600 }}>Agents · {agents.length}</h2>
+        <p style={{ fontSize: 14, color: "var(--muted)" }}>
+          The <strong style={{ color: "var(--text)" }}>lead</strong> is the agent you talk to (in Claude Code, for example). It turns what you ask for into complete tickets and assigns them to the other agents, the workers, who pick them up and do them.
+        </p>
+        {leadErr && <p style={{ color: "var(--danger)", fontSize: 14 }}>{leadErr}</p>}
         {agents.map((a) => {
           const st = agentOnline(a) ? agentStatusText[a.status] : agentStatusText.offline;
           const cur = a.current_ticket_id ? ws.byId.get(a.current_ticket_id) : undefined;
@@ -71,13 +85,21 @@ export function People({ ws, me }: { ws: Workspace; me: string }) {
             <div key={a.id} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line-soft)", flexWrap: "wrap" }}>
               <AgentMark vendor={a.vendor} size={34} />
               <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: "1 1 200px" }}>
-                <span style={{ fontSize: 15, fontWeight: 500 }}>{a.display_name}</span>
+                <span style={{ fontSize: 15, fontWeight: 500, display: "flex", gap: 8, alignItems: "center" }}>
+                  {a.display_name}
+                  {a.id === ws.project.lead_agent_id ? <LeadBadge /> : <span style={{ fontSize: 12, color: "var(--faint)", fontWeight: 400 }}>Worker</span>}
+                </span>
                 <span style={{ fontSize: 13, color: "var(--faint)" }}>
                   {a.vendor === "claude" ? "Claude Code" : "Codex"} · {a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : a.owner_label ? `${a.owner_label}'s` : "shared"}
                   {a.last_seen_at ? ` · seen ${ago(a.last_seen_at)}` : " · not connected yet"}
                 </span>
               </span>
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+                {isOwner && (
+                  <button type="button" onClick={() => void makeLead(a.id === ws.project.lead_agent_id ? null : a.id)} style={{ border: "1px solid var(--line)", borderRadius: 6, background: "transparent", color: "var(--text-2)", fontSize: 12, padding: "3px 8px", cursor: "pointer", marginBottom: 4 }}>
+                    {a.id === ws.project.lead_agent_id ? "Remove as lead" : "Make lead"}
+                  </button>
+                )}
                 <span style={{ fontSize: 13, color: st.color }}>{st.label}</span>
                 {cur ? (
                   <a href={`/p/${ws.project.slug}/t/${cur.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: cur.key })} style={{ fontSize: 12, color: "var(--muted)", textDecoration: "none" }}>

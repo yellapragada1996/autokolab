@@ -22,7 +22,7 @@ export const PRIORITIES: { id: Priority; label: string }[] = [
   { id: "none", label: "No priority" },
 ];
 export const TYPES: { id: TicketType; label: string }[] = [
-  { id: "feature", label: "Feature" },
+  { id: "feature", label: "Story" },
   { id: "bug", label: "Bug" },
   { id: "task", label: "Task" },
   { id: "chore", label: "Chore" },
@@ -38,6 +38,8 @@ export interface Project {
   default_branch: string;
   ticket_prefix: string;
   owner_id: string;
+  /** The agent that writes tickets and assigns them. */
+  lead_agent_id: string | null;
   created_at: string;
 }
 
@@ -181,6 +183,10 @@ export async function people(projectId: string): Promise<People> {
     profiles: new Map(check<Profile[]>(profiles as never).map((p) => [p.id, p])),
     agents: new Map(check<Agent[]>(agents as never).map((a) => [a.id, a])),
   };
+}
+
+export async function setLead(projectId: string, agentId: string | null): Promise<void> {
+  check(await supabase.from("projects").update({ lead_agent_id: agentId }).eq("id", projectId));
 }
 
 export async function addPerson(projectId: string, githubLogin: string): Promise<void> {

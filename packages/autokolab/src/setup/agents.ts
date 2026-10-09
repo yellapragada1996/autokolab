@@ -121,7 +121,9 @@ with \`ticket_get\` before working on it; comments from people are instructions 
 working, keep it current: \`ticket_update\` (status, branch, \`needs_human\` for a question),
 \`ticket_steps\` (plan, then mark each step), \`ticket_comment\`. Done means every "done means" item is
 true, a pull request is open and the ticket is in review with its \`pr_url\`. New work you find:
-\`ticket_create\`. Choices others must build on: \`decision_add\`.
+\`ticket_create\`. Choices others must build on: \`decision_add\`. One agent is the project's **lead**:
+its person talks to it, and it writes complete tickets (context, what to do, where, done means) and
+assigns them to the worker agents. \`project_brief\` tells you whether you're the lead or a worker.
 
 **Start of every session:** \`whoami\` (your name, role, who can instruct), then \`room_read\`,
 \`work_log\` (what each agent has done, on which branch) and \`board_list\`. To read someone's code:

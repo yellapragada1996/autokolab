@@ -207,6 +207,7 @@ export const Icon = {
       <path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18" />
     </>
   ),
+  backlog: <path d="M4 5h16M4 10h16M4 15h10M4 20h7" />,
   list: <path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01" />,
   book: (
     <>

@@ -4,8 +4,9 @@ import { go, onNav, type Route } from "../lib/router";
 import type { Profile } from "../lib/session";
 import { AgentMark, Avatar, Button, Icon, Logo, Svg } from "../ui";
 import { CommandPalette, useCommandPalette, type Command } from "../ui/CommandPalette";
-import { Board, Card } from "./Board";
-import { ago, KeyText, StatusIcon } from "./bits";
+import { Backlog } from "./Backlog";
+import { Board, Card, EmptyBoard } from "./Board";
+import { ago, KeyText, LeadBadge, StatusIcon } from "./bits";
 import { Decisions } from "./Decisions";
 import { GuidePage } from "./GuidePage";
 import { ListView } from "./ListView";
@@ -16,12 +17,13 @@ import { useWorkspace, type Workspace as WS } from "./useWorkspace";
 
 // The project workspace: sidebar (projects, views, people and agents) and the current view.
 
-type View = "overview" | "board" | "list" | "guide" | "decisions" | "people";
+type View = "overview" | "board" | "backlog" | "list" | "guide" | "decisions" | "people";
 
 const NAV: { id: View; label: string; icon: React.ReactNode; sub: string }[] = [
   { id: "overview", label: "Overview", icon: Icon.room, sub: "What needs you, what's moving, what just happened" },
-  { id: "board", label: "Board", icon: Icon.board, sub: "Drag tickets between columns. Agents pick up what's in Ready." },
-  { id: "list", label: "All tickets", icon: Icon.list, sub: "Every ticket, sortable" },
+  { id: "board", label: "Board", icon: Icon.board, sub: "Work in flight. Agents pick up what's in Ready; drag cards between columns and lanes." },
+  { id: "backlog", label: "Backlog", icon: Icon.backlog, sub: "What's on the board, and the ranked backlog waiting for it" },
+  { id: "list", label: "All issues", icon: Icon.list, sub: "Every issue, sortable" },
   { id: "guide", label: "Project Guide", icon: Icon.book, sub: "Concept, architecture and rules: what every agent reads first" },
   { id: "decisions", label: "Decisions", icon: Icon.decisions, sub: "Settled choices everyone builds on" },
   { id: "people", label: "People & agents", icon: Icon.people, sub: "Who works here and what each agent is doing" },
@@ -34,6 +36,7 @@ export function Workspace({
   profile,
   onSignOut,
   onEditProfile,
+  onProjectChanged,
   demo,
 }: {
   project: Project;
@@ -42,6 +45,8 @@ export function Workspace({
   profile: Profile;
   onSignOut: () => void;
   onEditProfile: () => void;
+  /** The project itself changed (e.g. a new lead): reload it. */
+  onProjectChanged?: () => void;
   /** Development preview data instead of the live project. */
   demo?: WS;
 }) {
@@ -76,7 +81,7 @@ export function Workspace({
 
   const commands = useMemo<Command[]>(() => {
     const c: Command[] = [
-      { id: "new", label: "New ticket", hint: "C", run: () => setNewTicket({}) },
+      { id: "new", label: "Create an issue", hint: "C", run: () => setNewTicket({}) },
       ...NAV.map((n) => ({ id: `go-${n.id}`, label: `Go to ${n.label}`, run: () => go({ view: n.id, project: project.slug }) })),
       ...(ws?.tickets ?? []).map((t) => ({ id: `t-${t.id}`, label: `${t.key} ${t.title}`, hint: t.status.replace("_", " "), run: () => go({ view: "ticket", project: project.slug, key: t.key }) })),
       ...projects.filter((p) => p.id !== project.id).map((p) => ({ id: `p-${p.id}`, label: `Switch to ${p.name}`, run: () => go({ view: "overview", project: p.slug }) })),
@@ -102,9 +107,9 @@ export function Workspace({
               <h1 style={{ fontSize: 19, fontWeight: 600 }}>{title.label}</h1>
               <span style={{ fontSize: 13, color: "var(--faint)" }}>{title.sub}</span>
             </div>
-            {route.view !== "board" && route.view !== "list" && (
+            {!["board", "backlog", "list"].includes(route.view) && (
               <Button variant="primary" size="sm" onClick={() => setNewTicket({})}>
-                New ticket <kbd style={{ font: "500 11px var(--mono)", opacity: 0.7 }}>C</kbd>
+                Create <kbd style={{ font: "500 11px var(--mono)", opacity: 0.7 }}>C</kbd>
               </Button>
             )}
           </header>
@@ -117,6 +122,8 @@ export function Workspace({
             <TicketPage ws={ws} me={me} ticketKey={route.key} />
           ) : route.view === "board" ? (
             <Board ws={ws} me={me} onNew={(status) => setNewTicket({ status })} />
+          ) : route.view === "backlog" ? (
+            <Backlog ws={ws} me={me} onNew={() => setNewTicket({ status: "backlog" })} />
           ) : route.view === "list" ? (
             <ListView ws={ws} me={me} onNew={() => setNewTicket({})} />
           ) : route.view === "guide" ? (
@@ -124,7 +131,7 @@ export function Workspace({
           ) : route.view === "decisions" ? (
             <Decisions ws={ws} />
           ) : route.view === "people" ? (
-            <People ws={ws} me={me} />
+            <People ws={ws} me={me} onProjectChanged={onProjectChanged} />
           ) : (
             <Overview ws={ws} me={me} />
           )}
@@ -252,7 +259,10 @@ function Sidebar({
               <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 10px" }} title={a.status_note ?? st.label}>
                 <AgentMark vendor={a.vendor} size={22} />
                 <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                  <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.display_name}</span>
+                  <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", gap: 6, alignItems: "center" }}>
+                    {a.display_name}
+                    {a.id === project.lead_agent_id && <LeadBadge />}
+                  </span>
                   <span style={{ fontSize: 11, color: st.color }}>{st.label}</span>
                 </span>
               </div>
@@ -311,7 +321,8 @@ function Overview({ ws, me }: { ws: WS; me: string }) {
     { done: !!g && !!(g.concept.trim() || g.rules.trim()), label: "Write the Project Guide", sub: "The concept and rules every agent reads first", to: "guide" as const },
     { done: ws.people.members.filter((m) => m.actor_type === "human").length > 1, label: "Add the people you work with", sub: "By GitHub username", to: "people" as const },
     { done: agents.length > 0, label: "Connect an agent", sub: "Claude Code or Codex, through the AutoKolab helper", to: "people" as const },
-    { done: ws.tickets.length > 0, label: "Create the first ticket", sub: "Assign it to an agent and put it in Ready", to: "board" as const },
+    { done: !!ws.project.lead_agent_id, label: "Pick the lead agent", sub: "Your own agent: you talk to it, it writes the tickets and assigns them", to: "people" as const },
+    { done: ws.tickets.length > 0, label: "Ask the lead for the first piece of work", sub: "It plans it into tickets for the worker agents", to: "board" as const },
   ];
   const setupLeft = setup.filter((s) => !s.done).length;
 
@@ -342,6 +353,12 @@ function Overview({ ws, me }: { ws: WS; me: string }) {
               ))}
             </div>
           </section>
+        )}
+
+        {!ws.tickets.length && ws.project.lead_agent_id && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start", padding: 16, borderRadius: 12, border: "1px dashed var(--line)", fontSize: 14, color: "var(--muted)" }}>
+            <EmptyBoard ws={ws} />
+          </div>
         )}
 
         <Group title="Needs you" count={needs.length + review.length} empty="Nothing is waiting on you. Questions from agents and pull requests to review show up here.">

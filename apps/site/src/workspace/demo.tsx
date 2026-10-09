@@ -15,8 +15,9 @@ const ANA = "00000000-0000-0000-0000-00000000000a";
 const LEE = "00000000-0000-0000-0000-00000000000b";
 const BUILDER = "00000000-0000-0000-0000-0000000000c1";
 const REVIEWER = "00000000-0000-0000-0000-0000000000c2";
+const LEAD = "00000000-0000-0000-0000-0000000000c3";
 
-const project: Project = { id: "demo", name: "Shop", slug: "shop", repo: "ana/shop", default_branch: "main", ticket_prefix: "SH", owner_id: ANA, created_at: iso(9000) };
+const project: Project = { id: "demo", name: "Shop", slug: "shop", repo: "ana/shop", default_branch: "main", ticket_prefix: "SH", owner_id: ANA, lead_agent_id: LEAD, created_at: iso(9000) };
 
 const profile: Profile = { id: ANA, github_login: "ana", name: "Ana", avatar_url: null, timezone: "America/Toronto", city: "Toronto", onboarded: true };
 
@@ -33,7 +34,7 @@ function ticket(n: number, t: Partial<Ticket> & Pick<Ticket, "title" | "status">
     parent_id: null,
     assignee_id: null,
     assignee_type: null,
-    reporter_id: ANA,
+    reporter_id: LEAD,
     done_means: [],
     branch: null,
     pr_url: null,
@@ -88,6 +89,7 @@ const steps = new Map<string, Step[]>([
 ]);
 
 const agents: Agent[] = [
+  { id: LEAD, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "ana-claude", status: "idle", status_note: "Planned the Sign-in epic", current_ticket_id: null, last_seen_at: iso(3) },
   { id: BUILDER, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "builder", status: "building", status_note: "Creating profiles for new users", current_ticket_id: "t2", last_seen_at: iso(1) },
   { id: REVIEWER, owner_profile_id: LEE, owner_label: "lee", vendor: "codex", display_name: "lee-codex", status: "waiting_human", status_note: "Asked about the session store", current_ticket_id: "t4", last_seen_at: iso(2) },
 ];
@@ -95,6 +97,7 @@ const agents: Agent[] = [
 const members: Member[] = [
   { actor_id: ANA, actor_type: "human", role: "owner" },
   { actor_id: LEE, actor_type: "human", role: "member" },
+  { actor_id: LEAD, actor_type: "agent", role: "member" },
   { actor_id: BUILDER, actor_type: "agent", role: "member" },
   { actor_id: REVIEWER, actor_type: "agent", role: "member" },
 ];

@@ -13,7 +13,8 @@ import { BULLETIN_KINDS, BULLETIN_STATES, MESSAGE_KINDS } from "../core/types.js
 
 const INSTRUCTIONS = `AutoKolab connects you to the people and other AI agents working on this same repository from other machines: a project board of tickets, a Project Guide, decisions, and a shared chat room. Everyone's code is on the shared GitHub repo.
 Project board (when this repo has an AutoKolab project):
-- Start with project_brief: the concept, architecture and rules everyone follows, the decisions in force, the board and your tickets. Follow the rules and decisions.
+- Start with project_brief: your job (lead or worker), the concept, architecture and rules everyone follows, the decisions in force, the agents, the board and your tickets. Follow the rules and decisions.
+- The lead turns what its person asks for into complete tickets and assigns them to the worker agents (project_brief explains how). Workers do the tickets assigned to them, exactly as written.
 - Tickets are the source of truth for work. Before you work on one, read it with ticket_get (description, "done means", steps, comments). Comments from people are instructions for that ticket.
 - While working: move it to in_progress, plan with ticket_steps (plan), mark each step now/done as you go, set the branch with ticket_update, comment on decisions or findings. Set needs_human (a short question) when you need a person; clear it when answered.
 - When done: every "done means" item true, pull request open, ticket_update status=review with pr_url, and a short comment with what changed.
@@ -325,7 +326,8 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
   server.registerTool(
     "ticket_create",
     {
-      description: "Create a ticket. Give it a clear title, a description (what and why) and done_means (checkable acceptance items). Assign an agent and status=ready to have it picked up.",
+      description:
+        "Create a ticket. The worker only sees the ticket, so write the whole brief: a title that states the outcome, a description with **Context**, **What to do**, **Where** (files, code to follow), **Not in scope** and **Notes**, and done_means (2 to 6 checkable items, including tests). Assign an agent and status=ready to have it picked up right away (that requires the description and done_means). For a bigger goal, create an epic (type=epic) first and pass it as epic.",
       inputSchema: {
         title: z.string().min(1).max(200),
         description: z.string().max(20000).optional(),

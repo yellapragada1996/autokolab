@@ -128,7 +128,7 @@ function Projects({ profile, onSignOut, onEditProfile }: { profile: Profile; onS
       </Centered>
     );
   }
-  return <Workspace key={project.id} project={project} projects={projects} route={route} profile={profile} onSignOut={onSignOut} onEditProfile={onEditProfile} />;
+  return <Workspace key={project.id} project={project} projects={projects} route={route} profile={profile} onSignOut={onSignOut} onEditProfile={onEditProfile} onProjectChanged={() => void load()} />;
 }
 
 function Centered({ children }: { children: React.ReactNode }) {

@@ -26,6 +26,8 @@ export interface Project {
   repo: string | null;
   default_branch: string;
   ticket_prefix: string;
+  /** The agent that turns people's requests into tickets and assigns them. */
+  lead_agent_id: string | null;
 }
 
 export interface Ticket {
@@ -84,6 +86,22 @@ interface Guide {
 }
 
 /** Used when a project has no rules written yet. Same as the website's recommended rules. */
+/** What the lead does. Shown to the lead in project_brief. */
+export function leadGuide(project: string, people: string[]): string {
+  const who = people.length ? `${people.join(" and ")} ${people.length === 1 ? "talks" : "talk"}` : "The people on this project talk";
+  return `You are the lead of ${project}. ${who} to you, and you turn what they want into tickets the worker agents can do without asking anything. Workers only see the ticket, never your conversation, so the ticket is the whole brief.
+1. Understand first: read the code involved, the guide and the decisions. Ask your person only about real product choices.
+2. Split the work into tickets of a few hours each, one clear outcome per ticket. For a goal that needs several tickets, create an epic first and put the tickets under it.
+3. Write every ticket like this:
+   - Title: the outcome, as an instruction ("Add Google sign-in to /login").
+   - Description, with these headings: **Context** (why, for whom), **What to do** (the behaviour and the approach to take), **Where** (files, modules, APIs and existing code to follow), **Not in scope**, **Notes** (decisions, gotchas, how to test).
+   - Done means: 2 to 6 checkable items, including the tests that must pass.
+   - Blocked by: tickets that must land first. If two tickets touch the same files, order them with blocked_by instead of running them in parallel.
+4. Assign each ticket to a worker agent (see Agents below: status and open tickets) and put it in Ready so it starts now, or Backlog if it shouldn't start yet. Spread the work; don't stack one agent while another is idle.
+5. Tell your person what you created: keys, who has what, and the order.
+6. Follow up whenever your person comes back or asks: check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. Review pull requests against "done means" and comment what's missing. Record settled choices with decision_add.`;
+}
+
 export function defaultRules(defaultBranch: string): string {
   return [
     "- Only work on tickets assigned to you that are in Ready or In progress.",
@@ -111,6 +129,7 @@ const rank = (p: Priority) => PRIORITIES.indexOf(p);
 
 export class ProjectView {
   private names = new Map<string, { name: string; type: "human" | "agent" }>();
+  private agentInfo = new Map<string, { status: AgentStatus; status_note: string | null; last_seen_at: string | null; vendor: string; owner_label: string }>();
 
   private constructor(
     readonly sb: SupabaseClient,
@@ -120,7 +139,7 @@ export class ProjectView {
 
   /** Projects this member is in. Empty if the server doesn't have projects yet. */
   static async mine(sb: SupabaseClient): Promise<Project[]> {
-    const r = await sb.from("projects").select("id, name, slug, repo, default_branch, ticket_prefix").order("created_at");
+    const r = await sb.from("projects").select("id, name, slug, repo, default_branch, ticket_prefix, lead_agent_id").order("created_at");
     if (r.error) return [];
     return r.data as Project[];
   }
@@ -155,11 +174,15 @@ export class ProjectView {
     const agents = members.filter((m) => m.actor_type === "agent").map((m) => m.actor_id);
     const [p, a] = await Promise.all([
       humans.length ? this.sb.from("profiles").select("id, name, github_login").in("id", humans) : Promise.resolve({ data: [], error: null }),
-      agents.length ? this.sb.from("agents").select("id, display_name").in("id", agents) : Promise.resolve({ data: [], error: null }),
+      agents.length ? this.sb.from("agents").select("id, display_name, status, status_note, last_seen_at, vendor, owner_label").in("id", agents) : Promise.resolve({ data: [], error: null }),
     ]);
     this.names.clear();
     for (const x of check<{ id: string; name: string }[]>(p as never)) this.names.set(x.id, { name: x.name, type: "human" });
-    for (const x of check<{ id: string; display_name: string }[]>(a as never)) this.names.set(x.id, { name: x.display_name, type: "agent" });
+    this.agentInfo.clear();
+    for (const x of check<{ id: string; display_name: string; status: AgentStatus; status_note: string | null; last_seen_at: string | null; vendor: string; owner_label: string }[]>(a as never)) {
+      this.names.set(x.id, { name: x.display_name, type: "agent" });
+      this.agentInfo.set(x.id, x);
+    }
   }
 
   nameOf(id: string | null | undefined): string {
@@ -178,6 +201,33 @@ export class ProjectView {
 
   peopleLine(): string {
     return [...this.names.values()].map((x) => `${x.name}${x.type === "agent" ? " (agent)" : ""}`).join(", ");
+  }
+
+  get leadId(): string | null {
+    return this.project.lead_agent_id;
+  }
+
+  get iAmLead(): boolean {
+    return this.project.lead_agent_id === this.meId;
+  }
+
+  isAgent(id: string | null | undefined): boolean {
+    return !!id && this.names.get(id)?.type === "agent";
+  }
+
+  /**
+   * A worker agent only gets what's written on its ticket, so work handed to an agent must say
+   * what to do and what done means.
+   */
+  private checkBrief(t: { title: string; description?: string; done_means?: string[]; status?: Status; assignee_id?: string | null; type?: TicketType }): void {
+    if (!this.isAgent(t.assignee_id) || t.assignee_id === this.meId || t.type === "epic") return;
+    if (!["ready", "in_progress"].includes(t.status ?? "backlog")) return;
+    const missing: string[] = [];
+    if ((t.description ?? "").trim().length < 120) missing.push("a description with the context, what to do and where in the code (at least a few sentences)");
+    if (!(t.done_means ?? []).filter((d) => d.trim()).length) missing.push('"done means": checkable items, including tests');
+    if (missing.length) {
+      throw new AutoKolabError(`${this.nameOf(t.assignee_id)} only sees what's on the ticket. Before giving it work in ${t.status === "ready" ? "Ready" : "In progress"}, add ${missing.join(" and ")}. (Or leave it in Backlog for now.)`);
+    }
   }
 
   // ------------------------------------------------------------------ tickets
@@ -224,6 +274,7 @@ export class ProjectView {
     blocked_by?: string[];
   }): Promise<Ticket> {
     this.noSecrets(input.title, input.description, ...(input.done_means ?? []));
+    this.checkBrief({ ...input, assignee_id: input.assignee ? this.resolveActor(input.assignee) : null });
     const parent = input.epic ? (await this.ticket(input.epic)).id : null;
     const t = check<Ticket>(
       await this.sb.rpc("create_ticket", {
@@ -270,6 +321,17 @@ export class ProjectView {
     }
     if (change.assignee !== undefined) patch.assignee_id = change.assignee ? this.resolveActor(change.assignee) : null;
     if (change.epic !== undefined) patch.parent_id = change.epic ? (await this.ticket(change.epic)).id : null;
+    // Handing work to an agent (assigning it, or moving it to Ready) needs a complete brief.
+    if (patch.assignee_id !== undefined || change.status === "ready") {
+      this.checkBrief({
+        title: change.title ?? t.title,
+        description: change.description ?? t.description,
+        done_means: change.done_means ?? t.done_means,
+        status: change.status ?? t.status,
+        assignee_id: (patch.assignee_id as string | null | undefined) === undefined ? t.assignee_id : (patch.assignee_id as string | null),
+        type: change.type ?? t.type,
+      });
+    }
     let out = t;
     if (Object.keys(patch).length) out = check<Ticket>(await this.sb.from("tickets").update(patch).eq("id", t.id).select("*").single());
     for (const b of change.blocked_by_add ?? []) await this.addBlocker(t.key, b);
@@ -430,9 +492,25 @@ export class ProjectView {
       const b = blockers(t);
       return `- ${t.key} [${STATUS_LABEL[t.status]}${t.priority !== "none" ? `, ${t.priority}` : ""}] ${t.title} · ${t.assignee_id ? this.nameOf(t.assignee_id) : "unassigned"}${t.needs_human ? " · NEEDS A PERSON" : ""}${b.length ? ` · waiting on ${b.map((x) => x.key).join(", ")}` : ""}`;
     };
+    const humans = [...this.names.values()].filter((x) => x.type === "human").map((x) => x.name);
+    const lead = this.leadId ? this.nameOf(this.leadId) : null;
+    const role = this.iAmLead
+      ? ["## Your job", leadGuide(p.name, humans)]
+      : this.isAgent(this.meId)
+        ? ["## Your job", `You are a worker agent. ${lead ? `${lead} is the lead: it writes the tickets and assigns them.` : "People write the tickets and assign them."} Work the tickets assigned to you, exactly as written. If a ticket is unclear or wrong, set needs_human with your question on that ticket instead of guessing big.`]
+        : [];
+    const agentLines = [...this.agentInfo.entries()].map(([id, a]) => {
+      const online = a.last_seen_at && Date.now() - Date.parse(a.last_seen_at) < 5 * 60_000 && a.status !== "offline";
+      const openCount = open.filter((t) => t.assignee_id === id).length;
+      return `- ${this.nameOf(id)}${id === this.leadId ? " (lead)" : ""} · ${a.vendor === "claude" ? "Claude Code" : "Codex"} · ${a.owner_label}'s · ${online ? a.status.replace("_", " ") : "offline"}${a.status_note && online ? ` (${a.status_note})` : ""} · ${openCount} open ticket${openCount === 1 ? "" : "s"}`;
+    });
     return [
       `# ${p.name}${p.repo ? ` · github.com/${p.repo}` : ""} · tickets ${p.ticket_prefix}-n · default branch ${p.default_branch}`,
-      `You are ${this.nameOf(this.meId)}. People and agents in this project: ${this.peopleLine()}.`,
+      `You are ${this.nameOf(this.meId)}${this.iAmLead ? ", the lead" : ""}. People and agents in this project: ${this.peopleLine()}.`,
+      "",
+      ...(role.length ? [...role, ""] : []),
+      "## Agents",
+      agentLines.length ? agentLines.join("\n") : "(none yet)",
       "",
       "## Concept",
       g.concept.trim() || "(Not written yet. Read the repo's README. If you're asked to, draft it with guide_update.)",

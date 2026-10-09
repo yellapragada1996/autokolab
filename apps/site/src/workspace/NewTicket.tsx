@@ -56,7 +56,7 @@ export function NewTicket({ ws, initialStatus, onClose, onCreated }: { ws: Works
   const epics = ws.tickets.filter((t) => t.type === "epic" && t.status !== "done");
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="New ticket" onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "8vh 16px", zIndex: 40, overflowY: "auto" }}>
+    <div role="dialog" aria-modal="true" aria-label="Create issue" onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "8vh 16px", zIndex: 40, overflowY: "auto" }}>
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}
@@ -74,7 +74,7 @@ export function NewTicket({ ws, initialStatus, onClose, onCreated }: { ws: Works
             ×
           </button>
         </div>
-        <input ref={titleRef} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ticket title" aria-label="Title" maxLength={200} style={{ ...field, border: 0, background: "transparent", padding: 0, fontSize: 22, fontWeight: 600 }} />
+        <input ref={titleRef} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Summary" aria-label="Title" maxLength={200} style={{ ...field, border: 0, background: "transparent", padding: 0, fontSize: 22, fontWeight: 600 }} />
         <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What and why. Markdown works. Agents read this as their brief." aria-label="Description" rows={5} style={{ ...field, resize: "vertical" }} />
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontSize: 13, color: "var(--muted)" }}>Done means (one per line)</span>
@@ -123,16 +123,20 @@ export function NewTicket({ ws, initialStatus, onClose, onCreated }: { ws: Works
           )}
           <input aria-label="Labels" value={labels} onChange={(e) => setLabels(e.target.value)} placeholder="labels, comma separated" style={{ ...sel, flex: 1, minWidth: 160 }} />
         </div>
-        {assignee && ws.agentOf(assignee) && (
+        {assignee && ws.agentOf(assignee) && (description.trim().length < 120 || !doneMeans.trim()) && status !== "backlog" ? (
+          <p style={{ fontSize: 13, color: "var(--warn)" }}>
+            {ws.nameOf(assignee)} only sees what's on the ticket. Add a description (context, what to do, where in the code) and "done means", or let the lead write it.
+          </p>
+        ) : assignee && ws.agentOf(assignee) ? (
           <p style={{ fontSize: 13, color: "var(--muted)" }}>
             {ws.nameOf(assignee)} picks up tickets in <strong style={{ color: "var(--text)" }}>Ready</strong> by itself, reads the Project Guide, and reports progress here.
           </p>
-        )}
+        ) : null}
         {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
           <span style={{ fontSize: 12, color: "var(--faint)" }}>⌘ Enter to create</span>
           <Button type="submit" variant="primary" disabled={busy || !title.trim()}>
-            {busy ? "Creating…" : "Create ticket"}
+            {busy ? "Creating…" : "Create"}
           </Button>
         </div>
       </form>
