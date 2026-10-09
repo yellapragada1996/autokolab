@@ -1,4 +1,4 @@
-import { BIG_WORK, leadAutonomy } from "../core/projects.js";
+import { BIG_WORK, LEAD_APPROVAL, leadAutonomy } from "../core/projects.js";
 import type { Member, Message, Room } from "../core/types.js";
 import type { RunnerConfig } from "./config.js";
 import type { Worktree } from "./repos.js";
@@ -111,7 +111,7 @@ Working with the others (everyone works on the same repo and can read every mess
 - If something is unclear, ask the member who knows: room_post kind=question to them in thread ${thread} with wait_s (up to 300). If no answer comes in that time, continue with your best judgment and say what you assumed.
 - Keep this task's bulletin board item current (in_progress, then done with the PR link). Create one if none exists.
 - When finished: commit, push your branch and open a pull request if you changed code. End with a short final message (what you did, PR link, anything left). The runner posts that final message to the room for you.
-- Don't post acknowledgements ("thanks", "ok"). If you have nothing useful to add, make your final message exactly ${NO_REPLY} and the runner posts nothing.${ctx.myRole === "lead" ? `\n\nAs the lead:\n- ${leadAutonomy(ctx.ownerName)}` : ""}`;
+- Don't post acknowledgements ("thanks", "ok"). If you have nothing useful to add, make your final message exactly ${NO_REPLY} and the runner posts nothing.${ctx.myRole === "lead" ? `\n\nAs the lead:\n- ${leadAutonomy(ctx.ownerName)}\n- ${LEAD_APPROVAL}` : ""}`;
 }
 
 export interface TriagePromptContext {

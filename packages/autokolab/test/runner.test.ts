@@ -11,7 +11,8 @@ import { buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from 
 import { needsRunner } from "../src/setup/connect.js";
 import { STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, leadGuide, questionsForLead, untriaged, type Comment, type Ticket } from "../src/core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, leadGuide, questionsForLead, untriaged, type Comment, type Ticket } from "../src/core/projects.js";
+import { RISKY_PATHS, approvalMessage, checkResult, isRiskyPath, mergeDecision, mergedComment, plainGhError, readyToMergeMessage, shortList, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
@@ -238,12 +239,15 @@ describe("prompt", () => {
     expect(lead).toContain("lee's lead agent");
     expect(lead).toMatch(/As the lead:\n- You run unattended too, while lee is away\. Decide and act on your own/);
     expect(lead).toContain(`Before big work (${BIG_WORK}), post one kind=question to lee in the room and stop`);
+    expect(lead).toContain(`- ${LEAD_APPROVAL}`);
     expect(buildPrompt({ ...base, followUp: false })).not.toContain("As the lead:");
   });
   it("leadGuide says the same", () => {
     const g = leadGuide("Shop", ["ana"]);
     expect(g).toContain("Decide and act on your own");
     expect(g).toContain(BIG_WORK);
+    expect(g).toContain(LEAD_APPROVAL);
+    expect(LEAD_APPROVAL).toMatch(/approve it with ticket_approve.*Approve only the commit you actually reviewed: a new push needs a new approval/);
     expect(BIG_WORK).toMatch(/new epic or more than 3 tickets, migrations, dependencies, auth\/security\/CI\/infra changes, deleting a feature, or changing a decision/);
   });
 });
@@ -269,6 +273,11 @@ describe("the lead's runner", () => {
       t("g", { type: "epic" }),
     ];
     expect(questionsForLead(all, "lead").map((x) => x.id)).toEqual(["a", "f"]);
+  });
+  it("leaves its own merge questions for a person", () => {
+    const all = [t("a", { needs_human: NO_CHECKS_QUESTION }), t("b", { needs_human: `${MERGE_OK_PREFIX} supabase/x.sql` }), t("c", { needs_human: `${MERGE_FAILED_PREFIX} PR #3: conflicts` }), t("d")];
+    expect(questionsForLead(all, "lead").map((x) => x.id)).toEqual(["d"]);
+    expect(isMergeQuestion("Which colour?")).toBe(false);
   });
   it("handles each question once; a new question on the same ticket is triaged again", () => {
     const qs = [t("a"), t("b", { needs_human: "Blue or green?" })];
@@ -650,5 +659,127 @@ describe("pre-push guard", () => {
 
     // A person: AUTOKOLAB_RUNNER cleared explicitly, even when an agent runs the tests.
     expect(push(ws, { AUTOKOLAB_RUNNER: "" }, "--force", "origin", "feature").status).toBe(0);
+  });
+});
+
+describe("the lead's auto-merge (AK-30)", () => {
+  const SHA = "a".repeat(40);
+  const OTHER = "b".repeat(40);
+  const ok = (name = "checks") => ({ __typename: "CheckRun", name, status: "COMPLETED", conclusion: "SUCCESS" });
+  const pr = (extra: Partial<PrInfo> = {}): PrInfo => ({
+    state: "OPEN",
+    headRefOid: SHA,
+    mergeable: "MERGEABLE",
+    statusCheckRollup: [ok()],
+    files: [{ path: "packages/autokolab/src/runner/runner.ts" }],
+    ...extra,
+  });
+  const approved = { approved_sha: SHA, merge_ok_by: null };
+  const risky = { files: [{ path: "README.md" }, { path: "supabase/tests/policies.sql" }] };
+
+  it("lists the risky paths in one place", () => {
+    expect(RISKY_PATHS.under).toEqual(["packages/autokolab/sql/", "supabase/", ".github/"]);
+    expect(RISKY_PATHS.files).toEqual(["package.json", "package-lock.json"]);
+    expect(RISKY_PATHS.containing).toEqual(["auth", "secret", "security"]);
+  });
+  it("matches risky paths and leaves the rest", () => {
+    for (const p of [
+      "packages/autokolab/sql/012_merge_policy.sql",
+      "supabase/tests/policies.sql",
+      ".github/workflows/ci.yml",
+      "./.github/CODEOWNERS",
+      "package.json",
+      "packages/autokolab/package.json",
+      "package-lock.json",
+      "web/src/lib/Auth.tsx",
+      "src/core/secrets.ts",
+      "docs/SECURITY.md",
+    ]) {
+      expect(isRiskyPath(p), p).toBe(true);
+    }
+    for (const p of ["README.md", "packages/autokolab/src/runner/runner.ts", "web/package.jsonc", "docs/sql-notes.md", "packages/autokolab/test/sql.test.ts"]) {
+      expect(isRiskyPath(p), p).toBe(false);
+    }
+  });
+  it("reads check runs and commit statuses", () => {
+    expect(checkResult(ok())).toBe("success");
+    expect(checkResult({ name: "x", status: "IN_PROGRESS", conclusion: null })).toBe("pending");
+    expect(checkResult({ name: "x", status: "QUEUED", conclusion: "" })).toBe("pending");
+    expect(checkResult({ name: "x", status: "COMPLETED", conclusion: "FAILURE" })).toBe("failure");
+    expect(checkResult({ name: "x", status: "COMPLETED", conclusion: "CANCELLED" })).toBe("failure");
+    expect(checkResult({ __typename: "StatusContext", context: "ci/x", state: "SUCCESS" })).toBe("success");
+    expect(checkResult({ __typename: "StatusContext", context: "ci/x", state: "PENDING" })).toBe("pending");
+    expect(checkResult({ __typename: "StatusContext", context: "ci/x", state: "ERROR" })).toBe("failure");
+  });
+
+  it("waits unless the PR is open", () => {
+    expect(mergeDecision("auto_all", pr({ state: "CLOSED" }), approved)).toMatchObject({ action: "wait", why: "the PR is closed" });
+    expect(mergeDecision("auto_all", pr({ state: "MERGED" }), approved).action).toBe("wait");
+  });
+  it("waits without an approval, or when the PR moved past the approved commit", () => {
+    expect(mergeDecision("auto_all", pr(), { approved_sha: null, merge_ok_by: null }).action).toBe("wait");
+    const moved = mergeDecision("auto_all", pr({ headRefOid: OTHER }), approved);
+    expect(moved).toMatchObject({ action: "wait", question: undefined });
+    expect(moved.why).toMatch(/moved to bbbbbbb after the lead approved aaaaaaa; it needs a new approval/);
+    expect(mergeDecision("auto_all", pr({ headRefOid: SHA.toUpperCase() }), approved).action).toBe("merge");
+  });
+  it("asks a person about conflicts, and waits while GitHub works out mergeability", () => {
+    const c = mergeDecision("auto_all", pr({ mergeable: "CONFLICTING" }), approved);
+    expect(c.action).toBe("wait");
+    expect(c.question).toMatch(new RegExp(`^${MERGE_FAILED_PREFIX}: the PR has conflicts`));
+    expect(mergeDecision("auto_all", pr({ mergeable: "UNKNOWN" }), approved)).toMatchObject({ action: "wait", question: undefined });
+  });
+  it("waits with a plain question when no checks ran", () => {
+    for (const statusCheckRollup of [[], null, undefined]) {
+      expect(mergeDecision("auto_all", pr({ statusCheckRollup }), approved)).toMatchObject({ action: "wait", question: NO_CHECKS_QUESTION });
+    }
+  });
+  it("waits on any failed or pending check", () => {
+    const failed = mergeDecision("auto_all", pr({ statusCheckRollup: [ok(), { name: "checks", status: "COMPLETED", conclusion: "FAILURE" }] }), approved);
+    expect(failed).toMatchObject({ action: "wait", question: undefined, why: "checks didn't pass" });
+    const pending = mergeDecision("auto_all", pr({ statusCheckRollup: [ok("lint"), { name: "checks", status: "IN_PROGRESS", conclusion: null }] }), approved);
+    expect(pending).toMatchObject({ action: "wait", why: "checks still running" });
+  });
+  it("ask: tells the person instead of merging, risky or not", () => {
+    expect(mergeDecision("ask", pr(), approved).action).toBe("ask");
+    expect(mergeDecision("ask", pr(risky), approved).action).toBe("ask");
+  });
+  it("auto_safe: merges safe changes; risky ones wait for a person's OK", () => {
+    expect(mergeDecision("auto_safe", pr(), approved)).toMatchObject({ action: "merge", risky: [] });
+    const d = mergeDecision("auto_safe", pr(risky), approved);
+    expect(d).toMatchObject({ action: "needs_ok", risky: ["supabase/tests/policies.sql"] });
+    expect(d.question).toBe(`${MERGE_OK_PREFIX} supabase/tests/policies.sql`);
+    expect(mergeDecision("auto_safe", pr(risky), { ...approved, merge_ok_by: "person" }).action).toBe("merge");
+  });
+  it("auto_all: merges risky changes too", () => {
+    expect(mergeDecision("auto_all", pr(risky), approved).action).toBe("merge");
+  });
+  it("keeps the needs-OK question short", () => {
+    const many = Array.from({ length: 9 }, (_, i) => ({ path: `supabase/m${i}.sql` }));
+    expect(mergeDecision("auto_safe", pr({ files: many }), approved).question).toMatch(/m4\.sql and 4 more$/);
+    expect(shortList(["a", "b"])).toBe("a, b");
+  });
+  it("treats a PR too big for gh to list in full as risky", () => {
+    const big = Array.from({ length: 100 }, (_, i) => ({ path: `src/f${i}.ts` }));
+    expect(mergeDecision("auto_safe", pr({ files: big }), approved)).toMatchObject({ action: "needs_ok", risky: ["100+ files, too many to check"] });
+    expect(mergeDecision("auto_safe", pr({ files: big.slice(1) }), approved).action).toBe("merge");
+  });
+
+  it("words the approval and the messages for the setting", () => {
+    const url = "https://github.com/ana/shop/pull/12";
+    expect(approvalMessage(url, SHA, "auto_safe")).toMatch(/^Approved PR #12 at aaaaaaa; it will merge when tests pass \(setting: auto-merge safe changes\)/);
+    expect(approvalMessage(url, SHA, "auto_all")).toBe("Approved PR #12 at aaaaaaa; it will merge when tests pass (setting: auto-merge everything).");
+    expect(approvalMessage(url, SHA, "ask")).toMatch(/a person is told it's ready to merge \(setting: a person merges\)/);
+    expect(readyToMergeMessage(url, "AK-30")).toBe(`PR #12 (AK-30) is approved and tests pass: ready for you to merge. ${url}`);
+    expect(mergedComment(SHA, "auto_safe")).toBe("Merged automatically: tests passed, lead approved commit aaaaaaa (setting: auto-merge safe changes).");
+  });
+  it("explains gh failures plainly", () => {
+    const where = "on lee's machine";
+    expect(plainGhError("gh: spawnSync gh ENOENT", where)).toBe("gh isn't installed on lee's machine.");
+    expect(plainGhError("To get started with GitHub CLI, please run:  gh auth login", where)).toMatch(/isn't signed in to GitHub/);
+    expect(plainGhError("GraphQL: ana-bot does not have the correct permissions to execute `MergePullRequest`", where)).toMatch(/needs write access/);
+    expect(plainGhError("Pull request ana/shop#12 is not mergeable: the merge commit cannot be cleanly created.", where)).toMatch(/conflicts/);
+    expect(plainGhError("GraphQL: Head branch was modified. Review and try the merge again.", where)).toMatch(/approve it again/);
+    expect(plainGhError("\nsomething odd\nmore", where)).toBe("something odd");
   });
 });

@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, MODEL_CHANGE_PREFIX, ProjectView, untriaged, type AgentStatus, type Comment, type RanWith, type Ticket } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, ProjectView, isMergeQuestion, untriaged, type AgentStatus, type Comment, type RanWith, type Ticket } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -11,6 +11,7 @@ import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineRun, type ModelChoice, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
+import { ghPrMerge, ghPrView, mergeDecision, mergedComment, plainGhError, prNumber, readyToMergeMessage, type MergeDecision, type PrInfo } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
 import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, type Worktree } from "./repos.js";
 
@@ -164,9 +165,17 @@ interface TicketState {
   sessions: Record<string, string>;
   seen: Record<string, number>;
   triaged?: Record<string, string>;
+  /**
+   * For a lead: what its runner last did about merging each approved ticket (AK-30). `sig` stops it
+   * repeating itself; `failedAt` is the ticket's updated_at after a failed merge, so it doesn't
+   * retry until the ticket changes.
+   */
+  merges?: Record<string, { sig: string; failedAt?: string }>;
 }
 
 const PROJECTS_RELOAD_MS = 5 * 60_000;
+/** How often the lead's runner looks at each approved PR. */
+const MERGE_CHECK_MS = 60_000;
 
 export class Runner {
   private queue: Job[] = [];
@@ -187,6 +196,8 @@ export class Runner {
   private projectsLoadedAt = 0;
   private ticketChannels: RealtimeChannel[] = [];
   private isAgentRow = true;
+  private merging = false;
+  private mergeCheckedAt = new Map<string, number>();
 
   constructor(
     private ak: AutoKolab,
@@ -236,6 +247,9 @@ export class Runner {
       }),
     );
     this.timers.push(setInterval(() => this.poll(), POLL_MS));
+    // Merging approved PRs is plain code, not a model run, so it has its own timer and goes on
+    // while a task is running.
+    this.timers.push(setInterval(() => void this.checkMerges(), MERGE_CHECK_MS));
     this.timers.push(
       setInterval(() => {
         void ak.heartbeat(this.stateNow()).catch((e) => this.log(`Heartbeat failed: ${e.message}`));
@@ -643,6 +657,79 @@ export class Runner {
     }
     const next = untriaged(open.map((j) => j.ticket), handled)[0];
     return next ? open.find((j) => j.ticket.id === next.id)! : null;
+  }
+
+  /**
+   * For a lead: merge approved PRs (AK-30, DEC-19). Each ticket in Review with an approved commit
+   * is looked at once a minute at most; see mergeDecision for when it merges.
+   */
+  private async checkMerges(): Promise<void> {
+    if (this.merging || this.stopping || this.ak.me.paused) return;
+    this.merging = true;
+    try {
+      if (Date.now() - this.projectsLoadedAt > PROJECTS_RELOAD_MS) await this.loadProjects();
+      for (const p of this.projects.filter((x) => x.iAmLead)) {
+        for (const t of await p.approvedForMerge()) {
+          if (Date.now() - (this.mergeCheckedAt.get(t.id) ?? 0) < MERGE_CHECK_MS) continue;
+          this.mergeCheckedAt.set(t.id, Date.now());
+          await this.checkMerge(p, t).catch((e) => this.log(`${t.key} merge: couldn't check: ${(e as Error).message}`));
+        }
+      }
+    } catch (e) {
+      this.log(`Couldn't check approved PRs: ${(e as Error).message}`);
+    } finally {
+      this.merging = false;
+    }
+  }
+
+  private async checkMerge(p: ProjectView, t: Ticket): Promise<void> {
+    const rec = this.ticketState().merges?.[t.id];
+    if (rec?.failedAt && rec.failedAt === t.updated_at) return; // a failed merge waits for the ticket to change
+    const where = `on ${this.ak.ownerName(this.ak.me)}'s machine`;
+    const url = t.pr_url!;
+    const sha = t.approved_sha!;
+    const policy = await p.mergePolicy();
+    let d: MergeDecision;
+    try {
+      d = mergeDecision(policy, ghPrView<PrInfo>(url), t);
+    } catch (e) {
+      const why = plainGhError((e as Error).message, where);
+      d = { action: "wait", why: `gh: ${why}`, question: `${MERGE_GH_PREFIX} (PR #${prNumber(url)}): ${why}`.slice(0, 1000), risky: [] };
+    }
+    const sig = `${sha}|${d.action}|${d.question ?? d.why}`;
+    if (d.action !== "merge" && rec?.sig === sig) return;
+    const remember = (failedAt?: string) => {
+      const st = this.ticketState();
+      st.merges = { ...(st.merges ?? {}), [t.id]: { sig, ...(failedAt ? { failedAt } : {}) } };
+      this.saveTicketState(st);
+    };
+    this.log(`${t.key} merge: ${d.action} · ${d.why}.`);
+
+    if (d.action === "wait" || d.action === "needs_ok") {
+      if (d.question && t.needs_human !== d.question) await p.update(t.key, { needs_human: d.question });
+      remember();
+      return;
+    }
+    if (d.action === "ask") {
+      const room = p.project.room_id ? this.ak.roomById(p.project.room_id) : this.ak.rooms().find((r) => r.repo === p.project.repo);
+      const person = this.ak.mine().find((m) => m.kind === "human");
+      if (!room) throw new Error("the project has no room to tell my person in");
+      await this.ak.room(room).post({ kind: "status", to: person?.id ?? null, body: readyToMergeMessage(url, t.key) });
+      remember();
+      return;
+    }
+    const merged = ghPrMerge(url, sha);
+    if (!merged.ok) {
+      const why = plainGhError(merged.error, where);
+      this.log(`${t.key} merge: failed · ${why}`);
+      const after = await p.update(t.key, { needs_human: `${MERGE_FAILED_PREFIX} PR #${prNumber(url)}: ${why}`.slice(0, 1000) });
+      remember(after.updated_at);
+      return;
+    }
+    await p.update(t.key, { status: "done", ...(isMergeQuestion(t.needs_human) ? { needs_human: null } : {}) });
+    await p.comment(t.key, mergedComment(sha, policy)).catch((e) => this.log(`Couldn't comment on ${t.key}: ${(e as Error).message}`));
+    remember();
+    this.log(`${t.key} merge: merged PR #${prNumber(url)} at ${sha.slice(0, 7)}.`);
   }
 
   /** What this agent is doing, for the board and People. Quietly does nothing for v1-only agents. */
