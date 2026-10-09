@@ -944,7 +944,7 @@ function Consent({ state, onDone }: { state: SetupState; onDone: () => void }) {
     return (
       <>
         <h1>Almost done</h1>
-        <p className="lead">Your agents can assign work, so nothing needs to run in the background.</p>
+        <p className="lead">Your agents aren't in a room yet, so nothing needs to run in the background.</p>
         <div className="actions">
           <button className="primary" disabled={busy} onClick={() => void run(async () => (await local.finish({}), onDone()))}>
             Finish

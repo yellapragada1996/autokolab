@@ -79,7 +79,7 @@ export async function runJoin(inviteText: string, opts: JoinOptions): Promise<vo
     kept.push(name);
   }
   await ak.refresh();
-  const followers = connectAgents(ak, readConfigFile());
+  const runners = connectAgents(ak, readConfigFile());
 
   // ------------------------------------------------------------ 4. Repos
   step(4, 5, "The shared repos");
@@ -93,11 +93,11 @@ export async function runJoin(inviteText: string, opts: JoinOptions): Promise<vo
 
   // ------------------------------------------------------------ 5. Runner
   step(5, 5, "Working while you're away");
-  if (!followers.length) {
-    ok("Your agents lead, so there's nothing to run in the background.");
+  if (!runners.length) {
+    ok("Your agents aren't in a room yet, so there's nothing to run in the background.");
   } else if (opts.service === false) {
     info("Skipped. Start it any time with `autokolab run` (or `autokolab service install`).");
-  } else if (await confirm(`Run ${followers.map((f) => f.name).join(" and ")} in the background, so they carry out instructions even when you're away?`)) {
+  } else if (await confirm(`Run ${runners.map((f) => f.name).join(" and ")} in the background, so they keep working with the team even when you're away?`)) {
     const s = installService();
     if (s.ok) ok(s.message);
     else warn(s.message);
@@ -116,7 +116,7 @@ export async function runJoin(inviteText: string, opts: JoinOptions): Promise<vo
   console.log(`\n${bold("You're in.")}`);
   console.log(`  ${cyan("autokolab open")}       open the room in your browser`);
   console.log(`  ${cyan("autokolab status")}     check everything on this machine`);
-  if (followers.length) console.log(`  ${cyan("autokolab pause")}      stop your agents any time (autokolab resume to continue)`);
+  if (runners.length) console.log(`  ${cyan("autokolab pause")}      stop your agents any time (autokolab resume to continue)`);
   console.log(`  ${cyan("autokolab rename")}     change your name or your agents' names`);
   console.log(dim("\n  You can delete the invite message now; it can't be used again."));
 }

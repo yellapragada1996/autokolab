@@ -214,7 +214,7 @@ export async function runApp(opts: { noBrowser?: boolean; invite?: string } = {}
     if (runners.length || starting || serviceStatus() === "running" || !readConfigFile().me) return;
     starting = true;
     try {
-      // Give any follower agent on this machine its runner (e.g. after its role changed).
+      // Give every lead and follower agent on this machine its runner (e.g. after its role changed).
       if (!runnerFiles().length) {
         const ak = await connectFromConfig();
         try {

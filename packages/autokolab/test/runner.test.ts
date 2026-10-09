@@ -7,10 +7,11 @@ import type { Member, Message, Room } from "../src/core/types.js";
 import { parseRunnerConfig, runnerTemplate } from "../src/runner/config.js";
 import { claudeDenyRules, claudeInvocation, codexInvocation, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
 import { installHook } from "../src/runner/githook.js";
-import { buildPrompt, buildTicketPrompt, parseOutcome } from "../src/runner/prompt.js";
+import { buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "../src/runner/prompt.js";
+import { needsRunner } from "../src/setup/connect.js";
 import { agentTurnsSinceHuman, isPauseNotice, pauseNotice, runOutcome, shouldWake, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, type Comment } from "../src/core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, leadGuide, questionsForLead, untriaged, type Comment, type Ticket } from "../src/core/projects.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
@@ -196,6 +197,58 @@ describe("prompt", () => {
     expect(p).toMatch(/If no answer comes in that time, continue with your best judgment/);
     expect(p).not.toContain("instead of waiting");
     expect(p).toMatch(/Don't post acknowledgements.*exactly NO_REPLY/);
+  });
+  it("tells a lead to act on its own and ask its person only before big work (DEC-17)", () => {
+    const lead = buildPrompt({ ...base, myRole: "lead", senderRole: "follower", followUp: false, fromInstructor: false });
+    expect(lead).toContain("lee's lead agent");
+    expect(lead).toMatch(/As the lead:\n- You run unattended too, while lee is away\. Decide and act on your own/);
+    expect(lead).toContain(`Before big work (${BIG_WORK}), post one kind=question to lee in the room and stop`);
+    expect(buildPrompt({ ...base, followUp: false })).not.toContain("As the lead:");
+  });
+  it("leadGuide says the same", () => {
+    const g = leadGuide("Shop", ["ana"]);
+    expect(g).toContain("Decide and act on your own");
+    expect(g).toContain(BIG_WORK);
+    expect(BIG_WORK).toMatch(/new epic or more than 3 tickets, migrations, dependencies, auth\/security\/CI\/infra changes, deleting a feature, or changing a decision/);
+  });
+});
+
+describe("the lead's runner", () => {
+  const t = (id: string, extra: Partial<Ticket> = {}) => ({ id, key: id, status: "in_progress", type: "task", assignee_id: "worker", needs_human: "Which colour?", ...extra }) as Ticket;
+
+  it("leads and followers get a runner; people and observers don't", () => {
+    expect(needsRunner(["lead"])).toBe(true);
+    expect(needsRunner(["follower"])).toBe(true);
+    expect(needsRunner([undefined, "lead"])).toBe(true);
+    expect(needsRunner(["observer", undefined])).toBe(false);
+    expect(needsRunner([])).toBe(false);
+  });
+  it("triages workers' open questions, not its own, closed ones, or the agents-looping one", () => {
+    const all = [
+      t("a"),
+      t("b", { assignee_id: "lead" }),
+      t("c", { needs_human: null }),
+      t("d", { status: "done" }),
+      t("e", { needs_human: AGENT_LOOP_QUESTION }),
+      t("f", { status: "review", assignee_id: null }),
+      t("g", { type: "epic" }),
+    ];
+    expect(questionsForLead(all, "lead").map((x) => x.id)).toEqual(["a", "f"]);
+  });
+  it("handles each question once; a new question on the same ticket is triaged again", () => {
+    const qs = [t("a"), t("b", { needs_human: "Blue or green?" })];
+    expect(untriaged(qs, {}).map((x) => x.id)).toEqual(["a", "b"]);
+    const handled = { a: "Which colour?", b: "Blue or green?" };
+    expect(untriaged(qs, handled)).toEqual([]);
+    expect(untriaged([t("a", { needs_human: "I stopped: the run failed." })], handled).map((x) => x.id)).toEqual(["a"]);
+  });
+  it("briefs the triage run: answer and clear, or ask its person once; never change the repo", () => {
+    const p = buildTriagePrompt({ myName: "ana-claude", ownerName: "ana", projectName: "Shop", key: "SH-4", assignee: "lee-codex", question: "Blue or green?", ticket: "SH-4 · Buttons", repoPath: "/w/triage" });
+    expect(p).toContain("lee-codex is stuck on SH-4 with a question for a person:\n-----\nBlue or green?");
+    expect(p).toContain("ticket_comment key=SH-4 with the answer, then ticket_update key=SH-4 needs_human=null");
+    expect(p).toContain("leave needs_human as it is, post one room_post kind=question to ana that names SH-4");
+    expect(p).toContain("/w/triage (read only: don't change, commit or push anything there)");
+    expect(p).toContain("exactly NO_REPLY");
   });
 });
 
