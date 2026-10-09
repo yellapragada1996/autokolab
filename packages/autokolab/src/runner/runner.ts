@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { ProjectView, type AgentStatus, type Comment, type Ticket } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, ProjectView, type AgentStatus, type Comment, type Ticket } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -396,7 +396,7 @@ export class Runner {
     // First run on this machine: comments from before don't start work.
     const st = this.ticketState();
     for (const v of views) {
-      for (const { ticket, comments } of await v.newHumanComments(st.seen).catch(() => [])) {
+      for (const { ticket, comments } of await v.newComments(st.seen).catch(() => [])) {
         if (st.seen[ticket.id] === undefined) st.seen[ticket.id] = comments[comments.length - 1].id;
       }
     }
@@ -425,8 +425,16 @@ export class Runner {
     if (!this.projects.length) return null;
     const st = this.ticketState();
     for (const project of this.projects) {
-      const [first] = await project.newHumanComments(st.seen);
-      if (first) return { project, ticket: first.ticket, comments: first.comments };
+      for (const { ticket, comments, looping } of await project.newComments(st.seen)) {
+        if (!looping) return { project, ticket, comments };
+        // Agents keep answering each other here: stop resuming and hand it to a person.
+        st.seen[ticket.id] = comments[comments.length - 1].id;
+        this.saveTicketState(st);
+        this.log(`${ticket.key}: agents went back and forth ${AGENT_COMMENT_LIMIT} times; asking a person.`);
+        if (ticket.needs_human !== AGENT_LOOP_QUESTION) {
+          await project.update(ticket.key, { needs_human: AGENT_LOOP_QUESTION }).catch((e) => this.log(`Couldn't update ${ticket.key}: ${(e as Error).message}`));
+        }
+      }
     }
     for (const project of this.projects) {
       const ticket = await project.claimNext();
@@ -473,7 +481,7 @@ export class Runner {
 
     await p.loadNames();
     const resume = st.sessions[t.id] ?? null;
-    const commentsText = job.comments.length ? job.comments.map((c) => `${p.nameOf(c.author_id)}: ${c.body}`).join("\n\n") : null;
+    const commentsText = job.comments.length ? job.comments.map((c) => `${p.authorLabel(c)}: ${c.body}`).join("\n\n") : null;
     const prompt = buildTicketPrompt({
       myName: ak.me.name,
       ownerName: ak.ownerName(ak.me),

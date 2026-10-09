@@ -455,19 +455,26 @@ export class ProjectView {
     return null;
   }
 
-  /** New comments from people on this agent's open tickets, after the given comment ids. */
-  async newHumanComments(after: Record<string, number>): Promise<{ ticket: Ticket; comments: Comment[] }[]> {
+  /**
+   * New comments by anyone but this agent on its open tickets, after the given comment ids.
+   * `looping` means only agents commented and they've gone back and forth too often: don't resume.
+   */
+  async newComments(after: Record<string, number>): Promise<{ ticket: Ticket; comments: Comment[]; looping: boolean }[]> {
     const mine = (await this.tickets()).filter((t) => t.assignee_id === this.meId && ["in_progress", "review"].includes(t.status));
     if (!mine.length) return [];
-    const rows = check<Comment[]>(
-      await this.sb.from("ticket_comments").select("*").in("ticket_id", mine.map((t) => t.id)).eq("author_type", "human").order("id"),
-    );
-    const out: { ticket: Ticket; comments: Comment[] }[] = [];
+    const rows = check<Comment[]>(await this.sb.from("ticket_comments").select("*").in("ticket_id", mine.map((t) => t.id)).order("id"));
+    const out: { ticket: Ticket; comments: Comment[]; looping: boolean }[] = [];
     for (const t of mine) {
-      const fresh = rows.filter((c) => c.ticket_id === t.id && c.id > (after[t.id] ?? 0));
-      if (fresh.length) out.push({ ticket: t, comments: fresh });
+      const all = rows.filter((c) => c.ticket_id === t.id);
+      const fresh = commentsToAct(all, after[t.id] ?? 0, this.meId);
+      if (fresh.length) out.push({ ticket: t, comments: fresh, looping: agentsLooping(all, fresh) });
     }
     return out;
+  }
+
+  /** "raghavendra (person)", "raghavendra-claude (lead agent)" or "ana-codex (agent)". */
+  authorLabel(c: Pick<Comment, "author_id" | "author_type">): string {
+    return `${this.nameOf(c.author_id)} (${authorKind(c, this.leadId)})`;
   }
 
   onChange(cb: () => void): RealtimeChannel {
@@ -579,6 +586,32 @@ export class ProjectView {
   private noSecrets(...texts: (string | null | undefined)[]): void {
     if (texts.some((t) => t && looksLikeSecret(t))) throw new AutoKolabError("That looks like it contains a key or token; leave it out.");
   }
+}
+
+/** Agent comments in a row (since the last person's) after which agents stop resuming each other. */
+export const AGENT_COMMENT_LIMIT = 8;
+export const AGENT_LOOP_QUESTION = `Agents have gone back and forth ${AGENT_COMMENT_LIMIT} times on this ticket; a person should take a look.`;
+
+/** A ticket's comments after `afterId` that should resume its assignee: anyone's but the assignee's own. */
+export function commentsToAct(comments: Comment[], afterId: number, assigneeId: string): Comment[] {
+  return comments.filter((c) => c.id > afterId && c.author_id !== assigneeId);
+}
+
+/** Agent comments at the end of a ticket's conversation, since the last person's comment. */
+export function agentStreak(comments: Pick<Comment, "author_type">[]): number {
+  let n = 0;
+  for (let i = comments.length - 1; i >= 0 && comments[i].author_type === "agent"; i--) n++;
+  return n;
+}
+
+/** Only agents spoke since last time, and agents have commented AGENT_COMMENT_LIMIT times in a row. */
+export function agentsLooping(all: Pick<Comment, "author_type">[], fresh: Pick<Comment, "author_type">[]): boolean {
+  return !fresh.some((c) => c.author_type === "human") && agentStreak(all) >= AGENT_COMMENT_LIMIT;
+}
+
+export function authorKind(c: Pick<Comment, "author_id" | "author_type">, leadId: string | null): "person" | "lead agent" | "agent" {
+  if (c.author_type === "human") return "person";
+  return c.author_id === leadId ? "lead agent" : "agent";
 }
 
 export function statusLabel(s: Status): string {
