@@ -8,6 +8,7 @@ import { parseRunnerConfig, runnerTemplate } from "../src/runner/config.js";
 import { claudeDenyRules, claudeInvocation, codexInvocation, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
 import { installHook } from "../src/runner/githook.js";
 import { buildPrompt, buildTicketPrompt, parseOutcome } from "../src/runner/prompt.js";
+import { agentTurnsSinceHuman, isPauseNotice, pauseNotice, runOutcome, shouldWake, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "../src/runner/repos.js";
 import { defaultRules } from "../src/core/projects.js";
 
@@ -32,11 +33,100 @@ describe("runner limits", () => {
     expect(cfg.limits.protected_branches).toContain("main");
     expect(cfg.limits.deny_paths).toContain(".env.prod");
     expect(cfg.codex.sandbox).toBe("workspace-write");
+    expect(cfg.limits.max_agent_turns).toBe(12);
   });
   it("explains mistakes", () => {
     expect(() => parseRunnerConfig(`agent_id = "${AID}"\nengine = "gpt"`, "x")).toThrow(/engine/);
     expect(() => parseRunnerConfig(`engine = "claude"`, "x")).toThrow(/agent_id/);
     expect(() => parseRunnerConfig(`not toml [`, "x")).toThrow(/TOML/);
+  });
+  it("has max_agent_turns in the template, within 2..100", () => {
+    expect(runnerTemplate(AID, "claude")).toMatch(/^max_agent_turns = 12 /m);
+    expect(cfgFor("[limits]\nmax_agent_turns = 4").limits.max_agent_turns).toBe(4);
+    expect(() => cfgFor("[limits]\nmax_agent_turns = 1")).toThrow();
+    expect(() => cfgFor("[limits]\nmax_agent_turns = 101")).toThrow();
+  });
+});
+
+describe("who wakes whom", () => {
+  const ME = "me";
+  const PEER = "peer-agent";
+  const LEAD = "lead";
+  const ctx = (extra: Partial<WakeContext> = {}): WakeContext => ({ meId: ME, senderInRoom: true, fromInstructor: false, inThread: false, acceptBroadcastTasks: false, ...extra });
+  const msg = (extra: Partial<Message> = {}) => ({ sender_id: PEER, to_id: ME, thread_id: null, kind: "chat", body: "Can you check the schema?", ...extra }) as Message;
+
+  it("a teammate's message to me wakes me, any kind, including a status report", () => {
+    for (const kind of ["chat", "question", "answer", "review", "status", "handoff"] as const) {
+      expect(shouldWake(msg({ kind }), ctx())).toEqual({ wake: true, fromInstructor: false });
+    }
+  });
+  it("a teammate's broadcast chat doesn't wake me, even in my thread", () => {
+    expect(shouldWake(msg({ to_id: null }), ctx()).wake).toBe(false);
+    expect(shouldWake(msg({ to_id: null, thread_id: 5 }), ctx({ inThread: true })).wake).toBe(false);
+  });
+  it("a teammate's question, answer or review to everyone wakes me only in a thread I'm on", () => {
+    for (const kind of ["question", "answer", "review"] as const) {
+      expect(shouldWake(msg({ to_id: null, thread_id: 5, kind }), ctx({ inThread: true })).wake).toBe(true);
+      expect(shouldWake(msg({ to_id: null, thread_id: 5, kind }), ctx()).wake).toBe(false);
+      expect(shouldWake(msg({ to_id: null, kind }), ctx({ inThread: true })).wake).toBe(false);
+    }
+  });
+  it("messages to someone else, my own, from outsiders, and runner pings don't wake me", () => {
+    expect(shouldWake(msg({ to_id: "someone-else" }), ctx()).wake).toBe(false);
+    expect(shouldWake(msg({ sender_id: ME }), ctx()).wake).toBe(false);
+    expect(shouldWake(msg(), ctx({ senderInRoom: false })).wake).toBe(false);
+    expect(shouldWake(msg({ kind: "status", body: "Started on #12 in thread #12." }), ctx()).wake).toBe(false);
+    expect(shouldWake(msg({ kind: "status", body: pauseNotice(12) }), ctx()).wake).toBe(false);
+  });
+  it("instructors work exactly as before", () => {
+    const lead = ctx({ fromInstructor: true });
+    const from = (extra: Partial<Message>) => msg({ sender_id: LEAD, ...extra });
+    expect(shouldWake(from({ kind: "task" }), lead)).toEqual({ wake: true, fromInstructor: true });
+    expect(shouldWake(from({ kind: "status" }), lead).wake).toBe(false);
+    expect(shouldWake(from({ to_id: null, thread_id: 5, kind: "chat" }), { ...lead, inThread: true }).wake).toBe(true);
+    expect(shouldWake(from({ to_id: null, thread_id: 5, kind: "question" }), { ...lead, inThread: true }).wake).toBe(false);
+    expect(shouldWake(from({ to_id: null, kind: "task" }), lead).wake).toBe(false);
+    expect(shouldWake(from({ to_id: null, kind: "task" }), { ...lead, acceptBroadcastTasks: true }).wake).toBe(true);
+    expect(shouldWake(from({ to_id: null, kind: "chat" }), { ...lead, acceptBroadcastTasks: true }).wake).toBe(false);
+  });
+});
+
+describe("loop guard", () => {
+  const humans = new Set(["ana"]);
+  const isHuman = (id: string) => humans.has(id);
+  const thread = (...senders: string[]) => senders.map((sender_id) => ({ sender_id }));
+
+  it("counts messages since the last person's", () => {
+    expect(agentTurnsSinceHuman([], isHuman)).toBe(0);
+    expect(agentTurnsSinceHuman(thread("ana"), isHuman)).toBe(0);
+    expect(agentTurnsSinceHuman(thread("a", "b", "a"), isHuman)).toBe(3);
+    expect(agentTurnsSinceHuman(thread("a", "b", "ana", "a", "b"), isHuman)).toBe(2);
+  });
+  it("the 12th agent-only message reaches the limit; a person's reply resets it", () => {
+    const twelve = thread(...Array.from({ length: 12 }, (_, i) => (i % 2 ? "a" : "b")));
+    expect(agentTurnsSinceHuman(twelve.slice(0, 11), isHuman)).toBeLessThan(12);
+    expect(agentTurnsSinceHuman(twelve, isHuman)).toBeGreaterThanOrEqual(12);
+    expect(agentTurnsSinceHuman([...twelve, ...thread("ana", "a")], isHuman)).toBe(1);
+  });
+  it("recognises its own pause notice, so it's posted once", () => {
+    expect(pauseNotice(12)).toBe("Pausing this thread after 12 agent messages in a row. A person can reply to continue.");
+    expect(isPauseNotice(pauseNotice(12))).toBe(true);
+    expect(isPauseNotice("Pausing this thread for lunch.")).toBe(false);
+  });
+});
+
+describe("how a run ends", () => {
+  const ctx = { messageId: 7, stopReason: "my runner was shut down", maxMinutes: 60 };
+  it("NO_REPLY posts nothing and is recorded as done", () => {
+    expect(runOutcome(freshRun(), "NO_REPLY", ctx)).toEqual({ state: "done", report: "No reply needed", quiet: true });
+  });
+  it("anything else is reported", () => {
+    expect(runOutcome(freshRun(), "Added the endpoint.", ctx)).toEqual({ state: "done", report: "Added the endpoint.", quiet: false });
+    expect(runOutcome(freshRun(), "", ctx).report).toBe("Done with #7.");
+    expect(runOutcome(freshRun(), "NO_REPLY, nothing to add", ctx).quiet).toBe(false);
+    expect(runOutcome(freshRun(), "BLOCKED: no access", ctx)).toMatchObject({ state: "blocked", quiet: false });
+    expect(runOutcome({ ...freshRun(), aborted: true }, "NO_REPLY", ctx)).toMatchObject({ state: "cancelled", quiet: false });
+    expect(runOutcome({ ...freshRun(), isError: true }, "", ctx)).toMatchObject({ state: "failed", report: "Failed on #7." });
   });
 });
 
@@ -45,7 +135,7 @@ describe("prompt", () => {
   const sender = { name: "ana-claude", kind: "agent" } as Member;
   const room = { name: "shop-app", repo: "ana/shop-app" } as Room;
   const message = { id: 7, thread_id: null, kind: "task", body: "Build the Zones API", refs: { branch: "zones-api" } } as unknown as Message;
-  const base = { me, ownerName: "lee", myRole: "follower", room, sender, senderRole: "lead", message, instructors: ["ana-claude", "ana"], cfg: cfgFor(), worktree: wt };
+  const base = { me, ownerName: "lee", myRole: "follower", room, sender, senderRole: "lead", message, instructors: ["ana-claude", "ana"], cfg: cfgFor(), worktree: wt, fromInstructor: true };
 
   it("includes the task, the worktree, the limits and how to report", () => {
     const p = buildPrompt({ ...base, followUp: false });
