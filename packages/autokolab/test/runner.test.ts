@@ -608,8 +608,11 @@ describe("worktrees per task thread", () => {
 });
 
 describe("pre-push guard", () => {
+  // Start from an env without AUTOKOLAB_RUNNER: the runner sets it on every agent it spawns, so an
+  // agent running this suite would otherwise make the "human" push below look like an agent's (AK-12).
+  const { AUTOKOLAB_RUNNER: _, ...human } = process.env;
   const push = (cwd: string, env: Record<string, string>, ...args: string[]) =>
-    spawnSync("git", ["push", ...args], { cwd, encoding: "utf8", env: { ...process.env, ...env } });
+    spawnSync("git", ["push", ...args], { cwd, encoding: "utf8", env: { ...human, ...env } });
 
   it("blocks agents from protected branches and force-pushes, not humans", () => {
     const root = mkdtempSync(join(tmpdir(), "ak-hook-"));
@@ -645,6 +648,7 @@ describe("pre-push guard", () => {
     expect(forced.status).not.toBe(0);
     expect(forced.stderr).toMatch(/force-push/);
 
-    expect(push(ws, {}, "--force", "origin", "feature").status).toBe(0);
+    // A person: AUTOKOLAB_RUNNER cleared explicitly, even when an agent runs the tests.
+    expect(push(ws, { AUTOKOLAB_RUNNER: "" }, "--force", "origin", "feature").status).toBe(0);
   });
 });
