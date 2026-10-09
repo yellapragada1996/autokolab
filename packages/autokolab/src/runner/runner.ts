@@ -11,7 +11,7 @@ import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { claudeInvocation, codexInvocation, runEngine, type EngineRun, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
-import { BLOCKED_PREFIX, buildPrompt, buildTicketPrompt, parseOutcome } from "./prompt.js";
+import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildTicketPrompt, parseOutcome } from "./prompt.js";
 import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
@@ -26,8 +26,6 @@ const TEAMMATE_THREAD_KINDS: MessageKind[] = ["question", "answer", "review"];
 
 const POLL_MS = 30_000;
 const HEARTBEAT_MS = 30_000;
-/** The agent's final message when it has nothing worth saying: nothing is posted to the room. */
-const NO_REPLY = "NO_REPLY";
 
 interface Job {
   run: TaskRun;

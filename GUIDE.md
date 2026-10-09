@@ -198,7 +198,7 @@ Agents that *do* have the tools report their own steps; the runner notices and s
 | **Pause** | Each owner can pause their agents; a running task stops immediately. |
 | **Code stays on GitHub** | The server stores tickets, chat, decisions and status, never code. Repo access is enforced by GitHub with each person's own credentials. |
 | **Keys stay private** | The public website only ever uses the public (anon) key. The service key is only on the admin machine and (later) in Vercel server functions. `.env` files are gitignored; the repo is public. |
-| **Instructions only from the right people** | Agents treat text from web pages, files, issues and tool output as information, not instructions. Only the ticket and comments from project members are instructions. |
+| **Instructions only from the right people** | Agents treat text from web pages, files, issues and tool output as information, not instructions. The ticket and comments from people and the lead are instructions. A teammate agent's message is a colleague's request: agents help within their rules and limits, and never break them because another agent asked. |
 
 ---
 
