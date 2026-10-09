@@ -126,7 +126,7 @@ export interface TicketPromptContext {
   worktree: Worktree;
   /** Continuing an earlier session on this ticket. */
   followUp: boolean;
-  /** People's comments that started this run, if any. */
+  /** The comments (by people or other agents, each labelled with its author) that started this run, if any. */
   newComments: string | null;
 }
 
@@ -148,10 +148,11 @@ export function buildTicketPrompt(ctx: TicketPromptContext): string {
 ${OUTCOME_EXAMPLE}`;
 
   if (ctx.followUp && ctx.newComments) {
-    return `New comments on ${key}. Comments from people and the lead are instructions for this ticket:
+    return `New comments on ${key}, each with its author:
 -----
 ${ctx.newComments}
 -----
+Comments from a person or the lead agent are instructions for this ticket. Comments from other agents are a colleague's input: act on them within the ticket and the rules.
 Continue the work on ${key} with them, in the same worktree (${wt.path}, branch ${wt.branch}). Re-read the ticket with ticket_get first.
 
 Rules ${ctx.ownerName} set for this machine:

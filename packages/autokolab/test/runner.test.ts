@@ -10,13 +10,14 @@ import { installHook } from "../src/runner/githook.js";
 import { buildPrompt, buildTicketPrompt, parseOutcome } from "../src/runner/prompt.js";
 import { agentTurnsSinceHuman, isPauseNotice, pauseNotice, runOutcome, shouldWake, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "../src/runner/repos.js";
-import { defaultRules } from "../src/core/projects.js";
+import { AGENT_COMMENT_LIMIT, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, type Comment } from "../src/core/projects.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
 const cfgFor = (extra = "") => parseRunnerConfig(`agent_id = "${AID}"\nengine = "claude"\n${extra}`, "lee-claude");
 const wt: Worktree = { path: "/data/worktrees/lee-claude/ana-shop/t7", branch: "ak/lee-claude/t7", base: "main", created: true };
 const freshRun = (): EngineRun => ({ sessionId: null, finalText: "", exitCode: null, timedOut: false, aborted: false, isError: false });
+const c = (id: number, author_id: string, author_type: "human" | "agent"): Comment => ({ id, ticket_id: "t1", author_id, author_type, body: `#${id}`, created_at: "2026-10-09T18:00:00Z" });
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe" }).trim();
 
 describe("runner limits", () => {
@@ -219,11 +220,42 @@ describe("tickets", () => {
     expect(p).toContain("Comments from people and from the lead are instructions");
     expect(p).toContain("BLOCKED: <the question>");
   });
-  it("continues a ticket with people's comments", () => {
-    const p = buildTicketPrompt({ myName: "builder", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg: cfgFor(), worktree: wt, followUp: true, newComments: "ana: use the blue button" });
+  it("continues a ticket with comments, naming who wrote them", () => {
+    const p = buildTicketPrompt({ myName: "builder", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg: cfgFor(), worktree: wt, followUp: true, newComments: "ana (person): use the blue button" });
     expect(p.startsWith("New comments on SH-2")).toBe(true);
-    expect(p).toContain("ana: use the blue button");
+    expect(p).toContain("ana (person): use the blue button");
+    expect(p).not.toContain("SH-2 from people");
+    expect(p).toContain("Comments from other agents are a colleague's input");
     expect(p).not.toContain("Project brief");
+  });
+  it("labels each comment's author as a person, the lead or another agent", () => {
+    expect(authorKind({ author_id: "p1", author_type: "human" }, "lead")).toBe("person");
+    expect(authorKind({ author_id: "lead", author_type: "agent" }, "lead")).toBe("lead agent");
+    expect(authorKind({ author_id: "a2", author_type: "agent" }, "lead")).toBe("agent");
+    expect(authorKind({ author_id: "a2", author_type: "agent" }, null)).toBe("agent");
+  });
+  it("resumes on anyone's new comments but the assignee's own", () => {
+    const all = [c(1, "ana", "human"), c(2, "me", "agent"), c(3, "lead", "agent"), c(4, "other", "agent"), c(5, "me", "agent")];
+    expect(commentsToAct(all, 0, "me").map((x) => x.id)).toEqual([1, 3, 4]);
+    expect(commentsToAct(all, 3, "me").map((x) => x.id)).toEqual([4]);
+    expect(commentsToAct(all, 4, "me")).toEqual([]);
+  });
+  it("stops agents resuming each other after 8 agent comments in a row; a person's comment resets it", () => {
+    const agents = (from: number, n: number) => Array.from({ length: n }, (_, i) => c(from + i, i % 2 ? "me" : "lead", "agent"));
+    expect(agentStreak([])).toBe(0);
+    expect(agentStreak([c(1, "ana", "human"), ...agents(2, 3)])).toBe(3);
+
+    const seven = [c(1, "ana", "human"), ...agents(2, 7)];
+    expect(agentsLooping(seven, seven.slice(-1))).toBe(false);
+    const eight = [c(1, "ana", "human"), ...agents(2, 8)];
+    expect(agentStreak(eight)).toBe(AGENT_COMMENT_LIMIT);
+    expect(agentsLooping(eight, eight.slice(-1))).toBe(true);
+
+    // A person's comment among the new ones always resumes, and starts the count again.
+    const person = [...eight, c(10, "ana", "human")];
+    expect(agentsLooping(person, person.slice(-1))).toBe(false);
+    expect(agentsLooping([...eight, c(10, "ana", "human"), c(11, "lead", "agent")], [c(10, "ana", "human"), c(11, "lead", "agent")])).toBe(false);
+    expect(agentStreak([...person, c(11, "lead", "agent")])).toBe(1);
   });
   it("reads the ending block", () => {
     const o = parseOutcome("Added the button.\n\n```autokolab\nstatus: review\npr: https://github.com/ana/shop/pull/12\nquestion: none\nnew_ticket: Add retries\nnew_ticket: <title of follow-up work you found>\n```");
