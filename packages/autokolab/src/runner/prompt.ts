@@ -17,6 +17,8 @@ export interface PromptContext {
   worktree: Worktree;
   /** True when continuing an earlier session in the same thread. */
   followUp: boolean;
+  /** True when the sender can instruct this agent; false when it's a teammate talking (DEC-17). */
+  fromInstructor: boolean;
 }
 
 export const BLOCKED_PREFIX = "BLOCKED:";

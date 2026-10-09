@@ -141,6 +141,22 @@ export class AutoKolab {
     return !!m && !m.revoked && !!this.membership(roomId, memberId)?.can_instruct;
   }
 
+  /** An active member of this room (not revoked, not someone who has left). */
+  inRoom(memberId: string, roomId: string): boolean {
+    const m = this.memberMap.get(memberId);
+    return !!m && !m.revoked && !!this.roomMap.get(roomId) && !!this.membership(roomId, memberId);
+  }
+
+  /** Is this member a person? Members we don't know about count as agents. */
+  isHuman(memberId: string | null | undefined): boolean {
+    return !!memberId && this.memberMap.get(memberId)?.kind === "human";
+  }
+
+  /** One thread's messages, oldest first, in any of this member's rooms. */
+  async threadMessages(roomId: string, threadRoot: number): Promise<Message[]> {
+    return this.room(roomId).thread(threadRoot);
+  }
+
   membersOf(roomId: string): RoomMemberView[] {
     return this.memberships
       .filter((rm) => rm.room_id === roomId)
