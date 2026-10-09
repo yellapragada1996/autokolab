@@ -12,22 +12,37 @@ computer and restarting the runner, and effort can't be set at all.
 
 ## 1. What the tools accept
 
-### 1.1 What could not be checked on this machine
+### 1.1 What has been checked
 
-The ticket asks for `claude --help`, `codex --help` and one tiny real run of each. **Neither was
-possible here.** This worktree's agent may not execute the `claude` or `codex` binaries (both are
-on the PATH at `/usr/sbin/`, but running them is refused by this machine's permission rules), and
-it may not read outside the worktree, so the installed versions could not be read either.
-
-So this section is from the current official documentation, not from the installed versions, and
-**no real run was made**. Everything marked "verify" below needs one short run on a machine where
-the agent CLIs can be started before anyone builds on it. AK-5a (below) covers exactly that.
+AK-5's worktree could not run the `claude` or `codex` binaries, so this section first came from the
+official documentation alone. **AK-7 has since checked Claude Code** on raghavendra's Mac (9 Oct
+2026). §1.2 now says what the installed version does. **Codex is still unchecked:** it isn't
+installed on that Mac, and it is pending **AK-20** on jamesblack's machine. Until then §1.3 is from
+the docs only.
 
 ### 1.2 Claude Code
 
 Source: [CLI reference](https://code.claude.com/docs/en/cli-reference),
-[Model configuration](https://code.claude.com/docs/en/model-config). Version on this machine: **not
-read** (see 1.1).
+[Model configuration](https://code.claude.com/docs/en/model-config), checked against **Claude Code
+2.1.293** (the copy bundled with the Claude desktop app; there's no `claude` on the PATH there,
+which the runner already handles). The results are in AK-7.
+
+**Verified on 2.1.293:**
+
+- `--help` lists `--model <model>` (an alias or a full name) and `--effort <level>` with exactly
+  **`low`, `medium`, `high`, `xhigh`, `max`**. There is no `ultracode` in this version.
+- **Headless works.** `claude -p --output-format stream-json --verbose --model haiku --effort low
+  --max-turns 1 "Reply with just the word hi"` succeeded: init `model: claude-haiku-5-5`, result
+  `success`, `modelUsage: [claude-haiku-5-5]`, cost $0.003.
+- **A resume can switch model.** `--resume <that session> --model sonnet --effort medium` kept the
+  same session id, and init reported `model: claude-sonnet-5-5`. The result's
+  `modelUsage` was `[claude-haiku-5-5, claude-sonnet-5-5]`. So `--model` on a resume wins, and
+  `claudeInvocation`'s current order (`--model` before `--resume`) is right.
+- **Effort isn't reported in the output.** `--effort` is accepted on a fresh run and on a resume
+  without error, but nothing in the output says which level ran. The init event only has
+  `per_turn_effort_active: true`. So the model a run actually used can be read from init `model`
+  and `modelUsage`. For effort, all we can report is the level we passed (matters for AK-11).
+- No account limits were hit with haiku or sonnet on that account. Not tested further.
 
 **`--model`** — "Sets the model for the current session with a model alias such as `sonnet`,
 `opus`, `haiku`, or `fable`, or a model's full name. Overrides the `model` setting and
@@ -45,9 +60,10 @@ read** (see 1.1).
 Full IDs also work (`claude-opus-5-5`, `claude-sonnet-5-5`, `claude-fable-5-1`). `sonnet[1m]` /
 `opus[1m]` ask for the 1M context window on the models that need the suffix.
 
-**`--effort`** — "Set the effort level for the current session. Options: `low`, `medium`, `high`,
-`xhigh`, `max`, or `ultracode`. **Available levels depend on the model.** Overrides the
-`modelSettings` and `effortLevel` settings for this session and does not persist."
+**`--effort`** — the docs say: "Set the effort level for the current session. Options: `low`,
+`medium`, `high`, `xhigh`, `max`, or `ultracode`. **Available levels depend on the model.**
+Overrides the `modelSettings` and `effortLevel` settings for this session and does not persist."
+2.1.293 accepts only the first five (no `ultracode`), which are the five we store.
 
 | Model | Levels |
 |---|---|
@@ -62,23 +78,20 @@ supported level at or below what was asked. That matters for us: we can pass the
 straight through without knowing which levels the chosen model has.
 
 `ultracode` is not a model effort level — it asks for `xhigh` plus Claude Code's dynamic
-workflows. Out of scope here.
+workflows, and 2.1.293 doesn't accept it anyway. Out of scope here.
 
-**Headless.** Neither flag is marked print-mode-only in the reference (unlike `--max-turns` and
-`--max-budget-usd`, which are). Both should work with `claude -p --output-format stream-json`.
-*Verify.*
+**Headless.** Both flags work with `claude -p --output-format stream-json` (verified above).
 
 **Resuming.** On `--resume` / `--continue`, "the session restores the model it was using when the
 transcript was saved", but "a `--model` flag or `ANTHROPIC_MODEL` environment variable still takes
-precedence over the restored model". **So yes — a resumed session can switch model, as long as we
-keep passing `--model` on the resume launch.** `claudeInvocation` already does: it appends
-`--model` before `--resume` (`engines.ts:78-79`), so resumes already carry it.
+precedence over the restored model". **Verified: a resumed session switches model when `--model` is
+passed on the resume launch.** `claudeInvocation` already does this. It appends `--model` before
+`--resume` (`engines.ts:78-79`), so resumes already carry it.
 
-For **effort on a resume the documentation is silent**. The safe reading is that `--effort`, being
-a launch flag that "does not persist", applies to the launch it is on, resume included; a resumed
-session with no `--effort` falls back to the saved `modelSettings` for that model. *Verify.*
-Either way the right thing for us is the same: **always pass both flags on every launch, resume
-included**, so the owner's current choice is what runs.
+For **effort on a resume**, `--effort` is accepted without error, but because the output never
+reports effort, we can't confirm that the new level took. The right thing for us is the same either
+way: **always pass both flags on every launch, resume included**, so the owner's current choice is
+what runs.
 
 **Other ways in** (for context — not proposed):
 
@@ -94,8 +107,9 @@ Flags are the simplest fit for us: one place, no files to write, nothing left be
 ### 1.3 Codex
 
 Source: [Developer commands](https://learn.chatgpt.com/docs/developer-commands?surface=cli),
-[Config reference](https://learn.chatgpt.com/docs/config-file/config-reference). Version on this
-machine: **not read** (see 1.1).
+[Config reference](https://learn.chatgpt.com/docs/config-file/config-reference). **Pending AK-20:**
+no installed version has been read and no run made yet (see 1.1). Everything below is from the docs
+and still needs AK-20 to check it.
 
 **`model`** — "Model to use (e.g. `gpt-6.1-sol`)." Also `-m, --model` on the command line:
 "Override the model set in configuration."
@@ -120,13 +134,12 @@ before building:** a community guide claims flags must sit *between* `exec` and 
 (`codex exec -c k=v resume --last`), while our `codexInvocation` puts them *after* `resume`
 (`["exec", "resume", ...config, sessionId, "-"]`). If that claim is right, **`cfg.codex.model` is
 silently ignored on every resumed Codex run today** — a bug in what already ships, not just in
-what we want to add. *Verify first; it is cheap, and AK-5a covers it.*
+what we want to add. *Pending AK-20.* Until it answers, AK-9 leaves the Codex flags where they are.
 
 **Account limits.** The config reference does not say business or enterprise plans restrict model
 choice, but it does say administrators manage **"Workspace model availability"** through managed
 configuration. So a workspace admin can make a model unavailable, and a chosen model may be
-refused for reasons AutoKolab can't see. **This could not be checked on this machine** — no run was
-possible, and the account in use here is not ours to probe. Anthropic has the equivalent in
+refused for reasons AutoKolab can't see. **Not checked yet: pending AK-20.** Anthropic has the equivalent in
 `availableModels` and organization defaults.
 
 Practical consequence for the design: **a model choice can fail at run time**, so the runner has to
@@ -134,8 +147,10 @@ report that back rather than assume it took.
 
 ### 1.4 The two sets line up
 
-`low` · `medium` · `high` · `xhigh` · `max` are accepted names in **both** tools. Codex adds
-`ultra`, Claude Code adds `ultracode`; neither of those is a plain effort level. And both tools
+`low` · `medium` · `high` · `xhigh` · `max` are accepted names in **both** tools. For Claude Code
+2.1.293 that's verified, and they are its only levels. Codex's side is pending AK-20. The docs give
+Codex an extra `ultra` and Claude Code an extra `ultracode`; neither of those is a plain effort
+level. And both tools
 clamp a level the model doesn't support rather than failing.
 
 That gives us one vendor-neutral list of five to store and pass straight through.
@@ -171,6 +186,14 @@ Two existing patterns are worth copying rather than inventing around:
 ---
 
 ## 3. Proposal
+
+> **Since this proposal: DEC-18** (raghavendra, 9 Oct 2026). raghavendra approved the design below,
+> with one change. **The project's lead agent (`projects.lead_agent_id`) can also set any agent's
+> model and effort** in that project, not only the agent's owner. Nobody else can. The lead decides
+> when to move a worker up or down. **`model_locked` (§3.3) is how an owner keeps the last word:**
+> with it set, their machine's toml wins over anything set from the website, by them or by the
+> lead. Where §3.1 and §5 below say "owner only", read "owner or the project's lead". AK-8 and
+> AK-19 build it that way.
 
 ### 3.1 Where the setting lives
 
@@ -250,7 +273,8 @@ box), add one optional toml key:
 model_locked = true # ignore the model and effort set on the website; this file decides
 ```
 
-Default `false`. *Assumption — nobody has asked for it. Say so and it comes out.*
+Default `false`. DEC-18 keeps it: now that the lead can change an agent's model too, this is the
+owner's way to have the last word.
 
 Also add `claude.effort` and `codex.effort` to the toml schema and template in the same work, so
 the file can express everything the website can.
