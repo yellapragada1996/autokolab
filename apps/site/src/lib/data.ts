@@ -64,6 +64,8 @@ export interface Agent {
   /** What its latest run actually used, reported by its runner (schema 11; absent before it). */
   effective_model?: string | null;
   effective_effort?: Effort | null;
+  /** When its runner last reported; null means it never has (its machine runs an older AutoKolab). */
+  effective_at?: string | null;
 }
 
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;

@@ -132,9 +132,36 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
 /** "Sonnet · medium effort"; a part not set from AutoKolab is left to the agent's machine. */
 export function modelText(model: string | null, effort: string | null): string | null {
   if (!model && !effort) return null;
-  const name = model ? (/^[a-z]+$/.test(model) ? model[0].toUpperCase() + model.slice(1) : model) : "Model set on this machine";
+  const name = model ? shortModel(model) : "Model set on this machine";
   return effort ? `${name} · ${effort} effort` : name;
 }
+
+const SHORT_MODELS: Record<string, string> = {
+  "claude-opus-5-5": "Opus 5.5",
+  "claude-sonnet-5-5": "Sonnet 5.5",
+  "claude-haiku-5-5": "Haiku 5.5",
+  "claude-fable-5-1": "Fable 5.1",
+};
+
+/** "claude-sonnet-5-5" → "Sonnet 5.5", "sonnet" → "Sonnet" (keeping a "[1m]" suffix); anything else as is. */
+export function shortModel(model: string): string {
+  const [, base, suffix = ""] = /^(.*?)(\[.*\])?$/.exec(model)!;
+  const short = SHORT_MODELS[base.toLowerCase()] ?? (/^[a-z]+$/.test(base) ? base[0].toUpperCase() + base.slice(1) : null);
+  return short ? short + suffix : model;
+}
+
+/**
+ * "Last ran Sonnet 5.5 · high effort · 2h ago" (AK-22): what its runner last reported. A null model
+ * or effort was the tool's own default. Null when it has never reported.
+ */
+export function lastRanText(a: Pick<Agent, "effective_model" | "effective_effort" | "effective_at">): string | null {
+  if (!a.effective_at) return null;
+  const model = a.effective_model ? shortModel(a.effective_model) : "default model";
+  const effort = a.effective_effort ? `${a.effective_effort} effort` : "default effort";
+  return `Last ran ${model} · ${effort} · ${ago(a.effective_at)}`;
+}
+
+const NOT_REPORTED = "Not reported yet: its machine needs the latest AutoKolab";
 
 // "sonnet" and "claude-sonnet-5-5" are the same model; so are "opus[1m]" and "claude-opus-5-5[1m]".
 const sameModel = (asked: string, ran: string) => {
@@ -151,8 +178,7 @@ export function ranText(a: Pick<Agent, "model" | "effort" | "effective_model" | 
   const model = a.model && a.effective_model && !sameModel(a.model, a.effective_model) ? a.effective_model : null;
   const effort = a.effort && a.effective_effort && a.effective_effort !== a.effort ? a.effective_effort : null;
   if (!model && !effort) return null;
-  const name = model && /^[a-z]+$/.test(model) ? model[0].toUpperCase() + model.slice(1) : model;
-  return `running ${[name, effort && `${effort} effort`].filter(Boolean).join(" · ")}`;
+  return `running ${[model && shortModel(model), effort && `${effort} effort`].filter(Boolean).join(" · ")}`;
 }
 
 const fieldStyle = { height: 28, borderRadius: 6, border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)", fontSize: 13, padding: "0 8px" } as const;
@@ -191,6 +217,14 @@ function AgentModel({ ws, agent: a, mine }: { ws: Workspace; agent: Agent; mine:
       {` · ${ran}`}
     </span>
   );
+  // What it last ran, where the card doesn't already say it: something is left to its machine, and the
+  // run didn't differ from a set value (AK-11's warning covers that).
+  const lastRan = lastRanText(a);
+  const runNote = !a.effective_at ? (
+    <span style={{ fontSize: 12, color: "var(--faint)" }}>{NOT_REPORTED}</span>
+  ) : (
+    lastRan && !ran && (!a.model || !a.effort) && <span style={{ fontSize: 12, color: "var(--muted)" }}>{lastRan}</span>
+  );
 
   if (!mine) {
     return (
@@ -199,6 +233,7 @@ function AgentModel({ ws, agent: a, mine }: { ws: Workspace; agent: Agent; mine:
           {text ?? "Set on this machine"}
           {ranNote}
         </span>
+        {runNote}
         {setBy && <span style={{ fontSize: 12, color: "var(--faint)" }}>{setBy}</span>}
       </span>
     );
@@ -256,6 +291,7 @@ function AgentModel({ ws, agent: a, mine }: { ws: Workspace; agent: Agent; mine:
           Its latest run used {ran.replace(/^running /, "")}.
         </span>
       )}
+      {runNote}
       <span style={{ fontSize: 12, color: "var(--faint)" }}>
         Applies from its next run. Your machine can ignore this: set <code style={{ fontFamily: "var(--mono)" }}>model_locked = true</code> in this agent's runner settings. Sessions you open yourself in {a.vendor === "claude" ? "Claude Code" : "Codex"} use whatever you pick there.
       </span>

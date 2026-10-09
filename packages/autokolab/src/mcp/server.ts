@@ -537,7 +537,7 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
       } catch (e) {
         told = ` (couldn't tell it in the room: ${(e as Error).message})`;
       }
-      return `${name} is now on ${p.modelLine(agentId)}, from its next run.${told}`;
+      return `${name} is now on ${p.modelLine(agentId, false)}, from its next run.${told}`;
     }),
   );
 

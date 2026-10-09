@@ -1,5 +1,6 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { AutoKolabError, friendly } from "./client.js";
+import { ago } from "./format.js";
 import { looksLikeSecret } from "./secrets.js";
 
 // Projects (v2, autokolab.com): the ticket board, the Project Guide and decisions, as an agent
@@ -41,6 +42,10 @@ export interface AgentModel {
   model: string | null;
   effort: string | null;
   model_set_by: string | null;
+  /** What its latest run used, reported by its runner (schema 11). effective_at null: never reported. */
+  effective_model?: string | null;
+  effective_effort?: string | null;
+  effective_at?: string | null;
 }
 
 /** The model and effort a run launched with; "" means the tool's own default (schema 11). */
@@ -251,10 +256,10 @@ export class ProjectView {
     return !!id && this.names.get(id)?.type === "agent";
   }
 
-  /** "sonnet · medium (set by raghavendra-claude)", or "model set on its machine". Null for a non-agent. */
-  modelLine(agentId: string): string | null {
+  /** "sonnet · medium (set by raghavendra-claude)", or "model set on its machine", plus what it last ran. Null for a non-agent. */
+  modelLine(agentId: string, withRun = true): string | null {
     const a = this.agentInfo.get(agentId);
-    return a ? modelText(a, (id) => this.nameOf(id)) : null;
+    return a ? modelText(withRun ? a : { ...a, effective_at: undefined }, (id) => this.nameOf(id)) : null;
   }
 
   /**
@@ -715,11 +720,36 @@ export function nextModel(current: Pick<AgentModel, "model" | "effort">, change:
   return { model: change.model?.trim() || current.model, effort: change.effort ?? current.effort };
 }
 
-/** "sonnet · medium (set by raghavendra-claude)"; a value not set on AutoKolab is its machine's. */
+/**
+ * "sonnet · medium (set by raghavendra-claude) · last ran Sonnet 5.5 · medium effort · 2h ago"; a value
+ * not set on AutoKolab is its machine's. effective_at undefined leaves the last run out; null says it
+ * was never reported.
+ */
 export function modelText(a: AgentModel, nameOf: (id: string) => string): string {
-  if (!a.model && !a.effort) return "model set on its machine";
-  const what = `${a.model ?? "its machine's model"} · ${a.effort ?? "its machine's effort"}`;
-  return a.model_set_by ? `${what} (set by ${nameOf(a.model_set_by)})` : what;
+  const what = !a.model && !a.effort ? "model set on its machine" : `${a.model ?? "its machine's model"} · ${a.effort ?? "its machine's effort"}`;
+  const set = a.model_set_by && (a.model || a.effort) ? `${what} (set by ${nameOf(a.model_set_by)})` : what;
+  if (a.effective_at === undefined) return set;
+  const ran = a.effective_at ? `last ran ${ranWith(a.effective_model ?? null, a.effective_effort ?? null)} · ${ago(a.effective_at)}` : "last run not reported yet (its machine needs the latest AutoKolab)";
+  return `${set} · ${ran}`;
+}
+
+/** "Sonnet 5.5 · high effort"; a null part was the tool's own default. */
+export function ranWith(model: string | null, effort: string | null): string {
+  return `${model ? shortModel(model) : "default model"} · ${effort ? `${effort} effort` : "default effort"}`;
+}
+
+const SHORT_MODELS: Record<string, string> = {
+  "claude-opus-5-5": "Opus 5.5",
+  "claude-sonnet-5-5": "Sonnet 5.5",
+  "claude-haiku-5-5": "Haiku 5.5",
+  "claude-fable-5-1": "Fable 5.1",
+};
+
+/** "claude-sonnet-5-5" → "Sonnet 5.5" (keeping a "[1m]" suffix); anything else as is. */
+export function shortModel(model: string): string {
+  const [, base, suffix = ""] = /^(.*?)(\[.*\])?$/.exec(model)!;
+  const short = SHORT_MODELS[base.toLowerCase()];
+  return short ? short + suffix : model;
 }
 
 /** One line for the room: what changed and why. Applies from the agent's next run, never the one in flight. */
