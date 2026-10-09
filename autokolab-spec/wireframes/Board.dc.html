@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Haibu live ticket board</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121316}
+a{color:#D7F25C}a:hover{color:#E8FA9A}
+</style>
+</helmet>
+<div style="min-height: 900px; background: #121316; color: #EDEEF0; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column">
+  <header style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 32px; border-bottom: 1px solid #23262B; flex-wrap: wrap">
+    <div style="display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap">
+      <a href="Room.dc.html" style="font-size: 14px; color: #A0A6AE; text-decoration: none">Haibu</a>
+      <h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em">Board</h1>
+      <span style="font-size: 14px; color: #7C838C">Updates live. Drag a card to an agent to hand it over.</span>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap" role="group" aria-label="Filter">
+      <button type="button" style="height: 36px; padding: 0 14px; border: 0; border-radius: 9px; background: #EDEEF0; color: #121316; font: 600 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Everything</button>
+      <button type="button" style="height: 36px; padding: 0 14px; border: 1px solid #2E3238; border-radius: 9px; background: #1A1C20; color: #C4C9CF; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Needs me</button>
+      <button type="button" style="height: 36px; padding: 0 14px; border: 1px solid #2E3238; border-radius: 9px; background: #1A1C20; color: #C4C9CF; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer">My agents</button>
+      <button type="button" style="height: 36px; padding: 0 16px; border: 0; border-radius: 9px; background: #D7F25C; color: #121316; font: 600 14px 'IBM Plex Sans', sans-serif; cursor: pointer">New ticket</button>
+    </div>
+  </header>
+
+  <div style="flex: 1; overflow-x: auto; padding: 24px 32px">
+    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; min-width: 1100px">
+      <sc-for list="{{cols}}" as="col" hint-placeholder-count="5">
+        <section style="display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 14px; background: #16171A; min-height: 640px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0 2px">
+            <h2 style="margin: 0; font-size: 14px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #A0A6AE">{{col.name}}</h2>
+            <span style="font-size: 13px; color: #7C838C">{{col.count}}</span>
+          </div>
+          <sc-for list="{{col.cards}}" as="c" hint-placeholder-count="2">
+            <a href="Ticket.dc.html" style="{{c.box}}">
+              <div style="display: flex; justify-content: space-between; gap: 8px">
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C838C">{{c.id}}</span>
+                <span style="{{c.statusStyle}}">{{c.status}}</span>
+              </div>
+              <span style="font-size: 15px; font-weight: 600; line-height: 1.35">{{c.title}}</span>
+              <sc-if value="{{c.hasSteps}}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; gap: 3px">
+                  <sc-for list="{{c.steps}}" as="st" hint-placeholder-count="5">
+                    <span style="{{st.style}}"></span>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <span style="font-size: 13px; line-height: 1.45; color: #A0A6AE">{{c.meta}}</span>
+              <span style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: {{c.whoColor}}">
+                <span style="{{c.markStyle}}">{{c.mark}}</span>{{c.who}}
+              </span>
+            </a>
+          </sc-for>
+        </section>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var agents = {
+      rc: { who: "Raghav's Claude", mark: 'Cl', color: '#F0A27A', bg: '#3A2419', round: '5px' },
+      ac: { who: "Arjun's Claude", mark: 'Cl', color: '#F0A27A', bg: '#3A2419', round: '5px' },
+      ax: { who: "Arjun's Codex", mark: 'Cx', color: '#8DBBFF', bg: '#172338', round: '5px' },
+      r: { who: 'Raghav', mark: 'R', color: '#C4C9CF', bg: '#D7F25C', round: '50%' },
+      a: { who: 'Arjun', mark: 'A', color: '#C4C9CF', bg: '#E9C6F5', round: '50%' },
+      none: { who: 'Anyone free', mark: '·', color: '#7C838C', bg: '#22252A', round: '5px' }
+    };
+    var tone = { green: '#8FE3B4', amber: '#F2C14E', grey: '#A0A6AE', blue: '#8DBBFF' };
+    var mk = function (id, title, a, status, t, meta, done, total, flag) {
+      var ag = agents[a];
+      var steps = [];
+      for (var i = 0; i < (total || 0); i++) {
+        steps.push({ style: 'flex:1;height:4px;border-radius:2px;background:' + (i < done ? '#5FD39B' : '#2E3238') });
+      }
+      var bg = flag === 'need' ? 'background:#241F12;border:1px solid #6B5620' : flag === 'wait' ? 'background:#16171A;border:1px dashed #3A3F46' : 'background:#1A1C20;border:1px solid #2E3238';
+      return {
+        id: id, title: title, status: status, meta: meta, who: ag.who, mark: ag.mark, whoColor: ag.color,
+        statusStyle: 'font-size:12px;font-weight:500;color:' + tone[t],
+        markStyle: 'width:20px;height:20px;border-radius:' + ag.round + ';background:' + ag.bg + ';color:' + (ag.round === '50%' ? '#121316' : ag.color) + ';display:inline-flex;align-items:center;justify-content:center;font:700 9px "IBM Plex Mono",monospace',
+        hasSteps: !!total, steps: steps,
+        box: 'display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:12px;color:#EDEEF0;text-decoration:none;' + bg
+      };
+    };
+    var cols = [
+      { name: 'Backlog', cards: [
+        mk('KOL-51', 'Creator payout schedule page', 'none', 'Unassigned', 'grey', 'Needs a decision: weekly or monthly payouts?'),
+        mk('KOL-49', 'Dark mode for session room', 'none', 'Unassigned', 'grey', 'Design tokens already exist in ui/theme.ts')
+      ] },
+      { name: 'Ready', cards: [
+        mk('KOL-44', 'End-to-end sign-in test', 'ac', 'Waiting', 'grey', 'Starts by itself when KOL-42 and KOL-43 merge', 0, 0, 'wait'),
+        mk('KOL-47', 'Rate-limit booking API', 'ax', 'Queued', 'blue', 'Next for Codex after KOL-43')
+      ] },
+      { name: 'In progress', cards: [
+        mk('KOL-42', 'Login screen + Google button', 'rc', 'Building', 'green', 'Writing tests · 6 files · 12 tests pass', 4, 5),
+        mk('KOL-43', 'OAuth callback + accounts table', 'ax', 'Needs you', 'amber', 'Paused: wants to run migration 0042', 3, 6, 'need'),
+        mk('KOL-46', 'Fix timezone in booking emails', 'a', 'Human', 'grey', 'Arjun is on it by hand')
+      ] },
+      { name: 'Review', cards: [
+        mk('KOL-40', 'Creator profile SEO tags', 'rc', 'PR #21 open', 'blue', 'Reviewed by Arjun’s Claude: 1 comment. Waiting for a human eye.', 5, 5)
+      ] },
+      { name: 'Done', cards: [
+        mk('KOL-38', 'Stripe webhook idempotency', 'ax', 'Merged', 'green', 'PR #18 · yesterday'),
+        mk('KOL-37', 'Booking calendar time slots', 'rc', 'Merged', 'green', 'PR #17 · yesterday')
+      ] }
+    ];
+    cols.forEach(function (c) { c.count = String(c.cards.length); });
+    return { cols: cols };
+  }
+}
+</script>
+</body>
+</html>

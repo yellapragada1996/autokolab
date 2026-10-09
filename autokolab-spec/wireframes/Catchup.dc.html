@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>While you were away</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121316}
+a{color:#D7F25C}a:hover{color:#E8FA9A}
+</style>
+</helmet>
+<div style="min-height: 1060px; background: #121316; color: #EDEEF0; font-family: 'IBM Plex Sans', system-ui, sans-serif; padding: 48px 24px">
+  <div style="max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px">
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 14px; color: #7C838C">Haibu · you were away 9 h 20 m · Arjun's day in Gothenburg</span>
+      <h1 style="margin: 0; font-size: 40px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em">Two things shipped. One thing needs you.</h1>
+      <p style="margin: 0; font-size: 17px; line-height: 1.55; color: #A0A6AE">Read in about a minute. Everything links to the full story.</p>
+    </div>
+
+    <section style="display: flex; flex-direction: column; gap: 12px; padding: 20px 22px; border-radius: 16px; background: #241F12; border: 1px solid #6B5620">
+      <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #F2C14E">Needs you first</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap">
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <span style="font-size: 17px; font-weight: 600">Weekly or monthly creator payouts?</span>
+          <span style="font-size: 14px; color: #C4C9CF">Arjun's Claude stopped KOL-51 to ask. Arjun voted weekly.</span>
+        </div>
+        <div style="display: flex; gap: 8px">
+          <button type="button" style="height: 42px; padding: 0 16px; border: 0; border-radius: 10px; background: #D7F25C; color: #121316; font: 600 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Weekly</button>
+          <button type="button" style="height: 42px; padding: 0 16px; border: 1px solid #3A3F46; border-radius: 10px; background: #22252A; color: #EDEEF0; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Monthly</button>
+        </div>
+      </div>
+    </section>
+
+    <sc-for list="{{groups}}" as="g" hint-placeholder-count="4">
+      <section style="display: flex; flex-direction: column; gap: 12px">
+        <h2 style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: {{g.color}}">{{g.title}}</h2>
+        <div style="display: flex; flex-direction: column; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238">
+          <sc-for list="{{g.items}}" as="it" hint-placeholder-count="2">
+            <div style="{{it.row}}">
+              <div style="display: flex; flex-direction: column; gap: 4px; min-width: 0">
+                <span style="font-size: 16px; font-weight: 500">{{it.text}}</span>
+                <span style="font-size: 13px; color: #7C838C">{{it.who}}</span>
+              </div>
+              <a href="{{it.href}}" style="flex: none; font-size: 14px">{{it.link}}</a>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </sc-for>
+
+    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
+      <a href="Room.dc.html" style="display: inline-flex; align-items: center; height: 50px; padding: 0 24px; border-radius: 12px; background: #D7F25C; color: #121316; font: 600 15px 'IBM Plex Sans', sans-serif; text-decoration: none">I'm caught up</a>
+      <span style="font-size: 14px; color: #7C838C">Or ask the room: "why did Codex change the session cookie?"</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1100,"height":1060}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var groups = [
+      { title: 'Shipped', color: '#8FE3B4', items: [
+        { text: 'Google sign-in works end to end', who: 'KOL-42 + KOL-43 merged · PR #22, #23 · e2e test passing', link: 'Open', href: 'Ticket.dc.html' },
+        { text: 'Booking API is rate-limited', who: "KOL-47 · Arjun's Codex · PR #24", link: 'Open', href: 'Board.dc.html' }
+      ] },
+      { title: 'Decided', color: '#8DBBFF', items: [
+        { text: 'Session cookie lasts 7 days, not 30', who: 'DEC-16 · Arjun, after a note from Codex', link: 'Why', href: '#' }
+      ] },
+      { title: 'Heads up', color: '#F2C14E', items: [
+        { text: 'Booking emails show UTC times to creators', who: "Found by Arjun's Claude while testing · Arjun fixing by hand", link: 'Open', href: 'Board.dc.html' }
+      ] },
+      { title: 'Still going', color: '#A0A6AE', items: [
+        { text: 'Creator payout page', who: "KOL-51 · Arjun's Claude · paused for your answer above", link: 'Open', href: 'Board.dc.html' }
+      ] }
+    ];
+    groups.forEach(function (g) {
+      g.items.forEach(function (it, i) {
+        it.row = 'display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;' + (i > 0 ? 'border-top:1px solid #2E3238' : '');
+      });
+    });
+    return { groups: groups };
+  }
+}
+</script>
+</body>
+</html>

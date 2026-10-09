@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Haibu project room</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121316}
+a{color:#D7F25C}a:hover{color:#E8FA9A}
+textarea::placeholder{color:#7C838C}
+</style>
+</helmet>
+<div style="min-height: 980px; background: #121316; color: #EDEEF0; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-wrap: wrap; align-items: stretch">
+
+  <aside aria-label="Project navigation" style="flex: 1 1 240px; display: flex; flex-direction: column; gap: 24px; padding: 20px 16px; background: #16171A; border-right: 1px solid #23262B">
+    <div style="display: flex; flex-direction: column; gap: 4px; padding: 0 8px">
+      <span style="font-size: 20px; font-weight: 700; letter-spacing: -0.01em">Haibu</span>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C838C">raghav/haibu · main</span>
+    </div>
+    <nav style="display: flex; flex-direction: column; gap: 2px">
+      <a href="#" style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; background: #22252A; color: #EDEEF0; text-decoration: none; font-size: 15px; font-weight: 500">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"></path></svg>Room</a>
+      <a href="Board.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; color: #C4C9CF; text-decoration: none; font-size: 15px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="5" height="16" rx="1"></rect><rect x="10" y="4" width="5" height="10" rx="1"></rect><rect x="17" y="4" width="4" height="13" rx="1"></rect></svg>Board</a>
+      <a href="#" style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; color: #C4C9CF; text-decoration: none; font-size: 15px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14H6z"></path><path d="M9 12h7M9 16h5"></path></svg>Decisions<span style="margin-left: auto; font-size: 12px; color: #7C838C">14</span></a>
+      <a href="Catchup.dc.html" style="display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 8px; color: #C4C9CF; text-decoration: none; font-size: 15px">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg>Catch up<span style="margin-left: auto; padding: 1px 7px; border-radius: 999px; background: #D7F25C; color: #121316; font-size: 12px; font-weight: 700">6</span></a>
+    </nav>
+
+    <section style="display: flex; flex-direction: column; gap: 6px">
+      <span style="padding: 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #7C838C">People</span>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 8px">
+        <span style="position: relative; width: 30px; height: 30px; border-radius: 50%; background: #D7F25C; color: #121316; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px">R<span style="position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; background: #5FD39B; border: 2px solid #16171A"></span></span>
+        <span style="display: flex; flex-direction: column"><span style="font-size: 14px; font-weight: 500">Raghav (you)</span><span style="font-size: 12px; color: #7C838C">Toronto · 10:04 AM</span></span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 8px">
+        <span style="position: relative; width: 30px; height: 30px; border-radius: 50%; background: #E9C6F5; color: #121316; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px">A<span style="position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; background: #F2C14E; border: 2px solid #16171A"></span></span>
+        <span style="display: flex; flex-direction: column"><span style="font-size: 14px; font-weight: 500">Arjun</span><span style="font-size: 12px; color: #7C838C">Gothenburg · 4:04 PM · away</span></span>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 6px">
+      <span style="padding: 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #7C838C">Agents</span>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 8px">
+        <span style="width: 30px; height: 30px; border-radius: 8px; background: #3A2419; color: #F0A27A; display: inline-flex; align-items: center; justify-content: center; font: 700 12px 'IBM Plex Mono', monospace">Cl</span>
+        <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; font-weight: 500">Raghav's Claude</span><span style="font-size: 12px; color: #8FE3B4">Building · KOL-42</span></span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 8px">
+        <span style="width: 30px; height: 30px; border-radius: 8px; background: #172338; color: #8DBBFF; display: inline-flex; align-items: center; justify-content: center; font: 700 12px 'IBM Plex Mono', monospace">Cx</span>
+        <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; font-weight: 500">Arjun's Codex</span><span style="font-size: 12px; color: #F2C14E">Waiting on you · KOL-43</span></span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 8px">
+        <span style="width: 30px; height: 30px; border-radius: 8px; background: #3A2419; color: #F0A27A; display: inline-flex; align-items: center; justify-content: center; font: 700 12px 'IBM Plex Mono', monospace">Cl</span>
+        <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 14px; font-weight: 500">Arjun's Claude</span><span style="font-size: 12px; color: #7C838C">Idle · free for work</span></span>
+      </div>
+    </section>
+  </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column">
+    <header style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 28px; border-bottom: 1px solid #23262B; flex-wrap: wrap">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <h1 style="margin: 0; font-size: 19px; font-weight: 600">Room</h1>
+        <span style="font-size: 13px; color: #7C838C">2 people · 3 agents · everything said here becomes project memory</span>
+      </div>
+      <label style="display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: 10px; background: #1A1C20; border: 1px solid #2E3238; color: #7C838C; font-size: 14px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6"></circle><path d="M20 20l-4-4"></path></svg>
+        <input aria-label="Search the room" placeholder="Search messages, tickets, decisions" style="border: 0; background: transparent; color: #EDEEF0; font: 400 14px 'IBM Plex Sans', sans-serif; outline: none; width: 240px">
+      </label>
+    </header>
+
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 22px; padding: 24px 28px; overflow: auto">
+
+      <div style="display: flex; gap: 12px">
+        <span style="flex: none; width: 34px; height: 34px; border-radius: 50%; background: #D7F25C; color: #121316; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px">R</span>
+        <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+          <span style="font-size: 14px"><strong style="font-weight: 600">Raghav</strong> <span style="color: #7C838C">9:31 AM</span></span>
+          <p style="margin: 0; font-size: 15px; line-height: 1.55">Let's add Google sign-in. <span style="color: #F0A27A; font-weight: 500">@Raghav's Claude</span> take the login screen, <span style="color: #8DBBFF; font-weight: 500">@Arjun's Codex</span> the OAuth callback. Plan it first.</p>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 12px">
+        <span style="flex: none; width: 34px; height: 34px; border-radius: 9px; background: #3A2419; color: #F0A27A; display: inline-flex; align-items: center; justify-content: center; font: 700 12px 'IBM Plex Mono', monospace">Cl</span>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0">
+          <span style="font-size: 14px"><strong style="font-weight: 600">Raghav's Claude</strong> <span style="color: #7C838C">9:32 AM · on Raghav's Mac</span></span>
+          <div style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238; max-width: 640px">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap">
+              <span style="font-size: 16px; font-weight: 600">Plan · Google sign-in · 3 tickets</span>
+              <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #7C838C">Proposed</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px">
+              <div style="display: flex; justify-content: space-between; gap: 12px"><span><span style="font-family: 'IBM Plex Mono', monospace; color: #7C838C">KOL-42</span>  Login screen + Google button</span><span style="color: #F0A27A">Raghav's Claude</span></div>
+              <div style="display: flex; justify-content: space-between; gap: 12px"><span><span style="font-family: 'IBM Plex Mono', monospace; color: #7C838C">KOL-43</span>  OAuth callback + accounts table</span><span style="color: #8DBBFF">Arjun's Codex</span></div>
+              <div style="display: flex; justify-content: space-between; gap: 12px"><span><span style="font-family: 'IBM Plex Mono', monospace; color: #7C838C">KOL-44</span>  End-to-end test, after 42 + 43</span><span style="color: #A0A6AE">Arjun's Claude</span></div>
+            </div>
+            <span style="font-size: 13px; color: #A0A6AE">Contract first: Codex publishes the callback response shape before either side builds.</span>
+            <sc-if value="{{planOpen}}" hint-placeholder-val="{{ false }}">
+              <div style="display: flex; gap: 8px; flex-wrap: wrap">
+                <button type="button" onClick="{{approvePlan}}" style="height: 40px; padding: 0 18px; border: 0; border-radius: 9px; background: #D7F25C; color: #121316; font: 600 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Approve plan</button>
+                <button type="button" style="height: 40px; padding: 0 16px; border: 1px solid #3A3F46; border-radius: 9px; background: #22252A; color: #EDEEF0; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Edit</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{planDone}}" hint-placeholder-val="{{ true }}">
+              <span style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #8FE3B4"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>Approved by Raghav · 3 tickets created</span>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 10px; padding-left: 46px; font-size: 13px; color: #7C838C; flex-wrap: wrap">
+        <span style="font-family: 'IBM Plex Mono', monospace">9:34</span>
+        <span>Raghav's Claude claimed <a href="Ticket.dc.html">KOL-42</a> · own branch <span style="font-family: 'IBM Plex Mono', monospace; color: #A0A6AE">kol-42-login</span> · reserved <span style="font-family: 'IBM Plex Mono', monospace; color: #A0A6AE">app/(auth)/**</span></span>
+      </div>
+
+      <div style="display: flex; gap: 12px">
+        <span style="flex: none; width: 34px; height: 34px; border-radius: 9px; background: #172338; color: #8DBBFF; display: inline-flex; align-items: center; justify-content: center; font: 700 12px 'IBM Plex Mono', monospace">Cx</span>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0">
+          <span style="font-size: 14px"><strong style="font-weight: 600">Arjun's Codex</strong> <span style="color: #7C838C">9:48 AM · on Arjun's PC, Gothenburg</span></span>
+          <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238; max-width: 640px">
+            <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #8DBBFF">Contract published · pinned to Decisions</span>
+            <pre style="margin: 0; padding: 12px 14px; border-radius: 8px; background: #121316; font: 400 13px/1.6 'IBM Plex Mono', monospace; color: #C4C9CF; white-space: pre-wrap">GET /auth/callback?code=…
+→ 302 /dashboard  sets sb-session cookie
+→ 302 /login?error=oauth_denied</pre>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 12px">
+        <span style="flex: none; width: 34px; height: 34px; border-radius: 9px; background: #3A2419; color: #F0A27A; display: inline-flex; align-items: center; justify-content: center; font: 700 12px 'IBM Plex Mono', monospace">Cl</span>
+        <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+          <span style="font-size: 14px"><strong style="font-weight: 600">Raghav's Claude</strong> <span style="color: #7C838C">9:50 AM</span></span>
+          <p style="margin: 0; font-size: 15px; line-height: 1.55">Got it. Building the error state for <span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px">oauth_denied</span> against the contract; no need to wait for KOL-43 to merge.</p>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; margin-left: 46px; padding: 16px 18px; border-radius: 14px; background: #1A1C20; border: 1px dashed #4A4F57; max-width: 640px">
+        <span style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F2C14E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3z"></path><path d="M12 10v4M12 17v.5"></path></svg>Overlap avoided</span>
+        <span style="font-size: 14px; line-height: 1.5; color: #C4C9CF">Arjun's Codex wanted to edit <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px">lib/supabase/client.ts</span>, which Raghav's Claude has reserved. Codex queued that change and moved on to the migration.</span>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap">
+          <button type="button" style="height: 36px; padding: 0 14px; border: 1px solid #3A3F46; border-radius: 8px; background: #22252A; color: #EDEEF0; font: 500 13px 'IBM Plex Sans', sans-serif; cursor: pointer">Let them share the file</button>
+          <button type="button" style="height: 36px; padding: 0 14px; border: 0; border-radius: 8px; background: transparent; color: #A0A6AE; font: 500 13px 'IBM Plex Sans', sans-serif; cursor: pointer">Fine as is</button>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 12px">
+        <span style="flex: none; width: 34px; height: 34px; border-radius: 50%; background: #E9C6F5; color: #121316; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px">A</span>
+        <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+          <span style="font-size: 14px"><strong style="font-weight: 600">Arjun</strong> <span style="color: #7C838C">9:58 AM</span></span>
+          <p style="margin: 0; font-size: 15px; line-height: 1.55">Off to a lecture. Codex will keep going; Raghav, approve its migration when it asks.</p>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 12px">
+        <span style="flex: none; width: 34px; height: 34px; border-radius: 9px; background: #172338; color: #8DBBFF; display: inline-flex; align-items: center; justify-content: center; font: 700 12px 'IBM Plex Mono', monospace">Cx</span>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0">
+          <span style="font-size: 14px"><strong style="font-weight: 600">Arjun's Codex</strong> <span style="color: #7C838C">10:03 AM</span></span>
+          <div style="{{approvalBox}}">
+            <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #F2C14E">Needs approval · KOL-43</span>
+            <span style="font-size: 16px; font-weight: 600">Run a database migration</span>
+            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: #C4C9CF">
+              <span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px">0042_oauth_accounts.sql</span>: new table, no changes to existing rows</span>
+              <span>Adds dependency <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px">@supabase/ssr</span></span>
+            </div>
+            <sc-if value="{{approvalOpen}}" hint-placeholder-val="{{ true }}">
+              <div style="display: flex; gap: 8px; flex-wrap: wrap">
+                <button type="button" onClick="{{approve}}" style="height: 40px; padding: 0 18px; border: 0; border-radius: 9px; background: #D7F25C; color: #121316; font: 600 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Approve</button>
+                <button type="button" style="height: 40px; padding: 0 16px; border: 1px solid #3A3F46; border-radius: 9px; background: #22252A; color: #EDEEF0; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer">View SQL</button>
+                <button type="button" style="height: 40px; padding: 0 16px; border: 0; border-radius: 9px; background: transparent; color: #FF9A9A; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Reject with a note</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{approved}}" hint-placeholder-val="{{ false }}">
+              <span style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #8FE3B4"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>Approved by Raghav · Codex is running it now</span>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer style="padding: 16px 28px 22px; border-top: 1px solid #23262B">
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border-radius: 14px; background: #1A1C20; border: 1px solid #3A3F46">
+        <label for="msg" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Message the room</label>
+        <textarea id="msg" rows="2" placeholder="Message the room. @ an agent to hand it work, or / for commands" style="border: 0; background: transparent; color: #EDEEF0; font: 400 15px/1.5 'IBM Plex Sans', sans-serif; outline: none; resize: none"></textarea>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap">
+          <div style="display: flex; gap: 6px; flex-wrap: wrap">
+            <button type="button" style="height: 32px; padding: 0 12px; border: 1px solid #2E3238; border-radius: 8px; background: #22252A; color: #C4C9CF; font: 500 13px 'IBM Plex Mono', monospace; cursor: pointer">/ticket</button>
+            <button type="button" style="height: 32px; padding: 0 12px; border: 1px solid #2E3238; border-radius: 8px; background: #22252A; color: #C4C9CF; font: 500 13px 'IBM Plex Mono', monospace; cursor: pointer">/decide</button>
+            <button type="button" style="height: 32px; padding: 0 12px; border: 1px solid #2E3238; border-radius: 8px; background: #22252A; color: #C4C9CF; font: 500 13px 'IBM Plex Mono', monospace; cursor: pointer">/pause all</button>
+          </div>
+          <button type="button" style="height: 36px; padding: 0 18px; border: 0; border-radius: 9px; background: #D7F25C; color: #121316; font: 600 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Send</button>
+        </div>
+      </div>
+    </footer>
+  </main>
+
+  <aside aria-label="Live tickets" style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 20px; padding: 20px; background: #16171A; border-left: 1px solid #23262B">
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #7C838C">Needs you</span>
+      <div style="{{needsBox}}">
+        <span style="font-size: 14px; font-weight: 600">{{needsTitle}}</span>
+        <span style="font-size: 13px; color: #A0A6AE">{{needsSub}}</span>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline">
+        <span style="font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #7C838C">Live tickets</span>
+        <a href="Board.dc.html" style="font-size: 13px">Open board</a>
+      </div>
+
+      <a href="Ticket.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; background: #1A1C20; border: 1px solid #2E3238; color: #EDEEF0; text-decoration: none">
+        <div style="display: flex; justify-content: space-between; gap: 8px"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C838C">KOL-42</span><span style="font-size: 12px; color: #8FE3B4">Building</span></div>
+        <span style="font-size: 15px; font-weight: 600">Login screen + Google button</span>
+        <div style="display: flex; gap: 4px">
+          <span style="flex: 1; height: 4px; border-radius: 2px; background: #5FD39B"></span><span style="flex: 1; height: 4px; border-radius: 2px; background: #5FD39B"></span><span style="flex: 1; height: 4px; border-radius: 2px; background: #5FD39B"></span><span style="flex: 1; height: 4px; border-radius: 2px; background: #2E3238"></span><span style="flex: 1; height: 4px; border-radius: 2px; background: #2E3238"></span>
+        </div>
+        <span style="font-size: 13px; color: #A0A6AE">Step 4 of 5 · writing tests · 6 files · 12 tests pass</span>
+        <span style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #F0A27A"><span style="width: 18px; height: 18px; border-radius: 5px; background: #3A2419; display: inline-flex; align-items: center; justify-content: center; font: 700 9px 'IBM Plex Mono', monospace">Cl</span>Raghav's Claude</span>
+      </a>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; background: #1A1C20; border: 1px solid #2E3238">
+        <div style="display: flex; justify-content: space-between; gap: 8px"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C838C">KOL-43</span><span style="font-size: 12px; color: {{k43Color}}">{{k43Status}}</span></div>
+        <span style="font-size: 15px; font-weight: 600">OAuth callback + accounts table</span>
+        <span style="font-size: 13px; color: #A0A6AE">Step 3 of 6 · contract published</span>
+        <span style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #8DBBFF"><span style="width: 18px; height: 18px; border-radius: 5px; background: #172338; display: inline-flex; align-items: center; justify-content: center; font: 700 9px 'IBM Plex Mono', monospace">Cx</span>Arjun's Codex</span>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 12px; background: #16171A; border: 1px dashed #3A3F46">
+        <div style="display: flex; justify-content: space-between; gap: 8px"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7C838C">KOL-44</span><span style="font-size: 12px; color: #A0A6AE">Waiting</span></div>
+        <span style="font-size: 15px; font-weight: 600">End-to-end sign-in test</span>
+        <span style="font-size: 13px; color: #A0A6AE">Starts by itself when 42 and 43 merge</span>
+      </div>
+    </section>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":980}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { plan: true, approved: false };
+  }
+  renderVals() {
+    var self = this, s = this.state;
+    var box = 'display:flex;flex-direction:column;gap:10px;padding:16px 18px;border-radius:14px;max-width:640px;';
+    return {
+      planOpen: !s.plan, planDone: s.plan,
+      approvePlan: function () { self.setState({ plan: true }); },
+      approvalOpen: !s.approved, approved: s.approved,
+      approve: function () { self.setState({ approved: true }); },
+      approvalBox: box + (s.approved ? 'background:#1A1C20;border:1px solid #2E3238' : 'background:#241F12;border:1px solid #6B5620'),
+      needsBox: 'display:flex;flex-direction:column;gap:4px;padding:14px;border-radius:12px;' + (s.approved ? 'background:#1A1C20;border:1px solid #2E3238' : 'background:#241F12;border:1px solid #6B5620'),
+      needsTitle: s.approved ? 'Nothing waiting on you' : 'Approve migration for KOL-43',
+      needsSub: s.approved ? 'Agents will ask here first.' : "Arjun's Codex is paused until you decide",
+      k43Status: s.approved ? 'Running migration' : 'Waiting on you',
+      k43Color: s.approved ? '#8FE3B4' : '#F2C14E'
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab onboarding</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121316}
+a{color:#D7F25C}a:hover{color:#E8FA9A}
+input::placeholder{color:#7C838C}
+</style>
+</helmet>
+<div style="min-height: 900px; background: #121316; color: #EDEEF0; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column">
+
+  <header style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 32px; border-bottom: 1px solid #23262B; flex-wrap: wrap">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <div style="width: 28px; height: 28px; border-radius: 8px; background: #D7F25C; display: flex; align-items: center; justify-content: center">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#121316" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="12" r="3"></circle><circle cx="17" cy="7" r="3"></circle><circle cx="17" cy="17" r="3"></circle><path d="M10 11l4-2.5M10 13l4 2.5"></path></svg>
+      </div>
+      <span style="font-weight: 700; font-size: 17px; letter-spacing: -0.01em">AutoKolab</span>
+    </div>
+    <nav aria-label="Setup progress" style="display: flex; gap: 8px; flex-wrap: wrap">
+      <sc-for list="{{steps}}" as="s" hint-placeholder-count="3">
+        <div style="{{s.pill}}">
+          <span style="{{s.dot}}">{{s.mark}}</span>
+          <span>{{s.label}}</span>
+        </div>
+      </sc-for>
+    </nav>
+    <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #7C838C">Raghav's MacBook Air</span>
+  </header>
+
+  <main style="flex: 1; display: flex; justify-content: center; align-items: flex-start; padding: 72px 24px 48px">
+    <div style="width: 100%; max-width: 680px">
+
+      <sc-if value="{{isWelcome}}" hint-placeholder-val="{{ true }}">
+        <div style="display: flex; flex-direction: column; gap: 28px">
+          <div style="display: inline-flex; align-self: flex-start; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: #1C2A1F; color: #8FE3B4; font-size: 13px; font-weight: 500">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>
+            Installed. Found Claude Code and Codex on this Mac.
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <h1 style="margin: 0; font-size: 44px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em">What should your team call you?</h1>
+            <p style="margin: 0; font-size: 17px; line-height: 1.55; color: #A0A6AE">Your name shows next to your messages and on the agents you bring. No account, no password: this Mac is your identity.</p>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px">
+            <label for="nm" style="font-size: 14px; font-weight: 500; color: #A0A6AE">Your name</label>
+            <input id="nm" value="{{name}}" onChange="{{setName}}" style="height: 56px; padding: 0 18px; border-radius: 12px; border: 1px solid #3A3F46; background: #1A1C20; color: #EDEEF0; font: 500 20px 'IBM Plex Sans', sans-serif; outline: none">
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; padding: 16px 18px; border-radius: 12px; background: #1A1C20; border: 1px solid #23262B">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A0A6AE" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"></path></svg>
+            <span style="font-size: 15px; color: #A0A6AE">Teammates will see <strong style="color: #EDEEF0; font-weight: 600">Toronto · 9:41 AM</strong> next to you, from your time zone.</span>
+          </div>
+          <div>
+            <button type="button" onClick="{{toAgents}}" style="height: 52px; padding: 0 28px; border: 0; border-radius: 12px; background: #D7F25C; color: #121316; font: 600 16px 'IBM Plex Sans', sans-serif; cursor: pointer">Continue</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isAgents}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 28px">
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <h1 style="margin: 0; font-size: 40px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em">Bring your agents, {{name}}.</h1>
+            <p style="margin: 0; font-size: 17px; line-height: 1.55; color: #A0A6AE">AutoKolab drives the agent CLIs you already use and pay for. No API keys, nothing new to sign up for.</p>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <div style="display: flex; flex-direction: column; gap: 16px; padding: 22px; border-radius: 16px; background: #1A1C20; border: 1px solid #2E3238">
+              <div style="display: flex; align-items: center; gap: 12px">
+                <div style="width: 44px; height: 44px; border-radius: 12px; background: #3A2419; color: #F0A27A; display: flex; align-items: center; justify-content: center; font: 700 16px 'IBM Plex Mono', monospace">Cl</div>
+                <div style="display: flex; flex-direction: column; gap: 2px">
+                  <span style="font-size: 18px; font-weight: 600">Claude Code</span>
+                  <span style="font-size: 13px; color: #A0A6AE; font-family: 'IBM Plex Mono', monospace">found · signed in</span>
+                </div>
+              </div>
+              <sc-if value="{{claudeOff}}" hint-placeholder-val="{{ true }}">
+                <button type="button" onClick="{{connectClaude}}" style="height: 48px; border: 0; border-radius: 10px; background: #F0A27A; color: #121316; font: 600 15px 'IBM Plex Sans', sans-serif; cursor: pointer">Connect Claude</button>
+              </sc-if>
+              <sc-if value="{{claude}}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 10px; background: #1C2A1F">
+                  <span style="display: flex; align-items: center; gap: 8px; color: #8FE3B4; font-weight: 600; font-size: 15px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>Connected</span>
+                  <span style="font-size: 13px; color: #A0A6AE">Joins rooms as <strong style="color: #EDEEF0">{{claudeName}}</strong></span>
+                </div>
+              </sc-if>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 16px; padding: 22px; border-radius: 16px; background: #1A1C20; border: 1px solid #2E3238">
+              <div style="display: flex; align-items: center; gap: 12px">
+                <div style="width: 44px; height: 44px; border-radius: 12px; background: #172338; color: #8DBBFF; display: flex; align-items: center; justify-content: center; font: 700 16px 'IBM Plex Mono', monospace">Cx</div>
+                <div style="display: flex; flex-direction: column; gap: 2px">
+                  <span style="font-size: 18px; font-weight: 600">Codex</span>
+                  <span style="font-size: 13px; color: #A0A6AE; font-family: 'IBM Plex Mono', monospace">found · signed in</span>
+                </div>
+              </div>
+              <sc-if value="{{codexOff}}" hint-placeholder-val="{{ true }}">
+                <button type="button" onClick="{{connectCodex}}" style="height: 48px; border: 0; border-radius: 10px; background: #8DBBFF; color: #121316; font: 600 15px 'IBM Plex Sans', sans-serif; cursor: pointer">Connect Codex</button>
+              </sc-if>
+              <sc-if value="{{codex}}" hint-placeholder-val="{{ false }}">
+                <div style="display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 10px; background: #1C2A1F">
+                  <span style="display: flex; align-items: center; gap: 8px; color: #8FE3B4; font-weight: 600; font-size: 15px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"></path></svg>Connected</span>
+                  <span style="font-size: 13px; color: #A0A6AE">Joins rooms as <strong style="color: #EDEEF0">{{codexName}}</strong></span>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+          <p style="margin: 0; font-size: 14px; color: #7C838C">Using Gemini CLI, OpenCode or something else? <a href="#">Add another agent</a></p>
+          <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap">
+            <button type="button" onClick="{{toPath}}" disabled="{{noAgents}}" style="{{continueStyle}}">Continue</button>
+            <button type="button" onClick="{{toWelcome}}" style="height: 52px; padding: 0 20px; border: 1px solid #2E3238; border-radius: 12px; background: transparent; color: #A0A6AE; font: 500 15px 'IBM Plex Sans', sans-serif; cursor: pointer">Back</button>
+            <span style="font-size: 14px; color: #7C838C">{{agentHint}}</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isPath}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 24px">
+          <h1 style="margin: 0; font-size: 40px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em">Start a project, or join one?</h1>
+          <div style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; border-radius: 16px; background: #1F2614; border: 1px solid #4A5A1E">
+            <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #C9E06A">Invite link on your clipboard</span>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+              <div style="display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 20px; font-weight: 600">Arjun invited you to Haibu</span>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #A0A6AE">autokolab.dev/j/haibu-7Kx2</span>
+              </div>
+              <button type="button" onClick="{{toJoin}}" style="height: 48px; padding: 0 22px; border: 0; border-radius: 10px; background: #D7F25C; color: #121316; font: 600 15px 'IBM Plex Sans', sans-serif; cursor: pointer">Join Haibu</button>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px">
+            <button type="button" onClick="{{toStart}}" style="display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 24px; border-radius: 16px; background: #1A1C20; border: 1px solid #2E3238; color: #EDEEF0; text-align: left; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#D7F25C" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path><path d="M12 11v5M9.5 13.5h5"></path></svg>
+              <span style="font-size: 19px; font-weight: 600">Start a project</span>
+              <span style="font-size: 15px; line-height: 1.5; color: #A0A6AE">Point at a folder on this Mac. We'll make the room and an invite link.</span>
+            </button>
+            <button type="button" onClick="{{toJoin}}" style="display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 24px; border-radius: 16px; background: #1A1C20; border: 1px solid #2E3238; color: #EDEEF0; text-align: left; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#8DBBFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"></path></svg>
+              <span style="font-size: 19px; font-weight: 600">Join with a link</span>
+              <span style="font-size: 15px; line-height: 1.5; color: #A0A6AE">Paste the invite a teammate sent. We'll fetch the repo for you.</span>
+            </button>
+          </div>
+          <div><button type="button" onClick="{{toAgents}}" style="height: 44px; padding: 0 18px; border: 1px solid #2E3238; border-radius: 10px; background: transparent; color: #A0A6AE; font: 500 15px 'IBM Plex Sans', sans-serif; cursor: pointer">Back</button></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isStart}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 24px">
+          <h1 style="margin: 0; font-size: 40px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em">Which folder is the project?</h1>
+          <div style="display: flex; flex-direction: column; gap: 14px; padding: 22px; border-radius: 16px; background: #1A1C20; border: 1px solid #2E3238">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 17px">~/code/haibu</span>
+              <button type="button" style="height: 40px; padding: 0 16px; border: 1px solid #3A3F46; border-radius: 10px; background: #22252A; color: #EDEEF0; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Choose folder…</button>
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap">
+              <span style="padding: 5px 10px; border-radius: 6px; background: #22252A; font-size: 13px; color: #C4C9CF">Git repo · main</span>
+              <span style="padding: 5px 10px; border-radius: 6px; background: #22252A; font-size: 13px; color: #C4C9CF">github.com/raghav/haibu</span>
+              <span style="padding: 5px 10px; border-radius: 6px; background: #22252A; font-size: 13px; color: #C4C9CF">Next.js · Supabase · Drizzle</span>
+              <span style="padding: 5px 10px; border-radius: 6px; background: #22252A; font-size: 13px; color: #C4C9CF">CLAUDE.md found</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <label for="inv" style="font-size: 14px; font-weight: 500; color: #A0A6AE">Invite link: send it to anyone you want in the room</label>
+            <div style="display: flex; gap: 10px">
+              <input id="inv" readonly value="autokolab.dev/j/haibu-7Kx2" style="flex: 1; min-width: 0; height: 48px; padding: 0 14px; border-radius: 10px; border: 1px solid #3A3F46; background: #121316; color: #EDEEF0; font: 400 15px 'IBM Plex Mono', monospace">
+              <button type="button" style="height: 48px; padding: 0 18px; border: 1px solid #3A3F46; border-radius: 10px; background: #22252A; color: #EDEEF0; font: 600 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Copy</button>
+            </div>
+          </div>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap">
+            <button type="button" onClick="{{toReady}}" style="height: 52px; padding: 0 28px; border: 0; border-radius: 12px; background: #D7F25C; color: #121316; font: 600 16px 'IBM Plex Sans', sans-serif; cursor: pointer">Create room</button>
+            <button type="button" onClick="{{toPath}}" style="height: 52px; padding: 0 20px; border: 1px solid #2E3238; border-radius: 12px; background: transparent; color: #A0A6AE; font: 500 15px 'IBM Plex Sans', sans-serif; cursor: pointer">Back</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isJoin}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 24px">
+          <div style="display: flex; flex-direction: column; gap: 14px; padding: 22px; border-radius: 16px; background: #1A1C20; border: 1px solid #2E3238">
+            <span style="font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #7C838C">You're joining</span>
+            <span style="font-size: 32px; font-weight: 700; letter-spacing: -0.02em">Haibu</span>
+            <div style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 15px; color: #A0A6AE">
+              <span>Invited by <strong style="color: #EDEEF0">Arjun</strong> · Gothenburg</span>
+              <span>2 agents working now</span>
+              <span style="font-family: 'IBM Plex Mono', monospace">raghav/haibu · private</span>
+            </div>
+          </div>
+          <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px">
+            <li style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238; flex-wrap: wrap">
+              <div style="display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 17px; font-weight: 600">1 · Get access to the code</span>
+                <span style="font-size: 14px; color: #A0A6AE">The repo is private, so GitHub has to say yes once.</span>
+              </div>
+              <sc-if value="{{ghOff}}" hint-placeholder-val="{{ true }}">
+                <button type="button" onClick="{{connectGh}}" style="height: 46px; padding: 0 20px; border: 0; border-radius: 10px; background: #EDEEF0; color: #121316; font: 600 15px 'IBM Plex Sans', sans-serif; cursor: pointer">Continue with GitHub</button>
+              </sc-if>
+              <sc-if value="{{gh}}" hint-placeholder-val="{{ false }}">
+                <span style="color: #8FE3B4; font-weight: 600; font-size: 15px">Access granted</span>
+              </sc-if>
+            </li>
+            <li style="display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 20px; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238; flex-wrap: wrap">
+              <div style="display: flex; flex-direction: column; gap: 4px">
+                <span style="font-size: 17px; font-weight: 600">2 · Where it lives on this Mac</span>
+                <span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; color: #C4C9CF">~/code/haibu</span>
+              </div>
+              <button type="button" style="height: 40px; padding: 0 16px; border: 1px solid #3A3F46; border-radius: 10px; background: #22252A; color: #EDEEF0; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Change</button>
+            </li>
+            <li style="display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238">
+              <span style="font-size: 17px; font-weight: 600">3 · Set up</span>
+              <span style="font-size: 14px; color: #A0A6AE">{{setupText}}</span>
+              <div style="height: 6px; border-radius: 3px; background: #2E3238; overflow: hidden">
+                <div style="{{barStyle}}"></div>
+              </div>
+            </li>
+          </ol>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap">
+            <button type="button" onClick="{{toReady}}" disabled="{{notCloned}}" style="{{enterStyle}}">Enter the room</button>
+            <button type="button" onClick="{{toPath}}" style="height: 52px; padding: 0 20px; border: 1px solid #2E3238; border-radius: 12px; background: transparent; color: #A0A6AE; font: 500 15px 'IBM Plex Sans', sans-serif; cursor: pointer">Back</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isReady}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 28px">
+          <div style="display: flex; flex-direction: column; gap: 10px">
+            <h1 style="margin: 0; font-size: 44px; line-height: 1.1; font-weight: 700; letter-spacing: -0.02em">You're in, {{name}}.</h1>
+            <p style="margin: 0; font-size: 17px; line-height: 1.55; color: #A0A6AE">Your agents just read the repo and the room's history, so they start with the same context as everyone else.</p>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 18px; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238">
+              <span style="font-size: 28px; font-weight: 700">14</span>
+              <span style="font-size: 14px; color: #A0A6AE">decisions loaded</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 18px; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238">
+              <span style="font-size: 28px; font-weight: 700">3</span>
+              <span style="font-size: 14px; color: #A0A6AE">API contracts</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 18px; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238">
+              <span style="font-size: 28px; font-weight: 700">5</span>
+              <span style="font-size: 14px; color: #A0A6AE">open tickets</span>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238">
+            <span style="font-size: 14px; font-weight: 600; color: #A0A6AE">Arriving with you</span>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap">
+              <span style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; background: #22252A; font-size: 14px"><span style="width: 26px; height: 26px; border-radius: 50%; background: #D7F25C; color: #121316; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px">{{initial}}</span>{{name}}</span>
+              <sc-if value="{{claude}}" hint-placeholder-val="{{ true }}">
+                <span style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; background: #22252A; font-size: 14px"><span style="width: 26px; height: 26px; border-radius: 7px; background: #3A2419; color: #F0A27A; display: inline-flex; align-items: center; justify-content: center; font: 700 11px 'IBM Plex Mono', monospace">Cl</span>{{claudeName}}</span>
+              </sc-if>
+              <sc-if value="{{codex}}" hint-placeholder-val="{{ false }}">
+                <span style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px; border-radius: 999px; background: #22252A; font-size: 14px"><span style="width: 26px; height: 26px; border-radius: 7px; background: #172338; color: #8DBBFF; display: inline-flex; align-items: center; justify-content: center; font: 700 11px 'IBM Plex Mono', monospace">Cx</span>{{codexName}}</span>
+              </sc-if>
+            </div>
+          </div>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap">
+            <a href="Room.dc.html" style="display: inline-flex; align-items: center; height: 52px; padding: 0 28px; border-radius: 12px; background: #D7F25C; color: #121316; font: 600 16px 'IBM Plex Sans', sans-serif; text-decoration: none">Open the room</a>
+            <button type="button" onClick="{{restart}}" style="height: 52px; padding: 0 20px; border: 1px solid #2E3238; border-radius: 12px; background: transparent; color: #A0A6AE; font: 500 15px 'IBM Plex Sans', sans-serif; cursor: pointer">Replay setup</button>
+          </div>
+        </div>
+      </sc-if>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { step: 'welcome', name: 'Raghav', claude: false, codex: false, gh: false, pct: 0 };
+  }
+  go(step) { this.setState({ step: step }); }
+  startClone() {
+    var self = this;
+    var tick = function () {
+      var p = self.state.pct + 20;
+      self.setState({ pct: p > 100 ? 100 : p });
+      if (p < 100) { setTimeout(tick, 350); }
+    };
+    setTimeout(tick, 350);
+  }
+  renderVals() {
+    var s = this.state;
+    var self = this;
+    var idx = { welcome: 0, agents: 1, path: 2, start: 2, join: 2, ready: 3 }[s.step];
+    var labels = ['You', 'Agents', 'Project'];
+    var steps = labels.map(function (l, i) {
+      var active = i === idx, done = i < idx;
+      return {
+        label: l,
+        mark: done ? '✓' : String(i + 1),
+        pill: 'display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;border-radius:999px;font-size:14px;font-weight:500;' + (active ? 'background:#22252A;color:#EDEEF0' : 'color:' + (done ? '#A0A6AE' : '#7C838C')),
+        dot: 'width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;' + (active ? 'background:#D7F25C;color:#121316' : done ? 'background:#1C2A1F;color:#8FE3B4' : 'background:#1A1C20;color:#7C838C;border:1px solid #2E3238')
+      };
+    });
+    var name = s.name && s.name.trim() ? s.name.trim() : 'You';
+    var any = s.claude || s.codex;
+    var cloned = s.pct >= 100;
+    var primary = 'height:52px;padding:0 28px;border:0;border-radius:12px;font:600 16px "IBM Plex Sans",sans-serif;';
+    return {
+      steps: steps,
+      name: name,
+      initial: name.charAt(0).toUpperCase(),
+      setName: function (e) { self.setState({ name: e.target.value }); },
+      isWelcome: s.step === 'welcome', isAgents: s.step === 'agents', isPath: s.step === 'path',
+      isStart: s.step === 'start', isJoin: s.step === 'join', isReady: s.step === 'ready',
+      toWelcome: function () { self.go('welcome'); },
+      toAgents: function () { self.go('agents'); },
+      toPath: function () { self.go('path'); },
+      toStart: function () { self.go('start'); },
+      toJoin: function () { self.go('join'); },
+      toReady: function () { self.go('ready'); },
+      restart: function () { self.setState({ step: 'welcome', claude: false, codex: false, gh: false, pct: 0 }); },
+      claude: s.claude, claudeOff: !s.claude, codex: s.codex, codexOff: !s.codex,
+      connectClaude: function () { self.setState({ claude: true }); },
+      connectCodex: function () { self.setState({ codex: true }); },
+      claudeName: name + "'s Claude", codexName: name + "'s Codex",
+      noAgents: !any,
+      agentHint: any ? 'You can add more later.' : 'Connect at least one to continue.',
+      continueStyle: primary + (any ? 'background:#D7F25C;color:#121316;cursor:pointer' : 'background:#2E3238;color:#7C838C;cursor:not-allowed'),
+      gh: s.gh, ghOff: !s.gh,
+      connectGh: function () { self.setState({ gh: true }); self.startClone(); },
+      setupText: !s.gh ? 'Waiting for GitHub access.' : cloned ? 'Cloned, dependencies installed, each agent gets its own worktree.' : 'Cloning raghav/haibu and installing dependencies… ' + s.pct + '%',
+      barStyle: 'height:100%;border-radius:3px;background:#D7F25C;width:' + s.pct + '%;transition:width .3s',
+      notCloned: !cloned,
+      enterStyle: primary + (cloned ? 'background:#D7F25C;color:#121316;cursor:pointer' : 'background:#2E3238;color:#7C838C;cursor:not-allowed')
+    };
+  }
+}
+</script>
+</body>
+</html>

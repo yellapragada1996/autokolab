@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>KOL-42 ticket</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=IBM+Plex+Sans:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#121316}
+a{color:#D7F25C}a:hover{color:#E8FA9A}
+input::placeholder{color:#7C838C}
+</style>
+</helmet>
+<div style="min-height: 1000px; background: #121316; color: #EDEEF0; font-family: 'IBM Plex Sans', system-ui, sans-serif; display: flex; flex-direction: column">
+  <header style="display: flex; flex-direction: column; gap: 14px; padding: 22px 32px; border-bottom: 1px solid #23262B">
+    <div style="display: flex; gap: 8px; font-size: 14px; color: #7C838C; flex-wrap: wrap">
+      <a href="Room.dc.html" style="color: #A0A6AE; text-decoration: none">Haibu</a><span>/</span><a href="Board.dc.html" style="color: #A0A6AE; text-decoration: none">Board</a><span>/</span><span style="font-family: 'IBM Plex Mono', monospace">KOL-42</span>
+    </div>
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+      <h1 style="margin: 0; font-size: 30px; font-weight: 700; letter-spacing: -0.02em">Login screen + Google button</h1>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap">
+        <button type="button" style="height: 40px; padding: 0 16px; border: 1px solid #3A3F46; border-radius: 10px; background: #22252A; color: #EDEEF0; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Pause</button>
+        <button type="button" style="height: 40px; padding: 0 16px; border: 1px solid #3A3F46; border-radius: 10px; background: #22252A; color: #EDEEF0; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Hand to another agent</button>
+        <button type="button" style="height: 40px; padding: 0 16px; border: 1px solid #5A2A2A; border-radius: 10px; background: transparent; color: #FF9A9A; font: 500 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Stop and keep changes</button>
+      </div>
+    </div>
+    <div style="display: flex; gap: 22px; flex-wrap: wrap; font-size: 14px; color: #A0A6AE">
+      <span style="display: flex; align-items: center; gap: 8px; color: #F0A27A; font-weight: 500"><span style="width: 22px; height: 22px; border-radius: 6px; background: #3A2419; display: inline-flex; align-items: center; justify-content: center; font: 700 10px 'IBM Plex Mono', monospace">Cl</span>Raghav's Claude</span>
+      <span>Raghav's MacBook Air · Toronto</span>
+      <span style="font-family: 'IBM Plex Mono', monospace">branch kol-42-login</span>
+      <span style="font-family: 'IBM Plex Mono', monospace">reserved app/(auth)/**</span>
+      <span style="color: #8FE3B4">Building · active 20s ago</span>
+    </div>
+  </header>
+
+  <div style="flex: 1; display: flex; flex-wrap: wrap; gap: 24px; padding: 28px 32px">
+    <main style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 24px">
+      <section style="display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; border-radius: 16px; background: #1A1C20; border: 1px solid #2E3238">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap">
+          <h2 style="margin: 0; font-size: 17px; font-weight: 600">Where it is</h2>
+          <span style="font-size: 13px; color: #7C838C">Steps the agent planned, checked off as tests prove them</span>
+        </div>
+        <ol style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px">
+          <sc-for list="{{steps}}" as="s" hint-placeholder-count="5">
+            <li style="display: flex; align-items: flex-start; gap: 12px">
+              <span style="{{s.dot}}">{{s.mark}}</span>
+              <span style="display: flex; flex-direction: column; gap: 2px">
+                <span style="{{s.labelStyle}}">{{s.label}}</span>
+                <span style="font-size: 13px; color: #7C838C">{{s.note}}</span>
+              </span>
+            </li>
+          </sc-for>
+        </ol>
+      </section>
+
+      <section style="display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px">
+          <h2 style="margin: 0; font-size: 17px; font-weight: 600">Live</h2>
+          <button type="button" style="height: 32px; padding: 0 12px; border: 1px solid #2E3238; border-radius: 8px; background: #1A1C20; color: #C4C9CF; font: 500 13px 'IBM Plex Sans', sans-serif; cursor: pointer">Show full terminal</button>
+        </div>
+        <pre style="margin: 0; padding: 16px 18px; border-radius: 14px; background: #0D0E10; border: 1px solid #23262B; font: 400 13px/1.7 'IBM Plex Mono', monospace; color: #A0A6AE; white-space: pre-wrap">10:02  edit   app/(auth)/login/GoogleButton.test.tsx
+10:03  run    pnpm vitest login     <span style="color: #8FE3B4">12 passed</span>
+10:03  edit   app/(auth)/login/page.tsx  (error state for oauth_denied)
+10:04  run    pnpm vitest login     <span style="color: #F2C14E">1 failed: expects redirect param</span>
+10:04  think  the contract says /login?error=oauth_denied, fixing the query parse…</pre>
+      </section>
+
+      <section style="display: flex; flex-direction: column; gap: 12px">
+        <h2 style="margin: 0; font-size: 17px; font-weight: 600">Talk to the agent</h2>
+        <div style="display: flex; gap: 12px">
+          <span style="flex: none; width: 30px; height: 30px; border-radius: 50%; background: #D7F25C; color: #121316; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px">R</span>
+          <p style="margin: 0; font-size: 15px; line-height: 1.55">Use our existing Button component, not a new one.</p>
+        </div>
+        <div style="display: flex; gap: 12px">
+          <span style="flex: none; width: 30px; height: 30px; border-radius: 8px; background: #3A2419; color: #F0A27A; display: inline-flex; align-items: center; justify-content: center; font: 700 11px 'IBM Plex Mono', monospace">Cl</span>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <p style="margin: 0; font-size: 15px; line-height: 1.55">Switched to <span style="font-family: 'IBM Plex Mono', monospace; font-size: 14px">components/ui/Button</span> with the outline variant. Saved this as a project rule so every agent follows it.</p>
+            <span style="font-size: 13px; color: #8FE3B4">Added to Decisions · DEC-15</span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center">
+          <label for="steer" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Message Raghav's Claude</label>
+          <input id="steer" placeholder="Steer it mid-task: it reads this before its next step" style="flex: 1; min-width: 0; height: 46px; padding: 0 14px; border-radius: 10px; border: 1px solid #3A3F46; background: #1A1C20; color: #EDEEF0; font: 400 15px 'IBM Plex Sans', sans-serif; outline: none">
+          <button type="button" style="height: 46px; padding: 0 18px; border: 0; border-radius: 10px; background: #D7F25C; color: #121316; font: 600 14px 'IBM Plex Sans', sans-serif; cursor: pointer">Send</button>
+        </div>
+      </section>
+    </main>
+
+    <aside style="flex: 1 1 320px; display: flex; flex-direction: column; gap: 16px">
+      <section style="display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600">Done means</h2>
+        <ul style="margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; line-height: 1.5; color: #C4C9CF">
+          <li>Google button on /login using Supabase Auth</li>
+          <li>Denied consent shows a friendly error</li>
+          <li>Works at phone width</li>
+        </ul>
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600">Files changed · 6</h2>
+        <div style="display: flex; flex-direction: column; gap: 6px; font: 400 13px 'IBM Plex Mono', monospace; color: #C4C9CF">
+          <div style="display: flex; justify-content: space-between; gap: 8px"><span>login/page.tsx</span><span><span style="color: #8FE3B4">+84</span> <span style="color: #FF9A9A">−12</span></span></div>
+          <div style="display: flex; justify-content: space-between; gap: 8px"><span>login/GoogleButton.tsx</span><span style="color: #8FE3B4">+41</span></div>
+          <div style="display: flex; justify-content: space-between; gap: 8px"><span>login/GoogleButton.test.tsx</span><span style="color: #8FE3B4">+66</span></div>
+          <div style="display: flex; justify-content: space-between; gap: 8px"><span>lib/supabase/client.ts</span><span><span style="color: #8FE3B4">+9</span> <span style="color: #FF9A9A">−2</span></span></div>
+        </div>
+        <a href="#" style="font-size: 14px">See the diff</a>
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 10px; padding: 18px; border-radius: 14px; background: #1A1C20; border: 1px solid #2E3238">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600">Context it's using</h2>
+        <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: #C4C9CF">
+          <span><span style="font-family: 'IBM Plex Mono', monospace; color: #8DBBFF">Contract</span> · /auth/callback, from KOL-43</span>
+          <span><span style="font-family: 'IBM Plex Mono', monospace; color: #A0A6AE">DEC-07</span> · Supabase Auth, not NextAuth</span>
+          <span><span style="font-family: 'IBM Plex Mono', monospace; color: #A0A6AE">DEC-15</span> · Reuse components/ui/Button</span>
+        </div>
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 6px; padding: 18px; border-radius: 14px; background: #16171A; border: 1px dashed #3A3F46">
+        <h2 style="margin: 0; font-size: 15px; font-weight: 600">Unblocks</h2>
+        <span style="font-size: 14px; color: #A0A6AE"><span style="font-family: 'IBM Plex Mono', monospace">KOL-44</span> End-to-end sign-in test</span>
+      </section>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var raw = [
+      ['done', 'Read the callback contract and DEC-07', '9:36'],
+      ['done', 'Google button component', '9:44 · 4 tests'],
+      ['done', 'Wire supabase.auth.signInWithOAuth', '9:55 · 8 tests'],
+      ['now', 'Error state and tests', 'now · 1 test failing, fixing'],
+      ['todo', 'Open PR and ask for review', 'next']
+    ];
+    var steps = raw.map(function (r, i) {
+      var st = r[0];
+      return {
+        label: r[1], note: r[2],
+        mark: st === 'done' ? '✓' : String(i + 1),
+        dot: 'flex:none;width:24px;height:24px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;' + (st === 'done' ? 'background:#1C2A1F;color:#8FE3B4' : st === 'now' ? 'background:#D7F25C;color:#121316' : 'border:1px solid #3A3F46;color:#7C838C'),
+        labelStyle: 'font-size:15px;' + (st === 'now' ? 'font-weight:600;color:#EDEEF0' : st === 'done' ? 'color:#C4C9CF' : 'color:#7C838C')
+      };
+    });
+    return { steps: steps };
+  }
+}
+</script>
+</body>
+</html>
