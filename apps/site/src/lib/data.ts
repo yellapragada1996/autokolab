@@ -213,7 +213,11 @@ export interface InvitePeek {
 
 /** "7KQM2PXA" → "7KQM-2PXA", easier to read out. */
 export const showCode = (c: string) => `${c.slice(0, 4)}-${c.slice(4)}`;
-export const inviteLink = (c: string) => `${location.origin}/j/${showCode(c)}`;
+
+/** Links people share must work for them, so a local copy of the site points at the live one. */
+export const PUBLIC_SITE: string =
+  (import.meta.env.VITE_PUBLIC_SITE as string | undefined) ?? (/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) ? "https://autokolab.vercel.app" : location.origin);
+export const inviteLink = (c: string) => `${PUBLIC_SITE}/j/${showCode(c)}`;
 
 export async function createInvite(projectId: string, days = 7, maxUses: number | null = null): Promise<Invite> {
   return check(await supabase.rpc("create_invite", { p_project: projectId, p_days: days, p_max_uses: maxUses }));
@@ -247,7 +251,7 @@ export async function createPairing(projectId: string): Promise<Pairing> {
 }
 
 /** The one terminal line that installs the helper and connects this computer's agents. */
-export const connectLine = (code: string) => `curl -fsSL ${location.origin}/install.sh | bash -s -- ${showCode(code)}`;
+export const connectLine = (code: string) => `curl -fsSL ${PUBLIC_SITE}/install.sh | bash -s -- ${showCode(code)}`;
 
 export async function setLead(projectId: string, agentId: string | null): Promise<void> {
   check(await supabase.from("projects").update({ lead_agent_id: agentId }).eq("id", projectId));

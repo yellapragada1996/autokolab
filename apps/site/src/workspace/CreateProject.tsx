@@ -29,7 +29,7 @@ export function CreateProject({ first, onCreated, onCancel }: { first: boolean; 
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const shownPrefix = prefixTouched ? prefix : suggestPrefix(name);
-  const repoOk = !repo.trim() || /^[\w.-]+\/[\w.-]+$/.test(cleanRepo(repo));
+  const repoOk = /^[\w.-]+\/[\w.-]+$/.test(cleanRepo(repo));
   const ok = name.trim().length > 0 && /^[A-Z][A-Z0-9]{0,5}$/.test(shownPrefix) && repoOk;
 
   const submit = async (e: React.FormEvent) => {
@@ -59,11 +59,11 @@ export function CreateProject({ first, onCreated, onCancel }: { first: boolean; 
           <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Shop" maxLength={60} style={field} />
         </label>
         <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 14, fontWeight: 500 }}>
-            GitHub repo <span style={{ color: "var(--faint)", fontWeight: 400 }}>(optional)</span>
+          <span style={{ fontSize: 14, fontWeight: 500 }}>GitHub repo</span>
+          <input value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="e.g. ana/shop, or paste the GitHub link" style={{ ...field, fontFamily: "var(--mono)", fontSize: 14 }} />
+          <span style={{ fontSize: 13, color: repo.trim() && !repoOk ? "var(--danger)" : "var(--faint)" }}>
+            {repo.trim() && !repoOk ? "Use owner/repo, like ana/shop." : "Where the code lives. Agents clone it and open pull requests there."}
           </span>
-          <input value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="owner/repo or a GitHub link" style={{ ...field, fontFamily: "var(--mono)", fontSize: 14 }} />
-          {!repoOk && <span style={{ fontSize: 13, color: "var(--danger)" }}>Use owner/repo, like ana/shop.</span>}
         </label>
         <label style={{ display: "grid", gap: 6 }}>
           <span style={{ fontSize: 14, fontWeight: 500 }}>Ticket prefix</span>
