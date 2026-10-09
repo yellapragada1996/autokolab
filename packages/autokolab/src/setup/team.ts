@@ -38,31 +38,50 @@ export function schemaFiles(): { version: number; path: string; sql: string }[] 
     .map((f) => ({ version: parseInt(f, 10), path: SQL_DIR + f, sql: readFileSync(SQL_DIR + f, "utf8") }));
 }
 
-/** Apply pending schema files using a Postgres connection string. */
-export async function applySchema(dbUrl: string, from: number): Promise<number> {
+/** Take the connection string (and its password) out of a message before anyone sees it. */
+export function hideDbUrl(msg: string, dbUrl: string): string {
+  let out = msg.split(dbUrl).join("[connection string]");
+  try {
+    const pw = decodeURIComponent(new URL(dbUrl).password);
+    if (pw.length >= 4) out = out.split(pw).join("[password]");
+  } catch {
+    // Not a URL: nothing more to hide.
+  }
+  return out;
+}
+
+/**
+ * Apply pending schema files using a Postgres connection string, all in one transaction (like
+ * `psql -1`): either every pending file is applied, or none is. Errors never include the URL.
+ */
+export async function applySchema(dbUrl: string, from: number, all = schemaFiles()): Promise<number> {
   const client = new pg.Client({ connectionString: dbUrl, ssl: dbUrl.includes("localhost") ? undefined : { rejectUnauthorized: false } });
   try {
     await client.connect();
   } catch (e) {
-    throw new Error(`Couldn't connect to the database: ${(e as Error).message}. Check the connection string and password.`);
+    throw new Error(`Couldn't connect to the database: ${hideDbUrl((e as Error).message, dbUrl)}. Check the connection string and password.`);
   }
   let version = from;
   try {
-    for (const f of schemaFiles().filter((x) => x.version > from)) {
-      await client.query("begin");
-      try {
+    const files = all.filter((x) => x.version > from);
+    if (!files.length) return from;
+    await client.query("begin");
+    let current = files[0];
+    try {
+      for (const f of files) {
+        current = f;
         await client.query(f.sql);
-        await client.query("commit");
-      } catch (e) {
-        await client.query("rollback");
-        throw new Error(`Setting up the database failed in ${f.path.split("/").pop()}: ${(e as Error).message}`);
       }
-      version = f.version;
+      await client.query("commit");
+    } catch (e) {
+      await client.query("rollback").catch(() => undefined);
+      throw new Error(`Updating the database failed in ${current.path.split("/").pop()}, so nothing was changed: ${hideDbUrl((e as Error).message, dbUrl)}`);
     }
+    version = files[files.length - 1].version;
     // Make the new tables visible to the API right away.
     await client.query("notify pgrst, 'reload schema'").catch(() => undefined);
   } finally {
-    await client.end();
+    await client.end().catch(() => undefined);
   }
   return version;
 }

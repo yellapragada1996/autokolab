@@ -18,6 +18,7 @@ import { runApp } from "./setup/server.js";
 import { installService, serviceStatus, uninstallService } from "./setup/service.js";
 import { runStatus } from "./setup/status.js";
 import { readState, servicePid, startUpdater, updateNow, type UpdateState } from "./setup/update.js";
+import { aheadLine, appliedLine, checkDatabase, databaseOnStart, isAdminMachine, setAutoMigrate, versionLabel } from "./setup/dbupdate.js";
 import { notify } from "./setup/notify.js";
 import { renameLocally } from "./setup/naming.js";
 import { runnerFileFor } from "./runner/config.js";
@@ -346,6 +347,7 @@ program
     action(async (agents: string[]) => {
       const runners = await runAll(agents);
       startUpdater(runners);
+      void databaseOnStart((msg) => runners.forEach((r) => r.note(msg)));
       let stopping = false;
       const shutdown = async () => {
         if (stopping) process.exit(1);
@@ -429,6 +431,39 @@ async function waitForResult(before: string | undefined, ms: number): Promise<Up
   }
   return null;
 }
+
+const db = program.command("db").description("AutoKolab's database (the team admin's machine)");
+db.command("update")
+  .description("Apply pending database updates now, all in one transaction")
+  .option("--on", "apply database updates automatically when this helper starts")
+  .option("--off", "stop applying them automatically (the default)")
+  .action(
+    action(async (o: { on?: boolean; off?: boolean }) => {
+      if (o.on || o.off) {
+        setAutoMigrate(!!o.on);
+        console.log(
+          o.on
+            ? "Database updates are automatic: when this helper starts or updates itself, it applies any pending ones and says so in the room."
+            : "Automatic database updates are off. `autokolab db update` still applies them by hand.",
+        );
+        if (o.on && !isAdminMachine()) console.log("This only takes effect on the team admin's machine (with the secret key and AUTOKOLAB_DB_URL).");
+        return;
+      }
+      const r = await checkDatabase({ byHand: true, log: (m) => console.log(m) });
+      if (r.kind === "applied") console.log(appliedLine(r.live, r.version));
+      else if (r.kind === "up-to-date") console.log(`The database is up to date (version ${r.version}).`);
+      else if (r.kind === "ahead") {
+        console.log(aheadLine(r.live, r.helper));
+        process.exitCode = 1;
+      } else {
+        console.log(
+          `The database needs ${versionLabel(r.live, r.helper)}, but this isn't the team admin's machine ` +
+            "(it needs the Supabase secret key and AUTOKOLAB_DB_URL). Ask your admin to run `autokolab db update`.",
+        );
+        process.exitCode = 1;
+      }
+    }),
+  );
 
 program
   .command("connect <code>")

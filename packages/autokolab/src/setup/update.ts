@@ -110,6 +110,9 @@ export interface UpdateState {
   result?: string;
   result_at?: string;
   failed?: boolean;
+  /** The schema version the admin was told is ready, and the one a failed database update was reported for (AK-32). */
+  db_told?: number;
+  db_failed?: number;
 }
 
 export function statePath(): string {
