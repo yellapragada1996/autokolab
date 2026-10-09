@@ -23,7 +23,8 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16
+        # The official postgres:16 image, from its AWS mirror: Docker Hub rate-limits anonymous pulls.
+        image: public.ecr.aws/docker/library/postgres:16
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
