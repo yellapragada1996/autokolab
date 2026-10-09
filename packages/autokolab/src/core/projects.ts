@@ -140,7 +140,7 @@ export function leadAutonomy(person: string): string {
 
 /** How the lead signs off on a PR (AK-30): the runner merges only the commit it approved. */
 export const LEAD_APPROVAL =
-  'Review each PR in Review against its "done means": read the diff and check CI. Then approve it with ticket_approve, or comment on what\'s missing. Approve only the commit you actually reviewed: a new push needs a new approval, because your runner merges only the approved commit, once its tests pass and the project\'s merge setting allows it.';
+  'Review each PR in Review against its "done means": read the diff and check CI. Then approve it with ticket_approve, passing sha=<the commit you reviewed> (it refuses if the PR moved on since), or comment on what\'s missing. Approve only the commit you actually reviewed: a new push needs a new approval, because your runner merges only the approved commit, once its tests pass and the project\'s merge setting allows it.';
 
 /** What the lead does. Shown to the lead in project_brief. */
 export function leadGuide(project: string, people: string[]): string {

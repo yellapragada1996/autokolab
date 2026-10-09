@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NO_CHECKS_QUESTION, type MergePolicy, type Ticket } from "../core/projects.js";
+import { MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NO_CHECKS_QUESTION, isMergeQuestion, type MergePolicy, type Ticket } from "../core/projects.js";
 
 // The lead's approval and its runner's merge (AK-30, DEC-19). The decision is plain code, not a
 // model run: the runner merges a PR only at the commit the lead approved, once every check passed
@@ -99,6 +99,28 @@ export function mergeDecision(policy: MergePolicy, pr: PrInfo, ticket: Pick<Tick
     return { action: "needs_ok", why: `risky files: ${shortList(risky)}`, question: `${MERGE_OK_PREFIX} ${shortList(risky)}`.slice(0, 1000), risky };
   }
   return { action: "merge", why: `approved ${short(approved)} and green (setting: ${policy})`, risky };
+}
+
+/**
+ * What "Needs you" becomes after a decision: its question if it has one, null to clear a merge
+ * question the decision no longer asks (checks showed up, gh works again), undefined to leave it.
+ */
+export function mergeNeedsHuman(current: string | null, d: Pick<MergeDecision, "action" | "question">): string | null | undefined {
+  if (d.question) return current === d.question ? undefined : d.question;
+  if (isMergeQuestion(current) && (d.action === "wait" || d.action === "ask")) return null;
+  return undefined;
+}
+
+/**
+ * ticket_approve's guard: the commit the lead reviewed (a full sha or a prefix of 7+ characters)
+ * must still be the PR's head. Returns why not, or null when it is (or no sha was given).
+ */
+export function reviewedShaProblem(prUrl: string, head: string, reviewed?: string): string | null {
+  if (!reviewed) return null;
+  const r = reviewed.trim().toLowerCase();
+  if (!/^[0-9a-f]{7,40}$/.test(r)) return `"${reviewed}" isn't a commit id: pass the full sha or its first 7+ characters.`;
+  if (head.toLowerCase().startsWith(r)) return null;
+  return `PR #${prNumber(prUrl)} is now at ${short(head)}, not the ${short(r)} you reviewed; review the new commit first.`;
 }
 
 // ------------------------------------------------------------------ messages

@@ -6,7 +6,7 @@ import { formatItem, formatMember, formatMessage, formatWork } from "../core/for
 import { connectFromConfig } from "../core/node.js";
 import { EFFORTS, PRIORITIES, ProjectView, STATUSES, TYPES, GUIDE_PARTS, modelChangeMessage, type ModelChange } from "../core/projects.js";
 import { detectRepo, resolveRoom } from "../core/repo.js";
-import { approvalMessage, ghPrView, plainGhError, prNumber } from "../runner/merge.js";
+import { approvalMessage, ghPrView, plainGhError, prNumber, reviewedShaProblem } from "../runner/merge.js";
 import { BULLETIN_KINDS, BULLETIN_STATES, MESSAGE_KINDS } from "../core/types.js";
 
 // stdio MCP server, started by Claude Code or Codex (registered by `autokolab init` / `join`).
@@ -547,10 +547,14 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     "ticket_approve",
     {
       description:
-        "Approve a ticket's pull request at its current head commit (you must be the project's lead or a person in it). Review it first against \"done means\": read the diff and check CI. Your runner merges only that commit, once tests pass and the project's merge setting allows it; a new push needs a new approval.",
-      inputSchema: { key: keyArg, project: projectArg },
+        "Approve a ticket's pull request at the commit you reviewed (you must be the project's lead or a person in it). Review it first against \"done means\": read the diff and check CI, then pass that commit as sha; it refuses if the PR has moved on since. Your runner merges only that commit, once tests pass and the project's merge setting allows it; a new push needs a new approval.",
+      inputSchema: {
+        key: keyArg,
+        sha: z.string().regex(/^[0-9a-fA-F]{7,40}$/).optional().describe("The commit you reviewed: the full sha or its first 7+ characters"),
+        project: projectArg,
+      },
     },
-    ptool(async (p, a: { key: string; project?: string }) => {
+    ptool(async (p, a: { key: string; sha?: string; project?: string }) => {
       const t = await p.ticket(a.key);
       if (!t.pr_url) throw new Error(`${t.key} has no pull request yet; there's nothing to approve.`);
       let pr: { headRefOid: string; state: string };
@@ -560,6 +564,8 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
         throw new Error(`Couldn't read ${t.pr_url}: ${plainGhError((e as Error).message, "on this machine")}`);
       }
       if (pr.state !== "OPEN") throw new Error(`PR #${prNumber(t.pr_url)} is ${pr.state.toLowerCase()}; only an open PR can be approved.`);
+      const moved = reviewedShaProblem(t.pr_url, pr.headRefOid, a.sha);
+      if (moved) throw new Error(moved);
       await p.approve(t.key, pr.headRefOid);
       return approvalMessage(t.pr_url, pr.headRefOid, await p.mergePolicy());
     }),

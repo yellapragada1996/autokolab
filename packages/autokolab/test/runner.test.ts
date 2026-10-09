@@ -11,8 +11,8 @@ import { buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from 
 import { needsRunner } from "../src/setup/connect.js";
 import { STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, leadGuide, questionsForLead, untriaged, type Comment, type Ticket } from "../src/core/projects.js";
-import { RISKY_PATHS, approvalMessage, checkResult, isRiskyPath, mergeDecision, mergedComment, plainGhError, readyToMergeMessage, shortList, type PrInfo } from "../src/runner/merge.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, leadGuide, questionsForLead, untriaged, type Comment, type Ticket } from "../src/core/projects.js";
+import { RISKY_PATHS, approvalMessage, checkResult, isRiskyPath, mergeDecision, mergeNeedsHuman, mergedComment, plainGhError, readyToMergeMessage, reviewedShaProblem, shortList, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
@@ -772,6 +772,30 @@ describe("the lead's auto-merge (AK-30)", () => {
     expect(approvalMessage(url, SHA, "ask")).toMatch(/a person is told it's ready to merge \(setting: a person merges\)/);
     expect(readyToMergeMessage(url, "AK-30")).toBe(`PR #12 (AK-30) is approved and tests pass: ready for you to merge. ${url}`);
     expect(mergedComment(SHA, "auto_safe")).toBe("Merged automatically: tests passed, lead approved commit aaaaaaa (setting: auto-merge safe changes).");
+  });
+  it("approves only the commit the lead reviewed", () => {
+    const url = "https://github.com/ana/shop/pull/18";
+    expect(reviewedShaProblem(url, SHA)).toBeNull();
+    expect(reviewedShaProblem(url, SHA, SHA)).toBeNull();
+    expect(reviewedShaProblem(url, SHA, "AAAAAAA")).toBeNull();
+    expect(reviewedShaProblem(url, OTHER, "aaaaaaa")).toBe("PR #18 is now at bbbbbbb, not the aaaaaaa you reviewed; review the new commit first.");
+    expect(reviewedShaProblem(url, SHA, "aaaa")).toMatch(/isn't a commit id/);
+    expect(reviewedShaProblem(url, SHA, "main")).toMatch(/isn't a commit id/);
+    expect(LEAD_APPROVAL).toContain("sha=<the commit you reviewed>");
+  });
+  it("sets a merge question once, and clears one the decision no longer asks", () => {
+    const noChecks = { action: "wait" as const, question: NO_CHECKS_QUESTION };
+    expect(mergeNeedsHuman(null, noChecks)).toBe(NO_CHECKS_QUESTION);
+    expect(mergeNeedsHuman(NO_CHECKS_QUESTION, noChecks)).toBeUndefined();
+    // Checks showed up and passed under ask; gh works again and checks are still running.
+    expect(mergeNeedsHuman(NO_CHECKS_QUESTION, { action: "ask" })).toBeNull();
+    expect(mergeNeedsHuman(`${MERGE_GH_PREFIX} (PR #18): gh isn't signed in`, { action: "wait" })).toBeNull();
+    // A different merge question replaces the old one.
+    expect(mergeNeedsHuman(NO_CHECKS_QUESTION, { action: "needs_ok", question: `${MERGE_OK_PREFIX} supabase/x.sql` })).toBe(`${MERGE_OK_PREFIX} supabase/x.sql`);
+    // Someone else's question is left alone.
+    expect(mergeNeedsHuman("Which colour?", { action: "wait" })).toBeUndefined();
+    expect(mergeNeedsHuman("Which colour?", { action: "ask" })).toBeUndefined();
+    expect(mergeNeedsHuman(null, { action: "wait" })).toBeUndefined();
   });
   it("explains gh failures plainly", () => {
     const where = "on lee's machine";

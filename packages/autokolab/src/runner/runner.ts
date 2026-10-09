@@ -11,7 +11,7 @@ import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineRun, type ModelChoice, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
-import { ghPrMerge, ghPrView, mergeDecision, mergedComment, plainGhError, prNumber, readyToMergeMessage, type MergeDecision, type PrInfo } from "./merge.js";
+import { ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, plainGhError, prNumber, readyToMergeMessage, type MergeDecision, type PrInfo } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
 import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, type Worktree } from "./repos.js";
 
@@ -705,8 +705,11 @@ export class Runner {
     };
     this.log(`${t.key} merge: ${d.action} · ${d.why}.`);
 
+    if (d.action !== "merge") {
+      const needs = mergeNeedsHuman(t.needs_human, d);
+      if (needs !== undefined) await p.update(t.key, { needs_human: needs });
+    }
     if (d.action === "wait" || d.action === "needs_ok") {
-      if (d.question && t.needs_human !== d.question) await p.update(t.key, { needs_human: d.question });
       remember();
       return;
     }
