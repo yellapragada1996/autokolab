@@ -9,7 +9,7 @@ import { redactSecrets } from "../core/secrets.js";
 import type { Message, MessageKind, RunState, TaskRun } from "../core/types.js";
 import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
-import { claudeInvocation, codexInvocation, runEngine, type EngineRun, type PlanStep } from "./engines.js";
+import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineRun, type ModelChoice, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
 import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, type Worktree } from "./repos.js";
@@ -282,7 +282,8 @@ export class Runner {
       `Don't change any files. Read the README and look around the repo for a minute, then write a short hello for the team (3 to 5 sentences): ` +
       `who you are and your understanding of what this project is and how it's built. Your final message is posted to the team's room as is.`;
     const mcp = { command: process.execPath, args: mcpArgs(this.cfg.agent_id, room.name) };
-    const inv = this.cfg.engine === "claude" ? claudeInvocation(this.cfg, mcp, null) : codexInvocation(this.cfg, mcp, null, clone);
+    const choice = await this.modelChoice();
+    const inv = this.cfg.engine === "claude" ? claudeInvocation(this.cfg, mcp, null, choice) : codexInvocation(this.cfg, mcp, null, clone, choice);
     const result = await runEngine({ cfg: this.cfg, inv, cwd: clone, prompt, logFile: join(this.logDir, `${room.name}-hello.log`), signal: new AbortController().signal });
     const text = redactSecrets(result.finalText.trim()).slice(0, 4000);
     if (result.isError || !text) throw new Error(text || "no reply");
@@ -290,6 +291,23 @@ export class Runner {
     mkdirSync(join(stateDir(), "introduced"), { recursive: true });
     writeFileSync(marker, new Date().toISOString());
     this.log("Said hello to the team.");
+  }
+
+  /**
+   * The model and effort for the run about to start, read fresh from the agent's row each time, so a
+   * change on AutoKolab applies to the next run without a restart and never disturbs one in flight.
+   * If the row can't be read (an older server, or offline), the toml decides.
+   */
+  private async modelChoice(): Promise<ModelChoice> {
+    if (this.cfg.model_locked) return chooseModel(this.cfg, null);
+    try {
+      const { data, error } = await this.ak.sb.from("agents").select("model, effort").eq("id", this.ak.me.id).maybeSingle();
+      if (error) throw new Error(error.message);
+      return chooseModel(this.cfg, data as { model: string | null; effort: string | null } | null);
+    } catch (e) {
+      this.log(`Couldn't read my model and effort; using my runner settings: ${(e as Error).message}`);
+      return chooseModel(this.cfg, null);
+    }
   }
 
   private stateNow() {
@@ -474,7 +492,8 @@ export class Runner {
       fromInstructor: job.fromInstructor,
     });
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, room.name) };
-    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, resume) : codexInvocation(cfg, mcp, resume, worktree.path);
+    const choice = await this.modelChoice();
+    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, resume, choice) : codexInvocation(cfg, mcp, resume, worktree.path, choice);
     const logFile = join(this.logDir, `${room.name}-run${run.id}-msg${m.id}.log`);
 
     const abort = new AbortController();
@@ -648,7 +667,8 @@ export class Runner {
       newComments: commentsText,
     });
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
-    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, resume) : codexInvocation(cfg, mcp, resume, worktree.path);
+    const choice = await this.modelChoice();
+    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, resume, choice) : codexInvocation(cfg, mcp, resume, worktree.path, choice);
     const logFile = join(this.logDir, `${p.project.slug}-${t.key}-${Date.now()}.log`);
 
     const abort = new AbortController();
@@ -781,7 +801,8 @@ export class Runner {
       repoPath: worktree.path,
     });
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
-    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, null) : codexInvocation(cfg, mcp, null, worktree.path);
+    const choice = await this.modelChoice();
+    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, null, choice) : codexInvocation(cfg, mcp, null, worktree.path, choice);
     const logFile = join(this.logDir, `${p.project.slug}-${t.key}-triage-${Date.now()}.log`);
 
     const abort = new AbortController();

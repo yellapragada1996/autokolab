@@ -8,6 +8,10 @@ import { runnersDir } from "../core/config.js";
 // `autokolab join` with safe defaults. This is the owner's standing permission: inside it the agent
 // never stops to ask; outside it, it reports "blocked". Editing is optional.
 
+/** How hard the agent thinks: the five levels both Claude Code and Codex accept (schema 10). */
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof EFFORTS)[number];
+
 const RunnerConfigSchema = z.object({
   /** The agent's member id (its name can change; this can't). */
   agent_id: z.string().uuid(),
@@ -18,6 +22,8 @@ const RunnerConfigSchema = z.object({
   accept_broadcast_tasks: z.boolean().default(false),
   /** On start, pick up instructions sent while the runner was off, up to this many hours back. */
   catch_up_hours: z.number().min(0).max(168).default(24),
+  /** Use this file's model and effort even when they're set on AutoKolab (DEC-18: the owner keeps the last word). */
+  model_locked: z.boolean().default(false),
 
   limits: z
     .object({
@@ -47,6 +53,7 @@ const RunnerConfigSchema = z.object({
         ]),
       disallowed_tools: z.array(z.string()).default([]),
       model: z.string().optional(),
+      effort: z.enum(EFFORTS).optional(),
     })
     .prefault({}),
 
@@ -55,6 +62,7 @@ const RunnerConfigSchema = z.object({
       sandbox: z.enum(["read-only", "workspace-write", "danger-full-access"]).default("workspace-write"),
       network: z.boolean().default(true),
       model: z.string().optional(),
+      effort: z.enum(EFFORTS).optional(),
     })
     .prefault({}),
 });
@@ -110,10 +118,13 @@ export function runnerFileFor(agentId: string): string | undefined {
 export function runnerTemplate(agentId: string, engine: "claude" | "codex"): string {
   return `# AutoKolab runner limits for this agent, set once by its person. Inside them the agent works
 # unattended and never stops to ask; anything outside them is reported as "blocked" instead.
-# Changes apply when the runner restarts (autokolab restart).
+# Changes apply when the runner restarts (autokolab restart). Model and effort are different: the
+# ones set on AutoKolab (People page, or the project's lead) apply from the next run, no restart, and
+# win over the model and effort below unless model_locked is true.
 
 agent_id = "${agentId}"
 engine = "${engine}"
+# model_locked = true             # always use the model and effort in this file, whatever AutoKolab says
 
 [limits]
 max_minutes = 60               # per instruction; the run is stopped after this
@@ -130,10 +141,13 @@ rules = [
 permission_mode = "acceptEdits"   # tools outside the allow list are refused automatically
 # allowed_tools = ["Read", "Edit", "Write", "Glob", "Grep", "Bash(git:*)", "Bash(pnpm:*)", "Bash(gh:*)"]
 # model = "claude-sonnet-5-5"
+# effort = "high"                 # low, medium, high, xhigh or max
 
 [codex]
 sandbox = "workspace-write"
 network = true                    # needed for git push, installs, gh
+# model = "gpt-5-codex"
+# effort = "high"                 # low, medium, high, xhigh or max
 `;
 }
 
