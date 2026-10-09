@@ -102,7 +102,16 @@ export class Runner {
     if (ak.me.paused) this.log(`Paused by ${ak.ownerName(ak.me)}; instructions will queue until resumed.`);
 
     this.channels.push(ak.onAnyMessage(() => this.poll()));
-    this.channels.push(ak.onMembersChange(() => void this.onPauseChange(ak.me.paused)));
+    // React only when this agent's own pause switch flips. Member rows change all the time (every
+    // check-in), and answering each change with another check-in once made an endless storm.
+    let paused = ak.me.paused;
+    this.channels.push(
+      ak.onMembersChange(() => {
+        if (ak.me.paused === paused) return;
+        paused = ak.me.paused;
+        void this.onPauseChange(paused);
+      }),
+    );
     this.timers.push(setInterval(() => this.poll(), POLL_MS));
     this.timers.push(
       setInterval(() => {
