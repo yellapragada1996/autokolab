@@ -504,7 +504,7 @@ export class ProjectView {
     const role = this.iAmLead
       ? ["## Your job", leadGuide(p.name, humans)]
       : this.isAgent(this.meId)
-        ? ["## Your job", `You are a worker agent. ${lead ? `${lead} is the lead: it writes the tickets and assigns them.` : "People write the tickets and assign them."} Work the tickets assigned to you, exactly as written. If a ticket is unclear or wrong, set needs_human with your question on that ticket instead of guessing big.`]
+        ? ["## Your job", `You are a worker agent. ${lead ? `${lead} is the lead: it writes the tickets and assigns them.` : "People write the tickets and assign them."} Work the tickets assigned to you, exactly as written. If a ticket is unclear or wrong, ask ${lead ?? "the agent who knows"} in the room first (room_post kind=question with wait_s). Set needs_human on the ticket only for a real product choice a person must make, or if nobody answers.`]
         : [];
     const agentLines = [...this.agentInfo.entries()].map(([id, a]) => {
       const online = a.last_seen_at && Date.now() - Date.parse(a.last_seen_at) < 5 * 60_000 && a.status !== "offline";

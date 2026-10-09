@@ -11,18 +11,18 @@ import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { claudeInvocation, codexInvocation, runEngine, type EngineRun, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
-import { BLOCKED_PREFIX, buildPrompt, buildTicketPrompt, parseOutcome } from "./prompt.js";
+import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildTicketPrompt, parseOutcome } from "./prompt.js";
 import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, type Worktree } from "./repos.js";
 
-// The runner for one agent: listens to all of its rooms and, when someone who can instruct sends
-// it work, starts the agent headless in that thread's own worktree. It also works the project
-// board: tickets assigned to it in Ready, and people's comments on its open tickets. One task at a
-// time per agent; room instructions go first.
+// The runner for one agent: listens to all of its rooms and, when someone sends it work or a
+// teammate asks it something, starts the agent headless in that thread's own worktree. It also
+// works the project board: tickets assigned to it in Ready, and people's comments on its open
+// tickets. One task at a time per agent; room instructions go first.
 
-/** Kinds from an instructor, addressed to this agent, that start or continue work. */
-const DIRECT_KINDS: MessageKind[] = ["task", "chat", "answer", "review", "decision", "question"];
 /** Kinds addressed to everyone that continue work in a thread this agent is already on. */
 const THREAD_KINDS: MessageKind[] = ["task", "chat", "answer", "review", "decision"];
+/** From a teammate, addressed to everyone: only these continue work in a thread we're on (DEC-17). */
+const TEAMMATE_THREAD_KINDS: MessageKind[] = ["question", "answer", "review"];
 
 const POLL_MS = 30_000;
 const HEARTBEAT_MS = 30_000;
@@ -30,6 +30,97 @@ const HEARTBEAT_MS = 30_000;
 interface Job {
   run: TaskRun;
   message: Message;
+  /** The sender can give this agent instructions (a person, or the lead side). */
+  fromInstructor: boolean;
+}
+
+/** What the runner knows about a message's sender when deciding whether to wake its agent. */
+export interface WakeContext {
+  /** This agent's member id. */
+  meId: string;
+  /** The sender is still an active member of this room. */
+  senderInRoom: boolean;
+  /** The sender can give this agent instructions. */
+  fromInstructor: boolean;
+  /** This agent already has a run in the message's thread. */
+  inThread: boolean;
+  /** The owner also lets this agent take tasks addressed to everyone. */
+  acceptBroadcastTasks: boolean;
+}
+
+export interface WakeDecision {
+  wake: boolean;
+  fromInstructor: boolean;
+}
+
+/**
+ * Does this message wake this agent? Anyone in the room wakes it by addressing it directly, any
+ * kind (so a runner's status report reaches the agent that asked), except with a runner notice.
+ * Otherwise instructors work as they always have, and teammates (anyone else in the room) wake it
+ * only by talking in a thread it's already working in.
+ */
+export function shouldWake(m: Pick<Message, "sender_id" | "to_id" | "thread_id" | "kind" | "body">, ctx: WakeContext): WakeDecision {
+  const from = ctx.fromInstructor;
+  const no = { wake: false, fromInstructor: from };
+  if (m.sender_id === ctx.meId || !ctx.senderInRoom) return { wake: false, fromInstructor: false };
+  // A runner saying "Started on #12" isn't something to answer.
+  if (isRunnerNotice(m.body)) return no;
+  if (m.to_id === ctx.meId) return { wake: true, fromInstructor: from };
+  if (m.to_id !== null) return no;
+  if (from) {
+    if (m.thread_id && THREAD_KINDS.includes(m.kind) && ctx.inThread) return { wake: true, fromInstructor: true };
+    return { wake: m.kind === "task" && !m.thread_id && ctx.acceptBroadcastTasks, fromInstructor: true };
+  }
+  if (m.thread_id && TEAMMATE_THREAD_KINDS.includes(m.kind) && ctx.inThread) return { wake: true, fromInstructor: false };
+  return no;
+}
+
+/** Progress pings a runner posts for its agent. They're news, not a question to answer. */
+export function isRunnerNotice(body: string): boolean {
+  const first = body.trim();
+  return /^(Started on|Picked up|Queued) #\d+/.test(first) || isPauseNotice(first);
+}
+
+export function pauseNotice(turns: number): string {
+  return `Pausing this thread after ${turns} agent messages in a row. A person can reply to continue.`;
+}
+
+export function isPauseNotice(body: string): boolean {
+  return /^Pausing this thread after \d+ agent messages in a row\. A person can reply to continue\.$/.test(body.trim());
+}
+
+export interface RunOutcome {
+  state: RunState;
+  /** What the run is recorded as, and what the room is told unless `quiet`. */
+  report: string;
+  /** NO_REPLY: nothing is posted to the room. */
+  quiet: boolean;
+}
+
+/** How a finished run is recorded and reported. */
+export function runOutcome(
+  result: Pick<EngineRun, "aborted" | "timedOut" | "isError">,
+  text: string,
+  ctx: { messageId: number; stopReason: string; maxMinutes: number },
+): RunOutcome {
+  const sofar = text ? `\n\nWhere it got to:\n${text}` : "";
+  const quiet = false;
+  if (result.aborted) return { state: "cancelled", report: `Stopped #${ctx.messageId}: ${ctx.stopReason}.${sofar}`, quiet };
+  if (result.timedOut) return { state: "failed", report: `Stopped #${ctx.messageId}: hit the ${ctx.maxMinutes}-minute limit.${sofar}`, quiet };
+  if (text.startsWith(BLOCKED_PREFIX)) return { state: "blocked", report: `Blocked on #${ctx.messageId}: ${text.slice(BLOCKED_PREFIX.length).trim()}`, quiet };
+  if (result.isError) return { state: "failed", report: `Failed on #${ctx.messageId}.${text ? `\n\n${text}` : ""}`, quiet };
+  if (text === NO_REPLY) return { state: "done", report: "No reply needed", quiet: true };
+  return { state: "done", report: text || `Done with #${ctx.messageId}.`, quiet };
+}
+
+/** The loop guard's count: messages in a thread since the last one from a person, leaving out runner notices. */
+export function agentTurnsSinceHuman(thread: Pick<Message, "sender_id" | "body">[], isHuman: (senderId: string) => boolean): number {
+  let turns = 0;
+  for (let i = thread.length - 1; i >= 0; i--) {
+    if (isHuman(thread[i].sender_id)) break;
+    if (!isRunnerNotice(thread[i].body)) turns++;
+  }
+  return turns;
 }
 
 interface TicketJob {
@@ -201,7 +292,7 @@ export class Runner {
         await this.say(r.room_id, r.thread_root, null, `Stopped: my runner restarted while working on #${r.message_id}. Send it again to retry.`);
       } else if (r.state === "queued") {
         const message = await this.ak.messageById(r.message_id);
-        if (message) this.queue.push({ run: r, message });
+        if (message) this.queue.push({ run: r, message, fromInstructor: this.ak.canInstruct(message.sender_id, message.room_id) });
       }
     }
   }
@@ -220,7 +311,10 @@ export class Runner {
             const batch = await this.ak.messagesAfter(this.lastSeenId, 100);
             for (const m of batch) {
               this.lastSeenId = Math.max(this.lastSeenId, m.id);
-              if (await this.isInstruction(m)) await this.enqueue(m);
+              const d = await this.decideWake(m);
+              if (!d.wake) continue;
+              if (!d.fromInstructor && !(await this.withinAgentTurns(m))) continue;
+              await this.enqueue(m, d.fromInstructor);
             }
             if (batch.length < 100) break;
           }
@@ -233,22 +327,49 @@ export class Runner {
     })();
   }
 
-  private async isInstruction(m: Message): Promise<boolean> {
-    const me = this.ak.me;
-    if (m.sender_id === me.id) return false;
-    if (!this.ak.roomById(m.room_id) || !this.ak.membership(m.room_id, m.sender_id)) await this.ak.refresh();
-    if (!this.ak.canInstruct(m.sender_id, m.room_id)) return false;
-    if (m.to_id === me.id) return DIRECT_KINDS.includes(m.kind);
-    if (m.to_id !== null) return false;
-    if (m.thread_id && THREAD_KINDS.includes(m.kind) && (await this.ak.runsIn(m.thread_id)).length) return true;
-    return m.kind === "task" && !m.thread_id && this.cfg.accept_broadcast_tasks;
+  private async decideWake(m: Message): Promise<WakeDecision> {
+    const { ak } = this;
+    if (m.sender_id === ak.me.id) return { wake: false, fromInstructor: false };
+    if (!ak.roomById(m.room_id) || !ak.membership(m.room_id, m.sender_id)) await ak.refresh();
+    // Only a broadcast in a thread needs the extra lookup, so most messages cost nothing.
+    const threaded = m.to_id === null && m.thread_id !== null && (THREAD_KINDS.includes(m.kind) || TEAMMATE_THREAD_KINDS.includes(m.kind));
+    return shouldWake(m, {
+      meId: ak.me.id,
+      senderInRoom: ak.inRoom(m.sender_id, m.room_id),
+      fromInstructor: ak.canInstruct(m.sender_id, m.room_id),
+      inThread: threaded ? (await ak.runsIn(m.thread_id!)).length > 0 : false,
+      acceptBroadcastTasks: this.cfg.accept_broadcast_tasks,
+    });
   }
 
-  private async enqueue(m: Message): Promise<void> {
+  /**
+   * The loop guard: agents talking only to each other stop after max_agent_turns messages, and the
+   * thread gets one notice saying a person can restart it. Anyone's reply resets the count.
+   */
+  private async withinAgentTurns(m: Message): Promise<boolean> {
+    const root = m.thread_id ?? m.id;
+    let thread: Message[];
+    try {
+      thread = await this.ak.threadMessages(m.room_id, root);
+    } catch (e) {
+      this.log(`Couldn't read thread #${root}: ${(e as Error).message}`);
+      return true;
+    }
+    const turns = agentTurnsSinceHuman(thread, (id) => this.ak.isHuman(id));
+    if (turns < this.cfg.limits.max_agent_turns) return true;
+    const last = thread[thread.length - 1];
+    if (!last || !isPauseNotice(last.body)) {
+      this.log(`Pausing thread #${root}: ${turns} agent messages since a person's.`);
+      await this.say(m.room_id, root, null, pauseNotice(turns));
+    }
+    return false;
+  }
+
+  private async enqueue(m: Message, fromInstructor: boolean): Promise<void> {
     const run = await this.ak.claimRun(m);
     if (!run) return;
     this.log(`Queued #${m.id} from ${this.ak.nameOf(m.sender_id)} in ${this.ak.roomById(m.room_id)?.name}.`);
-    this.queue.push({ run, message: m });
+    this.queue.push({ run, message: m, fromInstructor });
     if (this.ak.me.paused) {
       await this.say(m.room_id, run.thread_root, m.sender_id, `Queued #${m.id}: ${this.ak.ownerName(this.ak.me)} has paused me; I'll start when resumed.`);
     }
@@ -331,6 +452,7 @@ export class Runner {
       cfg,
       worktree,
       followUp: Boolean(resume),
+      fromInstructor: job.fromInstructor,
     });
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, room.name) };
     const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, resume) : codexInvocation(cfg, mcp, resume, worktree.path);
@@ -353,29 +475,15 @@ export class Runner {
     }
 
     const text = redactSecrets(result.finalText.trim()).slice(0, 12000);
-    let state: RunState;
-    let report: string;
-    if (result.aborted) {
-      state = "cancelled";
-      const why = this.stopping ? "my runner was shut down" : `${ak.ownerName(ak.me)} paused me`;
-      report = `Stopped #${m.id}: ${why}.${text ? `\n\nWhere it got to:\n${text}` : ""}`;
-    } else if (result.timedOut) {
-      state = "failed";
-      report = `Stopped #${m.id}: hit the ${cfg.limits.max_minutes}-minute limit.${text ? `\n\nWhere it got to:\n${text}` : ""}`;
-    } else if (text.startsWith(BLOCKED_PREFIX)) {
-      state = "blocked";
-      report = `Blocked on #${m.id}: ${text.slice(BLOCKED_PREFIX.length).trim()}`;
-    } else if (result.isError) {
-      state = "failed";
-      report = `Failed on #${m.id}.${text ? `\n\n${text}` : ""}`;
-    } else {
-      state = "done";
-      report = text || `Done with #${m.id}.`;
-    }
+    const { state, report, quiet } = runOutcome(result, text, {
+      messageId: m.id,
+      stopReason: this.stopping ? "my runner was shut down" : `${ak.ownerName(ak.me)} paused me`,
+      maxMinutes: cfg.limits.max_minutes,
+    });
 
     const branch = currentBranch(worktree.path) ?? worktree.branch;
     await ak.updateRun(run.id, { state, session_id: result.sessionId, branch, summary: report.slice(0, 16000), finished_at: now() });
-    await this.say(room.id, run.thread_root, sender.id, report);
+    if (!quiet) await this.say(room.id, run.thread_root, sender.id, report);
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
     // Cost is an API-price estimate (not a bill on a Claude subscription); keep it out of the room.
     this.log(`#${m.id} ${state}.${result.costUsd !== undefined ? ` (estimated API cost $${result.costUsd.toFixed(2)})` : ""}`);
