@@ -9,7 +9,7 @@ import { chooseModel, claudeDenyRules, claudeInvocation, codexInvocation, parseE
 import { installHook } from "../src/runner/githook.js";
 import { buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "../src/runner/prompt.js";
 import { needsRunner } from "../src/setup/connect.js";
-import { agentTurnsSinceHuman, isPauseNotice, pauseNotice, runOutcome, shouldWake, type WakeContext } from "../src/runner/runner.js";
+import { STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "../src/runner/repos.js";
 import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, leadGuide, questionsForLead, untriaged, type Comment, type Ticket } from "../src/core/projects.js";
 
@@ -100,6 +100,41 @@ describe("who wakes whom", () => {
     expect(shouldWake(from({ to_id: null, kind: "task" }), lead).wake).toBe(false);
     expect(shouldWake(from({ to_id: null, kind: "task" }), { ...lead, acceptBroadcastTasks: true }).wake).toBe(true);
     expect(shouldWake(from({ to_id: null, kind: "chat" }), { ...lead, acceptBroadcastTasks: true }).wake).toBe(false);
+  });
+});
+
+describe("catching up after a restart", () => {
+  const start = Date.parse("2026-10-09T20:07:00Z");
+  const at = (created_at: string) => ({ created_at });
+
+  it("skips teammates' messages from before the runner started", () => {
+    expect(staleTeammateMessage(at("2026-10-09T08:00:00Z"), false, start)).toBe(true);
+    expect(staleTeammateMessage(at("2026-10-09T20:06:59Z"), false, start)).toBe(true);
+  });
+  it("still catches up instructors' messages from before the start", () => {
+    expect(staleTeammateMessage(at("2026-10-09T08:00:00Z"), true, start)).toBe(false);
+  });
+  it("leaves messages sent after the start alone", () => {
+    expect(staleTeammateMessage(at("2026-10-09T20:07:00Z"), false, start)).toBe(false);
+    expect(staleTeammateMessage(at("2026-10-09T20:30:00Z"), false, start)).toBe(false);
+  });
+  it("records a dropped run plainly", () => {
+    expect(STALE_RUN_SUMMARY).toBe("Skipped: old teammate message from before the runner started");
+  });
+});
+
+describe("start notices", () => {
+  it("instructors' runs say they started or picked up", () => {
+    expect(startNotice(12, "ak/lee-claude/t12", false, true)).toBe("Started on #12 (branch ak/lee-claude/t12).");
+    expect(startNotice(12, "ak/lee-claude/t12", true, true)).toBe("Picked up #12, continuing.");
+  });
+  it("teammates' runs post no notice", () => {
+    expect(startNotice(12, "ak/lee-claude/t12", false, false)).toBeNull();
+    expect(startNotice(12, "ak/lee-claude/t12", true, false)).toBeNull();
+  });
+  it("the notices stay ones nobody answers", () => {
+    expect(isRunnerNotice(startNotice(12, "b", false, true)!)).toBe(true);
+    expect(isRunnerNotice(startNotice(12, "b", true, true)!)).toBe(true);
   });
 });
 

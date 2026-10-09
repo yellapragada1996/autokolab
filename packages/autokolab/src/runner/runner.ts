@@ -85,6 +85,22 @@ export function isRunnerNotice(body: string): boolean {
   return /^(Started on|Picked up|Queued) #\d+/.test(first) || isPauseNotice(first) || first.startsWith(MODEL_CHANGE_PREFIX);
 }
 
+/**
+ * Catch-up on start is for instructions only: a teammate's message from before this runner
+ * started is old conversation, not work, so it's skipped (and a run queued for it is dropped).
+ */
+export function staleTeammateMessage(m: Pick<Message, "created_at">, fromInstructor: boolean, runnerStartedAt: number): boolean {
+  return !fromInstructor && Date.parse(m.created_at) < runnerStartedAt;
+}
+
+export const STALE_RUN_SUMMARY = "Skipped: old teammate message from before the runner started";
+
+/** What a run says in the room as it starts. Teammate chat gets none: its reply (if any) is enough. */
+export function startNotice(messageId: number, branch: string, resumed: boolean, fromInstructor: boolean): string | null {
+  if (!fromInstructor) return null;
+  return resumed ? `Picked up #${messageId}, continuing.` : `Started on #${messageId} (branch ${branch}).`;
+}
+
 export function pauseNotice(turns: number): string {
   return `Pausing this thread after ${turns} agent messages in a row. A person can reply to continue.`;
 }
@@ -158,6 +174,8 @@ export class Runner {
   private polling: Promise<void> | null = null;
   private pollAgain = false;
   private lastSeenId = 0;
+  /** When this runner started: teammate messages from before it don't start work. */
+  private readonly startedAt = Date.now();
   /** The run in progress: a room instruction or a ticket. */
   private current: { what: string; abort: AbortController } | null = null;
   private stopping = false;
@@ -324,7 +342,14 @@ export class Runner {
         await this.say(r.room_id, r.thread_root, null, `Stopped: my runner restarted while working on #${r.message_id}. Send it again to retry.`);
       } else if (r.state === "queued") {
         const message = await this.ak.messageById(r.message_id);
-        if (message) this.queue.push({ run: r, message, fromInstructor: this.ak.canInstruct(message.sender_id, message.room_id) });
+        if (!message) continue;
+        const fromInstructor = this.ak.canInstruct(message.sender_id, message.room_id);
+        if (staleTeammateMessage(message, fromInstructor, this.startedAt)) {
+          await this.ak.updateRun(r.id, { state: "cancelled", summary: STALE_RUN_SUMMARY, finished_at: now() });
+          this.log(`Dropped queued #${message.id}: ${STALE_RUN_SUMMARY.toLowerCase()}.`);
+          continue;
+        }
+        this.queue.push({ run: r, message, fromInstructor });
       }
     }
   }
@@ -345,6 +370,7 @@ export class Runner {
               this.lastSeenId = Math.max(this.lastSeenId, m.id);
               const d = await this.decideWake(m);
               if (!d.wake) continue;
+              if (staleTeammateMessage(m, d.fromInstructor, this.startedAt)) continue;
               if (!d.fromInstructor && !(await this.withinAgentTurns(m))) continue;
               await this.enqueue(m, d.fromInstructor);
             }
@@ -402,7 +428,7 @@ export class Runner {
     if (!run) return;
     this.log(`Queued #${m.id} from ${this.ak.nameOf(m.sender_id)} in ${this.ak.roomById(m.room_id)?.name}.`);
     this.queue.push({ run, message: m, fromInstructor });
-    if (this.ak.me.paused) {
+    if (this.ak.me.paused && fromInstructor) {
       await this.say(m.room_id, run.thread_root, m.sender_id, `Queued #${m.id}: ${this.ak.ownerName(this.ak.me)} has paused me; I'll start when resumed.`);
     }
   }
@@ -504,7 +530,8 @@ export class Runner {
     await ak.updateRun(run.id, { state: "running", branch: worktree.branch, started_at: now() });
     await ak.heartbeat("working").catch(() => undefined);
     this.log(`Working on #${m.id} in ${room.name} (${worktree.branch})${resume ? ", continuing session" : ""}.`);
-    await this.say(room.id, run.thread_root, sender.id, resume ? `Picked up #${m.id}, continuing.` : `Started on #${m.id} (branch ${worktree.branch}).`);
+    const notice = startNotice(m.id, worktree.branch, Boolean(resume), job.fromInstructor);
+    if (notice) await this.say(room.id, run.thread_root, sender.id, notice);
 
     let result;
     const startedAt = Date.now();

@@ -19,7 +19,10 @@ const RunnerConfigSchema = z.object({
   codex_bin: z.string().default("codex"),
   /** Also run tasks addressed to everyone in a room, not just to this agent. */
   accept_broadcast_tasks: z.boolean().default(false),
-  /** On start, pick up instructions sent while the runner was off, up to this many hours back. */
+  /**
+   * On start, pick up instructions sent while the runner was off, up to this many hours back.
+   * Teammates' messages from before the start are skipped: they're conversation, not instructions.
+   */
   catch_up_hours: z.number().min(0).max(168).default(24),
   /** Use this file's model and effort even when they're set on AutoKolab (DEC-18: the owner keeps the last word). */
   model_locked: z.boolean().default(false),
