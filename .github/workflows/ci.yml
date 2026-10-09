@@ -1,0 +1,71 @@
+# Runs every check on each pull request and on pushes to main.
+# The job is named `checks`: auto-merge looks up this check's result by that name.
+# No secrets and no deploys here; Vercel deploys on its own.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # createdb, psql and dropdb in run-local.sh read these.
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test -w autokolab
+
+      - name: Postgres client
+        run: |
+          command -v psql || { sudo apt-get update -q && sudo apt-get install -y -q postgresql-client; }
+          psql --version
+
+      - name: Database access-rule tests
+        run: bash supabase/tests/run-local.sh
+
+      - name: Website build
+        run: npm run build -w autokolab-site
