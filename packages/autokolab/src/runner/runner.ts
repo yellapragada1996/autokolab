@@ -938,6 +938,7 @@ export class Runner {
       const change: Parameters<ProjectView["update"]>[1] = {};
       if (o.question) change.needs_human = o.question;
       else if (o.status === "blocked") change.needs_human = "I'm blocked; see my last comment.";
+      if (o.summary && o.summary !== after.summary) change.summary = o.summary;
       if (pr && !after.pr_url) change.pr_url = pr;
       if (pr && after.status === "in_progress" && (!o.status || o.status === "review")) change.status = "review";
       if (Object.keys(change).length) await p.update(t.key, change).catch((e) => this.log(`Couldn't update ${t.key}: ${(e as Error).message}`));
