@@ -18,7 +18,7 @@ import { runApp } from "./setup/server.js";
 import { installService, serviceStatus, uninstallService } from "./setup/service.js";
 import { runStatus } from "./setup/status.js";
 import { readState, servicePid, startUpdater, updateNow, type UpdateState } from "./setup/update.js";
-import { aheadLine, appliedLine, checkDatabase, databaseOnStart, isAdminMachine, setAutoMigrate, versionLabel } from "./setup/dbupdate.js";
+import { aheadLine, appliedLine, checkDatabase, databaseOnStart, dbUrl, isAdminMachine, setAutoMigrate, versionLabel } from "./setup/dbupdate.js";
 import { notify } from "./setup/notify.js";
 import { renameLocally } from "./setup/naming.js";
 import { runnerFileFor } from "./runner/config.js";
@@ -446,7 +446,8 @@ db.command("update")
             ? "Database updates are automatic: when this helper starts or updates itself, it applies any pending ones and says so in the room."
             : "Automatic database updates are off. `autokolab db update` still applies them by hand.",
         );
-        if (o.on && !isAdminMachine()) console.log("This only takes effect on the team admin's machine (with the secret key and AUTOKOLAB_DB_URL).");
+        if (o.on && !dbUrl()) console.log("A database connection string is missing. Paste it once on the local setup page, or set AUTOKOLAB_DB_URL on this computer.");
+        if (o.on && !readConfigFile().serviceRoleKey && !process.env.AUTOKOLAB_SERVICE_ROLE_KEY) console.log("Automatic updates need the Supabase secret key on the team owner's machine.");
         return;
       }
       const r = await checkDatabase({ byHand: true, log: (m) => console.log(m) });

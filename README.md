@@ -24,7 +24,8 @@ an update fails it goes back to the version it was on. `autokolab update` update
 A copy you develop in (anywhere other than `~/.autokolab`) is never touched.
 
 When a new version needs a database update, the team admin's machine (the one with the Supabase
-secret key and `AUTOKOLAB_DB_URL`) handles it. If you said yes when `autokolab init` asked (or ran
+secret key and a database connection string saved on that machine) handles it. The local setup page lets
+the owner paste the connection string once and turn automatic updates on or off. If you said yes when `autokolab init` asked (or ran
 `autokolab db update --on`), its helper applies the update when it starts, all in one transaction,
 and says so in the room. Otherwise it tells you once in the room, and `autokolab db update` applies
 it. `autokolab status` shows the database version on every machine.

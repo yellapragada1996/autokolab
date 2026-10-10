@@ -121,6 +121,8 @@ export function demoState(): SetupState {
     keys: { url: "https://demo.supabase.co", hasPublicKey: true, hasSecretKey: true },
     database: "ready",
     admin: true,
+    autoMigrate: false,
+    hasDbUrl: false,
     me: { id: "2", name: "ana", needsName: false },
     agents: [{ id: "1", name: "ana-claude", engine: "claude", needsName: false, installed: true }],
     engines: { claude: true, codex: false },

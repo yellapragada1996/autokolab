@@ -108,6 +108,7 @@ export async function runStatus(): Promise<boolean> {
   if (!can.ok) info(`Updates: by hand (${can.reason})`);
   else if (upd.failed && upd.result) problem(`${statusLine(autoUpdateOn(cfg), upd)} · ${upd.result}`);
   else ok(statusLine(autoUpdateOn(cfg), upd));
+  info(`Database updates: ${autoMigrateOn(cfg) ? "automatic" : "by hand"}`);
   try {
     const live = await liveVersion(cfg);
     const line = dbStatusLine(live, SCHEMA_VERSION);

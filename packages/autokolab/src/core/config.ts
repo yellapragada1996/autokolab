@@ -21,6 +21,8 @@ export interface ConfigFile {
   anonKey?: string;
   /** Only on the admin's machine. Never give this to anyone. */
   serviceRoleKey?: string;
+  /** Database connection string, kept only on the owner's machine. */
+  dbUrl?: string;
   /** Member id of the person using this machine. */
   me?: string;
   /** Member id → identity. A machine holds its person's identity plus their agents'. */

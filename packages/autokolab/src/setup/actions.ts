@@ -45,6 +45,7 @@ import {
 } from "./team.js";
 import { NAME_RULE } from "./ui.js";
 import { randomBytes } from "node:crypto";
+import { autoMigrateOn, dbUrl, setAutoMigrate } from "./dbupdate.js";
 
 // Everything the setup page can do, as plain functions. The local app server (server.ts) calls
 // these; errors are written for people, since the page shows them as they are.
@@ -60,6 +61,8 @@ export interface SetupState {
   database: "ready" | "missing" | "unknown";
   databaseError?: string;
   admin: boolean;
+  autoMigrate: boolean;
+  hasDbUrl: boolean;
   me: { id: string; name: string; needsName: boolean } | null;
   agents: { id: string; name: string; engine: Engine; needsName: boolean; installed: boolean }[];
   engines: Record<Engine, boolean>;
@@ -80,6 +83,8 @@ export async function getState(): Promise<SetupState> {
     keys: { url: cfg.url ?? null, hasPublicKey: !!cfg.anonKey, hasSecretKey: !!cfg.serviceRoleKey },
     database: "unknown",
     admin: !!cfg.serviceRoleKey,
+    autoMigrate: autoMigrateOn(cfg),
+    hasDbUrl: !!cfg.dbUrl,
     me: null,
     agents: [],
     engines,
@@ -180,10 +185,10 @@ export async function setUpDatabase(input: { dbUrl?: string }): Promise<void> {
   const sb = adminClient(cfg.url, cfg.serviceRoleKey);
   let version = await schemaVersion(sb);
   if (version < SCHEMA_VERSION) {
-    const dbUrl = input.dbUrl?.trim() || envFileKeys().dbUrl;
-    if (!dbUrl) throw new UserError("Paste the connection string, or run the SQL in Supabase's SQL editor and try again.");
+    const connection = input.dbUrl?.trim() || dbUrl(cfg);
+    if (!connection) throw new UserError("Paste the connection string, or run the SQL in Supabase's SQL editor and try again.");
     try {
-      version = await applySchema(dbUrl, version);
+      version = await applySchema(connection, version);
     } catch (e) {
       throw new UserError((e as Error).message);
     }
@@ -193,6 +198,26 @@ export async function setUpDatabase(input: { dbUrl?: string }): Promise<void> {
   await checkPublicKey(cfg.url, cfg.anonKey!).catch((e) => {
     throw new UserError((e as Error).message);
   });
+  if (input.dbUrl?.trim()) updateConfigFile((c) => void (c.dbUrl = input.dbUrl!.trim()));
+}
+
+/** Local setup action: the connection string never returns to the page. */
+export function setDatabaseUpdates(input: { on?: boolean; dbUrl?: string }): void {
+  const cfg = readConfigFile();
+  if (!cfg.serviceRoleKey) throw new UserError("Only the team owner's machine can set database updates.");
+  if (typeof input.on !== "boolean") throw new UserError("Choose whether to apply database updates automatically.");
+  const connection = input.dbUrl?.trim();
+  if (connection) {
+    try {
+      const parsed = new URL(connection);
+      if (parsed.protocol !== "postgresql:" && parsed.protocol !== "postgres:") throw new Error();
+    } catch {
+      throw new UserError("Paste a PostgreSQL database connection string from Supabase → Connect → Session pooler.");
+    }
+    updateConfigFile((c) => void (c.dbUrl = connection));
+  }
+  if (input.on && !dbUrl(readConfigFile())) throw new UserError("Paste the database connection string once, or set AUTOKOLAB_DB_URL on this computer.");
+  setAutoMigrate(input.on);
 }
 
 function checkName(name: string, takenBy: { name: string }[]): string {

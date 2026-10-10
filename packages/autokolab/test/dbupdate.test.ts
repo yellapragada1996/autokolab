@@ -1,11 +1,27 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { aheadLine, appliedLine, autoMigrateOn, dbStatusLine, decide, fileLabel, tellLine, versionLabel } from "../src/setup/dbupdate.js";
+import { aheadLine, appliedLine, autoMigrateOn, dbStatusLine, dbUrl, decide, fileLabel, tellLine, versionLabel } from "../src/setup/dbupdate.js";
 import { applySchema, hideDbUrl } from "../src/setup/team.js";
 
 const files = [10, 11, 12].map((v) => ({ version: v, path: `/x/sql/0${v}_${["agent_model", "effective_model", "merge_policy"][v - 10]}.sql` }));
 
 describe("database update decision", () => {
+  it("finds the connection string in environment, config, then install file order", () => {
+    const previous = process.env.AUTOKOLAB_DB_URL;
+    const configUrl = "postgresql://user:pass@localhost:5432/db";
+    const fileUrl = "postgresql://user:pass@localhost:5432/file";
+    const fromFile = () => ({ dbUrl: fileUrl });
+    try {
+      process.env.AUTOKOLAB_DB_URL = "postgresql://user:pass@localhost:5432/environment";
+      expect(dbUrl({ dbUrl: configUrl }, fromFile)).toBe(process.env.AUTOKOLAB_DB_URL);
+      delete process.env.AUTOKOLAB_DB_URL;
+      expect(dbUrl({ dbUrl: configUrl }, fromFile)).toBe(configUrl);
+      expect(dbUrl({}, fromFile)).toBe(fileUrl);
+    } finally {
+      if (previous === undefined) delete process.env.AUTOKOLAB_DB_URL;
+      else process.env.AUTOKOLAB_DB_URL = previous;
+    }
+  });
   const cases: [number, number, boolean, boolean, string][] = [
     // live, helper, admin, auto → kind
     [12, 12, true, true, "up-to-date"],
