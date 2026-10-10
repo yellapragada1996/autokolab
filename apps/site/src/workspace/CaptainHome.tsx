@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { href, onNav, go, type Route } from "../lib/router";
+import { href, onNav, go, openShow, showHref, type Route } from "../lib/router";
 import { AgentAvatar, Button, Chip, SegmentedProgress, type Segment } from "../ui";
 import { ago, Markdown } from "./bits";
 import {
@@ -458,10 +458,13 @@ function DecisionCard({ ws, cr, need, done, pulse }: { ws: Workspace; cr: Captai
 
   return (
     <div id={`need-${need.key}`} tabIndex={-1} role="region" aria-label={question} className={pulse ? "ak-indent ak-pulse" : "ak-indent"} style={cardBox}>
-      <span style={{ fontSize: 12, fontWeight: 500, color: "var(--amber)", overflowWrap: "anywhere" }}>
-        Needs you · {NEED_WHAT[need.kind]}
-        {ticketLink && <> {ticketLink}</>}
-      </span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12, fontWeight: 500, color: "var(--amber)", overflowWrap: "anywhere" }}>
+          Needs you · {NEED_WHAT[need.kind]}
+          {ticketLink && <> {ticketLink}</>}
+        </span>
+        {t && <a href={showHref(t.key)} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); openShow(t.key); }} style={{ fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap", marginLeft: "auto" }}>Show the work</a>}
+      </div>
       {need.kind === "captain_question" ? (
         <div style={{ fontSize: 17, fontWeight: 500, lineHeight: 1.4, color: "var(--text)" }}>
           <Markdown text={withTicketLinks(need.question, ws)} />

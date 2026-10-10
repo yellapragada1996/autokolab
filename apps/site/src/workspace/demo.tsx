@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import type { Agent, Decision, Guide, Member, Project, Step, Ticket } from "../lib/data";
-import { useRoute } from "../lib/router";
+import type { Agent, Decision, Guide, Member, Project, Step, Ticket, TicketEvent } from "../lib/data";
+import { parse, useRoute } from "../lib/router";
 import type { Profile } from "../lib/session";
 import { starterRules } from "./GuidePage";
 import type { Room as RoomData } from "../lib/room";
@@ -66,6 +66,8 @@ const tickets: Ticket[] = [
     started_at: iso(50),
     description: "People should be able to sign in with Google as well as email.\n\n- Use the existing session code in `src/auth`\n- Keep the email form as it is",
     done_means: ["Google button on /login", "New users get a profile", "Denied consent shows a friendly error"],
+    review: { summary: "Google sign-in is being added beside email sign-in.", line: { file: "src/auth/google.ts", code: "+  const profile = await createProfile(account);\n+  return startSession(profile);", plain: "A new Google account gets a profile before its session starts." }, less_sure: "The callback has not been tested against a live Google account yet." },
+    pr_url: "https://github.com/ana/shop/pull/42",
   }),
   ticket(3, { title: "Remember me for 30 days", status: "ready", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", priority: "medium", labels: ["auth"] }),
   ticket(4, { title: "Pick the session store", status: "in_progress", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", needs_human: "Redis or Postgres for sessions? Postgres is simpler, Redis is faster.", priority: "high" }),
@@ -112,6 +114,14 @@ const steps = new Map<string, Step[]>([
   ],
   ["t4", [{ ticket_id: "t4", idx: 0, label: "Compare the options", status: "done", note: null, updated_at: iso(30) }, { ticket_id: "t4", idx: 1, label: "Wire the store", status: "todo", note: null, updated_at: iso(30) }]],
 ]);
+
+const demoEvents = new Map<string, TicketEvent[]>([["t2", [
+  { id: 1, ticket_id: "t2", actor_id: LEAD, actor_type: "agent", kind: "created", data: {}, created_at: iso(58) },
+  { id: 2, ticket_id: "t2", actor_id: LEAD, actor_type: "agent", kind: "assignee", data: { to: BUILDER }, created_at: iso(55) },
+  { id: 3, ticket_id: "t2", actor_id: BUILDER, actor_type: "agent", kind: "status", data: { from: "ready", to: "in_progress" }, created_at: iso(50) },
+  { id: 4, ticket_id: "t2", actor_id: BUILDER, actor_type: "agent", kind: "step", data: { status: "done", label: "Add the Google provider" }, created_at: iso(15) },
+  { id: 5, ticket_id: "t2", actor_id: BUILDER, actor_type: "agent", kind: "pr", data: {}, created_at: iso(8) },
+]]]);
 
 const agents: Agent[] = [
   { id: LEAD, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "ana-claude", status: "idle", status_note: "Planned the Sign-in goal", current_ticket_id: null, last_seen_at: iso(3), model: "opus", effort: "high", model_set_by: ANA, model_set_at: iso(60), effective_model: "claude-opus-5-5", effective_effort: "high", effective_at: iso(20) },
@@ -205,6 +215,7 @@ export default function DemoWorkspace() {
       childrenOf: (tid) => tickets.filter((t) => t.parent_id === tid),
     };
   }, []);
-  const r = route.view === "home" || route.view === "new-project" || route.view === "join" ? ({ view: "overview", project: "shop" } as const) : route;
-  return <Workspace project={project} projects={[project]} route={r} profile={profile} demo={ws} demoRoom={demoRoom} onSignOut={() => undefined} onEditProfile={() => undefined} />;
+  const previewRoute = parse("/p/shop", location.search);
+  const r = route.view === "home" || route.view === "new-project" || route.view === "join" ? ({ view: "overview", project: "shop", show: "show" in previewRoute ? previewRoute.show : undefined } as const) : route;
+  return <Workspace project={project} projects={[project]} route={r} profile={profile} demo={ws} demoRoom={demoRoom} demoEvents={demoEvents} onSignOut={() => undefined} onEditProfile={() => undefined} />;
 }
