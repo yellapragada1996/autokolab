@@ -34,7 +34,7 @@ describe("what the runner delivers for an agent (AK-46)", () => {
     expect(shipPlan(facts({ branch: "trunk", base: "trunk", protectedBranches: [] }))).toEqual({ skip: "protected" });
   });
   it("knows a local secret file from an example", () => {
-    for (const p of [".env", "apps/site/.env.local", "certs/server.pem", "deploy/id_ed25519", "x.key", ".envrc", ".npmrc", "home/.netrc", "infra/prod.tfvars", "credentials.json", "config/secrets.yml"]) {
+    for (const p of [".env", "apps/site/.env.local", "certs/server.pem", "deploy/id_ed25519", "x.key", ".envrc", ".npmrc", "home/.netrc", "infra/prod.tfvars", "credentials.json", "config/secrets.yml", ".aws/credentials", ".git-credentials", ".pgpass", "kubeconfig", "android/release.jks", "app.keystore"]) {
       expect(looksPrivate(p), p).toBe(true);
     }
     for (const p of [".env.example", "config/.env.sample", "src/env.ts", "docs/keys.md", "src/monkey.ts", "src/core/secrets.ts", "docs/credentials.md", "secrets.yml.example"]) {
@@ -42,8 +42,8 @@ describe("what the runner delivers for an agent (AK-46)", () => {
     }
   });
   it("reads what a commit of everything would add or change", () => {
-    const status = [" M src/a.ts", "?? new file.ts", "A  added.ts", "R  old.ts -> renamed.ts", " D gone.ts", "D  staged-gone.ts", '?? "odd name.ts"', "MM both.ts"].join("\n");
-    expect(changedPaths(status)).toEqual(["src/a.ts", "new file.ts", "added.ts", "renamed.ts", "odd name.ts", "both.ts"]);
+    const status = [" M src/a.ts", "?? new file.ts", "A  added.ts", "R  renamed.ts", "old.ts", " D gone.ts", "D  staged-gone.ts", '?? odd "name" -> x.ts', "MM both.ts", ""].join("\0");
+    expect(changedPaths(status)).toEqual(["src/a.ts", "new file.ts", "added.ts", "renamed.ts", 'odd "name" -> x.ts', "both.ts"]);
     expect(changedPaths("")).toEqual([]);
   });
   it("says in plain words which step failed", () => {
@@ -160,9 +160,17 @@ describe("delivering from a real worktree", () => {
     expect(r).toMatchObject({ ok: false, step: "push" });
     expect(!r.ok && r.error).toContain(".npmrc");
     expect(git(remote, "rev-parse", "sh-2-retries")).toBe(before);
-    // Taking it out of the branch again is fine: a deletion isn't a secret.
-    git(wt, "reset", "-q", "--hard", "HEAD~1");
+    // Deleting it in a later commit isn't enough: it would still be pushed in the branch's history.
+    git(wt, "rm", "-q", ".npmrc");
+    git(wt, "commit", "-q", "-m", "remove it");
+    const again = ship(io, job(["push", "open_pr"]));
+    expect(again).toMatchObject({ ok: false, step: "push" });
+    expect(!again.ok && again.error).toContain("deleting the file isn't enough");
+    expect(git(remote, "rev-parse", "sh-2-retries")).toBe(before);
+    // Redoing the commits without it is.
+    git(wt, "reset", "-q", "--hard", "HEAD~2");
     expect(ship(io, job(["push", "open_pr"]))).toMatchObject({ ok: true });
+    expect(git(remote, "log", "--format=", "--name-only", "sh-2-retries")).not.toContain(".npmrc");
   });
 
   it("isn't steered by a Git link the agent replaced: its hooks and settings never run", () => {

@@ -48,19 +48,30 @@ export function looksPrivate(path: string): boolean {
   if (/\.(example|sample|template|dist)$/.test(name)) return false;
   return (
     /^\.env(\..+)?$/.test(name) ||
-    /^\.(envrc|npmrc|netrc|pypirc)$/.test(name) ||
-    /\.(pem|p12|pfx|key|tfvars)$/.test(name) ||
+    /^\.(envrc|npmrc|netrc|pypirc|pgpass|git-credentials)$/.test(name) ||
+    /\.(pem|p12|pfx|key|tfvars|jks|keystore)$/.test(name) ||
     /^id_(rsa|dsa|ecdsa|ed25519)$/.test(name) ||
+    /^(credentials|kubeconfig)$/.test(name) ||
     /^(credentials|secrets?)\.(json|ya?ml|toml|env)$/.test(name)
   );
 }
 
-/** Paths from `git status --porcelain`: what a commit of everything would add or change (not deletions). */
-export function changedPaths(porcelain: string): string[] {
-  return porcelain
-    .split("\n")
-    .filter((l) => l.length > 3 && !/^(D |.D) /.test(l.slice(0, 3)))
-    .map((l) => l.slice(3).split(" -> ").pop()!.replace(/^"|"$/g, ""));
+/**
+ * Paths from `git status --porcelain -z`: what a commit of everything would add or change (not
+ * deletions). -z gives names as they are, NUL-separated; a rename is followed by its old name.
+ */
+export function changedPaths(porcelainZ: string): string[] {
+  const out: string[] = [];
+  const parts = porcelainZ.split("\0");
+  for (let i = 0; i < parts.length; i++) {
+    const entry = parts[i];
+    if (entry.length <= 3) continue;
+    const code = entry.slice(0, 2);
+    if (code[0] === "R" || code[0] === "C") i++; // the next part is where it came from
+    if (code === "D " || code[1] === "D") continue;
+    out.push(entry.slice(3));
+  }
+  return out;
 }
 
 const STEP_WORDS: Record<ShipStep, string> = {
@@ -167,15 +178,20 @@ export type ShipResult = { ok: true; pr: string; did: ShipStep[] } | { ok: false
 
 const shown = (paths: string[]) => `${paths.slice(0, 5).join(", ")}${paths.length > 5 ? ` and ${paths.length - 5} more` : ""}`;
 
-/** Files the branch adds or changes compared with the default branch on GitHub (every file, if that isn't known). */
+/**
+ * Every file added or changed by any commit the push would send: a file committed and deleted
+ * again is still in the branch's history, so the end state alone isn't enough. If the default
+ * branch on GitHub isn't known, that's every commit on the branch.
+ */
 function pushedPaths(io: ShipIo, path: string, base: string): string[] {
+  const log = (range: string) => io.git(path, "log", "--format=", "--name-only", "--diff-filter=AMRC", range);
   let out: string;
   try {
-    out = io.git(path, "diff", "--name-only", "--diff-filter=d", `origin/${base}...HEAD`);
+    out = log(`origin/${base}..HEAD`);
   } catch {
-    out = io.git(path, "ls-tree", "-r", "--name-only", "HEAD");
+    out = log("HEAD");
   }
-  return out.split("\n").filter(Boolean);
+  return [...new Set(out.split("\n").filter(Boolean))];
 }
 
 const PR_URL = /https:\/\/github\.com\/[^\s)>\]]+\/pull\/\d+/i;
@@ -187,14 +203,14 @@ export function ship(io: ShipIo, job: ShipJob): ShipResult {
     try {
       if (step === "commit") {
         // Checked before anything is staged, so a refusal leaves the folder exactly as it was.
-        const secret = changedPaths(io.git(job.path, "status", "--porcelain", "--untracked-files=all")).filter(looksPrivate);
+        const secret = changedPaths(io.git(job.path, "status", "--porcelain", "-z", "--untracked-files=all")).filter(looksPrivate);
         if (secret.length) throw new Error(`These look like local secrets, so I didn't commit anything: ${shown(secret)}. Remove them or add them to .gitignore.`);
         io.git(job.path, "add", "-A");
         if (io.git(job.path, "diff", "--cached", "--name-only")) io.git(job.path, "commit", "-q", "-m", job.title);
       } else if (step === "push") {
         // Commits the agent made itself get the same check as the ones made here.
         const secret = pushedPaths(io, job.path, job.base).filter(looksPrivate);
-        if (secret.length) throw new Error(`These look like local secrets, so I didn't push anything: ${shown(secret)}. Take them out of the branch's commits.`);
+        if (secret.length) throw new Error(`These look like local secrets, so I didn't push anything: ${shown(secret)}. They're in the branch's commits; deleting the file isn't enough, the commits have to be redone without it.`);
         io.git(job.path, "push", "-q", "-u", "origin", `HEAD:refs/heads/${job.branch}`);
       } else {
         const found = io.gh(["pr", "list", "--repo", job.repo, "--head", job.branch, "--state", "open", "--json", "url", "--limit", "1"]);
