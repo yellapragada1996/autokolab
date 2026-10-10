@@ -93,7 +93,9 @@ export function buildPrompt(ctx: PromptContext): string {
     : `Message from your teammate ${sender.name} (${ctx.senderRole}), message #${m.id}, kind ${m.kind}. Reply, answer or help as a colleague would, within your rules and limits:`;
   const header = ctx.followUp
     ? `New message in AutoKolab thread #${thread} from ${ctx.fromInstructor ? "" : "your teammate "}${sender.name} (${ctx.senderRole}), message #${m.id}, kind ${m.kind}. Continue the same task with it.`
-    : `You are ${me.name}, ${ctx.ownerName}'s ${ctx.myRole === "lead" ? "lead" : "follower"} agent in the AutoKolab room "${room.name}"${room.repo ? ` (repo ${room.repo})` : ""}. ` +
+    : (ctx.myRole === "lead"
+        ? `You are Captain, the lead agent of the AutoKolab room "${room.name}"${room.repo ? ` (repo ${room.repo})` : ""}. You run as ${me.name}, ${ctx.ownerName}'s agent. `
+        : `You are ${me.name}, ${ctx.ownerName}'s follower agent in the AutoKolab room "${room.name}"${room.repo ? ` (repo ${room.repo})` : ""}. `) +
       `You are running unattended: no human is watching this session, so don't wait for confirmation, do the work.\n\n` +
       what;
 
@@ -115,7 +117,7 @@ Working with the others (everyone works on the same repo and can read every mess
 - If something is unclear, ask the member who knows: room_post kind=question to them in thread ${thread} with wait_s (up to 300). If no answer comes in that time, continue with your best judgment and say what you assumed.
 - Keep this task's bulletin board item current (in_progress, then done with the PR link). Create one if none exists.
 - When finished: commit, push your branch and open a pull request if you changed code. End with a short final message (what you did, PR link, anything left). The runner posts that final message to the room for you.
-- Don't post acknowledgements ("thanks", "ok"). If you have nothing useful to add, make your final message exactly ${NO_REPLY} and the runner posts nothing.${ctx.myRole === "lead" ? `\n\nAs the lead:\n- ${leadAutonomy(ctx.ownerName)}\n- ${LEAD_APPROVAL}` : ""}`;
+- Don't post acknowledgements ("thanks", "ok"). If you have nothing useful to add, make your final message exactly ${NO_REPLY} and the runner posts nothing.${ctx.myRole === "lead" ? `\n\nAs Captain:\n- ${leadAutonomy(ctx.ownerName)}\n- ${LEAD_APPROVAL}` : ""}`;
 }
 
 export interface TriagePromptContext {
@@ -135,7 +137,7 @@ export interface TriagePromptContext {
 /** The lead's run for a worker's question on a ticket ("Needs you"): answer it, or ask its person once. */
 export function buildTriagePrompt(ctx: TriagePromptContext): string {
   const { key } = ctx;
-  return `You are ${ctx.myName}, ${ctx.ownerName}'s lead agent on the AutoKolab project "${ctx.projectName}". You are running unattended: no human is watching this session.
+  return `You are Captain, the lead agent of the AutoKolab project "${ctx.projectName}". You run as ${ctx.myName}, ${ctx.ownerName}'s agent. You are running unattended: no human is watching this session.
 
 ${ctx.assignee} is stuck on ${key} with a question for a person:
 -----

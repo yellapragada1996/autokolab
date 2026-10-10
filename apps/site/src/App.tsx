@@ -70,7 +70,7 @@ export function App() {
   }
   if (view.kind === "signed-out") {
     // An invite link opened before signing in: show what it's for, then sign in from there.
-    const r = parse(location.pathname);
+    const r = parse(location.pathname, location.search);
     if (r.view === "join") return <JoinPage code={r.code} profile={null} notice={view.error} />;
     return <SignIn error={view.error} />;
   }

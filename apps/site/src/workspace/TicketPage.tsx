@@ -20,7 +20,7 @@ import {
   type TicketPatch,
   type Status,
 } from "../lib/data";
-import { onNav } from "../lib/router";
+import { href, onNav } from "../lib/router";
 import { Button } from "../ui";
 import { WhoMark } from "./Board";
 import { ago, EpicLozenge, KeyText, Label, Markdown, Picker, PriorityIcon, StatusLozenge, StepProgress, TypeIcon, TypeTag, Who } from "./bits";
@@ -51,7 +51,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
     return (
       <div style={{ padding: 40, textAlign: "center", color: "var(--muted)" }}>
         No ticket {ticketKey} in {ws.project.name}.{" "}
-        <a href={`/p/${ws.project.slug}/board`} onClick={onNav({ view: "board", project: ws.project.slug })}>
+        <a href={href({ view: "board", project: ws.project.slug })} onClick={onNav({ view: "board", project: ws.project.slug })}>
           Back to the board
         </a>
       </div>
@@ -79,13 +79,13 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <nav aria-label="Breadcrumb" style={{ display: "flex", gap: 8, fontSize: 13, color: "var(--faint)", alignItems: "center", flexWrap: "wrap" }}>
-        <a href={`/p/${ws.project.slug}/board`} onClick={onNav({ view: "board", project: ws.project.slug })} style={crumb}>
+        <a href={href({ view: "board", project: ws.project.slug })} onClick={onNav({ view: "board", project: ws.project.slug })} style={crumb}>
           {ws.project.name}
         </a>
         <span>/</span>
         {parent && (
           <>
-            <a href={`/p/${ws.project.slug}/t/${parent.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: parent.key })} style={crumb}>
+            <a href={`/p/${ws.project.slug}/work/${parent.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: parent.key })} style={crumb}>
               <TypeIcon type="epic" size={14} />
               {parent.key}
             </a>
@@ -145,7 +145,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
                   <IssueRow key={c.id} ws={ws} t={c} me={me} />
                 ))}
               </div>
-              {!kids.length && <p style={{ fontSize: 13, color: "var(--faint)" }}>No child issues yet. The lead adds them when it plans this epic.</p>}
+              {!kids.length && <p style={{ fontSize: 13, color: "var(--faint)" }}>No tickets in this goal yet. Captain adds them when it plans it.</p>}
             </Panel>
           )}
 
@@ -203,7 +203,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
                   <dt style={{ color: "var(--muted)" }}>Parent</dt>
                   <dd style={{ margin: 0 }}>
                     <Picker
-                      label="Epic"
+                      label="Goal"
                       style={plain}
                       value={t.parent_id ?? ""}
                       options={[{ id: "", label: "None" }, ...ws.tickets.filter((x) => x.type === "epic" && x.id !== t.id).map((e) => ({ id: e.id, label: `${e.key} · ${e.title}` }))]}
@@ -225,7 +225,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
           <section style={{ borderRadius: 8, border: "1px solid var(--line)", padding: 14, display: "flex", flexDirection: "column", gap: 6 }}>
             <h2 style={{ fontSize: 14, fontWeight: 600 }}>Context it's using</h2>
             <p style={{ fontSize: 13, color: "var(--muted)" }}>Every agent reads these before working on this ticket.</p>
-            <a href={`/p/${ws.project.slug}/guide`} onClick={onNav({ view: "guide", project: ws.project.slug })} style={{ fontSize: 13 }}>
+            <a href={href({ view: "guide", project: ws.project.slug })} onClick={onNav({ view: "guide", project: ws.project.slug })} style={{ fontSize: 13 }}>
               Project Guide: concept, architecture and rules
             </a>
             {ws.decisions.filter((d) => !d.superseded_by).slice(0, 6).map((d) => (
@@ -273,7 +273,7 @@ function IssueRow({ ws, t, me, onRemove }: { ws: Workspace; t: Ticket; me: strin
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 38, padding: "4px 10px", background: "var(--surface)" }}>
       <TypeIcon type={t.type} />
-      <a href={`/p/${ws.project.slug}/t/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ display: "flex", gap: 8, alignItems: "center", flex: 1, minWidth: 0, color: "var(--text)", textDecoration: "none" }}>
+      <a href={`/p/${ws.project.slug}/work/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ display: "flex", gap: 8, alignItems: "center", flex: 1, minWidth: 0, color: "var(--text)", textDecoration: "none" }}>
         <KeyText t={t} style={{ textDecoration: t.status === "done" ? "line-through" : "none" }} />
         <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.title}</span>
       </a>
@@ -555,7 +555,7 @@ function MergeRows({ ws, t, me }: { ws: Workspace; t: Ticket; me: string }) {
       {!sha && leadBuilt && t.status === "review" && t.pr_url && (
         <>
           <dt style={{ color: "var(--muted)" }}>Approval</dt>
-          <dd style={{ margin: 0, minWidth: 0, color: "var(--warn)" }}>Waiting for a person or another agent: the lead built this, so it can't approve it</dd>
+          <dd style={{ margin: 0, minWidth: 0, color: "var(--warn)" }}>Waiting for a person or another agent: Captain built this, so it can't approve it</dd>
         </>
       )}
       {sha && (
@@ -563,7 +563,7 @@ function MergeRows({ ws, t, me }: { ws: Workspace; t: Ticket; me: string }) {
           <dt style={{ color: "var(--muted)" }}>Approval</dt>
           <dd style={{ margin: 0, minWidth: 0 }}>
             Approved by {ws.nameOf(t.approved_by ?? null)}
-            {leadBuilt && approver && ` (${approver}, since the lead built this)`} for commit{" "}
+            {leadBuilt && approver && ` (${approver}, since Captain built this)`} for commit{" "}
             {ws.project.repo ? (
               <a href={`https://github.com/${ws.project.repo}/commit/${sha}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
                 {sha.slice(0, 7)}
@@ -612,7 +612,7 @@ export function OkToMerge({ ws, t }: { ws: Workspace; t: Ticket }) {
   };
   return (
     <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
-      <Button size="sm" variant="primary" disabled={busy} onClick={() => void ok()} title="The lead merges it once tests pass">
+      <Button size="sm" variant="primary" disabled={busy} onClick={() => void ok()} title="Captain merges it once tests pass">
         {busy ? "Saving…" : "OK to merge"}
       </Button>
       {err && (

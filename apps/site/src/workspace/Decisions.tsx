@@ -61,7 +61,7 @@ function DecisionCard({ ws, d }: { ws: Workspace; d: Decision }) {
       {d.body.trim() && <Markdown text={d.body} />}
       <div style={{ display: "flex", gap: 12, fontSize: 13, alignItems: "center", flexWrap: "wrap" }}>
         {ticket && (
-          <a href={`/p/${ws.project.slug}/t/${ticket.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: ticket.key })}>
+          <a href={`/p/${ws.project.slug}/work/${ticket.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: ticket.key })}>
             From {ticket.key}
           </a>
         )}
