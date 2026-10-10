@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MERGE_OK_PREFIX } from "../lib/data";
-import { awayText, briefing, catchUp, catchUpText, conversation, folded, lowerFirst, needsYou, openQuestions } from "./captain";
+import { awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, lowerFirst, mergeChip, mergeQuestion, needsYou, openQuestions, ownerOf, timeline } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, message, ticket, workspace } from "./fixtures";
 
 describe("the conversation with Captain", () => {
@@ -205,5 +205,85 @@ describe("the catch-up", () => {
     expect(awayText(45 * 60_000)).toBe("45 min");
     expect(awayText(9 * 3_600_000 + 20 * 60_000)).toBe("9 h");
     expect(awayText(72 * 3_600_000)).toBe("3 days");
+  });
+
+  it("sums up the card in one row, leaving out zero counts, and lists every line oldest first", () => {
+    const c = catchUp(
+      workspace([ticket({ key: "SH-1", status: "done", completed_at: at("10:12") }), ticket({ key: "SH-2", status: "done", completed_at: at("09:00") })], { decisions: [decision("DEC-24", "Sessions", at("09:30"))] }),
+      [],
+      at("08:40"),
+      nameOf,
+      now,
+    )!;
+    expect(catchUpSummary(c)).toBe("2 shipped · 1 decided");
+    expect(catchUpSummary({ ...c, decided: [], problems: [{ text: "a", at: at("09:00") }, { text: "b", at: at("09:10") }] })).toBe("2 shipped · 2 problems");
+    expect(catchUpItems(c).map((i) => [i.type, i.ref])).toEqual([
+      ["shipped", "SH-2"],
+      ["decided", "DEC-24"],
+      ["shipped", "SH-1"],
+    ]);
+  });
+});
+
+describe("the timeline", () => {
+  it("puts a card where Captain asked its question, and ticket cards at the time they started waiting", () => {
+    const ws = workspace([ticket({ key: "SH-1", status: "in_progress", needs_human: "Blue or green?", updated_at: at("09:20") }), ticket({ key: "SH-2", status: "in_progress", needs_human: "Late?", updated_at: at("11:00") })]);
+    const msgs = [
+      message(ME, CAPTAIN, "Hi", { created_at: at("09:00") }),
+      message(CAPTAIN, ME, "Started on #1 (branch a).", { created_at: at("09:05") }),
+      message(CAPTAIN, ME, "Ship today?", { kind: "question", created_at: at("09:10") }),
+      message(CAPTAIN, ME, "On it.", { created_at: at("09:30") }),
+    ];
+    const turns = conversation(msgs, ME, CAPTAIN);
+    const entries = timeline(folded(turns), needsYou(ws, turns), at("12:00"));
+    expect(entries.map((e) => (e.kind === "row" ? e.row.kind : e.kind === "card" ? `card:${e.need.kind}` : e.kind))).toEqual([
+      "you",
+      "fold",
+      "card:captain_question",
+      "card:ticket_question",
+      "captain",
+      "card:ticket_question",
+      "catchup",
+    ]);
+    // An answered question is a normal message again.
+    expect(timeline(folded(turns), []).map((e) => e.kind === "row" && e.row.kind)).toEqual(["you", "fold", "question", "captain"]);
+  });
+
+  it("labels days the way people say them", () => {
+    const now = new Date(2026, 9, 10, 18, 0);
+    expect(dayLabel(new Date(2026, 9, 10, 8, 40).toISOString(), now)).toBe("This morning");
+    expect(dayLabel(new Date(2026, 9, 10, 14, 0).toISOString(), now)).toBe("This afternoon");
+    expect(dayLabel(new Date(2026, 9, 9, 23, 0).toISOString(), now)).toBe("Yesterday");
+    const older = dayLabel(new Date(2026, 9, 7, 9, 0).toISOString(), now);
+    expect(older).toBe(new Date(2026, 9, 7).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }));
+  });
+
+  it("writes times and fold counts plainly", () => {
+    expect(clock(new Date(2026, 9, 10, 8, 40).toISOString())).toMatch(/^0?8:40( am)?$/);
+    expect(foldText(1)).toBe("1 quiet update");
+    expect(foldText(3)).toBe("3 quiet updates");
+  });
+});
+
+describe("decision cards", () => {
+  it("asks Captain's review question, or falls back to a plain one", () => {
+    const t = ticket({ key: "SH-2", title: "Sessions column", status: "review", needs_human: `${MERGE_OK_PREFIX} a database change` });
+    const [need] = needsYou(workspace([t]), []);
+    expect(mergeQuestion(need)).toBe("OK to merge “Sessions column”?");
+    const asked = { ...need, ticket: { ...t, review: { question: "Everyone signed up before today becomes an email sign-in. Right?", less_sure: "" } } };
+    expect(mergeQuestion(asked)).toBe("Everyone signed up before today becomes an email sign-in. Right?");
+  });
+
+  it("shows who reviewed and who built only when the ticket says both", () => {
+    const ws = workspace([]);
+    expect(mergeChip(ws, ticket({ key: "SH-1", approved_by: CAPTAIN, assignee_id: BIRCH }))).toBe("Reviewed by Captain, built by Birch");
+    expect(mergeChip(ws, ticket({ key: "SH-2", assignee_id: BIRCH }))).toBeNull();
+    expect(mergeChip(ws, ticket({ key: "SH-3", approved_by: CAPTAIN }))).toBeNull();
+  });
+
+  it("names an agent's owner for the hover", () => {
+    const ws = workspace([]);
+    expect(ownerOf(ws, BIRCH)).toBe("Raghav's agent");
+    expect(ownerOf(ws, "nobody")).toBeNull();
   });
 });

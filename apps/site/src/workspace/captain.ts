@@ -313,3 +313,102 @@ export function catchUpText(c: CatchUp, needs: number): string {
   const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
   return `${away} ${list}.`;
 }
+
+/** The catch-up card's summary row: "3 shipped · 1 decided · 1 problem", leaving out zero counts. */
+export function catchUpSummary(c: CatchUp): string {
+  return [
+    c.shipped.length ? `${c.shipped.length} shipped` : null,
+    c.decided.length ? `${c.decided.length} decided` : null,
+    c.problems.length ? plural(c.problems.length, "problem") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+export type CatchUpItem = CatchUpLine & { type: "shipped" | "decided" | "problem" };
+
+/** Every catch-up line, oldest first, each marked with what kind of news it is. */
+export function catchUpItems(c: CatchUp): CatchUpItem[] {
+  return [
+    ...c.shipped.map((l) => ({ ...l, type: "shipped" as const })),
+    ...c.decided.map((l) => ({ ...l, type: "decided" as const })),
+    ...c.problems.map((l) => ({ ...l, type: "problem" as const })),
+  ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+}
+
+// ------------------------------------------------------------------ the timeline
+
+/** One thing in the conversation, in time order: a row, a decision card, or Captain's catch-up. */
+export type Entry = { kind: "row"; key: string; at: string; row: Row } | { kind: "card"; key: string; at: string; need: Need } | { kind: "catchup"; key: string; at: string };
+
+const rowAt = (r: Row) => (r.kind === "fold" ? r.turns[0].at : r.at);
+
+/**
+ * The conversation as one timeline: the folded rows, with a card for each need at the time it
+ * started waiting. A question Captain asked becomes its card in place; ticket needs are slotted in
+ * by time without reordering the messages. The catch-up, when there is one, comes last.
+ */
+export function timeline(rows: Row[], cards: Need[], catchUpAt?: string | null): Entry[] {
+  const asked = new Map(cards.filter((n) => n.turnId !== null).map((n) => [n.turnId, n]));
+  const out: Entry[] = rows.map((r) => {
+    const need = r.kind === "question" ? asked.get(r.id) : undefined;
+    return need ? { kind: "card", key: need.key, at: r.at, need } : { kind: "row", key: `${r.kind}:${r.id}`, at: rowAt(r), row: r };
+  });
+  const loose = cards.filter((n) => n.turnId === null || !rows.some((r) => r.kind === "question" && r.id === n.turnId)).sort((a, b) => Date.parse(a.since) - Date.parse(b.since));
+  for (const need of loose) {
+    const i = out.findIndex((e) => Date.parse(e.at) > Date.parse(need.since));
+    const entry: Entry = { kind: "card", key: need.key, at: need.since, need };
+    if (i < 0) out.push(entry);
+    else out.splice(i, 0, entry);
+  }
+  if (catchUpAt) out.push({ kind: "catchup", key: "catchup", at: catchUpAt });
+  return out;
+}
+
+/** The day divider above a message: "This morning", "This afternoon", "Yesterday", then the date. */
+export function dayLabel(iso: string, now = new Date()): string {
+  const d = new Date(iso);
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(now) - day(d)) / 86_400_000);
+  if (diff <= 0) return d.getHours() < 12 ? "This morning" : "This afternoon";
+  if (diff === 1) return "Yesterday";
+  return d.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric", ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}) });
+}
+
+/** A message's time: "8:40 am" (or "08:40" where clocks run on 24 hours). */
+export const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).replace(/\s?([AP])M$/i, (_, p: string) => ` ${p.toLowerCase()}m`);
+
+/** "3 quiet updates" */
+export const foldText = (n: number) => plural(n, "quiet update");
+
+// ------------------------------------------------------------------ decision cards
+
+/** What a card is about, after "Needs you · ". */
+export const NEED_WHAT: Record<NeedKind, string> = {
+  risky_merge: "a risky merge",
+  ticket_question: "a question on",
+  captain_question: "my question",
+  problem: "a problem on",
+};
+
+/**
+ * The one question on a risky-merge card. Captain's review question when it recorded one; otherwise
+ * the plain fallback (00-AMENDMENTS.md: "the question falls back to 'OK to merge this?'").
+ */
+export function mergeQuestion(need: Need): string {
+  return need.ticket?.review?.question?.trim() || `OK to merge ${named(need.ticket?.title ?? "this")}?`;
+}
+
+/** The evidence chip on a risky-merge card, from facts on the ticket only: "Reviewed by Captain, built by Birch". */
+export function mergeChip(ws: Workspace, t: Ticket): string | null {
+  if (!t.approved_by || !t.assignee_id) return null;
+  const who = (id: string) => (id === ws.project.lead_agent_id ? "Captain" : ws.nameOf(id));
+  return `Reviewed by ${who(t.approved_by)}, built by ${who(t.assignee_id)}`;
+}
+
+/** Whose agent this is, for the hover on a "Who's doing what" row: "James's agent". */
+export function ownerOf(ws: Workspace, agentId: string): string | null {
+  const a = ws.agentOf(agentId);
+  const name = a?.owner_profile_id ? ws.people.profiles.get(a.owner_profile_id)?.name : null;
+  return name ? `${name}'s agent` : null;
+}
