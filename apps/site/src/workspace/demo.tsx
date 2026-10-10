@@ -92,7 +92,13 @@ const tickets: Ticket[] = [
     approved_by: LEAD,
     approved_at: iso(12),
     updated_at: iso(11),
-    review: { question: "Everyone who is signed in now will be signed out once, when this ships. Is that OK?", less_sure: "Nothing I'm unsure about here." },
+    review: {
+      summary: "Sessions move from memory into a new Postgres table, so they survive a restart.",
+      question: "Everyone who is signed in now will be signed out once, when this ships. Is that OK?",
+      line: { file: "db/migrations/004_sessions.sql", code: "+create table sessions (\n+  id text primary key,\n+  user_id uuid not null references users,\n+  expires_at timestamptz not null\n+);", plain: "A new sessions table, one row per signed-in browser." },
+      decisions: ["DEC-1", "CON-2"],
+      less_sure: "I didn't try it against the live database's size; the table starts empty, so the first deploy should be quick.",
+    },
     needs_human: "Ready to merge — needs your OK: Everyone who is signed in now will be signed out once, when this ships. Is that OK? (db/migrations/004_sessions.sql)",
   }),
   ticket(6, { title: "Order history page", status: "backlog", type: "feature", priority: "low", parent_id: "t15" }),
@@ -122,6 +128,10 @@ const demoEvents = new Map<string, TicketEvent[]>([["t2", [
   { id: 3, ticket_id: "t2", actor_id: BUILDER, actor_type: "agent", kind: "status", data: { from: "ready", to: "in_progress" }, created_at: iso(50) },
   { id: 4, ticket_id: "t2", actor_id: BUILDER, actor_type: "agent", kind: "step", data: { status: "done", label: "Add the Google provider" }, created_at: iso(15) },
   { id: 5, ticket_id: "t2", actor_id: BUILDER, actor_type: "agent", kind: "pr", data: {}, created_at: iso(8) },
+]], ["t10", [
+  { id: 6, ticket_id: "t10", actor_id: LEAD, actor_type: "agent", kind: "created", data: {}, created_at: iso(90) },
+  { id: 7, ticket_id: "t10", actor_id: REVIEWER, actor_type: "agent", kind: "status", data: { from: "ready", to: "in_progress" }, created_at: iso(80) },
+  { id: 8, ticket_id: "t10", actor_id: REVIEWER, actor_type: "agent", kind: "status", data: { from: "in_progress", to: "review" }, created_at: iso(20) },
 ]]]);
 
 const agents: Agent[] = [
