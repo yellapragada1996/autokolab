@@ -210,7 +210,7 @@ export function ship(io: ShipIo, job: ShipJob): ShipResult {
       } else if (step === "push") {
         // Commits the agent made itself get the same check as the ones made here.
         const secret = pushedPaths(io, job.path, job.base).filter(looksPrivate);
-        if (secret.length) throw new Error(`These look like local secrets, so I didn't push anything: ${shown(secret)}. Take them out of the branch's history: deleting them in a later commit isn't enough.`);
+        if (secret.length) throw new Error(`These look like local secrets, so I didn't push anything: ${shown(secret)}. They're in the branch's commits; deleting the file isn't enough, the commits have to be redone without it.`);
         io.git(job.path, "push", "-q", "-u", "origin", `HEAD:refs/heads/${job.branch}`);
       } else {
         const found = io.gh(["pr", "list", "--repo", job.repo, "--head", job.branch, "--state", "open", "--json", "url", "--limit", "1"]);
