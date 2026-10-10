@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Project, Status } from "../lib/data";
+import type { Project, Status, TicketEvent } from "../lib/data";
 import { go, href, onNav, type ProjectView, type Route } from "../lib/router";
 import type { Profile } from "../lib/session";
 import { AgentAvatar, Button, Icon, Logo, PersonAvatar, Svg } from "../ui";
@@ -18,6 +18,7 @@ import { People } from "./People";
 import { Results, Settings } from "./Settings";
 import { plural } from "./story";
 import { TicketPage } from "./TicketPage";
+import { ShowWork } from "./ShowWork";
 import { useCaptainRoom, type DemoRoom } from "./useCaptainRoom";
 import { useWorkspace, type Workspace as WS } from "./useWorkspace";
 
@@ -70,6 +71,7 @@ export function Workspace({
   onProjectChanged,
   demo,
   demoRoom,
+  demoEvents,
 }: {
   project: Project;
   projects: Project[];
@@ -82,6 +84,7 @@ export function Workspace({
   /** Development preview data instead of the live project. */
   demo?: WS;
   demoRoom?: DemoRoom;
+  demoEvents?: Map<string, TicketEvent[]>;
 }) {
   const live = useWorkspace(demo ? null : project);
   const ws = demo ?? live.ws;
@@ -226,6 +229,7 @@ export function Workspace({
         />
       )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+      {ws && route.show && <ShowWork ws={ws} ticketKey={route.show.key} part={route.show.part} demoEvents={demoEvents} />}
     </div>
   );
 }

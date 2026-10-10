@@ -32,6 +32,36 @@ a:hover { color: var(--blue-hover); }
 button, input, textarea, select { font: inherit; color: inherit; }
 input::placeholder, textarea::placeholder { color: var(--faint); }
 :focus-visible { outline: 2px solid var(--text-muted); outline-offset: 2px; }
+
+.ak-show-backdrop { position: fixed; inset: 0; z-index: 60; background: var(--backdrop); display: flex; justify-content: flex-end; }
+.ak-show-sheet { width: 460px; max-width: 100%; height: 100%; background: var(--surface-sunken); border-left: 1px solid var(--line); color: var(--text); display: flex; flex-direction: column; min-width: 0; box-shadow: var(--shadow-lg); animation: ak-show-in 420ms var(--ease-out) both; }
+.ak-show-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--line-soft); }
+.ak-show-close { width: 44px; height: 44px; flex: none; border: 1px solid var(--line); border-radius: 10px; color: var(--text-secondary); background: transparent; font-size: 24px; cursor: pointer; }
+.ak-show-tabs { display: flex; gap: 4px; padding: 14px 20px 0; overflow-x: auto; }
+.ak-show-tabs button { min-height: 44px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); font: 14px var(--sans); white-space: nowrap; cursor: pointer; }
+.ak-show-tabs button[aria-selected="true"] { background: var(--surface-active); color: var(--text); }
+.ak-show-body { flex: 1; overflow-y: auto; min-width: 0; padding: 24px 26px 40px; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+.ak-show-body p { margin: 0 0 18px; }
+.ak-show-summary { font-size: 16px; line-height: 1.6; color: var(--text-secondary); }
+.ak-show-rows { margin: 24px 0; display: grid; gap: 12px; }
+.ak-show-rows > div { display: grid; grid-template-columns: 108px minmax(0, 1fr); gap: 12px; }
+.ak-show-rows dt { color: var(--text-muted); }
+.ak-show-rows dd { margin: 0; text-align: right; }
+.ak-show-rows code, .ak-show-file, .ak-show-history time { font-family: var(--mono); font-size: 12px; }
+.ak-show-done { border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.ak-show-done h3, .ak-show-change h3 { margin: 0 0 12px; color: var(--text-muted); font-size: 13px; font-weight: 500; }
+.ak-show-done ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.ak-show-done li { display: flex; align-items: baseline; gap: 10px; }
+.ak-show-tick, .ak-show-added { color: var(--green); }
+.ak-show-file { color: var(--text-secondary); margin-bottom: 8px !important; }
+.ak-show-change pre { margin: 0 0 18px; padding: 16px; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--text-secondary); font: 12px/1.6 var(--mono); }
+.ak-show-history { list-style: none; margin: 0 0 24px; padding: 0; display: grid; gap: 14px; }
+.ak-show-history li { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 12px; }
+.ak-show-history time, .ak-show-foot { color: var(--text-muted); }
+@keyframes ak-show-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+@media (max-width: 1099px) { .ak-show-backdrop { align-items: flex-end; } .ak-show-sheet { width: 100%; height: 85%; border-left: 0; border-top: 1px solid var(--line); border-radius: 18px 18px 0 0; animation-name: ak-show-up; } .ak-show-sheet::before { content: ""; width: 36px; height: 4px; border-radius: 4px; background: var(--line-strong); position: absolute; top: 8px; left: calc(50% - 18px); } .ak-show-header { padding-top: 24px; } @keyframes ak-show-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } } }
+@media (max-width: 390px) { .ak-show-header { padding-left: 16px; padding-right: 16px; } .ak-show-body { padding-left: 16px; padding-right: 16px; } .ak-show-tabs { padding-left: 12px; } .ak-show-rows > div { grid-template-columns: 92px minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .ak-show-sheet { animation: none; } }
 h1, h2, h3, p { margin: 0; }
 .mono { font-family: var(--mono); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
