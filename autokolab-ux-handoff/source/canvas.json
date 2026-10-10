@@ -1,0 +1,368 @@
+{
+  "v": 3,
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-10T15:05:00Z"
+  },
+  "title": "AutoKolab Wireframes",
+  "launch": {
+    "view": "canvas",
+    "page": "v2"
+  },
+  "pages": [
+    {
+      "id": "v1",
+      "name": "First pass"
+    },
+    {
+      "id": "v2",
+      "name": "Captain home"
+    }
+  ],
+  "boards": {
+    "Main.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1640,
+      "title": "Overview",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "CatchUp.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 1240,
+      "title": "Catch up",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Command.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "⌘K — tell Captain",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Plan.dc.html": {
+      "x": 4560,
+      "y": 0,
+      "w": 1440,
+      "h": 1160,
+      "title": "Captain's plan",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Board.dc.html": {
+      "x": 0,
+      "y": 2040,
+      "w": 1440,
+      "h": 1040,
+      "title": "Board",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Ticket.dc.html": {
+      "x": 1520,
+      "y": 2040,
+      "w": 1440,
+      "h": 1320,
+      "title": "Ticket AK-42",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Room.dc.html": {
+      "x": 3040,
+      "y": 2040,
+      "w": 1440,
+      "h": 1040,
+      "title": "Room",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Agents.dc.html": {
+      "x": 0,
+      "y": 3760,
+      "w": 1440,
+      "h": 1160,
+      "title": "People & agents",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Decisions.dc.html": {
+      "x": 1520,
+      "y": 3760,
+      "w": 1440,
+      "h": 1040,
+      "title": "Guide & decisions",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Settings.dc.html": {
+      "x": 3040,
+      "y": 3760,
+      "w": 1440,
+      "h": 1120,
+      "title": "Settings",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Results.dc.html": {
+      "x": 4560,
+      "y": 3760,
+      "w": 1440,
+      "h": 1080,
+      "title": "Results",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "PhoneCatchUp.dc.html": {
+      "x": 0,
+      "y": 5320,
+      "w": 390,
+      "h": 844,
+      "title": "Phone · Catch up",
+      "radius": 44,
+      "is_interactive": true
+    },
+    "PhoneDecision.dc.html": {
+      "x": 470,
+      "y": 5320,
+      "w": 390,
+      "h": 844,
+      "title": "Phone · Answer a question",
+      "radius": 44,
+      "is_interactive": true
+    },
+    "PhoneOverview.dc.html": {
+      "x": 940,
+      "y": 5320,
+      "w": 390,
+      "h": 844,
+      "title": "Phone · Overview",
+      "radius": 44,
+      "is_interactive": true
+    },
+    "PhoneGoal.dc.html": {
+      "x": 1410,
+      "y": 5320,
+      "w": 390,
+      "h": 844,
+      "title": "Phone · Goal",
+      "radius": 44,
+      "is_interactive": true
+    },
+    "Recovery.dc.html": {
+      "x": 1960,
+      "y": 5320,
+      "w": 1440,
+      "h": 1040,
+      "title": "Heads up · a bad day, handled",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "LeadHome.dc.html": {
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 1280,
+      "title": "Captain home",
+      "page": "v2",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "LeadEvidence.dc.html": {
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 1280,
+      "title": "How do you know? + Show the work",
+      "page": "v2",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "LeadSlideOver.dc.html": {
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 1000,
+      "title": "⌘L — Captain on any screen",
+      "page": "v2",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "RiskyOK.dc.html": {
+      "x": 0,
+      "y": 1680,
+      "w": 1440,
+      "h": 1000,
+      "title": "A risky OK asks one real question",
+      "page": "v2",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "SideThread.dc.html": {
+      "x": 1520,
+      "y": 1680,
+      "w": 1440,
+      "h": 1000,
+      "title": "Side thread with a worker",
+      "page": "v2",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "Conflict.dc.html": {
+      "x": 3040,
+      "y": 1680,
+      "w": 1440,
+      "h": 1000,
+      "title": "When two people disagree",
+      "page": "v2",
+      "expand": "fill",
+      "is_interactive": true
+    },
+    "PhoneLead.dc.html": {
+      "x": 0,
+      "y": 3080,
+      "w": 390,
+      "h": 844,
+      "title": "Phone · Captain home",
+      "page": "v2",
+      "radius": 44,
+      "is_interactive": true
+    },
+    "PhoneTiers.dc.html": {
+      "x": 470,
+      "y": 3080,
+      "w": 390,
+      "h": 844,
+      "title": "Phone · What reaches you",
+      "page": "v2",
+      "radius": 44,
+      "is_interactive": true
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "CatchUp.dc.html",
+    "Command.dc.html",
+    "Plan.dc.html",
+    "Board.dc.html",
+    "Ticket.dc.html",
+    "Room.dc.html",
+    "Agents.dc.html",
+    "Decisions.dc.html",
+    "Settings.dc.html",
+    "Results.dc.html",
+    "PhoneCatchUp.dc.html",
+    "PhoneDecision.dc.html",
+    "PhoneOverview.dc.html",
+    "PhoneGoal.dc.html",
+    "Recovery.dc.html",
+    "LeadHome.dc.html",
+    "LeadEvidence.dc.html",
+    "LeadSlideOver.dc.html",
+    "RiskyOK.dc.html",
+    "SideThread.dc.html",
+    "Conflict.dc.html",
+    "PhoneLead.dc.html",
+    "PhoneTiers.dc.html"
+  ],
+  "notes": {
+    "row1": {
+      "x": 0,
+      "y": -280,
+      "text": "Steering — minutes a day",
+      "kind": "title1",
+      "maxW": 6000,
+      "page": "v1"
+    },
+    "row2": {
+      "x": 0,
+      "y": 1760,
+      "text": "Building — the agents' hours",
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "v1"
+    },
+    "row3": {
+      "x": 0,
+      "y": 3480,
+      "text": "Team, rules and control",
+      "kind": "title1",
+      "maxW": 6000,
+      "page": "v1"
+    },
+    "row4a": {
+      "x": 0,
+      "y": 5040,
+      "text": "Phone — only for decisions",
+      "kind": "title1",
+      "maxW": 1800,
+      "page": "v1"
+    },
+    "row4b": {
+      "x": 1960,
+      "y": 5040,
+      "text": "A bad day, handled",
+      "kind": "title1",
+      "maxW": 1440,
+      "page": "v1"
+    },
+    "v2row1": {
+      "x": 0,
+      "y": -280,
+      "text": "Captain is home — talk, glance, dig in",
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "v2"
+    },
+    "v2row2": {
+      "x": 0,
+      "y": 1400,
+      "text": "The hard moments, made easy",
+      "kind": "title1",
+      "maxW": 4480,
+      "page": "v2"
+    },
+    "v2row3": {
+      "x": 0,
+      "y": 2800,
+      "text": "Phone — Captain in your pocket",
+      "kind": "title1",
+      "maxW": 1800,
+      "page": "v2"
+    },
+    "why1": {
+      "x": 4560,
+      "y": 0,
+      "w": 440,
+      "maxH": 640,
+      "fill": "gray",
+      "page": "v2",
+      "text": "Why row 1 looks like this\n\n• One column, nothing repeated. You talk in the conversation; the pinned briefing is the glance, and opens to show goals and who's doing what; the board and tickets are where you dig in. Chat alone hides state (HatchWorks), so the briefing carries it — not a second panel that repeats the conversation.\n\n• The briefing is pinned at the top: a resumption summary, so returning never means scrolling.\n\n• \"How do you know?\" shows evidence — tests, the exact commit, who reviewed, what Captain is unsure of — not a persuasive explanation. Explanations make people accept AI answers even when wrong (Bansal et al.).\n\n• As you type, Captain says how it will treat the request (\"big work, plan first\" vs \"small, I'll just do it\") — an intent preview."
+    },
+    "why2": {
+      "x": 4560,
+      "y": 1680,
+      "w": 440,
+      "maxH": 640,
+      "fill": "gray",
+      "page": "v2",
+      "text": "Why row 2 looks like this\n\n• A risky OK asks one specific question about the change instead of a rubber-stamp button. Light \"make you think\" steps cut over-reliance, but people dislike them — so only where risk is real (Buçinca et al.).\n\n• You can talk to a worker directly, but in a side thread Captain can see, so Captain stays your single point of contact.\n\n• When two people want different things, Captain doesn't guess: both get one card, Captain suggests a way forward, the admin breaks ties."
+    },
+    "why3": {
+      "x": 940,
+      "y": 3080,
+      "w": 440,
+      "maxH": 600,
+      "fill": "gray",
+      "page": "v2",
+      "text": "Why row 3 looks like this\n\n• Pull, not push. Getting back to a task after an alert took 11–16 min, and 27% of alerts led to 2+ hours away (Iqbal & Horvitz).\n\n• Three tiers: Blocking notifies — at a pause, not mid-typing. Can wait goes into the briefing. FYI never notifies.\n\n• Well-timed proactive help was liked by 90%; constant help by 47% (Need Help?, 2025)."
+    }
+  },
+  "designSystems": []
+}
