@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { MERGE_OK_PREFIX, type TicketEvent } from "../lib/data";
 import { parse, showHref } from "../lib/router";
-import { BIRCH, CAPTAIN, at, ticket, workspace } from "./fixtures";
-import { workHistory, workRows, workSummary } from "./showWork";
+import { BIRCH, CAPTAIN, ME, at, ticket, workspace } from "./fixtures";
+import { historyTime, workHistory, workRows, workSummary } from "./showWork";
 import { undoMessage, undoState } from "./showWork";
-import type { Turn } from "./captain";
+import { clock, type Turn } from "./captain";
 
 describe("Undo in Show the work", () => {
   const done = ticket({ key: "SH-14", title: "Filter search by price", status: "done", pr_url: "https://github.com/ana/shop/pull/40" });
@@ -60,9 +60,30 @@ describe("Show the work sentences", () => {
     const ws = workspace([]);
     const event = (id: number, kind: string, data: Record<string, unknown> = {}): TicketEvent => ({ id, ticket_id: "t", actor_id: CAPTAIN, actor_type: "agent", kind, data, created_at: at(`09:0${id}`) });
     expect(workHistory(ws, [event(3, "step", { status: "todo" }), event(2, "status", { from: "ready", to: "in_progress" }), event(1, "created")])).toEqual([
-      { id: 1, at: at("09:01"), text: "created this ticket" },
-      { id: 2, at: at("09:02"), text: "moved it from Ready to In progress" },
+      { id: 1, at: at("09:01"), text: "Captain created this ticket" },
+      { id: 2, at: at("09:02"), text: "Captain moved it from Ready to In progress" },
     ]);
+  });
+
+  it("names a person and Captain, and capitalizes an event with no actor", () => {
+    const ws = workspace([]);
+    const event = (id: number, actor_id: string | null): TicketEvent => ({ id, ticket_id: "t", actor_id, actor_type: actor_id === ME ? "human" : actor_id ? "agent" : null, kind: "created", data: {}, created_at: at("09:00") });
+    ws.nameOf = (id) => id === CAPTAIN ? "Agent's given name" : id === ME ? "Raghav" : "Someone";
+    expect(workHistory(ws, [event(1, ME), event(2, CAPTAIN), event(3, null)]).map((e) => e.text)).toEqual([
+      "Raghav created this ticket",
+      "Captain created this ticket",
+      "Created this ticket",
+    ]);
+  });
+
+  it("shows only the time today, the date this year, and the year for older events", () => {
+    const now = new Date(2026, 9, 10, 12);
+    const today = new Date(2026, 9, 10, 8, 40).toISOString();
+    const earlier = new Date(2026, 9, 9, 8, 40).toISOString();
+    const lastYear = new Date(2025, 9, 9, 8, 40).toISOString();
+    expect(historyTime(today, now)).toBe(clock(today));
+    expect(historyTime(earlier, now)).toBe(`9 Oct, ${clock(earlier)}`);
+    expect(historyTime(lastYear, now)).toBe(`9 Oct 2025, ${clock(lastYear)}`);
   });
 });
 
