@@ -163,7 +163,7 @@ function sentence(ws: Workspace, e: TicketEvent, t: Ticket): Sentence | null {
     case "comment":
       return { verb: "commented on" };
     case "approval":
-      return d.to ? { verb: "approved" } : d.reason === "pr_changed" ? null : { verb: "withdrew the approval on" };
+      return d.to ? { verb: "approved" } : d.reason === "pr_changed" || d.reason === "assignee_changed" ? null : { verb: "withdrew the approval on" };
     case "merge_ok":
       return d.by ? { verb: "OK'd the merge of" } : null;
     default:

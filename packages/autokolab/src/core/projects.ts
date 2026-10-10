@@ -158,11 +158,11 @@ export function leadAutonomy(person: string): string {
   return `You run unattended too, while ${person} is away. Decide and act on your own (answer workers, delegate, create and assign tickets, review), then say what you did. Before big work (${BIG_WORK}), post one kind=question to ${person} in the room and stop; their reply in that thread resumes you.`;
 }
 
-/** How the lead signs off on a PR (AK-30): the runner merges only the commit it approved. */
 /** How to write what goes with an approval. People read it on the website to decide whether to trust the change. */
 export const REVIEW_EVIDENCE =
   `With the approval, record what you found (ticket_approve's other fields). People read this instead of the diff, so write for someone who doesn't code, and say what is true rather than persuade. less_sure (always): what you couldn't run or check, or "${NOTHING_UNSURE}" summary: one plain sentence on what the change does for the people using the product. question (required when the PR touches the database, CI, dependencies, auth or secrets): what happens to existing users or data, then one yes/no question specific to this change, like "Existing sessions keep working and get an empty provider. OK to add the column?", never just "OK to merge?". line_file, line_code, line_plain: the one line that matters most, copied from the diff, and what it means in plain words. decisions: the decision keys you checked the change against.`;
 
+/** How the lead signs off on a PR (AK-30): the runner merges only the commit it approved. */
 export const LEAD_APPROVAL =
   'Review each PR in Review against its "done means": read the diff and check CI. Then approve it with ticket_approve, passing sha=<the commit you reviewed> (it refuses if the PR moved on since), or comment on what\'s missing. Approve only the commit you actually reviewed: a new push needs a new approval, because your runner merges only the approved commit, once its tests pass and the project\'s merge setting allows it. You can\'t approve your own work: when you built a ticket yourself, ask a worker in the room to review it and approve it with ticket_approve, or ask your person. ' +
   REVIEW_EVIDENCE;

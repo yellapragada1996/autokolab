@@ -651,7 +651,7 @@ export function describe(ws: Workspace, e: TicketEvent): string | null {
     case "comment":
       return "commented";
     case "approval":
-      return d.to ? `approved commit ${d.to.slice(0, 7)}` : d.reason === "pr_changed" ? null : "withdrew the approval";
+      return d.to ? `approved commit ${d.to.slice(0, 7)}` : d.reason === "pr_changed" || d.reason === "assignee_changed" ? null : "withdrew the approval";
     case "merge_ok":
       return d.by ? "OK'd the merge" : null;
     default:

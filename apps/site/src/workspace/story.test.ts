@@ -104,6 +104,7 @@ describe("activity", () => {
     expect(activity(ws, event(t, BIRCH, "branch", { branch: "x" }), t)).toBeNull();
     expect(activity(ws, event(t, BIRCH, "assignee", { to: BIRCH }), t)).toBeNull();
     expect(activity(ws, event(t, BIRCH, "approval", { to: null, reason: "pr_changed" }), t)).toBeNull();
+    expect(activity(ws, event(t, BIRCH, "approval", { to: null, reason: "assignee_changed" }), t)).toBeNull();
   });
 
   it("says what shipped when the ticket has a summary", () => {

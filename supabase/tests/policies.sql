@@ -600,7 +600,8 @@ select pg_temp.expect((select merge_policy = 'ask' from public.projects where sl
 
 -- ------------------------------------------------ nobody approves their own work (schema 13)
 reset role;
-update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000e1', assignee_type = 'agent' where key = 'MZ-1';
+-- MZ-1 goes back to Ready, so handing it around here doesn't make anyone one of its builders (schema 17)
+update public.tickets set status = 'ready', assignee_id = '00000000-0000-0000-0000-0000000000e1', assignee_type = 'agent' where key = 'MZ-1';
 set role authenticated;
 -- the lead built MZ-1: it can't approve it, or clear an approval on it
 set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
@@ -746,6 +747,64 @@ set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
 update public.tickets set pr_url = 'https://github.com/ana/modelz/pull/10' where key = 'MZ-1';
 select pg_temp.expect((select approved_sha is null and review is null from public.tickets where key = 'MZ-1'), 'a new PR link clears the review with the approval');
 reset role;
+
+-- ------------------------------------------------ nobody approves their own work by reassigning it (schema 17)
+reset role;
+-- MZ-2: the worker e2 is building it. MZ-3: the lead e1 built it and it's in Review.
+-- MZ-4: the lead was assigned while it was Ready, then handed it to e2 before work started.
+insert into public.tickets (id, project_id, number, key, title, reporter_id, status, assignee_id, assignee_type, pr_url) values
+  ('00000000-0000-0000-0000-0000000000aa', '00000000-0000-0000-0000-0000000000f1', 2, 'MZ-2', 'Worker builds',
+   '00000000-0000-0000-0000-0000000000e1', 'in_progress', '00000000-0000-0000-0000-0000000000e2', 'agent', 'https://github.com/octo/modelz/pull/20'),
+  ('00000000-0000-0000-0000-0000000000ab', '00000000-0000-0000-0000-0000000000f1', 3, 'MZ-3', 'Lead builds',
+   '00000000-0000-0000-0000-0000000000e1', 'review', '00000000-0000-0000-0000-0000000000e1', 'agent', 'https://github.com/octo/modelz/pull/21'),
+  ('00000000-0000-0000-0000-0000000000ac', '00000000-0000-0000-0000-0000000000f1', 4, 'MZ-4', 'Handed over early',
+   '00000000-0000-0000-0000-0000000000e1', 'ready', '00000000-0000-0000-0000-0000000000e1', 'agent', 'https://github.com/octo/modelz/pull/22');
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2']::uuid[] from public.tickets where key = 'MZ-2'), 'the assignee of a ticket in progress is a builder');
+select pg_temp.expect((select built_by = '{}' from public.tickets where key = 'MZ-4'), 'an assignee in Ready isn''t a builder yet');
+set role authenticated;
+-- nobody writes built_by directly
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+select pg_temp.expect_error($q$update public.tickets set built_by = '{}' where key = 'MZ-2'$q$, 'permission denied');
+-- an ordinary approval still works: the lead approves the worker's ticket, a person OKs the merge
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select pg_temp.expect((select approved_by = '00000000-0000-0000-0000-0000000000e1' and review is not null
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000aa', repeat('e1', 20), '{"less_sure": "none"}'::jsonb)), 'the lead approves a worker''s ticket');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select public.allow_merge('00000000-0000-0000-0000-0000000000aa');
+-- the worker hands its approved ticket to the lead: the approval, review and merge OK go, and history says why
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000e1' where key = 'MZ-2';
+select pg_temp.expect((select approved_sha is null and approved_by is null and approved_at is null and review is null
+  and merge_ok_by is null and merge_ok_at is null from public.tickets where key = 'MZ-2'), 'reassigning clears the approval, review and merge OK');
+-- and the worker can't approve it now that the lead holds it
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000aa', repeat('e2', 20))$q$, 'AUTOKOLAB_FORBIDDEN: You worked on this ticket');
+-- not even after it goes back to Ready
+update public.tickets set status = 'ready' where key = 'MZ-2';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000aa', repeat('e2', 20))$q$, 'AUTOKOLAB_FORBIDDEN: You worked on this ticket');
+reset role;
+select pg_temp.expect((select count(*) from public.ticket_events where ticket_id = '00000000-0000-0000-0000-0000000000aa'
+  and kind in ('approval', 'merge_ok') and data ->> 'reason' = 'assignee_changed') = 2, 'history records why the approval and merge OK went');
+set role authenticated;
+-- the lead hands its ticket to a worker and can't approve it
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000e2' where key = 'MZ-3';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000ab', repeat('e3', 20))$q$, 'AUTOKOLAB_FORBIDDEN: You worked on this ticket');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000ab', null)$q$, 'AUTOKOLAB_FORBIDDEN');
+-- a person still can
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect((select approved_by = '00000000-0000-0000-0000-0000000000b2'
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000ab', repeat('e3', 20))), 'a person approves after the hand-over');
+-- being assigned before work started doesn't count: the lead approves MZ-4 once e2 has built it
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000e2' where key = 'MZ-4';
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+update public.tickets set status = 'in_progress' where key = 'MZ-4';
+update public.tickets set status = 'review' where key = 'MZ-4';
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select pg_temp.expect((select approved_by = '00000000-0000-0000-0000-0000000000e1'
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000ac', repeat('e4', 20))), 'the lead approves a ticket it only held before work started');
+reset role;
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2']::uuid[] from public.tickets where key = 'MZ-4'), 'only the worker built MZ-4');
 
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
