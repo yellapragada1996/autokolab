@@ -13,8 +13,8 @@ import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineR
 import { installHook } from "./githook.js";
 import { ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, plainGhError, prNumber, readyToMergeMessage, type MergeDecision, type PrInfo } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
-import { SHIP_FAILED_PREFIX, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts, worktreeGitDir } from "./ship.js";
-import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, type Worktree } from "./repos.js";
+import { SHIP_FAILED_PREFIX, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
+import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
 // teammate asks it something, starts the agent headless in that thread's own worktree. It also
@@ -593,7 +593,7 @@ export class Runner {
       maxMinutes: cfg.limits.max_minutes,
     });
 
-    const branch = currentBranch(worktree.path) ?? worktree.branch;
+    const branch = currentBranch(worktree.clone, worktree.path) ?? worktree.branch;
     await ak.updateRun(run.id, { state, session_id: result.sessionId, branch, summary: report.slice(0, 16000), finished_at: now() });
     if (!quiet) await this.say(room.id, run.thread_root, sender.id, report);
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
@@ -870,11 +870,11 @@ export class Runner {
       pendingPlan = null;
       if (plan) syncing = syncing.then(() => p.syncSteps(t.key, plan)).catch((e) => this.log(`Couldn't update ${t.key}'s steps: ${(e as Error).message}`));
     };
-    let lastSha = headCommit(worktree.path)?.sha;
+    let lastSha = headCommit(worktree.clone, worktree.path)?.sha;
     const timers = [
       setInterval(flushPlan, 3000),
       setInterval(() => {
-        const h = headCommit(worktree.path);
+        const h = headCommit(worktree.clone, worktree.path);
         if (!h || h.sha === lastSha) return;
         lastSha = h.sha;
         if (!sawPlan) void this.setStatus("building", `Committed: ${h.subject}`.slice(0, 200), t.id);
@@ -972,7 +972,7 @@ export class Runner {
     const where = `on ${ak.ownerName(ak.me)}'s machine`;
     // Git is pointed at the clone's own record of this worktree, never at the `.git` link inside
     // the folder: the agent could have replaced that, and the runner isn't sandboxed.
-    const gitDir = worktreeGitDir(clonePath(repo), worktree.path);
+    const gitDir = worktreeGitDir(worktree.clone, worktree.path);
     if (!gitDir) return { problem: shipNeedsHuman("commit", "not one of the runner's working copies", where) };
     const io = trustedIo(gitDir);
     let branch: string;

@@ -1,7 +1,5 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { gh, plainGhError } from "./merge.js";
+import { trustedGit } from "./repos.js";
 
 // Delivering an agent's work when the agent can't (AK-46). Some agents run in a sandbox that can't
 // write the repository's Git data, reach GitHub or use `gh` (Codex on a company account). The runner
@@ -107,47 +105,9 @@ export interface ShipIo {
   gh(args: string[]): { ok: boolean; out: string; err: string };
 }
 
-const GIT_ENV = {
-  ...process.env,
-  GIT_TERMINAL_PROMPT: "0",
-  GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
-};
-
-const real = (p: string) => (existsSync(p) ? realpathSync(p) : p);
-
-/**
- * The Git folder for one of the clone's worktrees, read from the clone's own records
- * (`<clone>/.git/worktrees/<name>/gitdir`), which an agent can't write. Null if `path` isn't one.
- */
-export function worktreeGitDir(clone: string, path: string): string | null {
-  const root = join(clone, ".git", "worktrees");
-  if (!existsSync(root)) return null;
-  for (const name of readdirSync(root)) {
-    try {
-      const link = readFileSync(join(root, name, "gitdir"), "utf8").trim(); // "<worktree>/.git"
-      if (real(dirname(link)) === real(path)) return join(root, name);
-    } catch {
-      // Not a worktree record.
-    }
-  }
-  return null;
-}
-
-/** Git run against a known Git folder, whatever the `.git` link inside the working copy says. */
+/** Git run against a known Git folder (`trustedGit` in repos.ts), and this machine's `gh`. */
 export function trustedIo(gitDir: string): ShipIo {
-  return {
-    git: (cwd, ...args) => {
-      try {
-        const env = { ...GIT_ENV, GIT_DIR: gitDir, GIT_WORK_TREE: cwd };
-        // Only the end is trimmed: `status --porcelain` lines can start with a space that matters.
-        return execFileSync("git", args, { cwd, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 }).trimEnd();
-      } catch (e) {
-        const x = e as { stderr?: string; stdout?: string; message: string };
-        throw new Error((x.stderr || x.stdout || x.message).toString().trim());
-      }
-    },
-    gh,
-  };
+  return { git: trustedGit(gitDir), gh };
 }
 
 /** What the worktree holds that GitHub's default branch doesn't. */
