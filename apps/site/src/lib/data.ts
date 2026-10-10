@@ -133,6 +133,18 @@ export interface Ticket {
   merge_ok_at?: string | null;
   /** One plain sentence on what the ticket changed, set at Review (schema 14; absent before it). */
   summary?: string | null;
+  /** What the reviewer recorded with its approval (schema 16): the evidence behind "How do you know?". */
+  review?: Review | null;
+}
+
+export interface Review {
+  summary?: string;
+  /** For a risky change: the one yes/no question a person is asked before it merges. */
+  question?: string;
+  line?: { file: string; code: string; plain?: string };
+  decisions?: string[];
+  /** Where the reviewer is less sure. Always present. */
+  less_sure: string;
 }
 
 export interface Step {

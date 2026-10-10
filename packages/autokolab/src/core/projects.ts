@@ -101,7 +101,25 @@ export interface Ticket {
   merge_ok_at?: string | null;
   /** One plain sentence on what the ticket changed (schema 14). Missing on older databases. */
   summary?: string | null;
+  /** What the reviewer recorded with its approval (schema 16). */
+  review?: Review | null;
 }
+
+/** What a reviewer records when it approves a commit: the evidence behind "How do you know?". */
+export interface Review {
+  /** One plain sentence on what the change does. */
+  summary?: string;
+  /** For a risky change: the one yes/no question a person is asked before it merges. */
+  question?: string;
+  /** The line that matters, and what it means in plain words. */
+  line?: { file: string; code: string; plain?: string };
+  /** The decision keys the change was checked against. */
+  decisions?: string[];
+  /** Where the reviewer is less sure. Always present. */
+  less_sure: string;
+}
+
+export const NOTHING_UNSURE = "Nothing I'm unsure about here.";
 
 export interface Step {
   ticket_id: string;
@@ -141,8 +159,13 @@ export function leadAutonomy(person: string): string {
 }
 
 /** How the lead signs off on a PR (AK-30): the runner merges only the commit it approved. */
+/** How to write what goes with an approval. People read it on the website to decide whether to trust the change. */
+export const REVIEW_EVIDENCE =
+  `With the approval, record what you found (ticket_approve's other fields). People read this instead of the diff, so write for someone who doesn't code, and say what is true rather than persuade. less_sure (always): what you couldn't run or check, or "${NOTHING_UNSURE}" summary: one plain sentence on what the change does for the people using the product. question (required when the PR touches the database, CI, dependencies, auth or secrets): what happens to existing users or data, then one yes/no question specific to this change, like "Existing sessions keep working and get an empty provider. OK to add the column?", never just "OK to merge?". line_file, line_code, line_plain: the one line that matters most, copied from the diff, and what it means in plain words. decisions: the decision keys you checked the change against.`;
+
 export const LEAD_APPROVAL =
-  'Review each PR in Review against its "done means": read the diff and check CI. Then approve it with ticket_approve, passing sha=<the commit you reviewed> (it refuses if the PR moved on since), or comment on what\'s missing. Approve only the commit you actually reviewed: a new push needs a new approval, because your runner merges only the approved commit, once its tests pass and the project\'s merge setting allows it. You can\'t approve your own work: when you built a ticket yourself, ask a worker in the room to review it and approve it with ticket_approve, or ask your person.';
+  'Review each PR in Review against its "done means": read the diff and check CI. Then approve it with ticket_approve, passing sha=<the commit you reviewed> (it refuses if the PR moved on since), or comment on what\'s missing. Approve only the commit you actually reviewed: a new push needs a new approval, because your runner merges only the approved commit, once its tests pass and the project\'s merge setting allows it. You can\'t approve your own work: when you built a ticket yourself, ask a worker in the room to review it and approve it with ticket_approve, or ask your person. ' +
+  REVIEW_EVIDENCE;
 
 /** What the lead does. Shown to the lead in project_brief. */
 export function leadGuide(project: string, people: string[]): string {
@@ -587,12 +610,15 @@ export class ProjectView {
   }
 
   /** Record the PR head commit the lead (or a person) approved, through approve_ticket (schema 12). */
-  async approve(ref: string, sha: string): Promise<Ticket> {
+  async approve(ref: string, sha: string, review?: Review): Promise<Ticket> {
     const t = await this.ticket(ref);
-    const r = await this.sb.rpc("approve_ticket", { p_ticket: t.id, p_sha: sha.toLowerCase() });
-    if (r.error && /approve_ticket/.test(r.error.message) && !r.error.message.includes("AUTOKOLAB_")) {
-      throw new AutoKolabError("This AutoKolab server can't record approvals yet (it needs schema 12).");
-    }
+    if (review) this.noSecrets(review.summary, review.question, review.less_sure, review.line?.code, review.line?.plain);
+    const args = { p_ticket: t.id, p_sha: sha.toLowerCase() };
+    const missing = (e: { message: string } | null) => !!e && /approve_ticket/.test(e.message) && !e.message.includes("AUTOKOLAB_");
+    let r = await this.sb.rpc("approve_ticket", review ? { ...args, p_review: review } : args);
+    // A database from before schema 16 doesn't take the review: the approval still counts.
+    if (review && missing(r.error)) r = await this.sb.rpc("approve_ticket", args);
+    if (missing(r.error)) throw new AutoKolabError("This AutoKolab server can't record approvals yet (it needs schema 12).");
     return check<Ticket>(r);
   }
 

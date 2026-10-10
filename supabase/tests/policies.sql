@@ -702,6 +702,51 @@ select pg_temp.expect((select count(*) from public.project_reads) = 0, 'an outsi
 reset role;
 select pg_temp.expect((select count(*) from public.project_reads) = 2, 'two people, two rows');
 
+-- ------------------------------------------------ the review that comes with an approval (schema 16)
+reset role;
+-- MZ-1 is Mona's (b2) by now; the lead (e1) reviews it.
+update public.tickets set pr_url = 'https://github.com/ana/modelz/pull/9', assignee_id = '00000000-0000-0000-0000-0000000000e2', assignee_type = 'agent' where key = 'MZ-1';
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+-- approving without a review still works (older helpers, people on the website)
+select pg_temp.expect((select approved_sha = repeat('d1', 20) and review is null
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('d1', 20))), 'an approval without a review');
+-- a full review is stored trimmed, with unknown fields dropped
+select pg_temp.expect((select review = '{"summary": "Sessions remember which provider signed you in", "question": "Existing sessions keep working and get an empty provider. OK to add the column?", "less_sure": "I did not run it against a copy of production data.", "line": {"file": "sql/017_provider.sql", "code": "alter table sessions add column provider text;", "plain": "Adds one empty column; nothing is rewritten."}, "decisions": ["DEC-19", "CON-15"]}'::jsonb
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('d2', 20),
+    '{"summary": "  Sessions remember which provider signed you in ", "question": "Existing sessions keep working and get an empty provider. OK to add the column?", "less_sure": "I did not run it against a copy of production data.", "line": {"file": "sql/017_provider.sql", "code": "alter table sessions add column provider text;", "plain": "Adds one empty column; nothing is rewritten."}, "decisions": ["DEC-19", "CON-15"], "mood": "confident"}'::jsonb)),
+  'a review is stored with the approval');
+-- less_sure is required whenever a review is given
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('d3', 20), '{"summary": "x"}'::jsonb)$q$, 'AUTOKOLAB_BAD_REVIEW: Say where you''re less sure');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('d3', 20), '{"less_sure": "   "}'::jsonb)$q$, 'AUTOKOLAB_BAD_REVIEW');
+-- wrong shapes, long text and secrets are refused, and the earlier approval stays
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('d3', 20), '"looks fine"'::jsonb)$q$, 'AUTOKOLAB_BAD_REVIEW');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('d3', 20), '{"less_sure": "none", "summary": 5}'::jsonb)$q$, 'AUTOKOLAB_BAD_REVIEW: "summary" must be text');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('d3', 20), jsonb_build_object('less_sure', 'none', 'summary', repeat('x', 301)))$q$, 'too long');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('d3', 20), '{"less_sure": "none", "line": {"file": "a.ts"}}'::jsonb)$q$, 'needs both the file and the code');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('d3', 20), '{"less_sure": "none", "decisions": ["the one about merging"]}'::jsonb)$q$, 'decision keys');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('d3', 20), '{"less_sure": "the token ghp_abcdefghijklmnopqrstuvwxyz0123456789 is in the diff"}'::jsonb)$q$, 'AUTOKOLAB_SECRET');
+select pg_temp.expect((select approved_sha = repeat('d2', 20) and review ->> 'summary' = 'Sessions remember which provider signed you in' from public.tickets where key = 'MZ-1'), 'a refused review changes nothing');
+-- nobody writes the review directly
+select pg_temp.expect_error($q$update public.tickets set review = '{"less_sure": "none"}'::jsonb where key = 'MZ-1'$q$, 'permission denied');
+-- a worker can't attach a review to a worker's ticket any more than it can approve it
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e4';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('d3', 20), '{"less_sure": "none"}'::jsonb)$q$, 'AUTOKOLAB_FORBIDDEN');
+-- history keeps the review
+reset role;
+select pg_temp.expect((select data -> 'review' ->> 'question' like 'Existing sessions keep working%' and data ->> 'to' = repeat('d2', 20)
+  from public.ticket_events where ticket_id = '00000000-0000-0000-0000-0000000000a9' and kind = 'approval' order by id desc limit 1), 'history records the review');
+-- clearing the approval clears the review
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select pg_temp.expect((select approved_sha is null and review is null from public.approve_ticket('00000000-0000-0000-0000-0000000000a9', null)), 'clearing the approval clears the review');
+-- and so does a new PR link
+select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('d4', 20), '{"less_sure": "Nothing I''m unsure about here."}'::jsonb);
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+update public.tickets set pr_url = 'https://github.com/ana/modelz/pull/10' where key = 'MZ-1';
+select pg_temp.expect((select approved_sha is null and review is null from public.tickets where key = 'MZ-1'), 'a new PR link clears the review with the approval');
+reset role;
+
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
 select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from unnest(array[
