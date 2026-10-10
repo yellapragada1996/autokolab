@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { dirname, join, sep } from "node:path";
 import { dataDir, readConfigFile } from "../core/config.js";
 import { which } from "../setup/agents.js";
 
@@ -79,12 +79,12 @@ export function worktreePath(agent: string, repo: string, threadRoot: number): s
 
 /** The worktree for this agent's task thread; follow-ups in the thread reuse it. */
 export function ensureWorktree(agent: string, repo: string, threadRoot: number): Worktree {
-  return attachWorktree(ensureClone(repo), worktreePath(agent, repo, threadRoot), `ak/${agent}/t${threadRoot}`);
+  return attachWorktree(ensureClone(repo), worktreePath(agent, repo, threadRoot), `ak/${agent}/t${threadRoot}`, join(dataDir(), "worktrees", agent));
 }
 
 /** The worktree for one ticket, on the ticket's branch (continuing it if it's already on GitHub). */
 export function ensureTicketWorktree(agent: string, repo: string, key: string, branch: string): Worktree {
-  return attachWorktree(ensureClone(repo), join(dataDir(), "worktrees", agent, repo.replace("/", "-"), key), branch);
+  return attachWorktree(ensureClone(repo), join(dataDir(), "worktrees", agent, repo.replace("/", "-"), key), branch, join(dataDir(), "worktrees", agent));
 }
 
 /** "VV-12" + "Add Google sign-in!" → "vv-12-add-google-sign-in". */
@@ -93,7 +93,24 @@ export function ticketBranch(key: string, title: string): string {
   return `${key.toLowerCase()}${slug ? `-${slug}` : ""}`.slice(0, 60).replace(/-+$/, "");
 }
 
-function attachWorktree(clone: string, path: string, branch: string): Worktree {
+/** Where `branch` is checked out among the clone's worktrees, if anywhere. */
+export function worktreeWithBranch(clone: string, branch: string): string | null {
+  let path: string | null = null;
+  for (const line of git(clone, "worktree", "list", "--porcelain").split("\n")) {
+    if (line.startsWith("worktree ")) path = line.slice("worktree ".length);
+    else if (line === `branch refs/heads/${branch}` && path) return path;
+  }
+  return null;
+}
+
+const real = (p: string) => (existsSync(p) ? realpathSync(p) : p);
+
+/**
+ * `agentRoot`: this agent's worktrees. If the branch is already checked out in one of them (say a
+ * room thread made it and a ticket now continues it), that worktree lets go of it when it has
+ * nothing unsaved, or is used as is when it does, instead of `git worktree add` failing.
+ */
+export function attachWorktree(clone: string, path: string, branch: string, agentRoot: string): Worktree {
   const base = defaultBranch(clone);
   if (existsSync(join(path, ".git"))) {
     // A follow-up: bring in what others have pushed since, without touching the work.
@@ -112,6 +129,15 @@ function attachWorktree(clone: string, path: string, branch: string): Worktree {
   git(clone, "worktree", "prune");
   mkdirSync(dirname(path), { recursive: true });
   const has = (ref: string) => spawnSync("git", ["rev-parse", "--verify", "--quiet", ref], { cwd: clone }).status === 0;
+  const other = has(`refs/heads/${branch}`) ? worktreeWithBranch(clone, branch) : null;
+  if (other) {
+    const o = real(other);
+    if (!o.startsWith(real(agentRoot) + sep)) {
+      throw new Error(`Branch ${branch} is already checked out at ${other}, outside this agent's worktrees. Switch that checkout to another branch, then try again.`);
+    }
+    if (git(o, "status", "--porcelain")) return { path: o, branch, base, created: false };
+    git(o, "switch", "--quiet", "--detach");
+  }
   if (has(`refs/heads/${branch}`)) git(clone, "worktree", "add", path, branch);
   else if (has(`refs/remotes/origin/${branch}`)) git(clone, "worktree", "add", "-b", branch, path, `origin/${branch}`);
   else git(clone, "worktree", "add", "-b", branch, path, `origin/${base}`);

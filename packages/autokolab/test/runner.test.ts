@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -10,9 +10,9 @@ import { installHook } from "../src/runner/githook.js";
 import { buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "../src/runner/prompt.js";
 import { needsRunner } from "../src/setup/connect.js";
 import { STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
-import { clonePath, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "../src/runner/repos.js";
+import { clonePath, ensureTicketWorktree, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "../src/runner/repos.js";
 import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, leadGuide, questionsForLead, untriaged, type Comment, type Ticket } from "../src/core/projects.js";
-import { RISKY_PATHS, approvalMessage, checkResult, isRiskyPath, mergeDecision, mergeNeedsHuman, mergedComment, plainGhError, readyToMergeMessage, reviewedShaProblem, shortList, type PrInfo } from "../src/runner/merge.js";
+import { MERGE_FIELDS, RISKY_PATHS, approvalMessage, checkResult, isRiskyPath, mergeDecision, mergeNeedsHuman, mergedComment, plainGhError, readyToMergeMessage, reviewedShaProblem, shortList, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
@@ -309,6 +309,11 @@ describe("tickets", () => {
     expect(p).toContain("SH-2 · Add Google sign-in");
     expect(p).toContain("Never commit to, push to or merge into: main");
     expect(p).toContain("ticket_update key=SH-2 status=review");
+  });
+  it("tells the agent to open the PR against the default branch, even when stacked (AK-36)", () => {
+    const p = buildTicketPrompt({ myName: "b", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg: cfgFor(), worktree: { ...wt, base: "trunk" }, followUp: false, newComments: null });
+    expect(p).toContain("against trunk (always trunk, even when your branch builds on someone's unmerged branch: `gh pr create --base trunk`)");
+    expect(defaultRules("main")).toContain("Open a pull request against main (even when your branch builds on unmerged work)");
   });
   it("asks the lead in the room first; needs_human only for product choices; lead comments are instructions", () => {
     const p = buildTicketPrompt({ myName: "builder", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg: cfgFor(), worktree: wt, followUp: false, newComments: null });
@@ -618,6 +623,27 @@ describe("worktrees per task thread", () => {
     expect(ensureWorktree("lee-claude", repo, 8).branch).toBe("zones-api");
   });
 
+  it("starts a ticket whose branch another of the agent's worktrees has checked out (AK-36)", () => {
+    // A room thread made the branch; a ticket now continues it. That worktree is clean, so it lets go.
+    const thread = ensureWorktree("lee-claude", repo, 126);
+    const t = ensureTicketWorktree("lee-claude", repo, "AK-23", "ak/lee-claude/t126");
+    expect(t).toMatchObject({ branch: "ak/lee-claude/t126", created: true });
+    expect(t.path).not.toBe(thread.path);
+    expect(git(t.path, "branch", "--show-current")).toBe("ak/lee-claude/t126");
+    expect(git(thread.path, "branch", "--show-current")).toBe("");
+
+    // With unsaved work there, the ticket uses that worktree as is.
+    const busy = ensureWorktree("lee-claude", repo, 127);
+    writeFileSync(join(busy.path, "wip.txt"), "unsaved");
+    const t2 = ensureTicketWorktree("lee-claude", repo, "AK-24", "ak/lee-claude/t127");
+    expect(t2).toMatchObject({ path: realpathSync(busy.path), branch: "ak/lee-claude/t127", created: false });
+    expect(existsSync(join(t2.path, "wip.txt"))).toBe(true);
+
+    // Another agent's worktree is never touched.
+    ensureWorktree("lee-codex", repo, 128);
+    expect(() => ensureTicketWorktree("lee-claude", repo, "AK-25", "ak/lee-codex/t128")).toThrow(/already checked out at .* outside this agent's worktrees/);
+  });
+
   it("prunes only old, clean, fully pushed worktrees", () => {
     const clean = ensureWorktree("pruner", repo, 1);
     const dirty = ensureWorktree("pruner", repo, 2);
@@ -728,56 +754,68 @@ describe("the lead's auto-merge (AK-30)", () => {
   });
 
   it("waits unless the PR is open", () => {
-    expect(mergeDecision("auto_all", pr({ state: "CLOSED" }), approved)).toMatchObject({ action: "wait", why: "the PR is closed" });
-    expect(mergeDecision("auto_all", pr({ state: "MERGED" }), approved).action).toBe("wait");
+    expect(mergeDecision("auto_all", pr({ state: "CLOSED" }), approved, "main")).toMatchObject({ action: "wait", why: "the PR is closed" });
+    expect(mergeDecision("auto_all", pr({ state: "MERGED" }), approved, "main").action).toBe("wait");
+  });
+  it("won't merge a PR that targets another branch, and says how to retarget it (AK-36)", () => {
+    expect(MERGE_FIELDS.split(",")).toEqual(expect.arrayContaining(["number", "baseRefName"]));
+    const d = mergeDecision("auto_all", pr({ number: 20, baseRefName: "ak-31-the-helper" }), approved, "main");
+    expect(d).toMatchObject({ action: "wait", why: "the PR targets ak-31-the-helper, not main" });
+    expect(d.question).toBe(`${MERGE_FAILED_PREFIX}: PR #20 targets ak-31-the-helper, not main; retarget it with \`gh pr edit 20 --base main\`.`);
+    expect(isMergeQuestion(d.question)).toBe(true);
+    // Once retargeted, the question clears and it merges as usual.
+    const running = mergeDecision("auto_all", pr({ number: 20, baseRefName: "main", statusCheckRollup: [{ name: "checks", status: "IN_PROGRESS", conclusion: null }] }), approved, "main");
+    expect(mergeNeedsHuman(d.question!, running)).toBeNull();
+    expect(mergeDecision("auto_all", pr({ number: 20, baseRefName: "main" }), approved, "main").action).toBe("merge");
+    expect(mergeDecision("auto_all", pr({ baseRefName: "trunk" }), approved, "trunk").action).toBe("merge");
   });
   it("waits without an approval, or when the PR moved past the approved commit", () => {
-    expect(mergeDecision("auto_all", pr(), { approved_sha: null, merge_ok_by: null }).action).toBe("wait");
-    const moved = mergeDecision("auto_all", pr({ headRefOid: OTHER }), approved);
+    expect(mergeDecision("auto_all", pr(), { approved_sha: null, merge_ok_by: null }, "main").action).toBe("wait");
+    const moved = mergeDecision("auto_all", pr({ headRefOid: OTHER }), approved, "main");
     expect(moved).toMatchObject({ action: "wait", question: undefined });
     expect(moved.why).toMatch(/moved to bbbbbbb after the lead approved aaaaaaa; it needs a new approval/);
-    expect(mergeDecision("auto_all", pr({ headRefOid: SHA.toUpperCase() }), approved).action).toBe("merge");
+    expect(mergeDecision("auto_all", pr({ headRefOid: SHA.toUpperCase() }), approved, "main").action).toBe("merge");
   });
   it("asks a person about conflicts, and waits while GitHub works out mergeability", () => {
-    const c = mergeDecision("auto_all", pr({ mergeable: "CONFLICTING" }), approved);
+    const c = mergeDecision("auto_all", pr({ mergeable: "CONFLICTING" }), approved, "main");
     expect(c.action).toBe("wait");
     expect(c.question).toMatch(new RegExp(`^${MERGE_FAILED_PREFIX}: the PR has conflicts`));
-    expect(mergeDecision("auto_all", pr({ mergeable: "UNKNOWN" }), approved)).toMatchObject({ action: "wait", question: undefined });
+    expect(mergeDecision("auto_all", pr({ mergeable: "UNKNOWN" }), approved, "main")).toMatchObject({ action: "wait", question: undefined });
   });
   it("waits with a plain question when no checks ran", () => {
     for (const statusCheckRollup of [[], null, undefined]) {
-      expect(mergeDecision("auto_all", pr({ statusCheckRollup }), approved)).toMatchObject({ action: "wait", question: NO_CHECKS_QUESTION });
+      expect(mergeDecision("auto_all", pr({ statusCheckRollup }), approved, "main")).toMatchObject({ action: "wait", question: NO_CHECKS_QUESTION });
     }
   });
   it("waits on any failed or pending check", () => {
-    const failed = mergeDecision("auto_all", pr({ statusCheckRollup: [ok(), { name: "checks", status: "COMPLETED", conclusion: "FAILURE" }] }), approved);
+    const failed = mergeDecision("auto_all", pr({ statusCheckRollup: [ok(), { name: "checks", status: "COMPLETED", conclusion: "FAILURE" }] }), approved, "main");
     expect(failed).toMatchObject({ action: "wait", question: undefined, why: "checks didn't pass" });
-    const pending = mergeDecision("auto_all", pr({ statusCheckRollup: [ok("lint"), { name: "checks", status: "IN_PROGRESS", conclusion: null }] }), approved);
+    const pending = mergeDecision("auto_all", pr({ statusCheckRollup: [ok("lint"), { name: "checks", status: "IN_PROGRESS", conclusion: null }] }), approved, "main");
     expect(pending).toMatchObject({ action: "wait", why: "checks still running" });
   });
   it("ask: tells the person instead of merging, risky or not", () => {
-    expect(mergeDecision("ask", pr(), approved).action).toBe("ask");
-    expect(mergeDecision("ask", pr(risky), approved).action).toBe("ask");
+    expect(mergeDecision("ask", pr(), approved, "main").action).toBe("ask");
+    expect(mergeDecision("ask", pr(risky), approved, "main").action).toBe("ask");
   });
   it("auto_safe: merges safe changes; risky ones wait for a person's OK", () => {
-    expect(mergeDecision("auto_safe", pr(), approved)).toMatchObject({ action: "merge", risky: [] });
-    const d = mergeDecision("auto_safe", pr(risky), approved);
+    expect(mergeDecision("auto_safe", pr(), approved, "main")).toMatchObject({ action: "merge", risky: [] });
+    const d = mergeDecision("auto_safe", pr(risky), approved, "main");
     expect(d).toMatchObject({ action: "needs_ok", risky: ["supabase/tests/policies.sql"] });
     expect(d.question).toBe(`${MERGE_OK_PREFIX} supabase/tests/policies.sql`);
-    expect(mergeDecision("auto_safe", pr(risky), { ...approved, merge_ok_by: "person" }).action).toBe("merge");
+    expect(mergeDecision("auto_safe", pr(risky), { ...approved, merge_ok_by: "person" }, "main").action).toBe("merge");
   });
   it("auto_all: merges risky changes too", () => {
-    expect(mergeDecision("auto_all", pr(risky), approved).action).toBe("merge");
+    expect(mergeDecision("auto_all", pr(risky), approved, "main").action).toBe("merge");
   });
   it("keeps the needs-OK question short", () => {
     const many = Array.from({ length: 9 }, (_, i) => ({ path: `supabase/m${i}.sql` }));
-    expect(mergeDecision("auto_safe", pr({ files: many }), approved).question).toMatch(/m4\.sql and 4 more$/);
+    expect(mergeDecision("auto_safe", pr({ files: many }), approved, "main").question).toMatch(/m4\.sql and 4 more$/);
     expect(shortList(["a", "b"])).toBe("a, b");
   });
   it("treats a PR too big for gh to list in full as risky", () => {
     const big = Array.from({ length: 100 }, (_, i) => ({ path: `src/f${i}.ts` }));
-    expect(mergeDecision("auto_safe", pr({ files: big }), approved)).toMatchObject({ action: "needs_ok", risky: ["100+ files, too many to check"] });
-    expect(mergeDecision("auto_safe", pr({ files: big.slice(1) }), approved).action).toBe("merge");
+    expect(mergeDecision("auto_safe", pr({ files: big }), approved, "main")).toMatchObject({ action: "needs_ok", risky: ["100+ files, too many to check"] });
+    expect(mergeDecision("auto_safe", pr({ files: big.slice(1) }), approved, "main").action).toBe("merge");
   });
 
   it("words the approval and the messages for the setting", () => {

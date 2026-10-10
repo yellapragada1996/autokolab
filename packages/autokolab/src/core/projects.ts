@@ -166,7 +166,7 @@ export function defaultRules(defaultBranch: string): string {
     "- Only work on tickets assigned to you that are in Ready or In progress.",
     "- When you start, move the ticket to In progress and plan the steps on it.",
     "- One branch per ticket, named <ticket key>-<short-title>. Commit and push early so others can see your work.",
-    `- Never push to ${defaultBranch}. Open a pull request and move the ticket to Review.`,
+    `- Never push to ${defaultBranch}. Open a pull request against ${defaultBranch} (even when your branch builds on unmerged work) and move the ticket to Review.`,
     '- Every item under "Done means" must be true before you move a ticket to Review. Run the tests and the type checker first.',
     "- Follow the decisions. If you need to break one, ask first.",
     '- If something is ambiguous, set "Needs you" on the ticket with a short question.',

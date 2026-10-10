@@ -32,16 +32,19 @@ export interface PrCheck {
   state?: string;
 }
 
-/** `gh pr view --json state,headRefOid,mergeable,statusCheckRollup,files`. */
+/** `gh pr view --json number,state,baseRefName,headRefOid,mergeable,statusCheckRollup,files`. */
 export interface PrInfo {
+  number?: number;
   state: string;
+  /** The branch the PR merges into. */
+  baseRefName?: string;
   headRefOid: string;
   mergeable?: string;
   statusCheckRollup?: PrCheck[] | null;
   files?: { path: string }[] | null;
 }
 
-export const MERGE_FIELDS = "state,headRefOid,mergeable,statusCheckRollup,files";
+export const MERGE_FIELDS = "number,state,baseRefName,headRefOid,mergeable,statusCheckRollup,files";
 const GH_FILE_LIMIT = 100;
 
 export type CheckResult = "success" | "pending" | "failure";
@@ -75,14 +78,23 @@ export function shortList(items: string[], max = 5): string {
   return items.length > max ? `${shown} and ${items.length - max} more` : shown;
 }
 
-/** What the lead's runner does with an approved ticket in Review, given the PR as GitHub sees it. */
-export function mergeDecision(policy: MergePolicy, pr: PrInfo, ticket: Pick<Ticket, "approved_sha" | "merge_ok_by">): MergeDecision {
+/**
+ * What the lead's runner does with an approved ticket in Review, given the PR as GitHub sees it.
+ * `defaultBranch` is the project's: a PR stacked on another ticket's branch would merge there
+ * instead, so it waits until it's retargeted.
+ */
+export function mergeDecision(policy: MergePolicy, pr: PrInfo, ticket: Pick<Ticket, "approved_sha" | "merge_ok_by">, defaultBranch: string): MergeDecision {
   const files = (pr.files ?? []).map((f) => f.path);
   // gh lists at most 100 files, so a bigger PR can't be shown to be safe.
   const risky = [...files.filter(isRiskyPath), ...(files.length >= GH_FILE_LIMIT ? [`${GH_FILE_LIMIT}+ files, too many to check`] : [])];
   const wait = (why: string, question?: string): MergeDecision => ({ action: "wait", why, question, risky });
   const approved = ticket.approved_sha?.toLowerCase();
   if (pr.state !== "OPEN") return wait(`the PR is ${pr.state.toLowerCase()}`);
+  if (pr.baseRefName && pr.baseRefName !== defaultBranch) {
+    const n = pr.number ?? "?";
+    const fix = `retarget it with \`gh pr edit ${n} --base ${defaultBranch}\``;
+    return wait(`the PR targets ${pr.baseRefName}, not ${defaultBranch}`, `${MERGE_FAILED_PREFIX}: PR #${n} targets ${pr.baseRefName}, not ${defaultBranch}; ${fix}.`.slice(0, 1000));
+  }
   if (!approved) return wait("not approved");
   if (pr.headRefOid.toLowerCase() !== approved) return wait(`the PR moved to ${short(pr.headRefOid)} after the lead approved ${short(approved)}; it needs a new approval`);
   if (pr.mergeable === "CONFLICTING") return wait("the PR has conflicts", `${MERGE_FAILED_PREFIX}: the PR has conflicts with its base branch. Merge the base branch into it, then the lead approves the new commit.`);

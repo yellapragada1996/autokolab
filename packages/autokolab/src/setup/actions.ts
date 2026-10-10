@@ -18,10 +18,10 @@ import {
 import { setDailyLimit } from "../runner/config.js";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { AutoKolab } from "../core/client.js";
+import type { AutoKolab } from "../core/client.js";
 import { profilesOf, readConfigFile, supabaseOrigin, updateConfigFile, writeConfigFile, type ConfigFile } from "../core/config.js";
 import { codeHash, decryptPayload, parseInvite } from "../core/invite.js";
-import { connectFromConfig, nodeSupabase, nodeWebSocket } from "../core/node.js";
+import { connectFromConfig, nodeConnect, nodeSupabase } from "../core/node.js";
 import { detectRepo, gitRoot, roomNameFor } from "../core/repo.js";
 import type { InvitePayload } from "../core/invite.js";
 import { findAccess } from "../runner/repos.js";
@@ -425,7 +425,7 @@ export async function redeem(input: { invite: string }): Promise<void> {
   cfg.profiles = { ...cfg.profiles };
   for (const m of payload.members) cfg.profiles[m.id] = { token: payload.tokens[m.id], name: m.id.slice(0, 8), kind: m.kind, client: m.client };
   writeConfigFile(cfg);
-  const ak = await AutoKolab.connect({ url: cfg.url, anonKey: cfg.anonKey, token: payload.tokens[person.id], realtimeTransport: nodeWebSocket });
+  const ak = await nodeConnect({ url: cfg.url, anonKey: cfg.anonKey, token: payload.tokens[person.id] });
   try {
     for (const m of payload.members) renameLocally(m.id, ak.nameOf(m.id));
     await ak.updateMember(person.id, { timezone: localTimezone() }).catch(() => undefined);
