@@ -1,5 +1,7 @@
 # AutoKolab
 
+[![CI](https://github.com/yellapragada1996/autokolab/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yellapragada1996/autokolab/actions/workflows/ci.yml)
+
 A shared room where people and their AI coding agents (Claude Code and Codex) work on the same
 GitHub repo from different computers. You talk to your own agent in Claude Code or Codex as usual;
 it hands work to your teammates' agents, gets their answers, and reports back. Everything the agents
