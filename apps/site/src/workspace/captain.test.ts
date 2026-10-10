@@ -51,6 +51,18 @@ describe("the conversation with Captain", () => {
     const answer = message(ME, CAPTAIN, "The login page.", { thread_id: q.id });
     expect(openQuestions(conversation([q, elsewhere, answer], ME, CAPTAIN))).toEqual([]);
   });
+
+  it("counts an answer given in the thread from the Room, whoever it was addressed to", () => {
+    const q = message(CAPTAIN, ME, "Login page or help page?", { kind: "question" });
+    const toEveryone = message(ME, null, "The login page.", { thread_id: q.id });
+    const turns = conversation([q, toEveryone], ME, CAPTAIN);
+    expect(turns.map((t) => t.kind)).toEqual(["question", "you"]);
+    expect(openQuestions(turns)).toEqual([]);
+    // Someone else's reply in the thread, or mine in an unrelated thread, isn't part of it.
+    const other = message(BIRCH, null, "I'd pick help.", { thread_id: q.id });
+    const unrelated = message(ME, BIRCH, "Thanks", { thread_id: 99999 });
+    expect(conversation([q, other, unrelated], ME, CAPTAIN).map((t) => t.id)).toEqual([q.id]);
+  });
 });
 
 describe("needs you", () => {
@@ -99,7 +111,7 @@ describe("the briefing", () => {
     const b = briefing(ws, needsYou(ws, []));
     expect(b.work).toBe("1 agent is building Google sign-in.");
     expect(b.needs).toEqual({ text: "1 thing needs you.", tone: "amber", count: 1 });
-    expect(b.next).toBe("Next from me: provider column is waiting on your OK, then the review of login button.");
+    expect(b.next).toBe("Next from me: “Provider column” is waiting on your OK, then the review of “Login button”.");
     expect(b.agents).toHaveLength(1);
     expect(b.agents[0]).toMatchObject({ name: "Fjord", doing: "running the tests", step: "3 of 4", needsYou: false });
     expect(b.goals).toEqual([{ id: goal.id, title: "Google sign-in", segments: ["needs_you", "building", "building", "done", "todo"], done: 1, total: 5 }]);
@@ -128,9 +140,13 @@ describe("the briefing", () => {
     expect(b.agents).toEqual([]);
   });
 
-  it("describes an agent without steps by its ticket, and keeps capitalised names", () => {
-    const ws = workspace([ticket({ key: "SH-1", title: "OAuth callback and session", status: "in_progress", assignee_id: BIRCH, needs_human: "Blue or green?" })]);
-    expect(briefing(ws, needsYou(ws, [])).agents[0]).toMatchObject({ doing: "working on OAuth callback and session", step: null, needsYou: true });
+  it("describes an agent without steps by its ticket, and quotes titles as written", () => {
+    const ws = workspace([ticket({ key: "SH-1", title: "Google sign-in", status: "in_progress", assignee_id: BIRCH, needs_human: "Blue or green?" })]);
+    const b = briefing(ws, needsYou(ws, []));
+    expect(b.agents[0]).toMatchObject({ doing: "working on “Google sign-in”", step: null, needsYou: true });
+    // A title written as an instruction still reads as a name.
+    const cmd = workspace([ticket({ key: "SH-2", title: "Add the sessions column", status: "in_progress", needs_human: "Text or enum?" })]);
+    expect(briefing(cmd, needsYou(cmd, [])).next).toBe("Next from me: “Add the sessions column” is waiting on your answer.");
     expect(lowerFirst("Running the tests")).toBe("running the tests");
     expect(lowerFirst("PR review")).toBe("PR review");
   });
