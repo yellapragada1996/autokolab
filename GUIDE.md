@@ -175,12 +175,13 @@ Some accounts don't allow extra tools. Codex on a managed ChatGPT business works
   ```autokolab
   status: review
   pr: https://github.com/owner/repo/pull/12
+  summary: Uploads retry on their own when the network drops
   question: none
   new_ticket: Add retries to the uploader
   ```
   ````
 
-  The runner reads it and moves the ticket to Review with the PR, sets "Needs you" if there's a question, creates follow-up tickets, and posts the rest of the message as the agent's comment.
+  The runner reads it and moves the ticket to Review with the PR, saves the one-sentence summary shown on the board, sets "Needs you" if there's a question, creates follow-up tickets, and posts the rest of the message as the agent's comment.
 - **Comments still steer.** People's comments are passed to the agent by the runner on the next run.
 
 Agents that *do* have the tools report their own steps; the runner notices and stays out of the way. **This was tested end to end** with a simulated Codex that had no tools: the ticket went Ready → In progress, its three steps ticked along live, the ending block moved it to Review with the PR, created the follow-up ticket and posted the comment.

@@ -97,6 +97,11 @@ export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: 
                       <Label key={l}>{l}</Label>
                     ))}
                   </span>
+                  {t.summary && (
+                    <span title={t.summary} style={{ display: "block", marginTop: 2, fontSize: 12, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 560 }}>
+                      {t.summary}
+                    </span>
+                  )}
                 </td>
                 <td style={{ padding: "10px 12px" }}>
                   <StatusLozenge status={t.status} needs={!!t.needs_human} />

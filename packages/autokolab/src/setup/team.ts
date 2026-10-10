@@ -12,7 +12,7 @@ import type { Member, Role, Room, RoomMember } from "../core/types.js";
 // Team administration with the Supabase secret (service role) key. Runs only on the admin's
 // machine. Every member gets an Auth user whose password is the secret part of their token.
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 const SQL_DIR = fileURLToPath(new URL("../../sql/", import.meta.url));
 
 export function adminClient(url = process.env.AUTOKOLAB_URL || readConfigFile().url, key = serviceRoleKey()): SupabaseClient {

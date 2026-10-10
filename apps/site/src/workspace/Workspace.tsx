@@ -448,10 +448,19 @@ function Overview({ ws, me, demoEvents }: { ws: WS; me: string; demoEvents?: Tic
               <span style={{ marginTop: 2 }}>
                 <StatusIcon status={t.status} size={13} />
               </span>
-              <span>
-                <strong style={{ color: "var(--text-2)", fontWeight: 500 }}>{ws.nameOf(e.actor_id)}</strong> {s.verb} <KeyText t={t} style={{ color: "var(--text-2)" }} />
-                {s.after ? ` ${s.after}` : ""} <span style={{ color: "var(--faint)" }}>· {ago(e.created_at)}</span>
-              </span>
+              {s.outcome ? (
+                <span>
+                  <span style={{ color: "var(--text-2)" }}>{s.outcome}</span>{" "}
+                  <span style={{ color: "var(--faint)" }}>
+                    · <KeyText t={t} style={{ color: "var(--faint)" }} /> · {ago(e.created_at)}
+                  </span>
+                </span>
+              ) : (
+                <span>
+                  <strong style={{ color: "var(--text-2)", fontWeight: 500 }}>{ws.nameOf(e.actor_id)}</strong> {s.verb} <KeyText t={t} style={{ color: "var(--text-2)" }} />
+                  {s.after ? ` ${s.after}` : ""} <span style={{ color: "var(--faint)" }}>· {ago(e.created_at)}</span>
+                </span>
+              )}
             </a>
           ))}
         </section>

@@ -131,6 +131,8 @@ export interface Ticket {
   /** A person's one-click OK to merge a risky change (schema 12). */
   merge_ok_by?: string | null;
   merge_ok_at?: string | null;
+  /** One plain sentence on what the ticket changed, set at Review (schema 14; absent before it). */
+  summary?: string | null;
 }
 
 export interface Step {

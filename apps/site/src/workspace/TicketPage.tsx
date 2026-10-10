@@ -119,6 +119,12 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
           )}
           {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
 
+          {t.summary && (
+            <Panel title="What changed">
+              <p style={{ fontSize: 15, lineHeight: 1.5, color: "var(--text)" }}>{t.summary}</p>
+            </Panel>
+          )}
+
           <Panel title="Description">
             <EditableText value={t.description} onSave={(description) => save({ description })} placeholder="Add a description. The assigned agent reads this as its brief." />
           </Panel>
@@ -632,6 +638,8 @@ export function describe(ws: Workspace, e: TicketEvent): string | null {
       return `set priority to ${d.to}`;
     case "title":
       return `renamed it to "${d.to}"`;
+    case "summary":
+      return d.to ? `summed it up: "${d.to}"` : "cleared the summary";
     case "branch":
       return `is working on branch ${d.branch}`;
     case "pr":
