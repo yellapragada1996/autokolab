@@ -33,6 +33,26 @@ describe("local setup state", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+  it("reports an environment connection string without sending it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "autokolab-setup-"));
+    const previousConfig = process.env.XDG_CONFIG_HOME;
+    const previousDbUrl = process.env.AUTOKOLAB_DB_URL;
+    const connection = "postgresql://user:pass@localhost:5432/db";
+    try {
+      process.env.XDG_CONFIG_HOME = dir;
+      process.env.AUTOKOLAB_DB_URL = connection;
+      const state = await getState();
+      expect(state.hasDbUrl).toBe(true);
+      expect(JSON.stringify(state)).not.toContain(connection);
+      expect(JSON.stringify(state)).not.toContain("pass");
+    } finally {
+      if (previousConfig === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = previousConfig;
+      if (previousDbUrl === undefined) delete process.env.AUTOKOLAB_DB_URL;
+      else process.env.AUTOKOLAB_DB_URL = previousDbUrl;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 const payload: InvitePayload = {

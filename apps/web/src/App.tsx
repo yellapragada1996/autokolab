@@ -211,7 +211,7 @@ function Shell({ ak, localState, onLocalChange }: { ak: AutoKolab; localState: S
             {dialog === "invite" ? (
               <InviteBox />
             ) : dialog === "database" ? (
-              localState && <DatabaseUpdates initial={localState} />
+              localState && <DatabaseUpdates initial={localState} onChanged={onLocalChange} />
             ) : (
               <RepoPicker
                 onDone={async () => {
