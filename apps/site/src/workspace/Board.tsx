@@ -370,7 +370,7 @@ function DropLine() {
 }
 
 /** A Jira-style card: title, what's happening, epic, then type, key, priority and assignee. */
-export function Card({ ws, t, me, dragging, onDragStart, onDragEnd }: { ws: Workspace; t: Ticket; me: string; dragging?: boolean; onDragStart?: () => void; onDragEnd?: () => void }) {
+export function Card({ ws, t, me, action, dragging, onDragStart, onDragEnd }: { ws: Workspace; t: Ticket; me: string; /** What a person is asked to do, e.g. "Answer a question". */ action?: string; dragging?: boolean; onDragStart?: () => void; onDragEnd?: () => void }) {
   const steps = ws.steps.get(t.id);
   const openBlockers = ws.blockersOf(t.id).filter((b) => !["done", "canceled"].includes(b.status));
   const parent = t.parent_id ? ws.byId.get(t.parent_id) : undefined;
@@ -410,6 +410,7 @@ export function Card({ ws, t, me, dragging, onDragStart, onDragEnd }: { ws: Work
         ...(needs ? { background: "var(--warn-bg)", border: "1px solid var(--warn-line)" } : { background: "var(--surface)", border: `1px ${waiting ? "dashed" : "solid"} var(--line)` }),
       }}
     >
+      {action && <span style={{ fontSize: 13, fontWeight: 600, color: needs ? "var(--warn)" : "var(--codex)" }}>{action}</span>}
       <span style={{ fontSize: 14, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.title}</span>
       {steps && steps.length > 0 && t.status !== "done" && <StepProgress steps={steps} />}
       {meta && <span style={{ fontSize: 12, lineHeight: 1.4, color: needs ? "var(--warn)" : "var(--muted)" }}>{meta}</span>}
