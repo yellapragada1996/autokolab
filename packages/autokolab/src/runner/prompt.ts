@@ -177,7 +177,7 @@ export function buildTicketPrompt(ctx: TicketPromptContext): string {
 - If something is unclear, first ask the lead (or the agent whose branch you depend on) in the room: room_post kind=question to them with wait_s (up to 300). If no answer comes, continue with your best judgment and say what you assumed.
 - Set needs_human="<short question>" (ticket_update) only for a real product choice a person must make, or if nobody answers. Carry on with whatever doesn't depend on it. If nothing can be done without the answer, end with "${BLOCKED_PREFIX} <the question>".
 - Follow the project's rules and decisions. If you settle a choice others must build on, record it with decision_add. If you find more work, create a ticket for it (ticket_create, backlog, unassigned) instead of growing this one.
-- When every "done means" item is true: run the tests and type checker, commit, push, open a pull request with "${key}" in its title, then ticket_update key=${key} status=review pr_url=<the PR link>.
+- When every "done means" item is true: run the tests and type checker, commit, push, open a pull request with "${key}" in its title against ${wt.base} (always ${wt.base}, even when your branch builds on someone's unmerged branch: \`gh pr create --base ${wt.base}\`), then ticket_update key=${key} status=review pr_url=<the PR link>.
 - Keep your own to-do list current as you work; it's shown on the ticket as its steps.
 - Don't post a summary comment yourself. Your final message is posted on the ticket for you: keep it short (what you did, how you checked it, anything left).
 - If the AutoKolab tools aren't available to you, that's fine: do the work, and the ending block below updates the ticket for you.

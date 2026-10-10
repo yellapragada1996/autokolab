@@ -36,7 +36,7 @@ export function starterRules(project: { default_branch: string }): string {
 - When you start, move the ticket to **In progress** and plan the steps on it.
 - One branch per ticket, named \`<ticket key>-<short-title>\` (e.g. \`AK-12-google-login\`).
 - Commit and push early so others can see your work.
-- Never push to \`${project.default_branch}\`. Open a pull request and move the ticket to **Review**.
+- Never push to \`${project.default_branch}\`. Open a pull request against \`${project.default_branch}\` (even when your branch builds on unmerged work) and move the ticket to **Review**.
 
 ## Quality
 - Every item under "Done means" must be true before you move a ticket to Review.

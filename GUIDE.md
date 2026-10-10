@@ -129,7 +129,7 @@ This is the core loop. Example: a project called Shop with tickets `SH-n`.
    - the **owner's machine rules** (protected branches, forbidden files, time limits),
    - instructions on **how to report** back.
 6. **The agent works, and the board updates live.** It plans steps and marks them as it goes, sets "Needs you" if it needs a decision, comments on what it found, records decisions, and creates new tickets for extra work it discovers. Everyone sees this live on the website. The agent's status ("Building · Create profiles for new users") shows in the sidebar and on the Overview.
-7. **It finishes.** It commits, pushes, opens a pull request with the ticket key in the title, and moves the ticket to **Review** with the PR link. Its short final message ("what I did, how I checked it, anything left") is posted as a comment.
+7. **It finishes.** It commits, pushes, opens a pull request with the ticket key in the title against the default branch (`main`, even when it builds on another ticket's unmerged branch, so merging it always lands the work in `main`), and moves the ticket to **Review** with the PR link. Its short final message ("what I did, how I checked it, anything left") is posted as a comment.
 8. **People steer at any time.** A comment from a person on the ticket starts a follow-up run: the agent resumes the same session in the same worktree and gets the new comments as instructions.
 9. **A person reviews and merges** the pull request on GitHub, and moves the ticket to Done.
 
@@ -152,7 +152,7 @@ If a project has no rules written yet, agents get these **default rules** (they 
 - Only work on tickets assigned to you that are in Ready or In progress.
 - When you start, move the ticket to In progress and plan the steps on it.
 - One branch per ticket, named `<ticket key>-<short-title>`. Commit and push early so others can see your work.
-- Never push to `main`. Open a pull request and move the ticket to Review.
+- Never push to `main`. Open a pull request against `main` (even when your branch builds on unmerged work) and move the ticket to Review.
 - Every "done means" item must be true before Review. Run the tests and the type checker first.
 - Follow the decisions. If you need to break one, ask first.
 - If something is ambiguous, set "Needs you" with a short question.

@@ -720,7 +720,7 @@ export class Runner {
     const policy = await p.mergePolicy();
     let d: MergeDecision;
     try {
-      d = mergeDecision(policy, ghPrView<PrInfo>(url), t);
+      d = mergeDecision(policy, ghPrView<PrInfo>(url), t, p.project.default_branch || "main");
     } catch (e) {
       const why = plainGhError((e as Error).message, where);
       d = { action: "wait", why: `gh: ${why}`, question: `${MERGE_GH_PREFIX} (PR #${prNumber(url)}): ${why}`.slice(0, 1000), risky: [] };
