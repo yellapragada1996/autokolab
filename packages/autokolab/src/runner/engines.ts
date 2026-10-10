@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createWriteStream, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -109,15 +109,26 @@ export function claudeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSessio
 
 const tomlStr = (s: string) => JSON.stringify(s); // JSON strings are valid TOML basic strings
 
+/**
+ * The repository's Git folder for a working copy. A worktree's commits are written there, outside
+ * the worktree, so a sandbox that may only write the worktree can't commit (AK-46).
+ */
+export function gitCommonDir(cwd: string): string | null {
+  const r = spawnSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+  return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : null;
+}
+
 export function codexInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, cwd: string, choice: ModelChoice = chooseModel(cfg, null)): EngineInvocation {
   const tempDir = mkdtempSync(join(tmpdir(), "autokolab-"));
   const lastMessageFile = join(tempDir, "last-message.txt");
+  const gitDir = gitCommonDir(cwd);
   // Settings go through -c, which both `codex exec` and `codex exec resume` accept
   // (resume doesn't take -C / -s; the working directory comes from the process itself).
   const config = [
     "-c", 'approval_policy="never"',
     "-c", `sandbox_mode=${tomlStr(cfg.codex.sandbox)}`,
     "-c", `sandbox_workspace_write.network_access=${cfg.codex.network}`,
+    ...(gitDir && cfg.codex.sandbox === "workspace-write" ? ["-c", `sandbox_workspace_write.writable_roots=[${tomlStr(gitDir)}]`] : []),
     "-c", `mcp_servers.autokolab.command=${tomlStr(mcp.command)}`,
     "-c", `mcp_servers.autokolab.args=[${mcp.args.map(tomlStr).join(",")}]`,
     // Model and effort go with the other -c settings, after `resume` on a resume. Whether Codex

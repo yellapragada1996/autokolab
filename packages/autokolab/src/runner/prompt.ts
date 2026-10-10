@@ -186,6 +186,7 @@ export function buildTicketPrompt(ctx: TicketPromptContext): string {
 - Keep your own to-do list current as you work; it's shown on the ticket as its steps.
 - Don't post a wrap-up comment yourself. Your final message is posted on the ticket for you: keep it short (what you did, how you checked it, anything left).
 - If the AutoKolab tools aren't available to you, that's fine: do the work, and the ending block below updates the ticket for you.
+- If you can't commit, push or open the pull request from where you run (Git or GitHub is blocked there), don't work around it: no copies of the Git data, no other remotes. Leave the finished work in this folder and end with "status: review". The runner then commits what's left, pushes ${wt.branch} and opens the pull request for you.
 - End your final message with this block, filled in (it updates the ticket; write "none" where nothing applies):
 ${OUTCOME_EXAMPLE}`;
 
