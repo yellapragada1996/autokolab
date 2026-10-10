@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import { Command, Option } from "commander";
 import type { AutoKolab } from "./core/client.js";
-import { readConfigFile } from "./core/config.js";
+import { readConfigFile, updateConfigFile } from "./core/config.js";
 import { formatItem, formatMember, formatMessage, formatWork } from "./core/format.js";
 import { connectFromConfig } from "./core/node.js";
 import { resolveRoom } from "./core/repo.js";
@@ -17,6 +17,7 @@ import { runJoin } from "./setup/join.js";
 import { runApp } from "./setup/server.js";
 import { installService, serviceStatus, uninstallService } from "./setup/service.js";
 import { runStatus } from "./setup/status.js";
+import { readState, servicePid, startUpdater, updateNow, type UpdateState } from "./setup/update.js";
 import { notify } from "./setup/notify.js";
 import { renameLocally } from "./setup/naming.js";
 import { runnerFileFor } from "./runner/config.js";
@@ -344,6 +345,7 @@ program
   .action(
     action(async (agents: string[]) => {
       const runners = await runAll(agents);
+      startUpdater(runners);
       let stopping = false;
       const shutdown = async () => {
         if (stopping) process.exit(1);
@@ -379,6 +381,54 @@ program
       console.log(installService().message);
     }),
   );
+
+program
+  .command("update")
+  .description("Update AutoKolab on this machine now (it also updates itself when idle)")
+  .option("--off", "stop automatic updates on this machine")
+  .option("--on", "turn automatic updates back on")
+  .action(
+    action(async (o: { on?: boolean; off?: boolean }) => {
+      if (o.on || o.off) {
+        updateConfigFile((c) => void (c.auto_update = !!o.on));
+        console.log(o.on ? "Automatic updates are on." : "Automatic updates are off. `autokolab update` still updates by hand.");
+        return;
+      }
+      const pid = serviceStatus() === "running" ? servicePid() : null;
+      if (pid) {
+        // The service knows whether an agent is mid-run, so it does the update and restarts itself.
+        const before = readState().result_at;
+        process.kill(pid, "SIGUSR2");
+        console.log("Asked the background runner to update now…");
+        const answer = await waitForResult(before, 15 * 60_000);
+        console.log(answer?.result ?? "No answer yet. `autokolab status` shows how it went.");
+        if (answer?.failed) process.exitCode = 1;
+        return;
+      }
+      console.log("Checking for updates…");
+      const r = await updateNow({ log: (m) => console.log(m) });
+      if (r.kind === "skipped") console.log(`Not updating: ${r.reason}.`);
+      else if (r.kind === "up-to-date") console.log(`Already up to date (${r.version}).`);
+      else if (r.kind === "failed") {
+        console.log(`Update failed: ${r.reason}`);
+        process.exitCode = 1;
+      } else if (r.kind === "updated") {
+        console.log(`Updated from ${r.from} to ${r.version}.`);
+        if (serviceStatus() !== "not-installed") console.log(installService().message);
+      }
+    }),
+  );
+
+/** Wait for the service to write a new result to the update state. */
+async function waitForResult(before: string | undefined, ms: number): Promise<UpdateState | null> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const s = readState();
+    if (s.result_at && s.result_at !== before) return s;
+  }
+  return null;
+}
 
 program
   .command("connect <code>")

@@ -218,6 +218,7 @@ The work happened in two generations. **Version 1** proved the core idea with a 
 - **Room tools for agents (MCP):** `whoami`, `agents`, `room_post` (with waiting for replies), `room_read`, `room_wait`, `room_thread`, `work_log`, `board_list`, `board_upsert`.
 - **The runner:** runs for lead and follower agents alike; starts `claude -p --output-format stream-json` or `codex exec --json` headless when someone who can instruct sends work; per-thread git worktrees; pre-push guard; daily limits; says hello to the team the first time it starts; resumes sessions for follow-ups.
 - **Runs as a background service** (launchd on macOS, systemd on Linux), or inside the app server when the service isn't installed.
+- **Keeps itself up to date** (AK-31): the service checks `origin/main` every 10 minutes; when no agent is mid-run it pulls, builds, restarts onto the new code and says so once in the room. A failed pull or build goes back to the previous commit. Only the installed clone at `~/.autokolab` updates itself; `"auto_update": false` in `~/.config/autokolab/config.json` (or `autokolab update --off`) turns it off.
 - **Real use:** the founding team's Claude (macOS, Toronto) and Codex (Linux, Sweden) talked through the room, and a lead → follower question was answered in about 30 seconds.
 - **Fixes along the way:** Supabase URL normalization, Node 20 WebSocket support, finding Claude Code bundled inside the desktop app, GitHub sign-in on older `gh` versions on Linux, `@mentions` of hyphenated names, Codex `resume` flags.
 
@@ -319,7 +320,7 @@ autokolab/                      (github.com/yellapragada1996/autokolab)
 
 ### Commands (`autokolab …`)
 
-`open` (default: opens the local app) · `init` · `invite` · `join` · `setup` · `rename` · `status` · `whoami` · `rooms` · `members` · `post` · `read` · `watch` · `board` · `work` · `run` (start runners) · `service install / uninstall / status / restart` · `mcp` (started by Claude Code / Codex) · `team remove`.
+`open` (default: opens the local app) · `init` · `invite` · `join` · `setup` · `rename` · `status` · `whoami` · `rooms` · `members` · `post` · `read` · `watch` · `board` · `work` · `run` (start runners) · `service install / uninstall / status / restart` · `update` (update now; `--off` / `--on` for automatic updates) · `mcp` (started by Claude Code / Codex) · `team remove`.
 
 ### Technology
 
@@ -361,5 +362,5 @@ Being honest about the gaps:
 2. **Open Vajra Vision** (or create a project for another repo).
 3. **Write the Project Guide**, or ask your lead: _"Read the repo and draft the Project Guide."_
 4. **Tell your lead what you want built** in Claude Code, e.g. _"Plan 'add Google sign-in' on the AutoKolab board and assign the tickets."_ It writes the tickets and assigns them to the workers.
-5. **Make sure the agent's helper is running** on its owner's computer (`autokolab` restarted after updating, or `autokolab service install`).
+5. **Make sure the agent's helper is running** on its owner's computer (`autokolab service install`; it keeps itself up to date).
 6. **Watch the board.** Answer anything in **Needs you**, comment to steer, review pull requests on GitHub, and move tickets to Done.

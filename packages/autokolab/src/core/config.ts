@@ -27,6 +27,8 @@ export interface ConfigFile {
   profiles?: Record<string, Profile>;
   /** "owner/name" → this computer's copy of the repo (chosen or downloaded during setup). */
   repos?: Record<string, string>;
+  /** The helper updates itself from GitHub when idle (AK-31). On unless false. */
+  auto_update?: boolean;
 }
 
 export interface ResolvedConfig {
