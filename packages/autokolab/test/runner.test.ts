@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -10,14 +10,14 @@ import { installHook } from "../src/runner/githook.js";
 import { buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "../src/runner/prompt.js";
 import { needsRunner } from "../src/setup/connect.js";
 import { STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
-import { clonePath, ensureTicketWorktree, ensureWorktree, pruneWorktrees, ticketBranch, type Worktree } from "../src/runner/repos.js";
+import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
 import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, leadGuide, questionsForLead, untriaged, type Comment, type Ticket } from "../src/core/projects.js";
 import { MERGE_FIELDS, RISKY_PATHS, approvalMessage, checkResult, isRiskyPath, mergeDecision, mergeNeedsHuman, mergedComment, plainGhError, readyToMergeMessage, reviewedShaProblem, shortList, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
 const cfgFor = (extra = "") => parseRunnerConfig(`agent_id = "${AID}"\nengine = "claude"\n${extra}`, "lee-claude");
-const wt: Worktree = { path: "/data/worktrees/lee-claude/ana-shop/t7", branch: "ak/lee-claude/t7", base: "main", created: true };
+const wt: Worktree = { clone: "/data/repos/ana/shop", path:"/data/worktrees/lee-claude/ana-shop/t7", branch: "ak/lee-claude/t7", base: "main", created: true };
 const freshRun = (): EngineRun => ({ sessionId: null, finalText: "", exitCode: null, timedOut: false, aborted: false, isError: false });
 const c = (id: number, author_id: string, author_type: "human" | "agent"): Comment => ({ id, ticket_id: "t1", author_id, author_type, body: `#${id}`, created_at: "2026-10-09T18:00:00Z" });
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe" }).trim();
@@ -668,6 +668,55 @@ describe("worktrees per task thread", () => {
     expect(pruneWorktrees("pruner", 14)).toBe(1);
     expect(existsSync(clean.path)).toBe(false);
     expect(existsSync(dirty.path)).toBe(true);
+  });
+
+  // What a sandboxed agent can do to a folder it can write: put Git data of its own there, with
+  // settings and hooks that run a program. `proof` is the file that program creates.
+  const plant = (path: string, proof: string) => {
+    const script = join(root, `plant-${proof.split("/").pop()}.sh`);
+    writeFileSync(script, `#!/bin/sh\ntouch ${JSON.stringify(proof)}\n`, { mode: 0o755 });
+    rmSync(join(path, ".git"), { recursive: true, force: true });
+    git(path, "init", "-q", "-b", "planted");
+    git(path, "config", "core.fsmonitor", script);
+    for (const hook of ["post-checkout", "reference-transaction", "pre-auto-gc"]) writeFileSync(join(path, ".git", "hooks", hook), `#!/bin/sh\ntouch ${JSON.stringify(proof)}\n`, { mode: 0o755 });
+    // It works: Git run the ordinary way in that folder runs the program.
+    git(path, "status");
+    expect(existsSync(proof)).toBe(true);
+    rmSync(proof);
+  };
+
+  it("never follows a .git link the agent replaced: its settings and hooks don't run (AK-47)", () => {
+    const w = ensureWorktree("swapper", repo, 47);
+    const proof = join(root, "escaped");
+    plant(w.path, proof);
+
+    expect(headCommit(w.clone, w.path)?.subject).toBe("init");
+    expect(currentBranch(w.clone, w.path)).toBe("ak/swapper/t47");
+    // A follow-up fetches and reads the branch.
+    expect(ensureWorktree("swapper", repo, 47)).toMatchObject({ path: w.path, branch: "ak/swapper/t47", created: false });
+    // A ticket continuing the branch checks that folder for unsaved work and switches it off the branch.
+    expect(ensureTicketWorktree("swapper", repo, "AK-90", "ak/swapper/t47")).toMatchObject({ branch: "ak/swapper/t47", created: true });
+    // Cleaning up old worktrees looks at it too.
+    const old = new Date(Date.now() - 30 * 86400_000);
+    utimesSync(w.path, old, old);
+    pruneWorktrees("swapper", 14);
+    expect(existsSync(proof)).toBe(false);
+  });
+
+  it("refuses a folder the clone has no record of, without running Git in it (AK-47)", () => {
+    const path = worktreePath("stranger", repo, 5);
+    const proof = join(root, "escaped-stranger");
+    mkdirSync(path, { recursive: true });
+    plant(path, proof);
+
+    expect(headCommit(clonePath(repo), path)).toBeNull();
+    expect(currentBranch(clonePath(repo), path)).toBeNull();
+    expect(() => ensureWorktree("stranger", repo, 5)).toThrow(/not one of the runner's working copies/);
+    const old = new Date(Date.now() - 30 * 86400_000);
+    utimesSync(path, old, old);
+    expect(pruneWorktrees("stranger", 14)).toBe(0);
+    expect(existsSync(path)).toBe(true);
+    expect(existsSync(proof)).toBe(false);
   });
 });
 

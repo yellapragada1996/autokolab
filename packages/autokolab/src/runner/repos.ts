@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { dataDir, readConfigFile } from "../core/config.js";
 import { which } from "../setup/agents.js";
@@ -17,6 +17,56 @@ const NON_INTERACTIVE = {
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", env: NON_INTERACTIVE, stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+const real = (p: string) => (existsSync(p) ? realpathSync(p) : p);
+
+// The runner isn't sandboxed, and a sandboxed agent can write anything inside its own worktree,
+// including replacing the `.git` link with Git data of its own (hooks, core.fsmonitor, aliases,
+// core.sshCommand). So Git is never run in a worktree through that link: it's pointed at the
+// worktree's real Git folder (GIT_DIR), found from the clone's own records, which the agent can't
+// write. `git()` above is for the clone only.
+
+/**
+ * The Git folder for one of the clone's worktrees, read from the clone's own records
+ * (`<clone>/.git/worktrees/<name>/gitdir`), which an agent can't write. Null if `path` isn't one.
+ */
+export function worktreeGitDir(clone: string, path: string): string | null {
+  const root = join(clone, ".git", "worktrees");
+  if (!existsSync(root)) return null;
+  for (const name of readdirSync(root)) {
+    try {
+      const link = readFileSync(join(root, name, "gitdir"), "utf8").trim(); // "<worktree>/.git"
+      if (real(dirname(link)) === real(path)) return join(root, name);
+    } catch {
+      // Not a worktree record.
+    }
+  }
+  return null;
+}
+
+/** Git run against a known Git folder, whatever the `.git` link inside the working copy says. */
+export function trustedGit(gitDir: string): (cwd: string, ...args: string[]) => string {
+  return (cwd, ...args) => {
+    try {
+      const env = { ...NON_INTERACTIVE, GIT_DIR: gitDir, GIT_WORK_TREE: cwd };
+      // Only the end is trimmed: `status --porcelain` lines can start with a space that matters.
+      return execFileSync("git", args, { cwd, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 }).trimEnd();
+    } catch (e) {
+      const x = e as { stderr?: string; stdout?: string; message: string };
+      throw new Error((x.stderr || x.stdout || x.message).toString().trim());
+    }
+  };
+}
+
+export const NOT_A_WORKTREE = "not one of the runner's working copies";
+
+/** Git for one of the clone's worktrees. Throws, without running Git, if the clone has no record of the folder. */
+function worktreeGit(clone: string, path: string): (...args: string[]) => string {
+  const gitDir = worktreeGitDir(clone, path);
+  if (!gitDir) throw new Error(`${path} is ${NOT_A_WORKTREE}.`);
+  const run = trustedGit(gitDir);
+  return (...args) => run(path, ...args);
 }
 
 export function cloneUrls(repo: string): string[] {
@@ -67,6 +117,8 @@ export function defaultBranch(clone: string): string {
 }
 
 export interface Worktree {
+  /** The clone this is a worktree of: where its real Git folder is. */
+  clone: string;
   path: string;
   branch: string;
   base: string;
@@ -103,8 +155,6 @@ export function worktreeWithBranch(clone: string, branch: string): string | null
   return null;
 }
 
-const real = (p: string) => (existsSync(p) ? realpathSync(p) : p);
-
 /**
  * `agentRoot`: this agent's worktrees. If the branch is already checked out in one of them (say a
  * room thread made it and a ticket now continues it), that worktree lets go of it when it has
@@ -112,15 +162,17 @@ const real = (p: string) => (existsSync(p) ? realpathSync(p) : p);
  */
 export function attachWorktree(clone: string, path: string, branch: string, agentRoot: string): Worktree {
   const base = defaultBranch(clone);
-  if (existsSync(join(path, ".git"))) {
+  if (worktreeGitDir(clone, path)) {
     // A follow-up: bring in what others have pushed since, without touching the work.
     try {
-      git(path, "fetch", "--quiet", "--prune", "origin");
+      worktreeGit(clone, path)("fetch", "--quiet", "--prune", "origin");
     } catch {
       /* offline: work from what we have */
     }
-    return { path, branch: currentBranch(path) ?? branch, base, created: false };
+    return { clone, path, branch: currentBranch(clone, path) ?? branch, base, created: false };
   }
+  // A folder that's there but that the clone has no record of isn't a worktree, whatever it holds.
+  if (existsSync(path) && readdirSync(path).length) throw new Error(`${path} is ${NOT_A_WORKTREE}. Move or delete that folder, then try again.`);
   try {
     git(clone, "fetch", "--quiet", "--prune", "origin");
   } catch {
@@ -135,31 +187,46 @@ export function attachWorktree(clone: string, path: string, branch: string, agen
     if (!o.startsWith(real(agentRoot) + sep)) {
       throw new Error(`Branch ${branch} is already checked out at ${other}, outside this agent's worktrees. Switch that checkout to another branch, then try again.`);
     }
-    if (git(o, "status", "--porcelain")) return { path: o, branch, base, created: false };
-    git(o, "switch", "--quiet", "--detach");
+    const inOther = worktreeGit(clone, o);
+    if (inOther("status", "--porcelain")) return { clone, path: o, branch, base, created: false };
+    inOther("switch", "--quiet", "--detach");
   }
   if (has(`refs/heads/${branch}`)) git(clone, "worktree", "add", path, branch);
   else if (has(`refs/remotes/origin/${branch}`)) git(clone, "worktree", "add", "-b", branch, path, `origin/${branch}`);
   else git(clone, "worktree", "add", "-b", branch, path, `origin/${base}`);
-  return { path, branch, base, created: true };
+  return { clone, path, branch, base, created: true };
 }
 
 /** The latest commit in a worktree: its id and first line. */
-export function headCommit(path: string): { sha: string; subject: string } | null {
+export function headCommit(clone: string, path: string): { sha: string; subject: string } | null {
   try {
-    const [sha, ...subject] = git(path, "log", "-1", "--format=%H %s").split(" ");
+    const [sha, ...subject] = worktreeGit(clone, path)("log", "-1", "--format=%H %s").split(" ");
     return { sha, subject: subject.join(" ") };
   } catch {
     return null;
   }
 }
 
-export function currentBranch(path: string): string | null {
+export function currentBranch(clone: string, path: string): string | null {
   try {
-    return git(path, "branch", "--show-current") || null;
+    return worktreeGit(clone, path)("branch", "--show-current") || null;
   } catch {
     return null;
   }
+}
+
+/** Every clone the runner may have made worktrees from: the managed ones and the ones chosen in setup. */
+function knownClones(): string[] {
+  const clones = Object.values(readConfigFile().repos ?? {});
+  const root = join(dataDir(), "repos");
+  for (const owner of existsSync(root) ? readdirSync(root) : []) {
+    try {
+      for (const name of readdirSync(join(root, owner))) clones.push(join(root, owner, name));
+    } catch {
+      /* not a folder */
+    }
+  }
+  return [...new Set(clones)];
 }
 
 /**
@@ -171,14 +238,18 @@ export function pruneWorktrees(agent: string, days = 14): number {
   if (!existsSync(root)) return 0;
   let removed = 0;
   const cutoff = Date.now() - days * 86400_000;
+  const clones = knownClones();
   for (const repoDir of readdirSync(root)) {
     for (const t of readdirSync(join(root, repoDir))) {
       const path = join(root, repoDir, t);
       try {
         if (statSync(path).mtimeMs > cutoff) continue;
-        if (git(path, "status", "--porcelain")) continue;
-        if (git(path, "rev-list", "HEAD", "--not", "--remotes")) continue;
-        const clone = git(path, "rev-parse", "--path-format=absolute", "--git-common-dir").replace(/\/\.git$/, "");
+        // Which clone it belongs to comes from the clones' records, never from the folder itself.
+        const clone = clones.find((c) => worktreeGitDir(c, path));
+        if (!clone) continue;
+        const inPath = worktreeGit(clone, path);
+        if (inPath("status", "--porcelain")) continue;
+        if (inPath("rev-list", "HEAD", "--not", "--remotes")) continue;
         git(clone, "worktree", "remove", path);
         removed++;
       } catch {

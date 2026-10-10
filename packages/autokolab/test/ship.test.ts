@@ -6,7 +6,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseRunnerConfig } from "../src/runner/config.js";
 import { codexInvocation } from "../src/runner/engines.js";
 import { buildTicketPrompt } from "../src/runner/prompt.js";
-import { SHIP_FAILED_PREFIX, changedPaths, looksPrivate, plainGitError, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts, worktreeGitDir, type ShipFacts, type ShipIo } from "../src/runner/ship.js";
+import { SHIP_FAILED_PREFIX, changedPaths, looksPrivate, plainGitError, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts, type ShipFacts, type ShipIo } from "../src/runner/ship.js";
+import { worktreeGitDir } from "../src/runner/repos.js";
 
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -225,7 +226,7 @@ describe("delivering from a real worktree", () => {
 describe("the ticket prompt", () => {
   it("tells an agent that can't reach GitHub to leave the work and end with status: review", () => {
     const cfg = parseRunnerConfig(`agent_id = "${AID}"\nengine = "claude"`, "lee-claude");
-    const p = buildTicketPrompt({ myName: "b", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg, worktree: { path: "/tmp/wt", branch: "sh-2-retries", base: "main", created: true }, followUp: false, newComments: null });
+    const p = buildTicketPrompt({ myName: "b", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg, worktree: { clone: "/tmp/clone", path: "/tmp/wt", branch: "sh-2-retries", base: "main", created: true }, followUp: false, newComments: null });
     expect(p).toContain("If you can't commit, push or open the pull request from where you run");
     expect(p).toContain("uncommitted if you can't commit");
     expect(p).toContain("pushes sh-2-retries and opens the pull request for you");
