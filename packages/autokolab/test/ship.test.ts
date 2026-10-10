@@ -34,16 +34,16 @@ describe("what the runner delivers for an agent (AK-46)", () => {
     expect(shipPlan(facts({ branch: "trunk", base: "trunk", protectedBranches: [] }))).toEqual({ skip: "protected" });
   });
   it("knows a local secret file from an example", () => {
-    for (const p of [".env", "apps/site/.env.local", "certs/server.pem", "deploy/id_ed25519", "x.key", ".envrc", ".npmrc", "home/.netrc", "infra/prod.tfvars", "credentials.json", "config/secrets.yml"]) {
+    for (const p of [".env", "apps/site/.env.local", "certs/server.pem", "deploy/id_ed25519", "x.key", ".envrc", ".npmrc", "home/.netrc", "infra/prod.tfvars", "credentials.json", "config/secrets.yml", ".aws/credentials", "home/.git-credentials", ".pgpass", "kubeconfig", "android/release.jks", "app.keystore"]) {
       expect(looksPrivate(p), p).toBe(true);
     }
-    for (const p of [".env.example", "config/.env.sample", "src/env.ts", "docs/keys.md", "src/monkey.ts", "src/core/secrets.ts", "docs/credentials.md", "secrets.yml.example"]) {
+    for (const p of [".env.example", "config/.env.sample", "src/env.ts", "docs/keys.md", "src/monkey.ts", "src/core/secrets.ts", "docs/credentials.md", "secrets.yml.example", "src/credentials.ts", "docs/kubeconfig.md"]) {
       expect(looksPrivate(p), p).toBe(false);
     }
   });
   it("reads what a commit of everything would add or change", () => {
-    const status = [" M src/a.ts", "?? new file.ts", "A  added.ts", "R  old.ts -> renamed.ts", " D gone.ts", "D  staged-gone.ts", '?? "odd name.ts"', "MM both.ts"].join("\n");
-    expect(changedPaths(status)).toEqual(["src/a.ts", "new file.ts", "added.ts", "renamed.ts", "odd name.ts", "both.ts"]);
+    const status = [" M src/a.ts", "?? new file.ts", "A  added.ts", "R  renamed.ts", "old.ts", " D gone.ts", "D  staged-gone.ts", "?? naïve.pem", "MM both.ts", ""].join("\0");
+    expect(changedPaths(status)).toEqual(["src/a.ts", "new file.ts", "added.ts", "renamed.ts", "naïve.pem", "both.ts"]);
     expect(changedPaths("")).toEqual([]);
   });
   it("says in plain words which step failed", () => {
@@ -163,6 +163,30 @@ describe("delivering from a real worktree", () => {
     // Taking it out of the branch again is fine: a deletion isn't a secret.
     git(wt, "reset", "-q", "--hard", "HEAD~1");
     expect(ship(io, job(["push", "open_pr"]))).toMatchObject({ ok: true });
+  });
+
+  it("refuses to push a secret the agent committed and then deleted: it's still in the branch's history", () => {
+    writeFileSync(join(wt, ".env"), "TOKEN=not-a-real-one\n");
+    git(wt, "add", "-A", "-f");
+    git(wt, "commit", "-q", "-m", "oops");
+    rmSync(join(wt, ".env"));
+    git(wt, "add", "-A");
+    git(wt, "commit", "-q", "-m", "take it out again");
+    expect(git(wt, "diff", "--name-only", "origin/main...HEAD")).not.toContain(".env"); // the net change looks clean
+    const before = git(remote, "rev-parse", "sh-2-retries");
+    const r = ship(io, job(["push", "open_pr"]));
+    expect(r).toMatchObject({ ok: false, step: "push" });
+    expect(!r.ok && r.error).toContain(".env");
+    expect(git(remote, "rev-parse", "sh-2-retries")).toBe(before);
+    expect(git(remote, "log", "--all", "--format=", "--name-only")).not.toContain(".env");
+    git(wt, "reset", "-q", "--hard", "HEAD~2");
+    expect(ship(io, job(["push", "open_pr"]))).toMatchObject({ ok: true });
+  });
+
+  it("reads a modified file's name whole when it's the first thing Git lists", () => {
+    writeFileSync(join(wt, "README.md"), "hi again\n");
+    expect(changedPaths(io.git(wt, "status", "--porcelain", "-z", "--untracked-files=all"))).toEqual(["README.md"]);
+    git(wt, "checkout", "-q", "--", "README.md");
   });
 
   it("isn't steered by a Git link the agent replaced: its hooks and settings never run", () => {
