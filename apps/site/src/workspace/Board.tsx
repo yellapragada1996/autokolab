@@ -412,6 +412,11 @@ export function Card({ ws, t, me, action, dragging, onDragStart, onDragEnd }: { 
     >
       {action && <span style={{ fontSize: 13, fontWeight: 600, color: needs ? "var(--warn)" : "var(--codex)" }}>{action}</span>}
       <span style={{ fontSize: 14, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.title}</span>
+      {t.summary && (
+        <span title={t.summary} style={{ fontSize: 12, lineHeight: 1.4, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {t.summary}
+        </span>
+      )}
       {steps && steps.length > 0 && t.status !== "done" && <StepProgress steps={steps} />}
       {meta && <span style={{ fontSize: 12, lineHeight: 1.4, color: needs ? "var(--warn)" : "var(--muted)" }}>{meta}</span>}
       {(parent || t.labels.length > 0) && (
