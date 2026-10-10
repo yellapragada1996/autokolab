@@ -405,7 +405,7 @@ export function RepoPicker({ onDone }: { onDone: () => void }) {
   );
 }
 
-export function DatabaseUpdates({ initial }: { initial: SetupState }) {
+export function DatabaseUpdates({ initial, onChanged }: { initial: SetupState; onChanged?: () => void }) {
   const [hasDbUrl, setHasDbUrl] = useState(initial.hasDbUrl);
   const [on, setOn] = useState(initial.autoMigrate);
   const [connection, setConnection] = useState("");
@@ -425,6 +425,7 @@ export function DatabaseUpdates({ initial }: { initial: SetupState }) {
               void run(async () => {
                 await local.setDatabaseUpdates({ on: next });
                 setOn(next);
+                onChanged?.();
               });
             }}
           />
@@ -438,6 +439,7 @@ export function DatabaseUpdates({ initial }: { initial: SetupState }) {
             setConnection("");
             setHasDbUrl(true);
             setOn(true);
+            onChanged?.();
           });
         }}>
           <label className="field">

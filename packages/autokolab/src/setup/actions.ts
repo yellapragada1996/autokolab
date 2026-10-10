@@ -84,7 +84,7 @@ export async function getState(): Promise<SetupState> {
     database: "unknown",
     admin: !!cfg.serviceRoleKey,
     autoMigrate: autoMigrateOn(cfg),
-    hasDbUrl: !!cfg.dbUrl,
+    hasDbUrl: !!dbUrl(cfg),
     me: null,
     agents: [],
     engines,
