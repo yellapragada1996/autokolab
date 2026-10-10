@@ -29,6 +29,8 @@ export interface ConfigFile {
   repos?: Record<string, string>;
   /** The helper updates itself from GitHub when idle (AK-31). On unless false. */
   auto_update?: boolean;
+  /** Admin's machine only: apply database updates by itself (AK-32). Off unless true. */
+  auto_migrate?: boolean;
 }
 
 export interface ResolvedConfig {

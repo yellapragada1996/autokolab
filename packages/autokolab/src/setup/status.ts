@@ -8,6 +8,8 @@ import { claudeBin, CLIENT_ENGINE, codexConfigPath, which } from "./agents.js";
 import { renameLocally } from "./naming.js";
 import { serviceStatus } from "./service.js";
 import { autoUpdateOn, cloneFacts, readState, statusLine, updatable } from "./update.js";
+import { autoMigrateOn, dbStatusLine, isAdminMachine, liveVersion } from "./dbupdate.js";
+import { SCHEMA_VERSION } from "./team.js";
 import { bold, dim, fail, info, ok, warn } from "./ui.js";
 
 // `autokolab status`: everything about AutoKolab on this machine, with what to do about problems.
@@ -98,6 +100,16 @@ export async function runStatus(): Promise<boolean> {
   if (!can.ok) info(`Updates: by hand (${can.reason})`);
   else if (upd.failed && upd.result) problem(`${statusLine(autoUpdateOn(cfg), upd)} · ${upd.result}`);
   else ok(statusLine(autoUpdateOn(cfg), upd));
+  try {
+    const live = await liveVersion(cfg);
+    const line = dbStatusLine(live, SCHEMA_VERSION);
+    const how = isAdminMachine(cfg) ? (autoMigrateOn(cfg) ? "updates automatically" : "`autokolab db update` applies it") : "the team admin's machine applies it";
+    if (live === SCHEMA_VERSION) ok(line);
+    else if (live < SCHEMA_VERSION) problem(`${line} (${how})`);
+    else problem(line);
+  } catch (e) {
+    problem(`Database: couldn't read its version (${(e as Error).message})`);
+  }
 
   console.log(healthy ?`\n${bold("All good.")}` : `\n${bold("Some things need attention (above).")}`);
   return healthy;
