@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { AutoKolab, waitSubscribed } from "../core/client.js";
+import { waitSubscribed } from "../core/client.js";
 import { configPath, profilesOf, readConfigFile } from "../core/config.js";
+import { nodeConnect, nodeMajor } from "../core/node.js";
 import { loadRunnerConfig, runnerFiles } from "../runner/config.js";
 import { findAccess } from "../runner/repos.js";
 import { claudeBin, CLIENT_ENGINE, codexConfigPath, which } from "./agents.js";
@@ -14,6 +15,11 @@ import { bold, dim, fail, info, ok, warn } from "./ui.js";
 
 // `autokolab status`: everything about AutoKolab on this machine, with what to do about problems.
 
+/** A gentle note on older Node (a warning, not a problem: Node 20 still works). */
+export function nodeVersionNote(version = process.versions.node): string | null {
+  return nodeMajor(version) < 22 ? `Node ${version}: Node 22 or newer is recommended; Node 20 support is ending in Supabase.` : null;
+}
+
 export async function runStatus(): Promise<boolean> {
   const cfg = readConfigFile();
   console.log(bold("AutoKolab on this machine"));
@@ -22,6 +28,8 @@ export async function runStatus(): Promise<boolean> {
     return false;
   }
   info(`${cfg.url} · config ${configPath()}${cfg.serviceRoleKey ? " · team admin" : ""}`);
+  const nodeNote = nodeVersionNote();
+  if (nodeNote) warn(nodeNote);
   let healthy = true;
   const problem = (msg: string) => {
     healthy = false;
@@ -37,7 +45,7 @@ export async function runStatus(): Promise<boolean> {
   for (const p of profilesOf(cfg)) {
     const name = p.name;
     try {
-      const ak = await AutoKolab.connect({ url: cfg.url, anonKey: cfg.anonKey!, token: p.token });
+      const ak = await nodeConnect({ url: cfg.url, anonKey: cfg.anonKey!, token: p.token });
       const rooms = ak.rooms().map((r) => `${r.name} (${ak.membership(r.id)?.role})`);
       for (const r of ak.rooms()) if (r.repo) repos.add(r.repo);
       if (ak.me.name !== p.name) renameLocally(p.id, ak.me.name);
