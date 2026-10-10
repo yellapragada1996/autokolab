@@ -60,6 +60,9 @@ jobs:
       - name: Unit tests
         run: npm test -w autokolab
 
+      - name: Website unit tests
+        run: npm test -w autokolab-site
+
       - name: Postgres client
         run: |
           command -v psql || { sudo apt-get update -q && sudo apt-get install -y -q postgresql-client; }

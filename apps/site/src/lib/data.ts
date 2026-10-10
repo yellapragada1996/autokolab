@@ -131,6 +131,8 @@ export interface Ticket {
   /** A person's one-click OK to merge a risky change (schema 12). */
   merge_ok_by?: string | null;
   merge_ok_at?: string | null;
+  /** One plain sentence on what the ticket changed, set at Review (schema 14; absent before it). */
+  summary?: string | null;
 }
 
 export interface Step {
@@ -326,6 +328,45 @@ export async function allowMerge(ticketId: string): Promise<Ticket> {
 
 export async function addPerson(projectId: string, githubLogin: string): Promise<void> {
   check(await supabase.rpc("add_project_person", { p_project: projectId, p_github_login: githubLogin.replace(/^@/, "") }));
+}
+
+// ------------------------------------------------------------------ last visit (Captain's catch-up)
+
+const caughtUpKey = (projectId: string) => `autokolab:caught-up:${projectId}`;
+
+function localCaughtUp(projectId: string): string | null {
+  try {
+    return localStorage.getItem(caughtUpKey(projectId));
+  } catch {
+    return null; // private window, or storage blocked
+  }
+}
+
+/** The later of two times, either of which may be missing. */
+export function laterOf(a: string | null | undefined, b: string | null | undefined): string | null {
+  if (!a || !b) return a || b || null;
+  return Date.parse(a) >= Date.parse(b) ? a : b;
+}
+
+/**
+ * When this person last caught up on the project; null if never. Kept in the database (schema 15) so
+ * it follows them between devices, and in this browser so it works before that database update.
+ */
+export async function lastCaughtUp(projectId: string): Promise<string | null> {
+  const r = await supabase.from("project_reads").select("caught_up_at").eq("project_id", projectId).maybeSingle();
+  return laterOf(r.error ? null : (r.data?.caught_up_at as string | undefined), localCaughtUp(projectId));
+}
+
+/** The person has seen everything up to now: the next catch-up counts from here. */
+export async function markCaughtUp(projectId: string): Promise<string> {
+  const r = await supabase.rpc("mark_caught_up", { p_project: projectId });
+  const at = !r.error && typeof r.data === "string" ? r.data : new Date().toISOString();
+  try {
+    localStorage.setItem(caughtUpKey(projectId), at);
+  } catch {
+    // Not saved in this browser; the database copy is enough.
+  }
+  return at;
 }
 
 // ------------------------------------------------------------------ tickets
