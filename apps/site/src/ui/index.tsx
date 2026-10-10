@@ -1,6 +1,10 @@
 import type { CSSProperties, ReactNode } from "react";
 
-// Base components (spec §11, Phase 0). Values come from the wireframes' inline styles.
+// Base components. Colours and sizes come from tokens.css (DEC-22, autokolab-ux-handoff/05-components.md).
+
+export * from "./avatars";
+export * from "./feedback";
+export * from "./kit";
 
 // ------------------------------------------------------------------ Button
 
@@ -11,7 +15,7 @@ const buttonBase: CSSProperties = {
   justifyContent: "center",
   gap: 8,
   border: 0,
-  borderRadius: 9,
+  borderRadius: 10,
   fontFamily: "var(--sans)",
   fontWeight: 600,
   cursor: "pointer",
@@ -26,19 +30,21 @@ const buttonVariants: Record<ButtonVariant, CSSProperties> = {
 const buttonSizes = {
   sm: { height: 32, padding: "0 12px", fontSize: 13 },
   md: { height: 40, padding: "0 18px", fontSize: 14 },
-  lg: { height: 52, padding: "0 28px", fontSize: 16, borderRadius: 12 },
+  lg: { height: 48, padding: "0 26px", fontSize: 15, borderRadius: 11 },
 };
 
 export function Button({
   variant = "secondary",
   size = "md",
   style,
+  className,
   ...rest
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: keyof typeof buttonSizes }) {
   return (
     <button
       type="button"
       {...rest}
+      className={className ? `ak-btn ${className}` : "ak-btn"}
       style={{
         ...buttonBase,
         ...buttonVariants[variant],
@@ -56,124 +62,12 @@ export function Card({ children, tone = "plain", dashed, style }: { children: Re
   const tones = {
     plain: { background: "var(--surface)", border: "1px solid var(--line)" },
     warn: { background: "var(--warn-bg)", border: "1px solid var(--warn-line)" },
-    ok: { background: "var(--ok-bg)", border: "1px solid var(--line)" },
+    ok: { background: "var(--ok-bg)", border: "1px solid var(--green-border)" },
   };
   return (
-    <div style={{ borderRadius: 12, padding: 16, display: "flex", flexDirection: "column", gap: 10, ...tones[tone], ...(dashed ? { borderStyle: "dashed" } : {}), ...style }}>
+    <div style={{ borderRadius: "var(--radius-xl)", padding: 16, display: "flex", flexDirection: "column", gap: 10, ...tones[tone], ...(dashed ? { borderStyle: "dashed" } : {}), ...style }}>
       {children}
     </div>
-  );
-}
-
-// ------------------------------------------------------------------ Avatar (people: circles)
-
-export type Presence = "online" | "away" | "offline";
-const presenceColor: Record<Presence, string> = { online: "var(--ok-dot)", away: "var(--warn)", offline: "var(--faint)" };
-
-export function Avatar({ name, src, size = 30, you, presence }: { name: string; src?: string | null; size?: number; you?: boolean; presence?: Presence }) {
-  const initial = (name.trim()[0] ?? "?").toUpperCase();
-  return (
-    <span
-      title={name}
-      style={{
-        position: "relative",
-        flex: "none",
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        background: you ? "var(--primary)" : "#e9c6f5",
-        color: "var(--on-primary)",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontWeight: 700,
-        fontSize: Math.round(size * 0.43),
-      }}
-    >
-      {src ? <img src={src} alt="" width={size} height={size} style={{ borderRadius: "50%", display: "block" }} /> : initial}
-      {presence && (
-        <span
-          aria-label={presence}
-          style={{ position: "absolute", right: -1, bottom: -1, width: 10, height: 10, borderRadius: "50%", background: presenceColor[presence], border: "2px solid var(--sidebar)" }}
-        />
-      )}
-    </span>
-  );
-}
-
-// ------------------------------------------------------------------ AgentMark (agents: rounded squares)
-
-export type Vendor = "claude" | "codex";
-export function AgentMark({ vendor, size = 30 }: { vendor: Vendor; size?: number }) {
-  const c = vendor === "claude" ? { bg: "var(--claude-bg)", fg: "var(--claude)", t: "Cl" } : { bg: "var(--codex-bg)", fg: "var(--codex)", t: "Cx" };
-  return (
-    <span
-      aria-label={vendor === "claude" ? "Claude agent" : "Codex agent"}
-      style={{
-        flex: "none",
-        width: size,
-        height: size,
-        borderRadius: Math.round(size * 0.27),
-        background: c.bg,
-        color: c.fg,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        font: `700 ${Math.round(size * 0.4)}px var(--mono)`,
-      }}
-    >
-      {c.t}
-    </span>
-  );
-}
-
-// ------------------------------------------------------------------ StatusText
-
-export type Tone = "ok" | "warn" | "danger" | "muted";
-const toneColor: Record<Tone, string> = { ok: "var(--ok)", warn: "var(--warn)", danger: "var(--danger)", muted: "var(--faint)" };
-export function StatusText({ tone, children }: { tone: Tone; children: ReactNode }) {
-  return <span style={{ fontSize: 12, color: toneColor[tone] }}>{children}</span>;
-}
-
-// ------------------------------------------------------------------ StepBar
-
-export function StepBar({ total, done }: { total: number; done: number }) {
-  return (
-    <div style={{ display: "flex", gap: 4 }} role="img" aria-label={`${done} of ${total} steps done`}>
-      {Array.from({ length: total }, (_, i) => (
-        <span key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: i < done ? "var(--ok-dot)" : "var(--line)" }} />
-      ))}
-    </div>
-  );
-}
-
-// ------------------------------------------------------------------ Chip
-
-export function Chip({ children, tone = "plain", mono, onClick }: { children: ReactNode; tone?: "plain" | "ok" | "warn"; mono?: boolean; onClick?: () => void }) {
-  const tones = {
-    plain: { background: "var(--surface-2)", color: "var(--text-2)", border: "1px solid var(--line)" },
-    ok: { background: "var(--ok-bg)", color: "var(--ok)", border: "1px solid transparent" },
-    warn: { background: "var(--warn-bg)", color: "var(--warn)", border: "1px solid var(--warn-line)" },
-  };
-  const Tag = onClick ? "button" : "span";
-  return (
-    <Tag
-      type={onClick ? "button" : undefined}
-      onClick={onClick}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        height: 32,
-        padding: "0 12px",
-        borderRadius: onClick ? 8 : 999,
-        font: `500 13px ${mono ? "var(--mono)" : "var(--sans)"}`,
-        cursor: onClick ? "pointer" : "default",
-        ...tones[tone],
-      }}
-    >
-      {children}
-    </Tag>
   );
 }
 
@@ -242,6 +136,19 @@ export const Icon = {
       <path d="M20 20l-4-4" />
     </>
   ),
+  captain: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M15.5 8.5l-2 5-5 2 2-5z" />
+    </>
+  ),
+  results: <path d="M4 20h16M7 16v-5M12 16V7M17 16v-3" />,
+  settings: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" />
+    </>
+  ),
 };
 
 export function Svg({ children, size = 18, width = 1.8 }: { children: ReactNode; size?: number; width?: number }) {
@@ -254,8 +161,8 @@ export function Svg({ children, size = 18, width = 1.8 }: { children: ReactNode;
 
 export function Logo({ size = 28 }: { size?: number }) {
   return (
-    <span style={{ width: size, height: size, borderRadius: 8, background: "var(--primary)", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-      <svg width={size * 0.57} height={size * 0.57} viewBox="0 0 24 24" fill="none" stroke="#121316" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <span style={{ width: size, height: size, borderRadius: 8, background: "var(--text)", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+      <svg width={size * 0.57} height={size * 0.57} viewBox="0 0 24 24" fill="none" stroke="var(--bg)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <circle cx="7" cy="12" r="3" />
         <circle cx="17" cy="7" r="3" />
         <circle cx="17" cy="17" r="3" />

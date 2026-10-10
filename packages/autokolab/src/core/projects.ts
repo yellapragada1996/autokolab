@@ -99,6 +99,8 @@ export interface Ticket {
   approved_at?: string | null;
   merge_ok_by?: string | null;
   merge_ok_at?: string | null;
+  /** One plain sentence on what the ticket changed (schema 14). Missing on older databases. */
+  summary?: string | null;
 }
 
 export interface Step {
@@ -145,9 +147,9 @@ export const LEAD_APPROVAL =
 /** What the lead does. Shown to the lead in project_brief. */
 export function leadGuide(project: string, people: string[]): string {
   const who = people.length ? `${people.join(" and ")} ${people.length === 1 ? "talks" : "talk"}` : "The people on this project talk";
-  return `You are the lead of ${project}. ${who} to you, and you turn what they want into tickets the worker agents can do without asking anything. Workers only see the ticket, never your conversation, so the ticket is the whole brief.
+  return `You are Captain, the lead agent of ${project}. ${who} to you, and you turn what they want into tickets the worker agents can do without asking anything. Workers only see the ticket, never your conversation, so the ticket is the whole brief. People see you as Captain and see epics as goals; the tools and data still say lead and epic.
 1. Understand first: read the code involved, the guide and the decisions. Ask your person only about real product choices.
-2. Split the work into tickets of a few hours each, one clear outcome per ticket. For a goal that needs several tickets, create an epic first and put the tickets under it.
+2. Split the work into tickets of a few hours each, one clear outcome per ticket. For a goal that needs several tickets, create an epic (a goal) first and put the tickets under it.
 3. Write every ticket like this:
    - Title: the outcome, as an instruction ("Add Google sign-in to /login").
    - Description, with these headings: **Context** (why, for whom), **What to do** (the behaviour and the approach to take), **Where** (files, modules, APIs and existing code to follow), **Not in scope**, **Notes** (decisions, gotchas, how to test).
@@ -182,6 +184,11 @@ function check<T>(r: { data: T | null; error: { message: string; code?: string }
     throw friendly(r.error);
   }
   return r.data as T;
+}
+
+/** The database is older than the column being written (PostgREST's PGRST204, Postgres's 42703). */
+export function missingColumn(e: { message: string; code?: string }): boolean {
+  return e.code === "PGRST204" || e.code === "42703";
 }
 
 const rank = (p: Priority) => PRIORITIES.indexOf(p);
@@ -393,12 +400,13 @@ export class ProjectView {
       branch?: string | null;
       pr_url?: string | null;
       needs_human?: string | null;
+      summary?: string | null;
       blocked_by_add?: string[];
       blocked_by_remove?: string[];
     },
   ): Promise<Ticket> {
     const t = await this.ticket(ref);
-    this.noSecrets(change.title, change.description, change.needs_human, ...(change.done_means ?? []));
+    this.noSecrets(change.title, change.description, change.needs_human, change.summary, ...(change.done_means ?? []));
     const patch: Record<string, unknown> = {};
     for (const k of ["status", "title", "description", "priority", "type", "labels", "done_means", "branch", "pr_url", "needs_human"] as const) {
       if (change[k] !== undefined) patch[k] = change[k];
@@ -418,6 +426,13 @@ export class ProjectView {
     }
     let out = t;
     if (Object.keys(patch).length) out = check<Ticket>(await this.sb.from("tickets").update(patch).eq("id", t.id).select("*").single());
+    // On its own, so a database without the column (before schema 14) still takes the rest.
+    if (change.summary !== undefined) {
+      const summary = change.summary?.trim().slice(0, 200) || null;
+      const r = await this.sb.from("tickets").update({ summary }).eq("id", t.id).select("*").single();
+      if (!r.error) out = r.data as Ticket;
+      else if (!missingColumn(r.error)) out = check<Ticket>(r);
+    }
     for (const b of change.blocked_by_add ?? []) await this.addBlocker(t.key, b);
     for (const b of change.blocked_by_remove ?? []) {
       const other = await this.ticket(b);
@@ -678,6 +693,7 @@ export class ProjectView {
       ...(parent ? [`Epic: ${parent.key} ${parent.title}`] : []),
       ...(t.labels.length ? [`Labels: ${t.labels.join(", ")}`] : []),
       ...(t.branch || t.pr_url ? [`Branch: ${t.branch ?? "-"} · PR: ${t.pr_url ?? "-"}`] : []),
+      ...(t.summary ? [`Summary: ${t.summary}`] : []),
       ...(t.needs_human ? [`NEEDS A PERSON: ${t.needs_human}`] : []),
       ...(blockedBy.length ? [`Blocked by: ${blockedBy.map(ref2).join("; ")}`] : []),
       ...(unblocks.length ? [`Unblocks: ${unblocks.map(ref2).join("; ")}`] : []),

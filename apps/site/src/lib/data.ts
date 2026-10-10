@@ -26,7 +26,7 @@ export const TYPES: { id: TicketType; label: string }[] = [
   { id: "bug", label: "Bug" },
   { id: "task", label: "Task" },
   { id: "chore", label: "Chore" },
-  { id: "epic", label: "Epic" },
+  { id: "epic", label: "Goal" },
 ];
 export const statusLabel = (s: Status) => (s === "canceled" ? "Canceled" : STATUSES.find((x) => x.id === s)!.label);
 
@@ -50,9 +50,9 @@ export interface Project {
 export type MergePolicy = "ask" | "auto_safe" | "auto_all";
 
 export const MERGE_POLICIES: { id: MergePolicy; label: string; sub: string }[] = [
-  { id: "ask", label: "Ask me", sub: "The lead reviews; a person merges." },
-  { id: "auto_safe", label: "Auto-merge safe changes (recommended)", sub: "The lead merges when tests pass and it approved the change. Database, dependency, CI and security changes wait for your OK." },
-  { id: "auto_all", label: "Fully hands-off", sub: "The lead merges everything once tests pass and it approved the change." },
+  { id: "ask", label: "Ask me", sub: "Captain reviews; a person merges." },
+  { id: "auto_safe", label: "Auto-merge safe changes (recommended)", sub: "Captain merges when tests pass and it approved the change. Database, dependency, CI and security changes wait for your OK." },
+  { id: "auto_all", label: "Fully hands-off", sub: "Captain merges everything once tests pass and it approved the change." },
 ];
 
 export const mergePolicyOf = (p: Project): MergePolicy => p.merge_policy ?? "auto_safe";
@@ -131,6 +131,8 @@ export interface Ticket {
   /** A person's one-click OK to merge a risky change (schema 12). */
   merge_ok_by?: string | null;
   merge_ok_at?: string | null;
+  /** One plain sentence on what the ticket changed, set at Review (schema 14; absent before it). */
+  summary?: string | null;
 }
 
 export interface Step {

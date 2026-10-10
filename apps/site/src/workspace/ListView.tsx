@@ -88,7 +88,7 @@ export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: 
                   <KeyText t={t} />
                 </td>
                 <td style={{ padding: "10px 12px" }}>
-                  <a href={`/p/${ws.project.slug}/t/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ color: "var(--text)", textDecoration: "none", fontSize: 14, fontWeight: 500 }}>
+                  <a href={`/p/${ws.project.slug}/work/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ color: "var(--text)", textDecoration: "none", fontSize: 14, fontWeight: 500 }}>
                     {t.title}
                   </a>
                   <span style={{ display: "inline-flex", gap: 6, marginLeft: 8, verticalAlign: "middle" }}>
@@ -97,6 +97,11 @@ export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: 
                       <Label key={l}>{l}</Label>
                     ))}
                   </span>
+                  {t.summary && (
+                    <span title={t.summary} style={{ display: "block", marginTop: 2, fontSize: 12, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 560 }}>
+                      {t.summary}
+                    </span>
+                  )}
                 </td>
                 <td style={{ padding: "10px 12px" }}>
                   <StatusLozenge status={t.status} needs={!!t.needs_human} />

@@ -56,7 +56,7 @@ export function NewTicket({ ws, initialStatus, onClose, onCreated }: { ws: Works
   const epics = ws.tickets.filter((t) => t.type === "epic" && t.status !== "done");
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Create issue" onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "8vh 16px", zIndex: 40, overflowY: "auto" }}>
+    <div role="dialog" aria-modal="true" aria-label="Create issue" onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--backdrop)", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "8vh 16px", zIndex: 40, overflowY: "auto" }}>
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}
@@ -112,8 +112,8 @@ export function NewTicket({ ws, initialStatus, onClose, onCreated }: { ws: Works
             ))}
           </select>
           {epics.length > 0 && (
-            <select aria-label="Epic" value={parent} onChange={(e) => setParent(e.target.value)} style={sel}>
-              <option value="">No epic</option>
+            <select aria-label="Goal" value={parent} onChange={(e) => setParent(e.target.value)} style={sel}>
+              <option value="">No goal</option>
               {epics.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.key} · {e.title}
@@ -125,7 +125,7 @@ export function NewTicket({ ws, initialStatus, onClose, onCreated }: { ws: Works
         </div>
         {assignee && ws.agentOf(assignee) && (description.trim().length < 120 || !doneMeans.trim()) && status !== "backlog" ? (
           <p style={{ fontSize: 13, color: "var(--warn)" }}>
-            {ws.nameOf(assignee)} only sees what's on the ticket. Add a description (context, what to do, where in the code) and "done means", or let the lead write it.
+            {ws.nameOf(assignee)} only sees what's on the ticket. Add a description (context, what to do, where in the code) and "done means", or let Captain write it.
           </p>
         ) : assignee && ws.agentOf(assignee) ? (
           <p style={{ fontSize: 13, color: "var(--muted)" }}>

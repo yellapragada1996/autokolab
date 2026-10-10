@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { updateTicket, type Status, type Ticket, type TicketPatch } from "../lib/data";
 import { onNav } from "../lib/router";
-import { AgentMark, Avatar, Button, Icon, Svg } from "../ui";
+import { AgentAvatar, Button, Icon, PersonAvatar, Svg } from "../ui";
 import { EpicLozenge, KeyText, LeadBadge, PriorityIcon, StepProgress, TypeIcon } from "./bits";
-import { agentOnline, agentStatusText } from "./People";
+import { AgentFace, agentOnline, agentStatusText } from "./People";
 import type { Workspace } from "./useWorkspace";
 
 // The board, modelled on Jira's: columns for the work in flight, swimlanes by assignee or epic,
@@ -53,8 +53,8 @@ export function Filters({ ws, me, f, setF }: { ws: Workspace; me: string; f: Fil
     padding: "0 12px",
     borderRadius: 6,
     border: `1px solid ${on ? "var(--primary)" : "var(--line)"}`,
-    background: on ? "rgba(215,242,92,0.12)" : "transparent",
-    color: on ? "var(--primary)" : "var(--text-2)",
+    background: on ? "var(--surface-active)" : "transparent",
+    color: on ? "var(--text)" : "var(--text-2)",
     fontSize: 13,
     fontWeight: 500,
     cursor: "pointer",
@@ -77,15 +77,15 @@ export function Filters({ ws, me, f, setF }: { ws: Workspace; me: string; f: Fil
               key={m.actor_id}
               type="button"
               onClick={() => toggle(m.actor_id)}
-              title={`${ws.nameOf(m.actor_id)}${m.actor_id === lead ? " (lead)" : ""}`}
+              title={`${ws.nameOf(m.actor_id)}${m.actor_id === lead ? " (Captain)" : ""}`}
               aria-pressed={on}
               style={{ marginLeft: -6, padding: 0, border: 0, borderRadius: agent ? 9 : "50%", background: "none", cursor: "pointer", boxShadow: on ? "0 0 0 2px var(--primary)" : "0 0 0 2px var(--bg)", position: "relative", zIndex: on ? 2 : 1, display: "inline-flex" }}
             >
-              {agent ? <AgentMark vendor={agent.vendor} size={30} /> : <Avatar name={p?.name ?? "?"} src={p?.avatar_url} size={30} you={m.actor_id === me} />}
+              {agent ? <AgentAvatar name={agent.display_name} vendor={agent.vendor} size={30} /> : <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={30} you={m.actor_id === me} />}
             </button>
           );
         })}
-        <button type="button" onClick={() => toggle("none")} title="Unassigned" aria-pressed={f.people.includes("none")} style={{ marginLeft: -6, width: 30, height: 30, borderRadius: "50%", border: "1px dashed var(--line-strong)", background: "var(--bg)", color: "var(--faint)", fontSize: 11, cursor: "pointer", boxShadow: f.people.includes("none") ? "0 0 0 2px var(--primary)" : "0 0 0 2px var(--bg)" }}>
+        <button type="button" onClick={() => toggle("none")} title="Unassigned" aria-pressed={f.people.includes("none")} style={{ marginLeft: -6, width: 30, height: 30, borderRadius: "50%", border: "1px dashed var(--line-strong)", background: "var(--bg)", color: "var(--faint)", fontSize: 12, cursor: "pointer", boxShadow: f.people.includes("none") ? "0 0 0 2px var(--primary)" : "0 0 0 2px var(--bg)" }}>
           ?
         </button>
       </div>
@@ -107,7 +107,7 @@ export function Filters({ ws, me, f, setF }: { ws: Workspace; me: string; f: Fil
   );
 }
 
-type GroupBy = "none" | "assignee" | "epic";
+export type GroupBy = "none" | "assignee" | "epic";
 interface Lane {
   id: string;
   /** What dropping a card into this lane changes. */
@@ -134,9 +134,9 @@ export function useStored<T extends string>(key: string, initial: T): [T, (v: T)
   return [v, setV];
 }
 
-export function Board({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (status?: Status) => void }) {
+/** The board under Work: lanes by agent (and person), or by goal. */
+export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; onNew: (status?: Status) => void; groupBy: GroupBy }) {
   const [f, setF] = useState<FilterState>(emptyFilter);
-  const [groupBy, setGroupBy] = useStored<GroupBy>("autokolab.board.groupBy", "assignee");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<{ lane: string; status: Status; index: number } | null>(null);
@@ -172,7 +172,7 @@ export function Board({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (st
           ),
         };
       });
-      out.push({ id: "no-epic", patch: { parent_id: null }, tickets: shown.filter((t) => !t.parent_id || !epics.some((e) => e.id === t.parent_id)), head: <span style={{ fontWeight: 600 }}>Issues without an epic</span> });
+      out.push({ id: "no-epic", patch: { parent_id: null }, tickets: shown.filter((t) => !t.parent_id || !epics.some((e) => e.id === t.parent_id)), head: <span style={{ fontWeight: 600 }}>Not in a goal</span> });
       return out.filter((l) => l.tickets.length || l.id !== "no-epic");
     }
     // By assignee: the lead and the worker agents first, then people, then unassigned.
@@ -191,7 +191,7 @@ export function Board({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (st
         tickets: shown.filter((t) => t.assignee_id === id),
         head: (
           <>
-            {agent ? <AgentMark vendor={agent.vendor} size={22} /> : <Avatar name={p?.name ?? "?"} src={p?.avatar_url} size={22} you={id === me} />}
+            {agent ? <AgentFace a={agent} size={22} /> : <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={22} you={id === me} />}
             <span style={{ fontWeight: 600 }}>
               {ws.nameOf(id)}
               {id === me ? " (you)" : ""}
@@ -242,16 +242,8 @@ export function Board({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (st
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <Filters ws={ws} me={me} f={f} setF={setF} />
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--muted)" }}>
-            Group by
-            <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} style={{ height: 32, padding: "0 8px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13 }}>
-              <option value="none">None</option>
-              <option value="assignee">Assignee</option>
-              <option value="epic">Epic</option>
-            </select>
-          </label>
           <Button variant="primary" size="sm" onClick={() => onNew("ready")}>
-            Create <kbd style={{ font: "500 11px var(--mono)", opacity: 0.7 }}>C</kbd>
+            Create <kbd style={{ font: "500 12px var(--mono)", opacity: 0.7 }}>C</kbd>
           </Button>
         </div>
       </div>
@@ -350,17 +342,17 @@ export function EmptyBoard({ ws }: { ws: Workspace }) {
     <>
       <strong style={{ color: "var(--text)" }}>The board is empty.</strong>
       <span>
-        Tell your lead, <strong style={{ color: "var(--text)" }}>{lead}</strong>, what you want built. In Claude Code, for example:
+        Tell Captain, <strong style={{ color: "var(--text)" }}>{lead}</strong>, what you want built. In Claude Code, for example:
       </span>
       <code style={{ display: "block", padding: "10px 14px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--line)", font: "13px var(--mono)", color: "var(--text-2)", textAlign: "left" }}>
         Plan "add Google sign-in" on the AutoKolab board and assign the tickets.
       </code>
-      <span style={{ fontSize: 13, color: "var(--faint)" }}>It writes complete tickets and assigns them to the worker agents, who start right away.</span>
+      <span style={{ fontSize: 13, color: "var(--faint)" }}>It writes complete tickets and assigns them to the other agents, who start right away.</span>
     </>
   ) : (
     <>
       <strong style={{ color: "var(--text)" }}>The board is empty.</strong>
-      <span>Pick a lead agent on the People page: it writes the tickets and assigns them to the other agents.</span>
+      <span>Pick Captain on the People page: it writes the tickets and assigns them to the other agents.</span>
     </>
   );
 }
@@ -387,7 +379,7 @@ export function Card({ ws, t, me, action, dragging, onDragStart, onDragEnd }: { 
         : null;
   return (
     <a
-      href={`/p/${ws.project.slug}/t/${t.key}`}
+      href={`/p/${ws.project.slug}/work/${t.key}`}
       onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })}
       draggable={!!onDragStart}
       onDragStart={(e) => {
@@ -406,19 +398,24 @@ export function Card({ ws, t, me, action, dragging, onDragStart, onDragEnd }: { 
         color: "var(--text)",
         opacity: dragging ? 0.4 : 1,
         cursor: onDragStart ? "grab" : "pointer",
-        boxShadow: "0 1px 1px rgba(0,0,0,0.35)",
+        boxShadow: "var(--shadow-sm)",
         ...(needs ? { background: "var(--warn-bg)", border: "1px solid var(--warn-line)" } : { background: "var(--surface)", border: `1px ${waiting ? "dashed" : "solid"} var(--line)` }),
       }}
     >
-      {action && <span style={{ fontSize: 13, fontWeight: 600, color: needs ? "var(--warn)" : "var(--codex)" }}>{action}</span>}
+      {action && <span style={{ fontSize: 13, fontWeight: 600, color: needs ? "var(--warn)" : "var(--text-secondary)" }}>{action}</span>}
       <span style={{ fontSize: 14, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.title}</span>
+      {t.summary && (
+        <span title={t.summary} style={{ fontSize: 12, lineHeight: 1.4, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {t.summary}
+        </span>
+      )}
       {steps && steps.length > 0 && t.status !== "done" && <StepProgress steps={steps} />}
       {meta && <span style={{ fontSize: 12, lineHeight: 1.4, color: needs ? "var(--warn)" : "var(--muted)" }}>{meta}</span>}
       {(parent || t.labels.length > 0) && (
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
           {parent && <EpicLozenge epic={parent} />}
           {t.labels.slice(0, 2).map((l) => (
-            <span key={l} style={{ height: 20, padding: "0 6px", borderRadius: 4, border: "1px solid var(--line)", fontSize: 11, color: "var(--text-2)", display: "inline-flex", alignItems: "center" }}>
+            <span key={l} style={{ height: 20, padding: "0 6px", borderRadius: 4, border: "1px solid var(--line)", fontSize: 12, color: "var(--text-2)", display: "inline-flex", alignItems: "center" }}>
               {l}
             </span>
           ))}
@@ -428,7 +425,7 @@ export function Card({ ws, t, me, action, dragging, onDragStart, onDragEnd }: { 
         <TypeIcon type={t.type} />
         <KeyText t={t} style={{ textDecoration: t.status === "done" ? "line-through" : "none" }} />
         {t.pr_url && (
-          <span title="Pull request open" style={{ fontSize: 11, color: "var(--codex)", fontFamily: "var(--mono)" }}>
+          <span title="Pull request open" style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
             PR
           </span>
         )}
@@ -447,7 +444,7 @@ export function WhoMark({ ws, id, me, size = 22 }: { ws: Workspace; id: string |
   const p = ws.people.profiles.get(id);
   return (
     <span title={ws.nameOf(id)} style={{ display: "inline-flex", flex: "none" }}>
-      {agent ? <AgentMark vendor={agent.vendor} size={size} /> : <Avatar name={p?.name ?? "?"} src={p?.avatar_url} size={size} you={id === me} />}
+      {agent ? <AgentAvatar name={agent.display_name} vendor={agent.vendor} size={size} /> : <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={size} you={id === me} />}
     </span>
   );
 }

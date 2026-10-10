@@ -30,6 +30,7 @@ const OUTCOME_EXAMPLE = [
   "```autokolab",
   "status: review            (review when the PR is open; in_progress if work is left; blocked if you can't go on)",
   "pr: <pull request link>",
+  "summary: <one plain sentence on what changed, for someone who doesn't code>",
   "question: <one question for a person>",
   "new_ticket: <title of follow-up work you found> (one line each, repeat as needed)",
   "```",
@@ -40,6 +41,8 @@ export interface Outcome {
   body: string;
   status?: "review" | "in_progress" | "blocked";
   pr?: string;
+  /** One plain sentence on what the ticket changed (tickets.summary). */
+  summary?: string;
   question?: string;
   newTickets: string[];
 }
@@ -62,7 +65,8 @@ export function parseOutcome(text: string): Outcome {
     } else if (key === "pr") {
       const url = v.match(/https:\/\/github\.com\/[^\s)>\]]+\/pull\/\d+/i)?.[0];
       if (url) out.pr = url;
-    } else if (key === "question") out.question = v.slice(0, 1000);
+    } else if (key === "summary") out.summary = v.replace(/^["']|["']$/g, "").slice(0, 200);
+    else if (key === "question") out.question = v.slice(0, 1000);
     else if (key === "new_ticket") out.newTickets.push(v.slice(0, 200));
   }
   return out;
@@ -89,7 +93,9 @@ export function buildPrompt(ctx: PromptContext): string {
     : `Message from your teammate ${sender.name} (${ctx.senderRole}), message #${m.id}, kind ${m.kind}. Reply, answer or help as a colleague would, within your rules and limits:`;
   const header = ctx.followUp
     ? `New message in AutoKolab thread #${thread} from ${ctx.fromInstructor ? "" : "your teammate "}${sender.name} (${ctx.senderRole}), message #${m.id}, kind ${m.kind}. Continue the same task with it.`
-    : `You are ${me.name}, ${ctx.ownerName}'s ${ctx.myRole === "lead" ? "lead" : "follower"} agent in the AutoKolab room "${room.name}"${room.repo ? ` (repo ${room.repo})` : ""}. ` +
+    : (ctx.myRole === "lead"
+        ? `You are Captain, the lead agent of the AutoKolab room "${room.name}"${room.repo ? ` (repo ${room.repo})` : ""}. You run as ${me.name}, ${ctx.ownerName}'s agent. `
+        : `You are ${me.name}, ${ctx.ownerName}'s follower agent in the AutoKolab room "${room.name}"${room.repo ? ` (repo ${room.repo})` : ""}. `) +
       `You are running unattended: no human is watching this session, so don't wait for confirmation, do the work.\n\n` +
       what;
 
@@ -111,7 +117,7 @@ Working with the others (everyone works on the same repo and can read every mess
 - If something is unclear, ask the member who knows: room_post kind=question to them in thread ${thread} with wait_s (up to 300). If no answer comes in that time, continue with your best judgment and say what you assumed.
 - Keep this task's bulletin board item current (in_progress, then done with the PR link). Create one if none exists.
 - When finished: commit, push your branch and open a pull request if you changed code. End with a short final message (what you did, PR link, anything left). The runner posts that final message to the room for you.
-- Don't post acknowledgements ("thanks", "ok"). If you have nothing useful to add, make your final message exactly ${NO_REPLY} and the runner posts nothing.${ctx.myRole === "lead" ? `\n\nAs the lead:\n- ${leadAutonomy(ctx.ownerName)}\n- ${LEAD_APPROVAL}` : ""}`;
+- Don't post acknowledgements ("thanks", "ok"). If you have nothing useful to add, make your final message exactly ${NO_REPLY} and the runner posts nothing.${ctx.myRole === "lead" ? `\n\nAs Captain:\n- ${leadAutonomy(ctx.ownerName)}\n- ${LEAD_APPROVAL}` : ""}`;
 }
 
 export interface TriagePromptContext {
@@ -131,7 +137,7 @@ export interface TriagePromptContext {
 /** The lead's run for a worker's question on a ticket ("Needs you"): answer it, or ask its person once. */
 export function buildTriagePrompt(ctx: TriagePromptContext): string {
   const { key } = ctx;
-  return `You are ${ctx.myName}, ${ctx.ownerName}'s lead agent on the AutoKolab project "${ctx.projectName}". You are running unattended: no human is watching this session.
+  return `You are Captain, the lead agent of the AutoKolab project "${ctx.projectName}". You run as ${ctx.myName}, ${ctx.ownerName}'s agent. You are running unattended: no human is watching this session.
 
 ${ctx.assignee} is stuck on ${key} with a question for a person:
 -----
@@ -177,9 +183,10 @@ export function buildTicketPrompt(ctx: TicketPromptContext): string {
 - If something is unclear, first ask the lead (or the agent whose branch you depend on) in the room: room_post kind=question to them with wait_s (up to 300). If no answer comes, continue with your best judgment and say what you assumed.
 - Set needs_human="<short question>" (ticket_update) only for a real product choice a person must make, or if nobody answers. Carry on with whatever doesn't depend on it. If nothing can be done without the answer, end with "${BLOCKED_PREFIX} <the question>".
 - Follow the project's rules and decisions. If you settle a choice others must build on, record it with decision_add. If you find more work, create a ticket for it (ticket_create, backlog, unassigned) instead of growing this one.
-- When every "done means" item is true: run the tests and type checker, commit, push, open a pull request with "${key}" in its title against ${wt.base} (always ${wt.base}, even when your branch builds on someone's unmerged branch: \`gh pr create --base ${wt.base}\`), then ticket_update key=${key} status=review pr_url=<the PR link>.
+- When every "done means" item is true: run the tests and type checker, commit, push, open a pull request with "${key}" in its title against ${wt.base} (always ${wt.base}, even when your branch builds on someone's unmerged branch: \`gh pr create --base ${wt.base}\`), then ticket_update key=${key} status=review pr_url=<the PR link> summary="<one sentence>".
+- The summary is shown on the board for people who don't read code: one plain sentence (under 200 characters) on the outcome, not the implementation. Good: "People page now shows which model each agent last ran". Bad: "Added lastModel to AgentRow and a migration".
 - Keep your own to-do list current as you work; it's shown on the ticket as its steps.
-- Don't post a summary comment yourself. Your final message is posted on the ticket for you: keep it short (what you did, how you checked it, anything left).
+- Don't post a wrap-up comment yourself. Your final message is posted on the ticket for you: keep it short (what you did, how you checked it, anything left).
 - If the AutoKolab tools aren't available to you, that's fine: do the work, and the ending block below updates the ticket for you.
 - End your final message with this block, filled in (it updates the ticket; write "none" where nothing applies):
 ${OUTCOME_EXAMPLE}`;

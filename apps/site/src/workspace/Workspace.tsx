@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { recentEvents, waitsForMergeOk, type Project, type Status, type TicketEvent } from "../lib/data";
-import { go, onNav, type Route } from "../lib/router";
+import { go, href, onNav, type ProjectView, type Route } from "../lib/router";
 import type { Profile } from "../lib/session";
-import { AgentMark, Avatar, Button, Icon, Logo, Svg } from "../ui";
+import { Button, Icon, Logo, PersonAvatar, Svg } from "../ui";
 import { CommandPalette, useCommandPalette, type Command } from "../ui/CommandPalette";
 import { Backlog } from "./Backlog";
 import { Board, Card, EmptyBoard } from "./Board";
@@ -11,27 +11,53 @@ import { ConnectAgents } from "./Connect";
 import { Decisions } from "./Decisions";
 import { Room } from "./Room";
 import type { Room as RoomData, RoomMessage } from "../lib/room";
+import { cityFromTimezone, localTime } from "../lib/place";
 import { GuidePage } from "./GuidePage";
 import { ListView } from "./ListView";
 import { NewTicket } from "./NewTicket";
-import { agentOnline, agentStatusText, People } from "./People";
+import { AgentFace, agentOnline, agentStatusText, People } from "./People";
+import { Results, Settings } from "./Settings";
 import { actionFor, activity, goals, goalStateText, headline, plural, type Goal } from "./story";
 import { isPerson, OkToMerge, TicketPage } from "./TicketPage";
 import { useWorkspace, type Workspace as WS } from "./useWorkspace";
 
-// The project workspace: sidebar (projects, views, people and agents) and the current view.
+// The project workspace (AK-43, 02-information-architecture.md): the AppShell with its sidebar
+// (Captain · Work · Room · People, then Decisions · Results · Settings) and the current page.
 
-type View = "overview" | "room" | "board" | "backlog" | "list" | "guide" | "decisions" | "people" | "connect";
+interface NavItem {
+  id: ProjectView;
+  label: string;
+  icon: React.ReactNode;
+  sub: string;
+  /** "G then W": shown in the item's tooltip and ⌘K, never printed on the item. */
+  key?: string;
+  /** The views that live under this item. */
+  under: (ProjectView | "ticket")[];
+}
 
-const NAV: { id: View; label: string; icon: React.ReactNode; sub: string }[] = [
-  { id: "overview", label: "Overview", icon: Icon.home, sub: "What needs you, what's moving, what just happened" },
-  { id: "room", label: "Room", icon: Icon.chat, sub: "Where people and agents talk, live. @name to talk to someone." },
-  { id: "board", label: "Board", icon: Icon.board, sub: "Work in flight. Agents pick up what's in Ready; drag cards between columns and lanes." },
-  { id: "backlog", label: "Backlog", icon: Icon.backlog, sub: "What's on the board, and the ranked backlog waiting for it" },
-  { id: "list", label: "All issues", icon: Icon.list, sub: "Every issue, sortable" },
-  { id: "guide", label: "Project Guide", icon: Icon.book, sub: "Concept, architecture and rules: what every agent reads first" },
-  { id: "decisions", label: "Decisions", icon: Icon.decisions, sub: "Settled choices everyone builds on" },
-  { id: "people", label: "People & agents", icon: Icon.people, sub: "Who works here and what each agent is doing" },
+const NAV_MAIN: NavItem[] = [
+  { id: "overview", label: "Captain", icon: Icon.captain, sub: "What needs you, what's moving, what just happened", under: ["overview"] },
+  { id: "board", label: "Work", icon: Icon.board, sub: "Who is doing what. Agents pick up what's in Ready; drag cards between columns and lanes.", key: "W", under: ["board", "goals", "backlog", "list", "ticket"] },
+  { id: "room", label: "Room", icon: Icon.chat, sub: "Where people and agents talk, live. @name to talk to someone.", key: "R", under: ["room"] },
+  { id: "people", label: "People", icon: Icon.people, sub: "Who works here and what each agent is doing", key: "P", under: ["people", "connect"] },
+];
+const NAV_RECORDS: NavItem[] = [
+  { id: "decisions", label: "Decisions", icon: Icon.decisions, sub: "Settled choices, and the Project Guide every agent reads first", key: "D", under: ["decisions", "guide"] },
+  { id: "results", label: "Results", icon: Icon.results, sub: "Whether it's working", key: "S", under: ["results"] },
+  { id: "settings", label: "Settings", icon: Icon.settings, sub: "How hands-off this project is, and who can join", under: ["settings"] },
+];
+const NAV = [...NAV_MAIN, ...NAV_RECORDS];
+
+/** The views inside Work and Decisions, as tabs. */
+const WORK_TABS: { id: ProjectView; label: string }[] = [
+  { id: "board", label: "By agent" },
+  { id: "goals", label: "By goal" },
+  { id: "backlog", label: "Backlog" },
+  { id: "list", label: "All issues" },
+];
+const DECISION_TABS: { id: ProjectView; label: string }[] = [
+  { id: "guide", label: "Guide" },
+  { id: "decisions", label: "Decisions" },
 ];
 
 export function Workspace({
@@ -66,19 +92,31 @@ export function Workspace({
   const [paletteOpen, setPaletteOpen] = useCommandPalette();
   const me = profile.id;
 
-  // C: new ticket (like Linear), unless you're typing somewhere.
+  // C: new ticket (like Linear); G then W / R / P / D / S: go to that page. Not while typing.
   useEffect(() => {
+    let g = 0;
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (el.closest("input, textarea, select, [contenteditable]") || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "c" || e.key === "C") {
+      if (el.closest("input, textarea, select, [contenteditable], [role=dialog]") || e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toUpperCase();
+      if (Date.now() - g < 1500) {
+        g = 0;
+        const to = NAV.find((n) => n.key === k);
+        if (to) {
+          e.preventDefault();
+          go({ view: to.id, project: project.slug });
+        }
+        return;
+      }
+      if (k === "G") g = Date.now();
+      else if (k === "C") {
         e.preventDefault();
         setNewTicket({});
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [project.slug]);
 
   useEffect(() => {
     try {
@@ -91,7 +129,10 @@ export function Workspace({
   const commands = useMemo<Command[]>(() => {
     const c: Command[] = [
       { id: "new", label: "Create an issue", hint: "C", run: () => setNewTicket({}) },
-      ...NAV.map((n) => ({ id: `go-${n.id}`, label: `Go to ${n.label}`, run: () => go({ view: n.id, project: project.slug }) })),
+      ...NAV.map((n) => ({ id: `go-${n.id}`, label: `Go to ${n.label}`, hint: n.key && `G then ${n.key}`, run: () => go({ view: n.id, project: project.slug }) })),
+      ...[...WORK_TABS, ...DECISION_TABS]
+        .filter((t) => !NAV.some((n) => n.id === t.id))
+        .map((t) => ({ id: `go-${t.id}`, label: `Go to ${t.id === "guide" ? "the Project Guide" : `Work · ${t.label}`}`, run: () => go({ view: t.id, project: project.slug }) })),
       ...(ws?.tickets ?? []).map((t) => ({ id: `t-${t.id}`, label: `${t.key} ${t.title}`, hint: t.status.replace("_", " "), run: () => go({ view: "ticket", project: project.slug, key: t.key }) })),
       ...projects.filter((p) => p.id !== project.id).map((p) => ({ id: `p-${p.id}`, label: `Switch to ${p.name}`, run: () => go({ view: "overview", project: p.slug }) })),
       { id: "new-project", label: "New project", run: () => go({ view: "new-project" }) },
@@ -102,33 +143,43 @@ export function Workspace({
     return c;
   }, [ws, project, projects, onSignOut, onEditProfile]);
 
-  const nav = NAV.find((n) => n.id === route.view);
+  const section = NAV.find((n) => n.under.includes(route.view));
   const title =
     route.view === "ticket"
       ? null
       : route.view === "connect"
         ? { label: "Connect your agents", sub: "Bring your Claude Code and Codex into this project with one terminal line" }
-        : nav;
+        : section;
+  const tabs = section?.id === "board" && route.view !== "ticket" ? WORK_TABS : section?.id === "decisions" ? DECISION_TABS : null;
 
   return (
     <div style={{ minHeight: "100%", display: "flex", flexWrap: "wrap", alignItems: "stretch" }}>
-      <Sidebar ws={ws} project={project} projects={projects} route={route} profile={profile} onOpenPalette={() => setPaletteOpen(true)} onSignOut={onSignOut} />
+      <Sidebar ws={ws} project={project} projects={projects} route={route} profile={profile} onSignOut={onSignOut} />
 
-      <main className="room-main" style={{ flex: "999 1 620px", minWidth: 0, display: "flex", flexDirection: "column" }}>
-        {title && (
-          <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "18px 28px", borderBottom: "1px solid var(--line-soft)", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-              <h1 style={{ fontSize: 19, fontWeight: 600 }}>{title.label}</h1>
+      <main style={{ flex: "999 1 560px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <header className="ak-page" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: title ? "18px 28px" : "12px 28px", borderBottom: title ? "1px solid var(--line-soft)" : 0, flexWrap: "wrap" }}>
+          {title && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+              <h1 style={{ fontSize: 22, fontWeight: 500, letterSpacing: "var(--tracking-tight)" }}>{title.label}</h1>
               <span style={{ fontSize: 13, color: "var(--faint)" }}>{title.sub}</span>
             </div>
-            {!["board", "backlog", "list", "room", "connect"].includes(route.view) && (
-              <Button variant="primary" size="sm" onClick={() => setNewTicket({})}>
-                Create <kbd style={{ font: "500 11px var(--mono)", opacity: 0.7 }}>C</kbd>
+          )}
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
+            <Button variant="secondary" size="sm" onClick={() => setPaletteOpen(true)} title="Search and jump anywhere (⌘K)" aria-keyshortcuts="Meta+K Control+K">
+              <Svg size={15} width={2}>
+                {Icon.search}
+              </Svg>
+              Search
+            </Button>
+            {title && !["board", "goals", "backlog", "list", "room", "connect", "settings", "results"].includes(route.view) && (
+              <Button variant="primary" size="sm" onClick={() => setNewTicket({})} title="Create a ticket (C)">
+                Create
               </Button>
             )}
-          </header>
-        )}
-        <div style={{ flex: 1, padding: route.view === "ticket" ? "22px 28px 48px" : "22px 28px 40px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+          </div>
+        </header>
+        <div className="ak-page" style={{ flex: 1, padding: route.view === "ticket" ? "8px 28px 48px" : "22px 28px 40px", minWidth: 0, display: "flex", flexDirection: "column", gap: tabs ? 16 : 0 }}>
+          {tabs && <Tabs label={`${section!.label} views`} tabs={tabs} current={route.view} project={project.slug} />}
           {error && <p style={{ color: "var(--danger)", fontSize: 14, marginBottom: 12 }}>{error}</p>}
           {!ws ? (
             <p style={{ color: "var(--faint)" }}>Loading {project.name}…</p>
@@ -138,8 +189,12 @@ export function Workspace({
             <ConnectAgents ws={ws} me={me} />
           ) : route.view === "room" ? (
             <Room ws={ws} profile={profile} demo={demoRoom} />
-          ) : route.view === "board" ? (
-            <Board ws={ws} me={me} onNew={(status) => setNewTicket({ status })} />
+          ) : route.view === "board" || route.view === "goals" ? (
+            <Board ws={ws} me={me} groupBy={route.view === "goals" ? "epic" : "assignee"} onNew={(status) => setNewTicket({ status })} />
+          ) : route.view === "settings" ? (
+            <Settings ws={ws} me={me} onProjectChanged={onProjectChanged} />
+          ) : route.view === "results" ? (
+            <Results ws={ws} />
           ) : route.view === "backlog" ? (
             <Backlog ws={ws} me={me} onNew={() => setNewTicket({ status: "backlog" })} />
           ) : route.view === "list" ? (
@@ -180,7 +235,6 @@ function Sidebar({
   projects,
   route,
   profile,
-  onOpenPalette,
   onSignOut,
 }: {
   ws: WS | null;
@@ -188,21 +242,54 @@ function Sidebar({
   projects: Project[];
   route: Extract<Route, { project: string }>;
   profile: Profile;
-  onOpenPalette: () => void;
   onSignOut: () => void;
 }) {
-  const needs = ws?.tickets.filter((t) => t.needs_human && !["done", "canceled"].includes(t.status)).length ?? 0;
-  const agents = ws ? [...ws.people.agents.values()] : [];
+  // The badge: open "needs you" items, the same count as Captain's headline.
+  const needs = ws ? headline(ws).needs : 0;
+  const agents = ws ? ws.people.agents.size : 0;
   const humans = ws?.people.members.filter((m) => m.actor_type === "human") ?? [];
+  const item = (n: NavItem) => {
+    const active = n.under.includes(route.view);
+    return (
+      <a
+        key={n.id}
+        className="ak-row"
+        href={href({ view: n.id, project: project.slug })}
+        onClick={onNav({ view: n.id, project: project.slug })}
+        aria-current={active ? "page" : undefined}
+        title={n.key ? `${n.label} · G then ${n.key}` : n.label}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "9px 10px",
+          borderRadius: 9,
+          textDecoration: "none",
+          fontSize: 14,
+          ...(active ? { background: "var(--surface-active)", color: "var(--text)", fontWeight: 500 } : { color: "var(--text-muted)" }),
+        }}
+      >
+        <Svg size={16}>{n.icon}</Svg>
+        {n.label}
+        {n.id === "overview" && needs > 0 && (
+          <span aria-label={`${needs} need${needs === 1 ? "s" : ""} you`} style={{ marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 999, background: "var(--amber)", color: "var(--amber-ink)", fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            {needs}
+          </span>
+        )}
+      </a>
+    );
+  };
   return (
-    <aside aria-label="Project navigation" style={{ flex: "1 1 240px", maxWidth: "100%", display: "flex", flexDirection: "column", gap: 22, padding: "20px 14px", background: "var(--sidebar)", borderRight: "1px solid var(--line-soft)" }}>
-      <label style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, padding: "4px 8px", borderRadius: 10, cursor: "pointer" }}>
+    <aside className="ak-nav" aria-label="Project navigation" style={{ flex: "1 1 220px", maxWidth: 260, display: "flex", flexDirection: "column", gap: 20, padding: "20px 12px", background: "var(--sidebar)", borderRight: "1px solid var(--border-subtle)" }}>
+      <label style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, padding: "4px 8px", borderRadius: 10, cursor: "pointer", flex: "none" }}>
         <Logo size={26} />
-        <span style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, flex: 1 }}>
-          <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.name}</span>
-          <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.repo ?? `${project.ticket_prefix}-…`}</span>
+        <span className="ak-hide" style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, flex: 1 }}>
+          <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.name}</span>
+          <span style={{ fontSize: 12, color: "var(--faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {ws ? `${plural(humans.length, "person", "people")} · ${plural(agents, "agent")}` : (project.repo ?? "")}
+          </span>
         </span>
-        <span aria-hidden="true" style={{ color: "var(--faint)", fontSize: 11 }}>▾</span>
+        <span className="ak-hide" aria-hidden="true" style={{ color: "var(--faint)", fontSize: 12 }}>▾</span>
         <select
           aria-label="Switch project"
           value={project.slug}
@@ -218,92 +305,16 @@ function Sidebar({
         </select>
       </label>
 
-      <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {NAV.map((n) => {
-          const active = route.view === n.id || (route.view === "ticket" && n.id === "board");
-          return (
-            <a
-              key={n.id}
-              href={`/p/${project.slug}/${n.id}`}
-              onClick={onNav({ view: n.id, project: project.slug })}
-              aria-current={active ? "page" : undefined}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                padding: "8px 10px",
-                borderRadius: 8,
-                textDecoration: "none",
-                fontSize: 14,
-                ...(active ? { background: "var(--surface-2)", color: "var(--text)", fontWeight: 500 } : { color: "var(--text-2)" }),
-              }}
-            >
-              <Svg size={17}>{n.icon}</Svg>
-              {n.label}
-              {n.id === "overview" && needs > 0 && (
-                <span style={{ marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 999, background: "var(--warn-bg)", border: "1px solid var(--warn-line)", color: "var(--warn)", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-                  {needs}
-                </span>
-              )}
-            </a>
-          );
-        })}
+      <nav aria-label="Pages" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {NAV_MAIN.map(item)}
+        <div role="separator" style={{ height: 1, background: "var(--border-subtle)", margin: "8px 10px" }} />
+        {NAV_RECORDS.map(item)}
       </nav>
 
-      {ws && (
-        <section style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span className="eyebrow" style={{ padding: "0 10px 4px" }}>
-            People
-          </span>
-          {humans.map((m) => {
-            const p = ws.people.profiles.get(m.actor_id);
-            return (
-              <div key={m.actor_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 10px" }}>
-                <Avatar name={p?.name ?? "?"} src={p?.avatar_url} size={22} you={m.actor_id === profile.id} />
-                <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {p?.name ?? "Someone"}
-                  {m.actor_id === profile.id ? " (you)" : ""}
-                </span>
-              </div>
-            );
-          })}
-          <span className="eyebrow" style={{ padding: "12px 10px 4px" }}>
-            Agents
-          </span>
-          {agents.map((a) => {
-            const on = agentOnline(a);
-            const st = on ? agentStatusText[a.status] : agentStatusText.offline;
-            return (
-              <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 10px" }} title={a.status_note ?? st.label}>
-                <AgentMark vendor={a.vendor} size={22} />
-                <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                  <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", gap: 6, alignItems: "center" }}>
-                    {a.display_name}
-                    {a.id === project.lead_agent_id && <LeadBadge />}
-                  </span>
-                  <span style={{ fontSize: 11, color: st.color }}>{st.label}</span>
-                </span>
-              </div>
-            );
-          })}
-          {!agents.length && <span style={{ padding: "0 10px", fontSize: 12, color: "var(--faint)" }}>No agents connected yet.</span>}
-        </section>
-      )}
-
-      <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "stretch", gap: 6, padding: "0 6px" }}>
-        <button
-          type="button"
-          onClick={onOpenPalette}
-          style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 10px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--surface)", color: "var(--faint)", fontSize: 13, cursor: "pointer" }}
-        >
-          <Svg size={15} width={2}>
-            {Icon.search}
-          </Svg>
-          Jump to…
-          <kbd style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 11, color: "var(--faint)" }}>⌘K</kbd>
-        </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px 0" }}>
-          <Avatar name={profile.name} src={profile.avatar_url} size={22} you />
+      <div className="ak-hide" style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "stretch", gap: 8, padding: "0 6px" }}>
+        {ws && <TeamClocks ws={ws} />}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <PersonAvatar name={profile.name} src={profile.avatar_url} size={22} you />
           <span style={{ fontSize: 13, color: "var(--text-2)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile.name}</span>
           <Button variant="ghost" size="sm" onClick={onSignOut} style={{ height: 28, padding: "0 8px", fontSize: 12 }}>
             Sign out
@@ -311,6 +322,49 @@ function Sidebar({
         </div>
       </div>
     </aside>
+  );
+}
+
+/** "Toronto 11:02 · Stockholm 17:02": each place the team works from, on one small line. */
+function TeamClocks({ ws }: { ws: WS }) {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((x) => x + 1), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const places = new Map<string, string>();
+  for (const m of ws.people.members) {
+    const p = m.actor_type === "human" ? ws.people.profiles.get(m.actor_id) : undefined;
+    if (!p?.timezone || places.has(p.timezone)) continue;
+    places.set(p.timezone, p.city || cityFromTimezone(p.timezone));
+  }
+  if (!places.size) return null;
+  return (
+    <span style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5 }}>
+      {[...places].map(([tz, city]) => `${city} ${localTime(tz)}`).join(" · ")}
+    </span>
+  );
+}
+
+/** The views inside a page (Work's By agent · By goal · Backlog · All issues; Decisions' Guide · Decisions). */
+function Tabs({ label, tabs, current, project }: { label: string; tabs: { id: ProjectView; label: string }[]; current: string; project: string }) {
+  return (
+    <nav aria-label={label} style={{ display: "flex", gap: 4, padding: 3, borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", alignSelf: "flex-start", maxWidth: "100%", overflowX: "auto" }}>
+      {tabs.map((t) => {
+        const on = t.id === current;
+        return (
+          <a
+            key={t.id}
+            href={href({ view: t.id, project })}
+            onClick={onNav({ view: t.id, project })}
+            aria-current={on ? "page" : undefined}
+            style={{ padding: "6px 12px", borderRadius: 7, fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", textDecoration: "none", ...(on ? { background: "var(--surface-raised)", color: "var(--text)" } : { color: "var(--text-muted)" }) }}
+          >
+            {t.label}
+          </a>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -346,9 +400,9 @@ function Overview({ ws, me, demoEvents }: { ws: WS; me: string; demoEvents?: Tic
   const setup = [
     { done: !!g && !!(g.concept.trim() || g.rules.trim()), label: "Write the Project Guide", sub: "The concept and rules every agent reads first", to: "guide" as const },
     { done: agents.some((a) => a.owner_profile_id === me), label: "Connect your agents", sub: "One terminal line brings in your Claude Code and Codex", to: "connect" as const },
-    { done: ws.people.members.filter((m) => m.actor_type === "human").length > 1, label: "Invite the people you work with", sub: "Send them a link; they join with GitHub", to: "people" as const },
-    { done: !!ws.project.lead_agent_id, label: "Pick the lead agent", sub: "Your own agent: you talk to it, it writes the tickets and assigns them", to: "people" as const },
-    { done: ws.tickets.length > 0, label: "Ask the lead for the first piece of work", sub: "It plans it into tickets for the worker agents", to: "board" as const },
+    { done: ws.people.members.filter((m) => m.actor_type === "human").length > 1, label: "Invite the people you work with", sub: "Send them a link; they join with GitHub", to: "settings" as const },
+    { done: !!ws.project.lead_agent_id, label: "Pick Captain", sub: "Your own agent: you talk to it, it writes the tickets and assigns them", to: "people" as const },
+    { done: ws.tickets.length > 0, label: "Ask Captain for the first piece of work", sub: "It plans it into tickets for the other agents", to: "board" as const },
   ];
   const setupLeft = setup.filter((s) => !s.done).length;
 
@@ -366,7 +420,7 @@ function Overview({ ws, me, demoEvents }: { ws: WS; me: string; demoEvents?: Tic
               {setup.map((s, i) => (
                 <a
                   key={s.label}
-                  href={`/p/${ws.project.slug}/${s.to}`}
+                  href={href({ view: s.to, project: ws.project.slug })}
                   onClick={onNav({ view: s.to, project: ws.project.slug })}
                   style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 14px", background: "var(--surface)", borderTop: i ? "1px solid var(--line-soft)" : 0, textDecoration: "none", color: "var(--text)" }}
                 >
@@ -420,13 +474,13 @@ function Overview({ ws, me, demoEvents }: { ws: WS; me: string; demoEvents?: Tic
             const cur = a.current_ticket_id ? ws.byId.get(a.current_ticket_id) : undefined;
             return (
               <div key={a.id} style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <AgentMark vendor={a.vendor} size={26} />
+                <AgentFace a={a} size={26} />
                 <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
                   <span style={{ fontSize: 13, fontWeight: 500 }}>
                     {a.display_name} <span style={{ color: st.color, fontWeight: 400 }}>· {st.label}</span>
                   </span>
                   {cur ? (
-                    <a href={`/p/${ws.project.slug}/t/${cur.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: cur.key })} style={{ fontSize: 12, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "none" }}>
+                    <a href={`/p/${ws.project.slug}/work/${cur.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: cur.key })} style={{ fontSize: 12, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textDecoration: "none" }}>
                       {cur.key} · {a.status_note ?? cur.title}
                     </a>
                   ) : (
@@ -444,14 +498,23 @@ function Overview({ ws, me, demoEvents }: { ws: WS; me: string; demoEvents?: Tic
           {events === null && <span style={{ fontSize: 13, color: "var(--faint)" }}>Loading…</span>}
           {sentences?.length === 0 && <span style={{ fontSize: 13, color: "var(--faint)" }}>Nothing yet.</span>}
           {sentences?.map(({ e, t, s }) => (
-            <a key={e.id} href={`/p/${ws.project.slug}/t/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} title={t.title} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "var(--muted)", textDecoration: "none", lineHeight: 1.45 }}>
+            <a key={e.id} href={`/p/${ws.project.slug}/work/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} title={t.title} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "var(--muted)", textDecoration: "none", lineHeight: 1.45 }}>
               <span style={{ marginTop: 2 }}>
                 <StatusIcon status={t.status} size={13} />
               </span>
-              <span>
-                <strong style={{ color: "var(--text-2)", fontWeight: 500 }}>{ws.nameOf(e.actor_id)}</strong> {s.verb} <KeyText t={t} style={{ color: "var(--text-2)" }} />
-                {s.after ? ` ${s.after}` : ""} <span style={{ color: "var(--faint)" }}>· {ago(e.created_at)}</span>
-              </span>
+              {s.outcome ? (
+                <span>
+                  <span style={{ color: "var(--text-2)" }}>{s.outcome}</span>{" "}
+                  <span style={{ color: "var(--faint)" }}>
+                    · <KeyText t={t} style={{ color: "var(--faint)" }} /> · {ago(e.created_at)}
+                  </span>
+                </span>
+              ) : (
+                <span>
+                  <strong style={{ color: "var(--text-2)", fontWeight: 500 }}>{ws.nameOf(e.actor_id)}</strong> {s.verb} <KeyText t={t} style={{ color: "var(--text-2)" }} />
+                  {s.after ? ` ${s.after}` : ""} <span style={{ color: "var(--faint)" }}>· {ago(e.created_at)}</span>
+                </span>
+              )}
             </a>
           ))}
         </section>
@@ -464,7 +527,7 @@ function Overview({ ws, me, demoEvents }: { ws: WS; me: string; demoEvents?: Tic
 function Headline({ ws }: { ws: WS }) {
   const h = headline(ws);
   const epicLink = (e: { key: string; title: string }) => (
-    <a key={e.key} href={`/p/${ws.project.slug}/t/${e.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: e.key })} style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 600 }}>
+    <a key={e.key} href={`/p/${ws.project.slug}/work/${e.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: e.key })} style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 600 }}>
       {e.title}
     </a>
   );
@@ -514,7 +577,7 @@ function Goals({ ws, me }: { ws: WS; me: string }) {
           ))}
         </div>
       ) : (
-        <div style={{ padding: 14, borderRadius: 12, border: "1px dashed var(--line)", fontSize: 13, color: "var(--muted)" }}>No open goals. Ask the lead to group the next piece of work into an epic.</div>
+        <div style={{ padding: 14, borderRadius: 12, border: "1px dashed var(--line)", fontSize: 13, color: "var(--muted)" }}>No open goals. Ask Captain to group the next piece of work into a goal.</div>
       )}
     </section>
   );
@@ -526,7 +589,7 @@ function GoalRow({ ws, me, g, first }: { ws: WS; me: string; g: Goal; first: boo
   const to: Route = g.epic ? { view: "ticket", project: ws.project.slug, key: g.epic.key } : { view: "backlog", project: ws.project.slug };
   return (
     <a
-      href={g.epic ? `/p/${ws.project.slug}/t/${g.epic.key}` : `/p/${ws.project.slug}/backlog`}
+      href={href(to)}
       onClick={onNav(to)}
       style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", background: "var(--surface)", borderTop: first ? 0 : "1px solid var(--line-soft)", textDecoration: "none", color: "var(--text)" }}
     >

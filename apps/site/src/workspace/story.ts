@@ -48,10 +48,10 @@ export type GoalState = "waiting" | "moving" | "not_started" | "paused" | "done"
 
 export const goalStateText: Record<GoalState, { label: string; color: string }> = {
   waiting: { label: "Waiting on you", color: "var(--warn)" },
-  moving: { label: "Moving", color: "var(--ok)" },
+  moving: { label: "Moving", color: "var(--blue-text)" },
   not_started: { label: "Not started", color: "var(--faint)" },
   paused: { label: "Paused", color: "var(--muted)" },
-  done: { label: "Done", color: "var(--muted)" },
+  done: { label: "Done", color: "var(--ok)" },
 };
 
 export interface Goal {
@@ -107,11 +107,25 @@ export function actionFor(t: Ticket): string {
   return t.pr_url ? "Review a PR" : "Review the work";
 }
 
+export interface Sentence {
+  verb: string;
+  after?: string;
+  /** The ticket's plain summary when it ships or goes up for review: "Shipped: Checkout remembers your card". */
+  outcome?: string;
+}
+
 /**
  * One activity event as a sentence around the ticket key: "merged" SH-5 "(auto-merge)".
  * Runner bookkeeping (steps, branches, approvals reset by a new PR, self-assignment) is null.
  */
-export function activity(ws: Workspace, e: TicketEvent, t: Ticket): { verb: string; after?: string } | null {
+export function activity(ws: Workspace, e: TicketEvent, t: Ticket): Sentence | null {
+  const s = sentence(ws, e, t);
+  const to = e.kind === "status" ? (e.data as { to?: string }).to : undefined;
+  if (!s || !t.summary || (to !== "done" && to !== "review")) return s;
+  return { ...s, outcome: `${to === "done" ? "Shipped" : "Up for review"}: ${t.summary}` };
+}
+
+function sentence(ws: Workspace, e: TicketEvent, t: Ticket): Sentence | null {
   const d = e.data as Record<string, string | null | undefined>;
   const agent = !!(e.actor_id && ws.agentOf(e.actor_id));
   switch (e.kind) {

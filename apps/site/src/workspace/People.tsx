@@ -1,18 +1,19 @@
 import { useEffect, useState } from "react";
 import { addPerson, createInvite, EFFORTS, inviteLink, invites as listInvites, MERGE_POLICIES, mergePolicyOf, MODEL_CHOICES, revokeInvite, setAgentModel, setLead, setMergePolicy, showCode, type Agent, type Effort, type Invite, type MergePolicy } from "../lib/data";
 import { placeLine } from "../lib/place";
-import { go, onNav } from "../lib/router";
-import { AgentMark, Avatar, Button } from "../ui";
+import { go, href, onNav } from "../lib/router";
+import { AgentAvatar, Button, PersonAvatar, type AgentState } from "../ui";
 import { ago, KeyText, LeadBadge } from "./bits";
 import type { Workspace } from "./useWorkspace";
 
-// Who works on this project: people (circles) and their agents (rounded squares), with what each
+// Who works on this project: people (circles) and their agents (neutral squares), with what each
 // agent is doing right now.
 
+// Colour only means status: blue working, amber needs you, coral blocked, the rest neutral.
 export const agentStatusText: Record<Agent["status"], { label: string; color: string }> = {
-  idle: { label: "Online", color: "var(--ok)" },
-  planning: { label: "Working", color: "var(--ok)" },
-  building: { label: "Building", color: "var(--ok)" },
+  idle: { label: "Online", color: "var(--text-muted)" },
+  planning: { label: "Working", color: "var(--blue-text)" },
+  building: { label: "Building", color: "var(--blue-text)" },
   waiting_human: { label: "Needs you", color: "var(--warn)" },
   blocked: { label: "Blocked", color: "var(--danger)" },
   paused: { label: "Paused", color: "var(--faint)" },
@@ -22,6 +23,19 @@ export const agentStatusText: Record<Agent["status"], { label: string; color: st
 /** An agent counts as online if it checked in within the last few minutes. */
 export function agentOnline(a: Agent): boolean {
   return !!a.last_seen_at && Date.now() - Date.parse(a.last_seen_at) < 5 * 60_000 && a.status !== "offline";
+}
+
+/** The dot on an agent's avatar: none when it's offline. */
+export function agentDot(a: Agent): AgentState | undefined {
+  if (!agentOnline(a)) return undefined;
+  if (a.status === "planning" || a.status === "building") return "working";
+  if (a.status === "waiting_human") return "waiting";
+  return "idle";
+}
+
+/** An agent's avatar: a neutral tile with its status dot. */
+export function AgentFace({ a, size, ring }: { a: Agent; size?: number; ring?: string }) {
+  return <AgentAvatar name={a.display_name} vendor={a.vendor} status={agentDot(a)} size={size} ring={ring} />;
 }
 
 export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string; onProjectChanged?: () => void }) {
@@ -50,7 +64,7 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
           const theirAgents = agents.filter((a) => a.owner_profile_id === m.actor_id);
           return (
             <div key={m.actor_id} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line-soft)", flexWrap: "wrap" }}>
-              <Avatar name={p?.name ?? "?"} src={p?.avatar_url} size={34} you={m.actor_id === me} />
+              <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={34} you={m.actor_id === me} />
               <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: "1 1 200px" }}>
                 <span style={{ fontSize: 15, fontWeight: 500 }}>
                   {p?.name ?? "Someone"}
@@ -69,16 +83,22 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
             </div>
           );
         })}
-        {isOwner && <InvitePanel ws={ws} />}
+        {isOwner && (
+          <p style={{ fontSize: 13, color: "var(--faint)" }}>
+            The invite link is in{" "}
+            <a href={href({ view: "settings", project: ws.project.slug })} onClick={onNav({ view: "settings", project: ws.project.slug })}>
+              Settings
+            </a>
+            .
+          </p>
+        )}
         {isOwner && <AddPerson ws={ws} />}
       </section>
-
-      <Merging ws={ws} canEdit={ws.project.owner_id === me} onProjectChanged={onProjectChanged} />
 
       <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <h2 style={{ fontSize: 16, fontWeight: 600 }}>Agents · {agents.length}</h2>
         <p style={{ fontSize: 14, color: "var(--muted)" }}>
-          The <strong style={{ color: "var(--text)" }}>lead</strong> is the agent you talk to (in Claude Code, for example). It turns what you ask for into complete tickets and assigns them to the other agents, the workers, who pick them up and do them.
+          <strong style={{ color: "var(--text)" }}>Captain</strong> is the agent you talk to (in Claude Code, for example). It turns what you ask for into complete tickets and assigns them to the other agents, who pick them up and do them.
         </p>
         {leadErr && <p style={{ color: "var(--danger)", fontSize: 14 }}>{leadErr}</p>}
         <div>
@@ -91,11 +111,11 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
           const cur = a.current_ticket_id ? ws.byId.get(a.current_ticket_id) : undefined;
           return (
             <div key={a.id} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line-soft)", flexWrap: "wrap" }}>
-              <AgentMark vendor={a.vendor} size={34} />
+              <AgentFace a={a} size={34} ring="var(--surface)" />
               <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: "1 1 200px" }}>
                 <span style={{ fontSize: 15, fontWeight: 500, display: "flex", gap: 8, alignItems: "center" }}>
                   {a.display_name}
-                  {a.id === ws.project.lead_agent_id ? <LeadBadge /> : <span style={{ fontSize: 12, color: "var(--faint)", fontWeight: 400 }}>Worker</span>}
+                  {a.id === ws.project.lead_agent_id && <LeadBadge />}
                 </span>
                 <span style={{ fontSize: 13, color: "var(--faint)" }}>
                   {a.vendor === "claude" ? "Claude Code" : "Codex"} · {a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : a.owner_label ? `${a.owner_label}'s` : "shared"}
@@ -106,12 +126,12 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
                 {isOwner && (
                   <button type="button" onClick={() => void makeLead(a.id === ws.project.lead_agent_id ? null : a.id)} style={{ border: "1px solid var(--line)", borderRadius: 6, background: "transparent", color: "var(--text-2)", fontSize: 12, padding: "3px 8px", cursor: "pointer", marginBottom: 4 }}>
-                    {a.id === ws.project.lead_agent_id ? "Remove as lead" : "Make lead"}
+                    {a.id === ws.project.lead_agent_id ? "Remove as Captain" : "Make Captain"}
                   </button>
                 )}
                 <span style={{ fontSize: 13, color: st.color }}>{st.label}</span>
                 {cur ? (
-                  <a href={`/p/${ws.project.slug}/t/${cur.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: cur.key })} style={{ fontSize: 12, color: "var(--muted)", textDecoration: "none" }}>
+                  <a href={`/p/${ws.project.slug}/work/${cur.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: cur.key })} style={{ fontSize: 12, color: "var(--muted)", textDecoration: "none" }}>
                     <KeyText t={cur} style={{ color: "inherit" }} /> {a.status_note ?? cur.title}
                   </a>
                 ) : (
@@ -135,7 +155,7 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
  * How merging works in this project (DEC-19). The owner picks one of three; everyone else sees which
  * one is in force. Before schema 12 the project row has no merge_policy, so there's nothing to change yet.
  */
-function Merging({ ws, canEdit, onProjectChanged }: { ws: Workspace; canEdit: boolean; onProjectChanged?: () => void }) {
+export function Merging({ ws, canEdit, onProjectChanged }: { ws: Workspace; canEdit: boolean; onProjectChanged?: () => void }) {
   const current = mergePolicyOf(ws.project);
   const [picked, setPicked] = useState(current);
   const [busy, setBusy] = useState(false);
@@ -164,7 +184,7 @@ function Merging({ ws, canEdit, onProjectChanged }: { ws: Workspace; canEdit: bo
     <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <h2 style={{ fontSize: 16, fontWeight: 600 }}>Merging</h2>
       <p style={{ fontSize: 14, color: "var(--muted)" }}>
-        {editable ? "What happens when the lead has reviewed a pull request and its tests pass." : `How pull requests get merged here.${canEdit ? "" : " Only the project's owner can change this."}`}
+        {editable ? "What happens when Captain has reviewed a pull request and its tests pass." : `How pull requests get merged here.${canEdit ? "" : " Only the project's owner can change this."}`}
       </p>
       <fieldset disabled={!editable || busy} style={{ border: 0, margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
         <legend className="sr-only">How merging works</legend>
@@ -365,7 +385,7 @@ function AgentModel({ ws, agent: a, mine }: { ws: Workspace; agent: Agent; mine:
 }
 
 /** Invite links: send one in any chat; people sign in with GitHub and join with one click. */
-function InvitePanel({ ws }: { ws: Workspace }) {
+export function InvitePanel({ ws }: { ws: Workspace }) {
   const [list, setList] = useState<Invite[]>([]);
   const [made, setMade] = useState<Invite | null>(null);
   const [copied, setCopied] = useState(false);

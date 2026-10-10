@@ -15,7 +15,7 @@ import { BULLETIN_KINDS, BULLETIN_STATES, MESSAGE_KINDS } from "../core/types.js
 const INSTRUCTIONS = `AutoKolab connects you to the people and other AI agents working on this same repository from other machines: a project board of tickets, a Project Guide, decisions, and a shared chat room. Everyone's code is on the shared GitHub repo.
 Project board (when this repo has an AutoKolab project):
 - Start with project_brief: your job (lead or worker), the concept, architecture and rules everyone follows, the decisions in force, the agents, the board and your tickets. Follow the rules and decisions.
-- The lead turns what its person asks for into complete tickets and assigns them to the worker agents (project_brief explains how). Workers do the tickets assigned to them, exactly as written.
+- The lead agent is called Captain: people talk to it, and it turns what they ask for into complete tickets and assigns them to the worker agents (project_brief explains how). Workers do the tickets assigned to them, exactly as written. People see epics as goals; tool names and role values stay lead and epic.
 - Tickets are the source of truth for work. Before you work on one, read it with ticket_get (description, "done means", steps, comments). Comments from people are instructions for that ticket.
 - While working: move it to in_progress, plan with ticket_steps (plan), mark each step now/done as you go, set the branch with ticket_update, comment on decisions or findings. Set needs_human (a short question) when you need a person; clear it when answered.
 - When done: every "done means" item true, pull request open, ticket_update status=review with pr_url, and a short comment with what changed.
@@ -24,7 +24,7 @@ Chat room:
 - Call whoami first: it tells you your name, your role in this repo's room (lead or follower) and who can give instructions.
 - If you're a lead, the person talking to you directs the team through you. When they want something done by another agent, post it with room_post kind=task to that agent (set wait_s, e.g. 120, to wait for their first reply) and tell your person what was said. When your person comes back, start with room_read and summarize what the other agents said or asked; answer the others' questions in their thread (kind=answer), checking with your person when it's their call. You can also just do coding work yourself when asked.
 - At the start of a session: board_list (your open items), then room_read.
-- Lead: assign work with room_post kind=task to a follower (goal, acceptance criteria, branch name). Keep the board's task items current. Review pull requests and post kind=review with file:line findings; approve the exact commit you reviewed with ticket_approve. Change a worker's model and effort with agent_model when the work calls for it (stronger for hard or risky work, lighter for routine work), always with a reason.
+- Lead (Captain): assign work with room_post kind=task to a follower (goal, acceptance criteria, branch name). Keep the board's task items current. Review pull requests and post kind=review with file:line findings; approve the exact commit you reviewed with ticket_approve. Change a worker's model and effort with agent_model when the work calls for it (stronger for hard or risky work, lighter for routine work), always with a reason.
 - Follower: instructions from members who can instruct are your tasks. Post kind=status when you start, are blocked or are done (with PR link).
 - The room is a conversation: ask teammates directly (room_post kind=question with to=<them>), answer when they ask, review each other's branches. When you expect a reply, set wait_s (up to 300) or use room_wait; if none comes, continue with your best judgment and say what you assumed.
 - Don't post acknowledgements ("thanks", "ok"). Post only when you have something useful to add.
@@ -423,13 +423,14 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     "ticket_update",
     {
       description:
-        "Change a ticket: status (in_progress when you start, review with pr_url when the PR is open), branch, pr_url, needs_human (a short question for a person; null when answered), assignee, priority, title, description, done_means, labels, epic, blockers. Pass only what changes.",
+        "Change a ticket: status (in_progress when you start, review with pr_url and summary when the PR is open), branch, pr_url, summary (one plain sentence on what changed, for someone who doesn't code), needs_human (a short question for a person; null when answered), assignee, priority, title, description, done_means, labels, epic, blockers. Pass only what changes.",
       inputSchema: {
         key: keyArg,
         status: z.enum(STATUSES).optional(),
         branch: z.string().max(200).nullable().optional(),
         pr_url: z.string().url().nullable().optional(),
         needs_human: z.string().max(1000).nullable().optional(),
+        summary: z.string().max(200).nullable().optional().describe('e.g. "People page now shows which model each agent last ran": the outcome, not the code'),
         assignee: z.string().nullable().optional(),
         priority: z.enum(PRIORITIES).optional(),
         type: z.enum(TYPES).optional(),
@@ -447,7 +448,8 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
       const { key, project: _p, ...change } = a;
       const t = await p.update(key, change);
       if (change.needs_human) await p.status("waiting_human", change.needs_human.slice(0, 200), t.id).catch(() => undefined);
-      return `Updated ${t.key}: ${t.title} [${t.status}]${t.needs_human ? ` · needs a person: ${t.needs_human}` : ""}`;
+      const oldDb = change.summary !== undefined && t.summary === undefined;
+      return `Updated ${t.key}: ${t.title} [${t.status}]${t.needs_human ? ` · needs a person: ${t.needs_human}` : ""}${oldDb ? " · the summary wasn't saved: this project's database doesn't have it yet" : ""}`;
     }),
   );
 
