@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NO_CHECKS_QUESTION, isMergeQuestion, type MergePolicy, type Ticket } from "../core/projects.js";
+import { MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NOTHING_UNSURE, NO_CHECKS_QUESTION, isMergeQuestion, type MergePolicy, type Review, type Ticket } from "../core/projects.js";
 
 // The lead's approval and its runner's merge (AK-30, DEC-19). The decision is plain code, not a
 // model run: the runner merges a PR only at the commit the lead approved, once every check passed
@@ -78,15 +78,29 @@ export function shortList(items: string[], max = 5): string {
   return items.length > max ? `${shown} and ${items.length - max} more` : shown;
 }
 
+/** The PR's files that wait for a person's OK under auto_safe. */
+export function riskyFiles(pr: Pick<PrInfo, "files">): string[] {
+  const files = (pr.files ?? []).map((f) => f.path);
+  // gh lists at most 100 files, so a bigger PR can't be shown to be safe.
+  return [...files.filter(isRiskyPath), ...(files.length >= GH_FILE_LIMIT ? [`${GH_FILE_LIMIT}+ files, too many to check`] : [])];
+}
+
+/**
+ * "Needs you" for a risky merge: the reviewer's question when it recorded one (AK-45), then the
+ * files that make it risky. Without a question, the files alone, as before.
+ */
+export function mergeOkQuestion(risky: string[], question?: string | null): string {
+  const q = question?.trim();
+  return `${MERGE_OK_PREFIX} ${q ? `${q} (${shortList(risky)})` : shortList(risky)}`.slice(0, 1000);
+}
+
 /**
  * What the lead's runner does with an approved ticket in Review, given the PR as GitHub sees it.
  * `defaultBranch` is the project's: a PR stacked on another ticket's branch would merge there
  * instead, so it waits until it's retargeted.
  */
-export function mergeDecision(policy: MergePolicy, pr: PrInfo, ticket: Pick<Ticket, "approved_sha" | "merge_ok_by">, defaultBranch: string): MergeDecision {
-  const files = (pr.files ?? []).map((f) => f.path);
-  // gh lists at most 100 files, so a bigger PR can't be shown to be safe.
-  const risky = [...files.filter(isRiskyPath), ...(files.length >= GH_FILE_LIMIT ? [`${GH_FILE_LIMIT}+ files, too many to check`] : [])];
+export function mergeDecision(policy: MergePolicy, pr: PrInfo, ticket: Pick<Ticket, "approved_sha" | "merge_ok_by" | "review">, defaultBranch: string): MergeDecision {
+  const risky = riskyFiles(pr);
   const wait = (why: string, question?: string): MergeDecision => ({ action: "wait", why, question, risky });
   const approved = ticket.approved_sha?.toLowerCase();
   if (pr.state !== "OPEN") return wait(`the PR is ${pr.state.toLowerCase()}`);
@@ -108,7 +122,7 @@ export function mergeDecision(policy: MergePolicy, pr: PrInfo, ticket: Pick<Tick
   if (pending.length) return wait(`${shortList(pending.map(name))} still running`);
   if (policy === "ask") return { action: "ask", why: "approved and green; a person merges (setting: ask)", risky };
   if (policy === "auto_safe" && risky.length && !ticket.merge_ok_by) {
-    return { action: "needs_ok", why: `risky files: ${shortList(risky)}`, question: `${MERGE_OK_PREFIX} ${shortList(risky)}`.slice(0, 1000), risky };
+    return { action: "needs_ok", why: `risky files: ${shortList(risky)}`, question: mergeOkQuestion(risky, ticket.review?.question), risky };
   }
   return { action: "merge", why: `approved ${short(approved)} and green (setting: ${policy})`, risky };
 }
@@ -133,6 +147,50 @@ export function reviewedShaProblem(prUrl: string, head: string, reviewed?: strin
   if (!/^[0-9a-f]{7,40}$/.test(r)) return `"${reviewed}" isn't a commit id: pass the full sha or its first 7+ characters.`;
   if (head.toLowerCase().startsWith(r)) return null;
   return `PR #${prNumber(prUrl)} is now at ${short(head)}, not the ${short(r)} you reviewed; review the new commit first.`;
+}
+
+/** ticket_approve's evidence fields, flat so they're easy for an agent to fill in. */
+export interface ApproveArgs {
+  less_sure?: string;
+  summary?: string;
+  question?: string;
+  line_file?: string;
+  line_code?: string;
+  line_plain?: string;
+  decisions?: string[];
+}
+
+/**
+ * The review ticket_approve records, or why it can't approve yet (AK-45). `risky`: the PR's files
+ * that wait for a person's OK. A person decides from what's written here, so it has to say
+ * something: where the reviewer is less sure, always, and for a risky change a real question.
+ */
+export function reviewFrom(a: ApproveArgs, risky: string[]): { review: Review } | { problem: string } {
+  const text = (s?: string) => s?.trim() || undefined;
+  const lessSure = text(a.less_sure);
+  if (!lessSure) return { problem: `Not approved yet. Say where you're less sure (less_sure): what you couldn't run or check. If there's nothing, pass "${NOTHING_UNSURE}"` };
+  const question = text(a.question);
+  if (risky.length && !question) {
+    return { problem: `Not approved yet. This PR touches ${shortList(risky)}, so a person has to OK it before it merges. Pass question: what happens to existing users or data, then one yes/no question about this change.` };
+  }
+  if (question && !question.endsWith("?")) return { problem: "Not approved yet. The question has to be one a person can answer yes or no, so end it with a question mark." };
+  if (question && /^(is it |is this )?(ok|okay|fine|safe)( to merge)?( this| it)?\?$/i.test(question)) {
+    return { problem: "Not approved yet. Make the question about this change: say what happens to existing users or data, then ask." };
+  }
+  const file = text(a.line_file);
+  const code = a.line_code?.trimEnd() || undefined;
+  if (!file !== !code?.trim()) return { problem: "Not approved yet. The line that matters needs both line_file and line_code." };
+  const plain = text(a.line_plain);
+  const decisions = (a.decisions ?? []).map((d) => d.trim().toUpperCase()).filter(Boolean);
+  return {
+    review: {
+      ...(text(a.summary) ? { summary: text(a.summary) } : {}),
+      ...(question ? { question } : {}),
+      ...(file && code ? { line: { file, code, ...(plain ? { plain } : {}) } } : {}),
+      ...(decisions.length ? { decisions: [...new Set(decisions)] } : {}),
+      less_sure: lessSure,
+    },
+  };
 }
 
 // ------------------------------------------------------------------ messages

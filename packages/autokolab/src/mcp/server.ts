@@ -4,9 +4,9 @@ import { z } from "zod";
 import type { AutoKolab, RoomView } from "../core/client.js";
 import { formatItem, formatMember, formatMessage, formatWork } from "../core/format.js";
 import { connectFromConfig } from "../core/node.js";
-import { EFFORTS, PRIORITIES, ProjectView, STATUSES, TYPES, GUIDE_PARTS, modelChangeMessage, type ModelChange } from "../core/projects.js";
+import { EFFORTS, NOTHING_UNSURE, PRIORITIES, ProjectView, STATUSES, TYPES, GUIDE_PARTS, modelChangeMessage, type ModelChange } from "../core/projects.js";
 import { detectRepo, resolveRoom } from "../core/repo.js";
-import { approvalMessage, ghPrView, plainGhError, prNumber, reviewedShaProblem } from "../runner/merge.js";
+import { approvalMessage, ghPrView, plainGhError, prNumber, reviewFrom, reviewedShaProblem, riskyFiles, type ApproveArgs } from "../runner/merge.js";
 import { BULLETIN_KINDS, BULLETIN_STATES, MESSAGE_KINDS } from "../core/types.js";
 
 // stdio MCP server, started by Claude Code or Codex (registered by `autokolab init` / `join`).
@@ -549,27 +549,37 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     "ticket_approve",
     {
       description:
-        "Approve a ticket's pull request at the commit you reviewed. Who may use it: the project's lead, a person in the project, or any other agent in the project for a ticket the lead built. Nobody can approve a ticket assigned to themselves. Review it first against \"done means\": read the diff and check CI, then pass that commit as sha; it refuses if the PR has moved on since. The lead's runner merges only that commit, once tests pass and the project's merge setting allows it; a new push needs a new approval.",
+        "Approve a ticket's pull request at the commit you reviewed, and record what you found. Who may use it: the project's lead, a person in the project, or any other agent in the project for a ticket the lead built. Nobody can approve a ticket assigned to themselves. Review it first against \"done means\": read the diff and check CI, then pass that commit as sha; it refuses if the PR has moved on since. The lead's runner merges only that commit, once tests pass and the project's merge setting allows it; a new push needs a new approval. People read what you record here instead of the diff: write for someone who doesn't code, and say what is true rather than persuade. less_sure is always required; question is required when the PR touches the database, CI, dependencies or anything auth or secrets.",
       inputSchema: {
         key: keyArg,
         sha: z.string().regex(/^[0-9a-fA-F]{7,40}$/).optional().describe("The commit you reviewed: the full sha or its first 7+ characters"),
+        less_sure: z.string().max(600).optional().describe(`Required. Where you are less sure: what you couldn't run or check. If nothing: "${NOTHING_UNSURE}"`),
+        summary: z.string().max(300).optional().describe("One plain sentence on what the change does for people using the product"),
+        question: z.string().max(300).optional().describe('Required for a risky change. What happens to existing users or data, then one yes/no question, e.g. "Existing sessions keep working and get an empty provider. OK to add the column?"'),
+        line_file: z.string().max(300).optional().describe("The file with the one line that matters most"),
+        line_code: z.string().max(1000).optional().describe("That line (a few lines at most), copied from the diff"),
+        line_plain: z.string().max(300).optional().describe("What that line means, in plain words"),
+        decisions: z.array(z.string().regex(/^[A-Z]{2,5}-\d{1,6}$/)).max(20).optional().describe("Decision keys you checked the change against, e.g. DEC-19"),
         project: projectArg,
       },
     },
-    ptool(async (p, a: { key: string; sha?: string; project?: string }) => {
+    ptool(async (p, a: ApproveArgs & { key: string; sha?: string; project?: string }) => {
       const t = await p.ticket(a.key);
       if (!t.pr_url) throw new Error(`${t.key} has no pull request yet; there's nothing to approve.`);
-      let pr: { headRefOid: string; state: string };
+      let pr: { headRefOid: string; state: string; files?: { path: string }[] | null };
       try {
-        pr = ghPrView(t.pr_url, "headRefOid,state");
+        pr = ghPrView(t.pr_url, "headRefOid,state,files");
       } catch (e) {
         throw new Error(`Couldn't read ${t.pr_url}: ${plainGhError((e as Error).message, "on this machine")}`);
       }
       if (pr.state !== "OPEN") throw new Error(`PR #${prNumber(t.pr_url)} is ${pr.state.toLowerCase()}; only an open PR can be approved.`);
       const moved = reviewedShaProblem(t.pr_url, pr.headRefOid, a.sha);
       if (moved) throw new Error(moved);
-      await p.approve(t.key, pr.headRefOid);
-      return approvalMessage(t.pr_url, pr.headRefOid, await p.mergePolicy());
+      const r = reviewFrom(a, riskyFiles(pr));
+      if ("problem" in r) throw new Error(r.problem);
+      const done = await p.approve(t.key, pr.headRefOid, r.review);
+      const saved = done.review === undefined ? " What you recorded wasn't saved: this project's database doesn't have it yet." : "";
+      return approvalMessage(t.pr_url, pr.headRefOid, await p.mergePolicy()) + saved;
     }),
   );
 
