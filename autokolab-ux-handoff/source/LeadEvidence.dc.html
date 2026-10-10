@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab · How do you know?</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0D11}
+a{color:#A9C2FF;text-decoration:none}a:hover{color:#D3E0FF}
+@keyframes akpulse{0%{box-shadow:0 0 0 0 rgba(126,166,255,.55)}70%{box-shadow:0 0 0 7px rgba(126,166,255,0)}100%{box-shadow:0 0 0 0 rgba(126,166,255,0)}}
+@keyframes akfade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes akslide{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+.ak-live{animation:akpulse 2.2s ease-out infinite}
+.ak-fade{animation:akfade .38s cubic-bezier(.2,.8,.2,1)}
+.ak-slide{animation:akslide .42s cubic-bezier(.2,.8,.2,1)}
+.ak-row{transition:background-color .16s ease}
+.ak-row:hover{background-color:#161A21}
+.ak-tab{transition:background-color .16s ease,color .16s ease}
+@media (prefers-reduced-motion: reduce){.ak-live,.ak-fade,.ak-slide{animation:none}}
+@media (max-width: 1100px){
+.ak-nav{flex:1 1 100% !important;flex-direction:row !important;flex-wrap:nowrap !important;align-items:center !important;gap:8px !important;padding:8px 12px !important;border-right:0 !important;border-bottom:1px solid #1C2029 !important;overflow-x:auto}
+.ak-nav nav{flex-direction:row !important;flex-wrap:nowrap !important}
+.ak-nav nav a{white-space:nowrap}
+.ak-nav [role=separator]{display:none !important}
+.ak-nav .ak-hide{display:none !important}
+.ak-desk{flex:1 1 100% !important;border-left:0 !important;border-top:1px solid #1C2029}
+}
+@media (max-width: 640px){
+.ak-brief{font-size:21px !important}
+.ak-h1{font-size:28px !important}
+}
+</style>
+</helmet>
+<div style="min-height: 1280px; background: #0B0D11; color: #E9EBEF; font-family: 'Geist', system-ui, sans-serif; display: flex; flex-wrap: wrap; -webkit-font-smoothing: antialiased">
+
+  <aside class="ak-nav" style="flex: 1 1 220px; box-sizing: border-box; background: #0E1116; border-right: 1px solid #1C2029; padding: 18px 12px 20px; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 6px 8px">
+      <svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="8" fill="#E9EBEF"></rect><rect x="6.5" y="6.5" width="9" height="9" rx="2.5" fill="none" stroke="#0B0D11" stroke-width="2"></rect><rect x="12.5" y="12.5" width="9" height="9" rx="2.5" fill="#0B0D11"></rect></svg>
+      <div class="ak-hide" style="display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600">AutoKolab</span><span style="font-size: 12px; color: #858C98">2 people · 5 agents</span></div>
+    </div>
+    <nav aria-label="Main" style="display: flex; flex-direction: column; gap: 2px">
+      <a href="LeadHome.dc.html" aria-current="page" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #E9EBEF; background: #181C23; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v9a2 2 0 01-2 2H9l-5 4z"></path><path d="M9 10.5h6"></path></svg><span style="flex: 1">Captain</span><span style="font-size: 12px; font-weight: 600; line-height: 18px; color: #1A1406; background: #F4C25B; border-radius: 999px; padding: 0 7px">1</span></a>
+      <a href="Board.dc.html" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="10" y="4" width="5" height="11" rx="1.5"></rect><rect x="17" y="4" width="4" height="7" rx="1.5"></rect></svg><span style="flex: 1">Work</span></a>
+      <a href="Room.dc.html" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle><rect x="3" y="5" width="18" height="14" rx="3"></rect></svg><span style="flex: 1">Room</span></a>
+      <a href="Agents.dc.html" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0113 0"></path><path d="M16 4.5a3.5 3.5 0 010 7"></path><path d="M18 14.5a6.5 6.5 0 013.5 5.5"></path></svg><span style="flex: 1">People</span></a>
+      <div role="separator" style="height: 1px; background: #1C2029; margin: 10px"></div>
+      <a href="Decisions.dc.html" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"></path><path d="M5 17a3 3 0 013-3h11"></path></svg><span style="flex: 1">Decisions</span></a>
+      <a href="Results.dc.html" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 20V11"></path><path d="M11 20V5"></path><path d="M17 20v-6"></path><path d="M3 20h18"></path></svg><span style="flex: 1">Results</span></a>
+      <a href="Settings.dc.html" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span style="flex: 1">Settings</span></a>
+    </nav>
+  </aside>
+
+  <main style="flex: 999 1 520px; min-width: 0; box-sizing: border-box; display: flex; flex-direction: column; border-right: 1px solid #1C2029">
+    <header style="display: flex; align-items: center; gap: 12px; padding: 14px 28px; border-bottom: 1px solid #1C2029">
+      <span style="width: 30px; height: 30px; border-radius: 9px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 13px; font-weight: 600">C</span>
+      <h1 style="margin: 0; font-size: 15px; font-weight: 600; flex: 1">Captain</h1>
+    </header>
+    <div style="width: 100%; max-width: 720px; margin: 0 auto; padding: 28px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; gap: 12px">
+        <span style="width: 28px; height: 28px; border-radius: 8px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 12px; font-weight: 600; flex: none">C</span>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+          <div style="font-size: 12px; color: #858C98">Captain · 10:50 am</div>
+          <div style="font-size: 15px; line-height: 1.6; color: #D4D8DE">Birch's sessions column passed review. It touches the database, so it's yours to OK.</div>
+          <div style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 16px; background: #17140C; border: 1px solid #4A3B17">
+            <div style="display: flex; align-items: center; gap: 8px"><span style="font-size: 12px; color: #F4C25B; font-weight: 500; flex: 1">Needs you · database change</span><button type="button" onClick="{{toggleWhy}}" aria-expanded="{{whyOpen}}" style="border: 0; background: transparent; color: #A9C2FF; font: inherit; font-size: 13px; cursor: pointer; padding: 4px 0">{{whyLabel}}</button></div>
+            <div style="font-size: 17px; line-height: 1.4; font-weight: 500">Everyone who signed up before today will be marked as an email sign-in. Is that right?</div>
+
+            <sc-if value="{{whyOpen}}" hint-placeholder-val="{{ true }}">
+              <div class="ak-fade" style="display: flex; flex-direction: column; border-radius: 12px; background: #0E0D0A; border: 1px solid #2E2714; overflow: hidden">
+                <div style="display: flex; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #221D10"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5 9-10"></path></svg><div style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px">Tests: 48 of 48 passed on GitHub</span><span style="font-size: 12px; color: #A2A9B5">6 of them are new and cover this column</span></div><a href="Ticket.dc.html" style="font-size: 13px">View run</a></div>
+                <div style="display: flex; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #221D10"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5 9-10"></path></svg><div style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px">Reviewed by me at commit <span style="font-family: 'Geist Mono', monospace; font-size: 13px">9f3c2e1</span></span><span style="font-size: 12px; color: #A2A9B5">Checked against the ticket's "done means". Birch built it, so Birch couldn't approve it.</span></div></div>
+                <div style="display: flex; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #221D10"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A2A9B5" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M4 7h16M4 12h10M4 17h6"></path></svg><div style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px">What changes: 1 database update, 2 code files</span><span style="font-size: 12px; color: #A2A9B5">+62 −4 lines</span></div><button type="button" onClick="{{tabChange}}" style="border: 0; background: transparent; color: #A9C2FF; font: inherit; font-size: 13px; cursor: pointer">See the change</button></div>
+                <div style="display: flex; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #221D10"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A2A9B5" stroke-width="2" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"></path></svg><div style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px">Follows <a href="Decisions.dc.html">DEC-12</a> and <a href="Decisions.dc.html">DEC-24</a></span><span style="font-size: 12px; color: #A2A9B5">One sessions table for every sign-in; the column Fjord and Birch agreed</span></div></div>
+                <div style="display: flex; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #221D10"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A2A9B5" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="flex: none; margin-top: 2px"><circle cx="6" cy="6" r="2"></circle><circle cx="18" cy="18" r="2"></circle><path d="M8 6h6a4 4 0 014 4v6"></path></svg><div style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px">Trail: your request → plan → AK-43 → room, 10:31</span><span style="font-size: 12px; color: #A2A9B5">Every step is in the record</span></div><a href="Room.dc.html" style="font-size: 13px">Room</a></div>
+                <div style="display: flex; gap: 12px; padding: 12px 14px; background: #15130D"><span style="width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid #C9CED6; box-sizing: border-box; display: grid; place-items: center; font-size: 12px; font-weight: 600; color: #C9CED6; flex: none; margin-top: 2px">?</span><div style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 14px">Where I'm less sure</span><span style="font-size: 13px; color: #C9CED6; line-height: 1.5">I haven't run it against production-size data. Adding a column with a default is usually quick, but I can't promise how long it takes.</span></div></div>
+              </div>
+            </sc-if>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 10px">
+              <a href="LeadHome.dc.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 11px; background: #F4C25B; color: #1A1406; font-size: 15px; font-weight: 600">Yes, merge it</a>
+              <a href="SideThread.dc.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 8px; color: #A2A9B5; font-size: 14px">No, something's off</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside aria-label="Show the work" class="ak-slide ak-desk" style="flex: 1 1 460px; box-sizing: border-box; background: #0F1217; display: flex; flex-direction: column">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 16px 22px; border-bottom: 1px solid #1C2029">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 12px; color: #858C98">Show the work</span><span style="font-size: 15px; font-weight: 500">Add a sign-in provider column</span></div>
+      <a href="LeadHome.dc.html" aria-label="Close" style="width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; color: #A2A9B5; border: 1px solid #2A303B"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></a>
+    </div>
+    <div role="tablist" aria-label="Detail" style="display: flex; gap: 4px; padding: 12px 22px 0">
+      <button type="button" role="tab" aria-selected="{{onSum}}" onClick="{{tabSum}}" class="ak-tab" style="min-height: 34px; padding: 0 12px; border-radius: 8px; border: 0; font: inherit; font-size: 13px; cursor: pointer; background: {{bSum}}; color: {{cSum}}">Summary</button>
+      <button type="button" role="tab" aria-selected="{{onChg}}" onClick="{{tabChange}}" class="ak-tab" style="min-height: 34px; padding: 0 12px; border-radius: 8px; border: 0; font: inherit; font-size: 13px; cursor: pointer; background: {{bChg}}; color: {{cChg}}">The change</button>
+      <button type="button" role="tab" aria-selected="{{onHis}}" onClick="{{tabHis}}" class="ak-tab" style="min-height: 34px; padding: 0 12px; border-radius: 8px; border: 0; font: inherit; font-size: 13px; cursor: pointer; background: {{bHis}}; color: {{cHis}}">History</button>
+    </div>
+    <div style="padding: 20px 22px; display: flex; flex-direction: column; gap: 16px">
+      <sc-if value="{{onSum}}" hint-placeholder-val="{{ true }}">
+        <div class="ak-fade" style="display: flex; flex-direction: column; gap: 16px">
+          <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #C9CED6">Adds one column to the sessions table that records how each person signed in. Google and email sign-ins can then share the same table.</p>
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px">
+            <div style="display: flex; justify-content: space-between"><span style="color: #858C98">Built by</span><span>Birch · Raghav's agent</span></div>
+            <div style="display: flex; justify-content: space-between"><span style="color: #858C98">Reviewed by</span><span>Captain</span></div>
+            <div style="display: flex; justify-content: space-between"><span style="color: #858C98">Waiting on it</span><span>Fjord's Google callback</span></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; background: #12151B; border: 1px solid #1F242D">
+            <span style="font-size: 12px; color: #858C98">Done means</span>
+            <div style="display: flex; gap: 10px; font-size: 14px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5 9-10"></path></svg>Every session records "email" or "google"</div>
+            <div style="display: flex; gap: 10px; font-size: 14px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5 9-10"></path></svg>Existing sessions keep working, marked "email"</div>
+            <div style="display: flex; gap: 10px; font-size: 14px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5 9-10"></path></svg>The update can be undone in one step</div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{onChg}}" hint-placeholder-val="{{ false }}">
+        <div class="ak-fade" style="display: flex; flex-direction: column; gap: 12px">
+          <div style="font-size: 13px; color: #A2A9B5">The line that matters</div>
+          <pre style="margin: 0; padding: 14px; border-radius: 12px; background: #0B0D11; border: 1px solid #1F242D; font-family: 'Geist Mono', monospace; font-size: 13px; line-height: 1.7; color: #C9CED6; white-space: pre-wrap"><span style="color: #5CCB9A">+ ALTER TABLE sessions</span>
+<span style="color: #5CCB9A">+   ADD COLUMN auth_provider text NOT NULL DEFAULT 'email';</span></pre>
+          <div style="font-size: 13px; color: #A2A9B5; padding-top: 6px">Files</div>
+          <div style="display: flex; flex-direction: column; gap: 2px; font-family: 'Geist Mono', monospace; font-size: 13px">
+            <div class="ak-row" style="display: flex; gap: 10px; padding: 8px; border-radius: 8px"><span style="flex: 1; color: #C9CED6">db/migrations/0014_auth_provider.sql</span><span style="color: #5CCB9A">+6</span></div>
+            <div class="ak-row" style="display: flex; gap: 10px; padding: 8px; border-radius: 8px"><span style="flex: 1; color: #C9CED6">lib/db/schema/sessions.ts</span><span style="color: #5CCB9A">+4</span><span style="color: #FF8A78">−1</span></div>
+            <div class="ak-row" style="display: flex; gap: 10px; padding: 8px; border-radius: 8px"><span style="flex: 1; color: #C9CED6">tests/db/sessions.test.ts</span><span style="color: #5CCB9A">+52</span><span style="color: #FF8A78">−3</span></div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{onHis}}" hint-placeholder-val="{{ false }}">
+        <div class="ak-fade" style="display: flex; flex-direction: column; gap: 12px; font-size: 14px; color: #C9CED6">
+          <div style="display: flex; gap: 12px"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98; width: 42px; padding-top: 2px">09:20</span>Captain wrote the ticket from your request</div>
+          <div style="display: flex; gap: 12px"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98; width: 42px; padding-top: 2px">09:21</span>Birch picked it up on Raghav's Mac</div>
+          <div style="display: flex; gap: 12px"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98; width: 42px; padding-top: 2px">10:34</span>Agreed the column shape with Fjord (DEC-24)</div>
+          <div style="display: flex; gap: 12px"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98; width: 42px; padding-top: 2px">10:46</span>Tests passed, 48 of 48</div>
+          <div style="display: flex; gap: 12px"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98; width: 42px; padding-top: 2px">10:50</span>Captain approved commit 9f3c2e1 and asked you</div>
+          <div style="font-size: 12px; color: #858C98; padding-top: 4px">Written by the database, not by the agents.</div>
+        </div>
+      </sc-if>
+    </div>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1280}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const tab = s.tab || 'sum';
+    const whyOpen = s.whyOpen === undefined ? true : !!s.whyOpen;
+    const on = '#232833', off = 'transparent';
+    return {
+      whyOpen: whyOpen,
+      whyLabel: whyOpen ? 'Hide how I know' : 'How do you know?',
+      toggleWhy: () => this.setState({ whyOpen: !whyOpen }),
+      onSum: tab === 'sum', onChg: tab === 'chg', onHis: tab === 'his',
+      bSum: tab === 'sum' ? on : off, cSum: tab === 'sum' ? '#E9EBEF' : '#858C98',
+      bChg: tab === 'chg' ? on : off, cChg: tab === 'chg' ? '#E9EBEF' : '#858C98',
+      bHis: tab === 'his' ? on : off, cHis: tab === 'his' ? '#E9EBEF' : '#858C98',
+      tabSum: () => this.setState({ tab: 'sum' }),
+      tabChange: () => this.setState({ tab: 'chg' }),
+      tabHis: () => this.setState({ tab: 'his' })
+    };
+  }
+}
+</script>
+</body>
+</html>

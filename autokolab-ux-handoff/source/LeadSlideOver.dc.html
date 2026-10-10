@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab · Captain slide-over</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0D11}
+a{color:#A9C2FF;text-decoration:none}a:hover{color:#D3E0FF}
+@keyframes akpulse{0%{box-shadow:0 0 0 0 rgba(126,166,255,.55)}70%{box-shadow:0 0 0 7px rgba(126,166,255,0)}100%{box-shadow:0 0 0 0 rgba(126,166,255,0)}}
+@keyframes akslide{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+@keyframes akfade{from{opacity:0}to{opacity:1}}
+.ak-live{animation:akpulse 2.2s ease-out infinite}
+.ak-slide{animation:akslide .42s cubic-bezier(.2,.8,.2,1)}
+.ak-fade{animation:akfade .25s ease}
+.ak-chip{transition:background-color .16s ease,border-color .16s ease}
+.ak-chip:hover{background-color:#1C212A;border-color:#3A414D}
+.ak-in::placeholder{color:#6F7682}
+.ak-in:focus{outline:none}
+@media (prefers-reduced-motion: reduce){.ak-live,.ak-slide,.ak-fade{animation:none}}
+</style>
+</helmet>
+<div style="position: relative; min-height: 1000px; background: #0B0D11; color: #E9EBEF; font-family: 'Geist', system-ui, sans-serif; overflow: hidden; -webkit-font-smoothing: antialiased">
+
+  <div aria-hidden="true" style="display: flex; min-height: 1000px; opacity: .55">
+    <div style="width: 220px; flex: none; background: #0E1116; border-right: 1px solid #1C2029; padding: 26px 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px">
+      <div style="height: 26px; width: 130px; border-radius: 8px; background: #1C2029"></div>
+      <div style="height: 12px; width: 90px; border-radius: 4px; background: #1C2029"></div>
+      <div style="height: 12px; width: 70px; border-radius: 4px; background: #1C2029"></div>
+      <div style="height: 12px; width: 84px; border-radius: 4px; background: #1C2029"></div>
+    </div>
+    <div style="flex: 1; padding: 48px 56px; display: flex; flex-direction: column; gap: 18px">
+      <div style="font-size: 13px; color: #858C98">Work / Google sign-in</div>
+      <div style="font-size: 32px; font-weight: 500; letter-spacing: -0.02em">Google OAuth callback and session</div>
+      <div style="font-size: 16px; color: #A2A9B5; max-width: 560px; line-height: 1.6">When someone signs in with Google, the app checks the answer, finds or creates the account, and starts a session.</div>
+      <div style="display: flex; flex-direction: column; gap: 12px; padding-top: 12px">
+        <div style="display: flex; gap: 12px; align-items: center"><span style="width: 18px; height: 18px; border-radius: 50%; background: #14231C"></span><span style="height: 12px; width: 320px; border-radius: 4px; background: #1C2029"></span></div>
+        <div style="display: flex; gap: 12px; align-items: center"><span style="width: 18px; height: 18px; border-radius: 50%; background: #14231C"></span><span style="height: 12px; width: 260px; border-radius: 4px; background: #1C2029"></span></div>
+        <div style="display: flex; gap: 12px; align-items: center"><span style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid #7EA6FF; box-sizing: border-box"></span><span style="height: 12px; width: 300px; border-radius: 4px; background: #1E2635"></span></div>
+        <div style="display: flex; gap: 12px; align-items: center"><span style="width: 18px; height: 18px; border-radius: 50%; border: 2px solid #2A303B; box-sizing: border-box"></span><span style="height: 12px; width: 220px; border-radius: 4px; background: #1C2029"></span></div>
+      </div>
+      <div style="height: 150px; max-width: 720px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; margin-top: 14px"></div>
+    </div>
+  </div>
+
+  <section role="dialog" aria-label="Captain" class="ak-slide" style="position: absolute; top: 12px; right: 12px; bottom: 12px; width: 460px; max-width: calc(100% - 24px); box-sizing: border-box; border-radius: 18px; background: #12151B; border: 1px solid #2A303B; box-shadow: 0 30px 80px rgba(0,0,0,.55); display: flex; flex-direction: column">
+    <header style="display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid #1F242D">
+      <span style="position: relative; width: 28px; height: 28px; border-radius: 8px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 12px; font-weight: 600">C<span class="ak-live" style="position: absolute; right: -2px; bottom: -2px; width: 8px; height: 8px; border-radius: 50%; background: #7EA6FF; border: 2px solid #12151B"></span></span>
+      <span style="font-size: 15px; font-weight: 600; flex: 1">Captain</span>
+      <a href="LeadHome.dc.html" style="font-size: 13px; color: #A2A9B5; padding: 6px 8px">Open full</a>
+      <a href="Ticket.dc.html" aria-label="Close" style="width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: #A2A9B5; border: 1px solid #2A303B"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></a>
+    </header>
+
+    <div style="flex: 1; overflow-y: auto; padding: 18px 16px; display: flex; flex-direction: column; gap: 16px">
+      <div style="font-size: 12px; color: #858C98; text-align: center">Captain knows which screen you're on</div>
+      <div style="display: flex; justify-content: flex-end"><div style="max-width: 320px; padding: 10px 14px; border-radius: 16px 16px 4px 16px; background: #232833; font-size: 14px; line-height: 1.5">Why is this one slower than the button?</div></div>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <div style="font-size: 14px; line-height: 1.6; color: #D4D8DE">Sign-in has more to check: 48 tests here against 12 for the button. Fjord is on step 4 of 7, running them now. Nothing's wrong.</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px"><a href="LeadEvidence.dc.html" style="font-size: 12px; color: #A9C2FF; border: 1px solid #2A303B; border-radius: 999px; padding: 3px 10px">How do you know?</a><span style="font-size: 12px; color: #A2A9B5; border: 1px solid #232833; border-radius: 999px; padding: 3px 10px">Test run · live</span></div>
+      </div>
+      <div style="display: flex; justify-content: flex-end"><div style="max-width: 320px; padding: 10px 14px; border-radius: 16px 16px 4px 16px; background: #232833; font-size: 14px; line-height: 1.5">Ping me when it's ready.</div></div>
+      <div style="font-size: 14px; line-height: 1.6; color: #D4D8DE">Will do. It's an auth change, so it comes to you to OK anyway. You'll hear from me once, when it's ready.</div>
+    </div>
+
+    <div style="padding: 0 16px 8px; display: flex; flex-wrap: wrap; gap: 6px">
+      <button type="button" class="ak-chip" style="min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #2A303B; background: transparent; color: #C9CED6; font: inherit; font-size: 13px; cursor: pointer">What's left?</button>
+      <button type="button" class="ak-chip" style="min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #2A303B; background: transparent; color: #C9CED6; font: inherit; font-size: 13px; cursor: pointer">Who reviews it?</button>
+      <button type="button" class="ak-chip" style="min-height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid #2A303B; background: transparent; color: #C9CED6; font: inherit; font-size: 13px; cursor: pointer">Pause this ticket</button>
+    </div>
+
+    <div style="padding: 8px 12px 14px">
+      <div style="display: flex; flex-direction: column; gap: 8px; padding: 10px 10px 10px 12px; border-radius: 14px; background: #0E1116; border: 1px solid #2A303B">
+        <sc-if value="{{hasChip}}" hint-placeholder-val="{{ true }}">
+          <span class="ak-fade" style="align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #C9CED6; background: #1C2029; border-radius: 7px; padding: 3px 4px 3px 9px">About: Google callback<button type="button" onClick="{{dropChip}}" aria-label="Remove context" style="width: 20px; height: 20px; border: 0; border-radius: 5px; background: transparent; color: #A2A9B5; display: grid; place-items: center; cursor: pointer"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button></span>
+        </sc-if>
+        <div style="display: flex; align-items: center; gap: 8px">
+          <label for="so-msg" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Message Captain</label>
+          <input id="so-msg" class="ak-in" type="text" placeholder="{{ph}}" style="flex: 1; min-width: 0; background: transparent; border: 0; color: #E9EBEF; font: inherit; font-size: 14px; padding: 6px 0">
+          <button type="button" aria-label="Send" style="width: 34px; height: 34px; border-radius: 9px; border: 0; background: #E9EBEF; color: #0B0D11; display: grid; place-items: center; cursor: pointer"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg></button>
+        </div>
+      </div>
+      <div style="padding: 8px 4px 0; font-size: 12px; color: #858C98">Same conversation as the Captain page: nothing said here gets lost.</div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dropped = !!(this.state && this.state.dropped);
+    return {
+      hasChip: !dropped,
+      ph: dropped ? 'Ask Captain about anything' : 'Ask about this ticket',
+      dropChip: () => this.setState({ dropped: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

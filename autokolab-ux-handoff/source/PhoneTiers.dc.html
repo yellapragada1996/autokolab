@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab phone · What reaches you</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0D11}
+a{color:#A9C2FF;text-decoration:none}a:hover{color:#D3E0FF}
+.ak-knob{transition:transform .22s cubic-bezier(.2,.8,.2,1)}
+.ak-track{transition:background-color .22s ease}
+@media (prefers-reduced-motion: reduce){.ak-knob,.ak-track{transition:none}}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #0B0D11; color: #E9EBEF; font-family: 'Geist', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; -webkit-font-smoothing: antialiased">
+  <header style="flex: none; display: flex; align-items: center; gap: 8px; padding: 50px 14px 8px">
+    <a href="PhoneLead.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: grid; place-items: center; color: #E9EBEF"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+    <h1 style="margin: 0; font-size: 17px; font-weight: 600">What reaches you</h1>
+  </header>
+
+  <div style="flex: 1; overflow-y: auto; padding: 4px 18px 24px; display: flex; flex-direction: column; gap: 18px">
+    <p style="margin: 0; font-size: 15px; line-height: 1.55; color: #C9CED6">Captain holds everything until you look, unless someone is stuck waiting on you.</p>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font-size: 12px; color: #858C98">The only kind of notification you'll get</span>
+      <div style="display: flex; gap: 12px; padding: 14px; border-radius: 18px; background: #1A1E26; border: 1px solid #2E3440; box-shadow: 0 10px 30px rgba(0,0,0,.4)">
+        <svg width="30" height="30" viewBox="0 0 28 28" aria-hidden="true" style="flex: none"><rect x="1" y="1" width="26" height="26" rx="8" fill="#E9EBEF"></rect><rect x="6.5" y="6.5" width="9" height="9" rx="2.5" fill="none" stroke="#0B0D11" stroke-width="2"></rect><rect x="12.5" y="12.5" width="9" height="9" rx="2.5" fill="#0B0D11"></rect></svg>
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 13px; font-weight: 600">Captain · needs you</span><span style="font-size: 14px; line-height: 1.45; color: #D4D8DE">Birch is waiting for your OK on a database change. Fjord is idle until you answer.</span></div>
+      </div>
+    </div>
+
+    <section style="display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px; background: #17140C; border: 1px solid #4A3B17">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px; font-weight: 500">Someone is stuck on you</span><span style="font-size: 13px; color: #B8BEC8">A risky merge to OK, a product question</span></div>
+        <button type="button" role="switch" aria-checked="{{notify}}" aria-label="Notify me when someone is stuck on me" onClick="{{toggleNotify}}" class="ak-track" style="width: 50px; height: 30px; border-radius: 999px; border: 0; padding: 3px; background: {{notifyTrack}}; cursor: pointer; display: flex; flex: none"><span class="ak-knob" style="width: 24px; height: 24px; border-radius: 50%; background: #E9EBEF; transform: translateX({{notifyX}}px)"></span></button>
+      </div>
+      <span style="font-size: 13px; color: #F1D79A">{{notifyNote}}</span>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D">
+      <div style="display: flex; align-items: center; gap: 12px"><span style="flex: 1; font-size: 15px; font-weight: 500">Can wait</span><span style="font-size: 12px; color: #A2A9B5; border: 1px solid #2A303B; border-radius: 999px; padding: 2px 9px">never notifies</span></div>
+      <span style="font-size: 13px; color: #A2A9B5; line-height: 1.5">Saved for your briefing: Captain tells you next time you open the app.</span>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D">
+      <div style="display: flex; align-items: center; gap: 12px"><span style="flex: 1; font-size: 15px; font-weight: 500">Just so you know</span><span style="font-size: 12px; color: #A2A9B5; border: 1px solid #2A303B; border-radius: 999px; padding: 2px 9px">never notifies</span></div>
+      <span style="font-size: 13px; color: #A2A9B5; line-height: 1.5">Shipped work, decisions, small fixes. Only in Today.</span>
+    </section>
+
+    <section style="display: flex; align-items: center; gap: 12px; padding: 16px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px; font-weight: 500">Quiet hours · 10 pm – 8 am</span><span style="font-size: 13px; color: #A2A9B5; line-height: 1.45">{{quietNote}}</span></div>
+      <button type="button" role="switch" aria-checked="{{quiet}}" aria-label="Quiet hours" onClick="{{toggleQuiet}}" class="ak-track" style="width: 50px; height: 30px; border-radius: 999px; border: 0; padding: 3px; background: {{quietTrack}}; cursor: pointer; display: flex; flex: none"><span class="ak-knob" style="width: 24px; height: 24px; border-radius: 50%; background: #E9EBEF; transform: translateX({{quietX}}px)"></span></button>
+    </section>
+
+    <div style="font-size: 13px; color: #858C98; text-align: center; padding-top: 4px">Last 7 days: 9 notifications, every one a decision.</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const notify = s.notify === undefined ? true : !!s.notify;
+    const quiet = s.quiet === undefined ? true : !!s.quiet;
+    return {
+      notify: notify,
+      notifyTrack: notify ? '#3E7FE0' : '#2A303B',
+      notifyX: notify ? 20 : 0,
+      notifyNote: notify ? 'Notifies you, but waits for a pause, never while you’re typing.' : 'Off: these wait in the briefing like everything else.',
+      toggleNotify: () => this.setState({ notify: !notify }),
+      quiet: quiet,
+      quietTrack: quiet ? '#3E7FE0' : '#2A303B',
+      quietX: quiet ? 20 : 0,
+      quietNote: quiet ? 'Even blocking questions wait. Captain works on what isn’t blocked.' : 'Blocking questions can reach you at any hour.',
+      toggleQuiet: () => this.setState({ quiet: !quiet })
+    };
+  }
+}
+</script>
+</body>
+</html>

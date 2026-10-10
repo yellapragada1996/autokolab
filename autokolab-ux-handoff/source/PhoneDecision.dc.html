@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab phone · Answer a question</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0D11}
+a{color:#A9C2FF;text-decoration:none}a:hover{color:#D3E0FF}
+@keyframes akfade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.ak-fade{animation:akfade .4s cubic-bezier(.2,.8,.2,1)}
+.ak-opt{transition:transform .14s cubic-bezier(.2,.8,.2,1),border-color .18s ease,background-color .18s ease}
+.ak-opt:active{transform:scale(.98)}
+@media (prefers-reduced-motion: reduce){.ak-fade{animation:none}}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #0B0D11; color: #E9EBEF; font-family: 'Geist', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; -webkit-font-smoothing: antialiased">
+  <div style="flex: 1; overflow-y: auto; padding: 56px 20px 24px; display: flex; flex-direction: column; gap: 20px">
+    <div style="display: flex; align-items: center; gap: 12px">
+      <a href="PhoneGoal.dc.html" aria-label="Back" style="width: 44px; height: 44px; margin-left: -10px; display: grid; place-items: center; color: #E9EBEF"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+      <span style="font-size: 13px; color: #858C98; flex: 1">Google sign-in · AK-47 · 6:00 pm</span>
+    </div>
+
+    <div style="display: flex; gap: 12px; align-items: flex-start">
+      <span style="width: 34px; height: 34px; border-radius: 10px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 14px; font-weight: 600; flex: none">C</span>
+      <div style="display: flex; flex-direction: column; gap: 4px"><span style="font-size: 13px; color: #858C98">Captain asks, for Tern</span><span style="font-size: 14px; line-height: 1.5; color: #C9CED6">Tern built the first version. This is what someone sees after saying no on Google's screen.</span></div>
+    </div>
+
+    <div aria-label="Preview of Tern's screen" role="img" style="padding: 16px; border-radius: 18px; background: #12151B; border: 1px solid #262B35; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; gap: 5px"><span style="width: 7px; height: 7px; border-radius: 50%; background: #2A303B"></span><span style="width: 7px; height: 7px; border-radius: 50%; background: #2A303B"></span><span style="width: 7px; height: 7px; border-radius: 50%; background: #2A303B"></span></div>
+      <div style="padding: 18px 16px; border-radius: 12px; background: #0B0D11; display: flex; flex-direction: column; gap: 10px; align-items: center; text-align: center">
+        <span style="font-size: 14px; font-weight: 500">You didn't share your Google account</span>
+        <span style="font-size: 12px; color: #858C98; line-height: 1.45">That's fine. You can sign in with email instead.</span>
+        <span style="width: 70%; height: 30px; border-radius: 8px; background: #232833"></span>
+        <span style="width: 70%; height: 30px; border-radius: 8px; border: 1px solid #2A303B"></span>
+      </div>
+    </div>
+
+    <h1 style="margin: 0; font-size: 24px; line-height: 1.25; font-weight: 500; letter-spacing: -0.02em">Should denied consent show the login page or a help page?</h1>
+
+    <sc-if value="{{open}}" hint-placeholder-val="{{ true }}">
+      <div role="radiogroup" aria-label="Your answer" style="display: flex; flex-direction: column; gap: 10px">
+        <button type="button" role="radio" aria-checked="false" onClick="{{pickA}}" class="ak-opt" style="display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-radius: 16px; border: 1px solid #2E3440; background: #12151B; color: #E9EBEF; font: inherit; text-align: left; cursor: pointer; min-height: 72px">
+          <span style="display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 500">The login page <span style="font-size: 12px; color: #B8E8CF; background: #14231C; border-radius: 999px; padding: 2px 8px; font-weight: 400">Tern's draft</span></span>
+          <span style="font-size: 13px; color: #A2A9B5; line-height: 1.45">Ready now. Merges itself and finishes the goal tonight.</span>
+        </button>
+        <button type="button" role="radio" aria-checked="false" onClick="{{pickB}}" class="ak-opt" style="display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border-radius: 16px; border: 1px solid #2E3440; background: #12151B; color: #E9EBEF; font: inherit; text-align: left; cursor: pointer; min-height: 72px">
+          <span style="font-size: 16px; font-weight: 500">A help page</span>
+          <span style="font-size: 13px; color: #A2A9B5; line-height: 1.45">Explains why we ask for Google. Adds one small ticket.</span>
+        </button>
+        <label for="other" style="font-size: 13px; color: #858C98; padding: 6px 2px 0">Or say something else</label>
+        <input id="other" type="text" placeholder="e.g. login page, but link to help" style="min-height: 48px; padding: 0 14px; border-radius: 14px; border: 1px solid #2A303B; background: #0E1116; color: #E9EBEF; font: inherit; font-size: 15px">
+      </div>
+    </sc-if>
+
+    <sc-if value="{{answered}}" hint-placeholder-val="{{ false }}">
+      <div class="ak-fade" style="display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 20px; background: #101B16; border: 1px solid #23463A">
+        <div style="display: flex; align-items: center; gap: 10px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg><span style="font-size: 17px; font-weight: 500">Sent: {{choice}}</span></div>
+        <span style="font-size: 14px; line-height: 1.5; color: #CFEFDF">{{after}}</span>
+        <span style="font-size: 12px; color: #858C98">Recorded as DEC-27 so no agent asks again.</span>
+        <button type="button" onClick="{{reset}}" style="align-self: flex-start; min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #23463A; background: transparent; color: #CFEFDF; font: inherit; font-size: 14px; cursor: pointer">Change answer</button>
+      </div>
+    </sc-if>
+
+    <div style="font-size: 12px; color: #858C98; line-height: 1.5">The only thing that reached you this afternoon.</div>
+  </div>
+
+  <nav aria-label="Tabs" style="flex: none; display: flex; justify-content: space-around; padding: 6px 8px 26px; background: #0E1116">
+    <a href="PhoneLead.dc.html" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; min-height: 44px; justify-content: center; color: #E9EBEF; font-size: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v9a2 2 0 01-2 2H9l-5 4z"></path><path d="M9 10.5h6"></path></svg>Captain</a>
+    <a href="PhoneGoal.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; min-height: 44px; justify-content: center; color: #858C98; font-size: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="10" y="4" width="5" height="11" rx="1.5"></rect><rect x="17" y="4" width="4" height="7" rx="1.5"></rect></svg>Work</a>
+    <a href="Room.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; min-height: 44px; justify-content: center; color: #858C98; font-size: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle><rect x="3" y="5" width="18" height="14" rx="3"></rect></svg>Room</a>
+    <a href="PhoneTiers.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; min-height: 44px; justify-content: center; color: #858C98; font-size: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0113 0"></path></svg>You</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const c = this.state && this.state.c;
+    return {
+      open: !c,
+      answered: !!c,
+      choice: c === 'a' ? 'the login page' : 'a help page',
+      after: c === 'a' ? 'Tern is finishing AK-47 now. Google sign-in will be 6 of 6 once it merges.' : 'Captain added AK-49 for the help page and gave it to Tern. Google sign-in is now 5 of 7.',
+      pickA: () => this.setState({ c: 'a' }),
+      pickB: () => this.setState({ c: 'b' }),
+      reset: () => this.setState({ c: null })
+    };
+  }
+}
+</script>
+</body>
+</html>

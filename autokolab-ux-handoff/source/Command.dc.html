@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab · Command bar</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0D11}
+a{color:#A9C2FF;text-decoration:none}a:hover{color:#D3E0FF}
+@keyframes akpop{from{opacity:0;transform:translateY(-8px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes akblink{50%{opacity:0}}
+.ak-pop{animation:akpop .28s cubic-bezier(.2,.8,.2,1)}
+.ak-row{transition:background-color .14s ease}
+.ak-row:hover{background-color:#1C212A}
+.ak-in::placeholder{color:#6F7682}
+.ak-in:focus{outline:none}
+@media (prefers-reduced-motion: reduce){.ak-pop{animation:none}}
+</style>
+</helmet>
+<div style="position: relative; min-height: 900px; background: #0B0D11; color: #E9EBEF; font-family: 'Geist', system-ui, sans-serif; overflow: hidden; -webkit-font-smoothing: antialiased">
+
+  <div aria-hidden="true" style="position: absolute; inset: 0; display: flex; opacity: .5">
+    <div style="width: 248px; background: #0E1116; border-right: 1px solid #1C2029; padding: 24px 20px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px">
+      <div style="height: 28px; width: 140px; border-radius: 8px; background: #1C2029"></div>
+      <div style="height: 34px; border-radius: 9px; background: #151920"></div>
+      <div style="height: 12px; width: 120px; border-radius: 4px; background: #1C2029"></div>
+      <div style="height: 12px; width: 100px; border-radius: 4px; background: #1C2029"></div>
+      <div style="height: 12px; width: 130px; border-radius: 4px; background: #1C2029"></div>
+      <div style="height: 12px; width: 90px; border-radius: 4px; background: #1C2029"></div>
+    </div>
+    <div style="flex: 1; padding: 90px 64px; display: flex; flex-direction: column; gap: 22px">
+      <div style="height: 40px; width: 72%; border-radius: 8px; background: #1A1E26"></div>
+      <div style="height: 40px; width: 48%; border-radius: 8px; background: #1A1E26"></div>
+      <div style="height: 130px; border-radius: 16px; background: #17140C; border: 1px solid #2E2612"></div>
+      <div style="display: flex; gap: 16px"><div style="flex: 1; height: 150px; border-radius: 16px; background: #12151B"></div><div style="flex: 1; height: 150px; border-radius: 16px; background: #12151B"></div></div>
+    </div>
+  </div>
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(6,7,10,.72); backdrop-filter: blur(6px)"></div>
+
+  <div style="position: relative; display: flex; justify-content: center; padding: 110px 20px 40px">
+    <div role="dialog" aria-modal="true" aria-label="Command bar" class="ak-pop" style="width: 100%; max-width: 720px; border-radius: 18px; background: #12151B; border: 1px solid #2A303B; box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.02) inset; overflow: hidden">
+
+      <div style="display: flex; gap: 6px; padding: 12px 14px 0">
+        <span style="font-size: 12px; padding: 5px 10px; border-radius: 7px; background: #232833; color: #E9EBEF">Tell Captain</span>
+        <span style="font-size: 12px; padding: 5px 10px; border-radius: 7px; color: #858C98">Search</span>
+        <span style="font-size: 12px; padding: 5px 10px; border-radius: 7px; color: #858C98">Commands</span>
+        <span style="flex: 1"></span>
+        <span style="font-size: 12px; color: #858C98; align-self: center; font-family: 'Geist Mono', monospace">tab to switch</span>
+      </div>
+
+      <label for="ak-q" style="display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px 18px">
+        <span style="width: 28px; height: 28px; border-radius: 8px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 12px; font-weight: 600; flex: none; margin-top: 2px">L</span>
+        <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Message for Captain, or a search</span>
+        <input id="ak-q" class="ak-in" type="text" value="{{query}}" onChange="{{onQuery}}" placeholder="Ask for anything, or search…" autocomplete="off" style="flex: 1; min-width: 0; background: transparent; border: 0; color: #E9EBEF; font: inherit; font-size: 20px; line-height: 1.4; letter-spacing: -0.01em; padding: 2px 0">
+      </label>
+
+      <sc-if value="{{showTell}}" hint-placeholder-val="{{ true }}">
+        <div style="margin: 0 12px 10px; padding: 16px; border-radius: 13px; background: #191D25; border: 1px solid #2E3440; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; align-items: center; gap: 10px">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#C9CED6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12l16-8-6 16-2-7z"></path></svg>
+            <span style="flex: 1; font-size: 15px; font-weight: 500">Send to Captain</span>
+            <a href="Plan.dc.html" style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #0B0D11; background: #E9EBEF; border-radius: 9px; padding: 8px 14px">Send <span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #4A515D">⏎</span></a>
+          </div>
+          <div style="font-size: 13px; line-height: 1.55; color: #A2A9B5">Captain reads the code, the guide and every decision in force, then writes back with a plan. Nothing big starts until you say OK.</div>
+          <sc-if value="{{authHint}}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; flex-wrap: wrap; gap: 8px">
+              <span style="font-size: 12px; color: #F1D79A; background: #2A2210; border-radius: 999px; padding: 4px 10px">Touches sign-in, so it counts as big work</span>
+              <span style="font-size: 12px; color: #C9CED6; background: #1C2029; border-radius: 999px; padding: 4px 10px">Looks like 2 goals</span>
+              <span style="font-size: 12px; color: #C9CED6; background: #1C2029; border-radius: 999px; padding: 4px 10px">Related: DEC-24 sessions contract</span>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <div style="padding: 4px 12px 12px; display: flex; flex-direction: column; gap: 2px; border-top: 1px solid #1F242D">
+        <div style="font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: #858C98; padding: 12px 10px 6px">{{groupLabel}}</div>
+        <sc-for list="{{list}}" as="c" hint-placeholder-count="4">
+          <a href="{{c.href}}" class="ak-row" style="display: flex; align-items: center; gap: 12px; padding: 10px 10px; border-radius: 10px; color: #E9EBEF; background: {{c.bg}}">
+            <span style="width: 26px; height: 26px; border-radius: 7px; background: #1C2029; color: {{c.tint}}; display: grid; place-items: center; font-size: 12px; font-weight: 600; flex: none">{{c.glyph}}</span>
+            <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px"><span style="font-size: 14px">{{c.label}}</span><span style="font-size: 12px; color: #858C98">{{c.hint}}</span></span>
+            <span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98; border: 1px solid #2A303B; border-radius: 5px; padding: 1px 6px">{{c.kbd}}</span>
+          </a>
+        </sc-for>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 16px; padding: 12px 20px; border-top: 1px solid #1F242D; background: #0F1217; font-size: 12px; color: #858C98">
+        <span><span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">↑ ↓</span> move</span>
+        <span><span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">⏎</span> send or open</span>
+        <span><span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">⇧⏎</span> new line</span>
+        <span style="flex: 1"></span>
+        <a href="LeadHome.dc.html" style="color: #A2A9B5"><span style="font-family: 'Geist Mono', monospace">esc</span> close</a>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const query = s.query !== undefined ? s.query : "We need Google sign-in, and the room should show who's typing.";
+    const q = query.trim().toLowerCase();
+    const all = [
+      { label: 'OK to merge AK-43', hint: 'Risky: database · tests pass · Captain approved', href: 'LeadHome.dc.html', kbd: '⏎', glyph: '✓', tint: '#F4C25B' },
+      { label: 'Go to the board', hint: 'Who is doing what', href: 'Board.dc.html', kbd: 'G B', glyph: 'B', tint: '#A9C2FF' },
+      { label: 'Open the room', hint: 'What the agents are saying', href: 'Room.dc.html', kbd: 'G R', glyph: 'R', tint: '#A9C2FF' },
+      { label: 'Open AK-42 · Google callback', hint: 'Fjord · running tests', href: 'Ticket.dc.html', kbd: '', glyph: '#', tint: '#A2A9B5' },
+      { label: 'Read DEC-24 · sessions contract', hint: 'Decided today in the room', href: 'Decisions.dc.html', kbd: '', glyph: 'D', tint: '#A2A9B5' },
+      { label: 'Pause every agent', hint: 'They finish their current step, then stop', href: 'Agents.dc.html', kbd: '⌘⇧P', glyph: '‖', tint: '#FF8A78' },
+      { label: 'Change merge setting', hint: 'Now: auto-merge safe changes', href: 'Settings.dc.html', kbd: '', glyph: 'S', tint: '#A2A9B5' },
+      { label: 'See this week’s results', hint: 'Merged tickets, interruptions, cost', href: 'Results.dc.html', kbd: '', glyph: '↗', tint: '#5CCB9A' }
+    ];
+    const words = q.split(/\s+/).filter(Boolean);
+    const matches = words.length === 0 ? all : all.filter((c) => words.every((w) => (c.label + ' ' + c.hint).toLowerCase().indexOf(w) !== -1));
+    const sentence = q.length > 18 || (words.length > 0 && matches.length === 0);
+    const shown = (matches.length ? matches : all.slice(0, 4)).slice(0, 6).map((c, i) => Object.assign({}, c, { bg: (!sentence && i === 0) ? '#1C212A' : 'transparent' }));
+    return {
+      query: query,
+      onQuery: (e) => this.setState({ query: e.target.value }),
+      showTell: sentence,
+      authHint: q.indexOf('sign') !== -1 || q.indexOf('auth') !== -1 || q.indexOf('login') !== -1,
+      groupLabel: matches.length && words.length ? 'Matches' : 'Suggested',
+      list: shown
+    };
+  }
+}
+</script>
+</body>
+</html>

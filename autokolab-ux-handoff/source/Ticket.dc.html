@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab · AK-42</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0D11}
+a{color:#A9C2FF;text-decoration:none}a:hover{color:#D3E0FF}
+@keyframes akpulse{0%{box-shadow:0 0 0 0 rgba(126,166,255,.55)}70%{box-shadow:0 0 0 7px rgba(126,166,255,0)}100%{box-shadow:0 0 0 0 rgba(126,166,255,0)}}
+@keyframes akfade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes akflow{from{background-position:0 0}to{background-position:24px 0}}
+@keyframes akspin{to{transform:rotate(360deg)}}
+.ak-live{animation:akpulse 2.2s ease-out infinite}
+.ak-fade{animation:akfade .38s cubic-bezier(.2,.8,.2,1)}
+.ak-flow{background-image:linear-gradient(90deg,rgba(255,255,255,0) 0,rgba(255,255,255,.22) 50%,rgba(255,255,255,0) 100%);background-size:24px 100%;animation:akflow 1.1s linear infinite}
+.ak-spin{animation:akspin 1s linear infinite}
+.ak-row{transition:background-color .16s ease}
+.ak-row:hover{background-color:#161A21}
+.ak-chip{transition:background-color .16s ease,color .16s ease}
+@media (prefers-reduced-motion: reduce){.ak-live,.ak-fade,.ak-flow,.ak-spin{animation:none}}
+@media (max-width: 1100px){
+.ak-nav{flex:1 1 100% !important;flex-direction:row !important;flex-wrap:nowrap !important;align-items:center !important;gap:8px !important;padding:8px 12px !important;border-right:0 !important;border-bottom:1px solid #1C2029 !important;overflow-x:auto}
+.ak-nav nav{flex-direction:row !important;flex-wrap:nowrap !important}
+.ak-nav nav a{white-space:nowrap}
+.ak-nav [role=separator]{display:none !important}
+.ak-nav .ak-hide{display:none !important}
+.ak-desk{flex:1 1 100% !important;border-left:0 !important;border-top:1px solid #1C2029}
+}
+@media (max-width: 640px){
+.ak-brief{font-size:21px !important}
+.ak-h1{font-size:28px !important}
+}
+</style>
+</helmet>
+<div style="min-height: 1320px; background: #0B0D11; color: #E9EBEF; font-family: 'Geist', system-ui, sans-serif; display: flex; flex-wrap: wrap; -webkit-font-smoothing: antialiased">
+
+  <aside class="ak-nav" style="flex: 1 1 220px; box-sizing: border-box; background: #0E1116; border-right: 1px solid #1C2029; padding: 18px 12px 20px; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 6px 8px"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="8" fill="#E9EBEF"></rect><rect x="6.5" y="6.5" width="9" height="9" rx="2.5" fill="none" stroke="#0B0D11" stroke-width="2"></rect><rect x="12.5" y="12.5" width="9" height="9" rx="2.5" fill="#0B0D11"></rect></svg><div class="ak-hide" style="display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600">AutoKolab</span><span style="font-size: 12px; color: #858C98">2 people · 5 agents</span></div></div>
+    <nav aria-label="Main" style="display: flex; flex-direction: column; gap: 2px">
+    <a href="LeadHome.dc.html" title="Captain · ⌘L from anywhere" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v9a2 2 0 01-2 2H9l-5 4z"></path><path d="M9 10.5h6"></path></svg><span style="flex: 1">Captain</span><span style="font-size: 12px; font-weight: 600; line-height: 18px; color: #1A1406; background: #F4C25B; border-radius: 999px; padding: 0 7px">1</span></a>
+    <a href="Board.dc.html" aria-current="page" title="Work · G then W" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #E9EBEF; background: #181C23; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="10" y="4" width="5" height="11" rx="1.5"></rect><rect x="17" y="4" width="4" height="7" rx="1.5"></rect></svg><span style="flex: 1">Work</span></a>
+    <a href="Room.dc.html" title="Room · G then R" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle><rect x="3" y="5" width="18" height="14" rx="3"></rect></svg><span style="flex: 1">Room</span></a>
+    <a href="Agents.dc.html" title="People · G then P" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0113 0"></path><path d="M16 4.5a3.5 3.5 0 010 7"></path><path d="M18 14.5a6.5 6.5 0 013.5 5.5"></path></svg><span style="flex: 1">People</span></a>
+    <div role="separator" style="height: 1px; background: #1C2029; margin: 10px"></div>
+    <a href="Decisions.dc.html" title="Decisions · G then D" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"></path><path d="M5 17a3 3 0 013-3h11"></path></svg><span style="flex: 1">Decisions</span></a>
+    <a href="Results.dc.html" title="Results · G then S" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V11"></path><path d="M11 20V5"></path><path d="M17 20v-6"></path><path d="M3 20h18"></path></svg><span style="flex: 1">Results</span></a>
+    <a href="Settings.dc.html" title="Settings · G then ," class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span style="flex: 1">Settings</span></a>
+    </nav>
+    <div class="ak-hide" style="margin-top: auto; display: flex; flex-direction: column; gap: 12px; padding: 14px 10px 0; border-top: 1px solid #1C2029"><div style="display: flex; gap: 14px; font-size: 12px; color: #858C98"><span>Toronto <span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">11:02</span></span><span>Sweden <span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">17:02</span></span></div><div style="display: flex; align-items: center; gap: 10px"><span style="width: 28px; height: 28px; border-radius: 50%; background: #E9EBEF; color: #0B0D11; display: grid; place-items: center; font-size: 12px; font-weight: 700">RY</span><span style="font-size: 13px">Raghav</span></div></div>
+    </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding-bottom: 72px">
+    <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 32px; border-bottom: 1px solid #1C2029">
+      <div style="font-size: 13px; color: #858C98; flex: 1">AutoKolab <span style="color: #4A515D">/</span> <a href="Board.dc.html" style="color: #858C98">Work</a> <span style="color: #4A515D">/</span> <span style="color: #E9EBEF; font-family: 'Geist Mono', monospace">AK-42</span></div>
+      <div role="group" aria-label="Detail level" style="display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: #12151B; border: 1px solid #1F242D">
+        <button type="button" onClick="{{plain}}" class="ak-chip" style="min-height: 30px; padding: 0 12px; border-radius: 7px; border: 0; font: inherit; font-size: 12px; cursor: pointer; background: {{bPlain}}; color: {{cPlain}}">Plain</button>
+        <button type="button" onClick="{{detail}}" class="ak-chip" style="min-height: 30px; padding: 0 12px; border-radius: 7px; border: 0; font: inherit; font-size: 12px; cursor: pointer; background: {{bDetail}}; color: {{cDetail}}">Detailed</button>
+      </div>
+    </header>
+
+    <div style="max-width: 1180px; margin: 0 auto; padding: 36px 32px 0; display: flex; flex-wrap: wrap; gap: 36px; align-items: flex-start">
+      <div style="flex: 2 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 30px">
+
+        <section style="display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+            <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #A9C2FF; background: #161E2E; border-radius: 999px; padding: 4px 10px"><span class="ak-live" style="width: 6px; height: 6px; border-radius: 50%; background: #7EA6FF"></span>Building · step 4 of 7</span>
+            <span style="font-size: 12px; color: #F1D79A; background: #2A2210; border-radius: 999px; padding: 4px 10px">Auth · waits for your OK to merge</span>
+            <a href="PhoneGoal.dc.html" style="font-size: 12px; color: #C9CED6; background: #1C2029; border-radius: 999px; padding: 4px 10px">Goal: Google sign-in</a>
+          </div>
+          <h1 style="margin: 0; font-size: 34px; line-height: 1.2; font-weight: 500; letter-spacing: -0.025em"><span style="font-family: 'Geist Mono', monospace; color: #858C98; font-size: 22px; font-weight: 400">AK-42</span> Google OAuth callback and session</h1>
+          <p style="margin: 0; font-size: 17px; line-height: 1.6; color: #C9CED6; max-width: 720px">When someone signs in with Google, the app checks the answer from Google, finds or creates their account, and starts a session marked "google". Fjord has written it and is running the tests now.</p>
+        </section>
+
+        <section aria-labelledby="steps-h" style="display: flex; flex-direction: column; gap: 4px">
+          <h2 id="steps-h" style="margin: 0 0 10px; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #A2A9B5">Live steps</h2>
+          <div style="display: flex; gap: 14px; align-items: flex-start"><div style="display: flex; flex-direction: column; align-items: center"><span style="width: 20px; height: 20px; border-radius: 50%; background: #14231C; display: grid; place-items: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></span><span style="width: 2px; height: 26px; background: #23463A"></span></div><div style="flex: 1; display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding-top: 1px"><span>Read the auth module, the guide and DEC-12</span><span style="color: #858C98; font-family: 'Geist Mono', monospace; font-size: 12px">10:21</span></div></div>
+          <div style="display: flex; gap: 14px; align-items: flex-start"><div style="display: flex; flex-direction: column; align-items: center"><span style="width: 20px; height: 20px; border-radius: 50%; background: #14231C; display: grid; place-items: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></span><span style="width: 2px; height: 26px; background: #23463A"></span></div><div style="flex: 1; display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding-top: 1px"><span>Asked Birch about the sessions column → <a href="Decisions.dc.html">agreed DEC-24</a></span><span style="color: #858C98; font-family: 'Geist Mono', monospace; font-size: 12px">10:34</span></div></div>
+          <div style="display: flex; gap: 14px; align-items: flex-start"><div style="display: flex; flex-direction: column; align-items: center"><span style="width: 20px; height: 20px; border-radius: 50%; background: #14231C; display: grid; place-items: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></span><span style="width: 2px; height: 26px; background: #2A3550"></span></div><div style="flex: 1; display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding-top: 1px"><span>Wrote the callback and the session step</span><span style="color: #858C98; font-family: 'Geist Mono', monospace; font-size: 12px">10:52</span></div></div>
+          <div style="display: flex; gap: 14px; align-items: flex-start"><div style="display: flex; flex-direction: column; align-items: center"><span style="width: 20px; height: 20px; border-radius: 50%; border: 2px solid #7EA6FF; border-top-color: transparent; box-sizing: border-box" class="ak-spin"></span><span style="width: 2px; height: 26px; background: #1F242D"></span></div><div style="flex: 1; display: flex; justify-content: space-between; gap: 12px; font-size: 14px; padding-top: 1px; color: #A9C2FF"><span>Running the tests on GitHub · 31 of 48 passed so far</span><span style="color: #858C98; font-family: 'Geist Mono', monospace; font-size: 12px">now</span></div></div>
+          <div style="display: flex; gap: 14px; align-items: flex-start"><div style="display: flex; flex-direction: column; align-items: center"><span style="width: 20px; height: 20px; border-radius: 50%; border: 2px solid #2A303B; box-sizing: border-box"></span><span style="width: 2px; height: 26px; background: #1F242D"></span></div><div style="flex: 1; font-size: 14px; padding-top: 1px; color: #858C98">Captain reviews against "done means" and approves the exact commit</div></div>
+          <div style="display: flex; gap: 14px; align-items: flex-start"><div style="display: flex; flex-direction: column; align-items: center"><span style="width: 20px; height: 20px; border-radius: 50%; border: 2px solid #4A3B17; box-sizing: border-box"></span><span style="width: 2px; height: 26px; background: #1F242D"></span></div><div style="flex: 1; font-size: 14px; padding-top: 1px; color: #858C98">You OK the merge <span style="color: #F4C25B">· auth is a risky change</span></div></div>
+          <div style="display: flex; gap: 14px; align-items: flex-start"><div style="display: flex; flex-direction: column; align-items: center"><span style="width: 20px; height: 20px; border-radius: 50%; border: 2px solid #2A303B; box-sizing: border-box"></span></div><div style="flex: 1; font-size: 14px; padding-top: 1px; color: #858C98">Merges, then every machine updates itself</div></div>
+        </section>
+
+        <section aria-labelledby="pr-h" style="border-radius: 16px; background: #12151B; border: 1px solid #1F242D; overflow: hidden">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid #1F242D">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#A2A9B5" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="5" r="2"></circle><circle cx="6" cy="19" r="2"></circle><circle cx="18" cy="19" r="2"></circle><path d="M6 7v10"></path><path d="M18 17V9a3 3 0 00-3-3h-4"></path><path d="M13 3l-2 3 2 3"></path></svg>
+            <h2 id="pr-h" style="margin: 0; font-size: 15px; font-weight: 500; flex: 1">Pull request #219 → main</h2>
+            <span style="font-size: 12px; color: #858C98; font-family: 'Geist Mono', monospace">6 files · +184 −12</span>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 0">
+            <div style="flex: 1 1 220px; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; border-right: 1px solid #1F242D">
+              <span style="font-size: 12px; color: #858C98">Tests</span>
+              <div style="height: 6px; border-radius: 3px; background: #1F242D; overflow: hidden; display: flex"><div style="width: 65%; background: #5CCB9A"></div><div class="ak-flow" style="width: 8%; background-color: #7EA6FF"></div></div>
+              <span style="font-size: 14px">31 of 48 passed · none failed</span>
+            </div>
+            <div style="flex: 1 1 220px; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px; border-right: 1px solid #1F242D">
+              <span style="font-size: 12px; color: #858C98">Captain's approval</span>
+              <span style="font-size: 14px; color: #A2A9B5">Not yet · reviews when tests finish</span>
+              <span style="font-size: 12px; color: #858C98">Fjord can't approve its own work</span>
+            </div>
+            <div style="flex: 1 1 220px; padding: 16px 20px; display: flex; flex-direction: column; gap: 8px">
+              <span style="font-size: 12px; color: #858C98">Merge</span>
+              <span style="font-size: 14px; color: #F1D79A">Waits for your OK</span>
+              <span style="font-size: 12px; color: #858C98">Pinned to the approved commit</span>
+            </div>
+          </div>
+          <sc-if value="{{detailed}}" hint-placeholder-val="{{ false }}">
+            <div class="ak-fade" style="border-top: 1px solid #1F242D; padding: 8px 12px 12px; font-family: 'Geist Mono', monospace; font-size: 12px">
+              <div class="ak-row" style="display: flex; gap: 12px; padding: 8px; border-radius: 8px"><span style="flex: 1; color: #C9CED6">app/auth/google/callback/route.ts</span><span style="color: #5CCB9A">+96</span><span style="color: #FF8A78; width: 28px; text-align: right">−0</span></div>
+              <div class="ak-row" style="display: flex; gap: 12px; padding: 8px; border-radius: 8px"><span style="flex: 1; color: #C9CED6">lib/auth/session.ts</span><span style="color: #5CCB9A">+41</span><span style="color: #FF8A78; width: 28px; text-align: right">−9</span></div>
+              <div class="ak-row" style="display: flex; gap: 12px; padding: 8px; border-radius: 8px"><span style="flex: 1; color: #C9CED6">lib/auth/google.ts</span><span style="color: #5CCB9A">+28</span><span style="color: #FF8A78; width: 28px; text-align: right">−0</span></div>
+              <div class="ak-row" style="display: flex; gap: 12px; padding: 8px; border-radius: 8px"><span style="flex: 1; color: #C9CED6">tests/auth/google-callback.test.ts</span><span style="color: #5CCB9A">+19</span><span style="color: #FF8A78; width: 28px; text-align: right">−3</span></div>
+              <div style="padding: 8px; color: #858C98">+ 2 more · open on GitHub</div>
+            </div>
+          </sc-if>
+        </section>
+
+        <section aria-labelledby="brief-h" style="display: flex; flex-direction: column; gap: 16px">
+          <h2 id="brief-h" style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #A2A9B5">The brief <span style="text-transform: none; letter-spacing: 0; font-weight: 400; color: #858C98">· written by Captain at 9:20 am</span></h2>
+          <div style="display: flex; flex-wrap: wrap; gap: 14px">
+            <div style="flex: 1 1 260px; padding: 16px 18px; border-radius: 14px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 12px; color: #858C98">What to do</span><span style="font-size: 14px; line-height: 1.55; color: #C9CED6">Handle Google's redirect, verify the token, find or create the user, start a session with provider "google".</span></div>
+            <div style="flex: 1 1 260px; padding: 16px 18px; border-radius: 14px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 12px; color: #858C98">Not in scope</span><span style="font-size: 14px; line-height: 1.55; color: #C9CED6">The login button (AK-41). Linking Google to existing email accounts. Other providers.</span></div>
+          </div>
+          <div style="padding: 16px 18px; border-radius: 14px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 10px">
+            <span style="font-size: 12px; color: #858C98">Done means</span>
+            <div style="display: flex; gap: 10px; font-size: 14px; color: #C9CED6"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5 9-10"></path></svg>A new Google user lands signed in on the home page</div>
+            <div style="display: flex; gap: 10px; font-size: 14px; color: #C9CED6"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5 9-10"></path></svg>A returning Google user gets their existing account</div>
+            <div style="display: flex; gap: 10px; font-size: 14px; color: #A2A9B5"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid #3A414D; box-sizing: border-box; flex: none; margin-top: 2px"></span>A tampered or expired token is refused with a clear message</div>
+            <div style="display: flex; gap: 10px; font-size: 14px; color: #A2A9B5"><span style="width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid #3A414D; box-sizing: border-box; flex: none; margin-top: 2px"></span>Tests cover all three, and every existing test still passes</div>
+          </div>
+        </section>
+
+        <section aria-labelledby="hist-h" style="display: flex; flex-direction: column; gap: 10px">
+          <h2 id="hist-h" style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #A2A9B5">History</h2>
+          <div style="display: flex; gap: 12px; font-size: 13px; color: #A2A9B5"><span style="font-family: 'Geist Mono', monospace; color: #858C98; width: 44px">09:20</span>Captain created this ticket from your request and set Opus, high effort: "auth is risky"</div>
+          <div style="display: flex; gap: 12px; font-size: 13px; color: #A2A9B5"><span style="font-family: 'Geist Mono', monospace; color: #858C98; width: 44px">10:18</span>Fjord picked it up on James's Linux, in its own worktree</div>
+          <div style="display: flex; gap: 12px; font-size: 13px; color: #A2A9B5"><span style="font-family: 'Geist Mono', monospace; color: #858C98; width: 44px">10:58</span>Fjord opened PR #219</div>
+          <div style="font-size: 12px; color: #858C98; padding-left: 56px">Every line here is written by the database, not by the agents.</div>
+        </section>
+      </div>
+
+      <aside style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 18px">
+        <section aria-label="Assignee" style="padding: 18px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; align-items: center; gap: 12px">
+            <span style="position: relative; width: 40px; height: 40px; border-radius: 12px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 16px; font-weight: 600">F<span class="ak-live" style="position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 50%; background: #7EA6FF; border: 2px solid #12151B"></span></span>
+            <div style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px">Fjord</span><span style="font-size: 12px; color: #858C98">James's agent · Linux · Sweden</span></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; justify-content: space-between; font-size: 13px"><span style="color: #858C98">Model</span><span>Opus</span></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px"><span style="color: #858C98">Effort</span><span style="display: flex; gap: 3px" aria-label="High effort, 4 of 5"><span style="width: 14px; height: 6px; border-radius: 2px; background: #C9CED6"></span><span style="width: 14px; height: 6px; border-radius: 2px; background: #C9CED6"></span><span style="width: 14px; height: 6px; border-radius: 2px; background: #C9CED6"></span><span style="width: 14px; height: 6px; border-radius: 2px; background: #C9CED6"></span><span style="width: 14px; height: 6px; border-radius: 2px; background: #2A303B"></span></span></div>
+            <div style="font-size: 12px; color: #858C98; line-height: 1.5">Set by Captain for this ticket: "auth is risky"</div>
+          </div>
+        </section>
+
+        <section aria-label="Limits" style="padding: 18px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; justify-content: space-between; font-size: 13px"><span style="color: #858C98">Time on this ticket</span><span>41 of 90 min</span></div>
+          <div style="height: 5px; border-radius: 3px; background: #1F242D; overflow: hidden"><div style="width: 45%; height: 100%; background: #A2A9B5"></div></div>
+          <div style="display: flex; justify-content: space-between; font-size: 13px"><span style="color: #858C98">James's daily limit</span><span>2.4 of 6 h</span></div>
+          <div style="height: 5px; border-radius: 3px; background: #1F242D; overflow: hidden"><div style="width: 40%; height: 100%; background: #A2A9B5"></div></div>
+          <div style="font-size: 12px; color: #858C98">Limits are James's, enforced on his machine</div>
+        </section>
+
+        <section aria-label="Where" style="padding: 18px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 10px; font-size: 13px">
+          <div style="display: flex; justify-content: space-between; gap: 12px"><span style="color: #858C98">Branch</span><span style="font-family: 'Geist Mono', monospace; font-size: 12px">ak-42-google-callback</span></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px"><span style="color: #858C98">Depends on</span><a href="LeadHome.dc.html" style="font-family: 'Geist Mono', monospace; font-size: 12px">AK-43</a></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px"><span style="color: #858C98">Blocks</span><span style="font-family: 'Geist Mono', monospace; font-size: 12px">AK-41</span></div>
+          <div style="display: flex; justify-content: space-between; gap: 12px"><span style="color: #858C98">Decisions in force</span><a href="Decisions.dc.html">DEC-12, DEC-24</a></div>
+        </section>
+
+        <a href="Room.dc.html" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-radius: 14px; border: 1px solid #1F242D; color: #E9EBEF; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"></path></svg><span style="flex: 1">3 messages about this ticket</span><span style="color: #858C98">→</span></a>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1320}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const d = !!(this.state && this.state.d);
+    return {
+      detailed: d,
+      bPlain: d ? 'transparent' : '#232833', cPlain: d ? '#858C98' : '#E9EBEF',
+      bDetail: d ? '#232833' : 'transparent', cDetail: d ? '#E9EBEF' : '#858C98',
+      plain: () => this.setState({ d: false }),
+      detail: () => this.setState({ d: true })
+    };
+  }
+}
+</script>
+</body>
+</html>
