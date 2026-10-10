@@ -71,14 +71,18 @@ export interface ModelChoice {
   effort?: Effort;
 }
 
+/** Effort when nothing sets one: both tools' own default, passed explicitly so it's always reported (AK-23). */
+export const DEFAULT_EFFORT: Effort = "medium";
+
 /**
  * Database first (set on AutoKolab by the owner or the project's lead), then the toml, then the
- * tool's own default, value by value. With model_locked the toml has the last word (DEC-18).
+ * tool's own default model and medium effort, value by value. With model_locked the toml has the
+ * last word (DEC-18).
  */
 export function chooseModel(cfg: RunnerConfig, fromDb: { model: string | null; effort: string | null } | null): ModelChoice {
   const toml = cfg.engine === "claude" ? cfg.claude : cfg.codex;
   const db = cfg.model_locked ? null : fromDb;
-  const effort = db?.effort && (EFFORTS as readonly string[]).includes(db.effort) ? (db.effort as Effort) : toml.effort;
+  const effort = db?.effort && (EFFORTS as readonly string[]).includes(db.effort) ? (db.effort as Effort) : toml.effort ?? DEFAULT_EFFORT;
   return { model: db?.model || toml.model, effort };
 }
 

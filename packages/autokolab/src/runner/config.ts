@@ -143,13 +143,13 @@ rules = [
 permission_mode = "acceptEdits"   # tools outside the allow list are refused automatically
 # allowed_tools = ["Read", "Edit", "Write", "Glob", "Grep", "Bash(git:*)", "Bash(pnpm:*)", "Bash(gh:*)"]
 # model = "claude-sonnet-5-5"
-# effort = "high"                 # low, medium, high, xhigh or max
+# effort = "high"                 # low, medium, high, xhigh or max; medium if not set
 
 [codex]
 sandbox = "workspace-write"
 network = true                    # needed for git push, installs, gh
 # model = "gpt-5-codex"
-# effort = "high"                 # low, medium, high, xhigh or max
+# effort = "high"                 # low, medium, high, xhigh or max; medium if not set
 `;
 }
 
