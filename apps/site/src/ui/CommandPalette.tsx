@@ -48,7 +48,7 @@ export function CommandPalette({ open, onClose, commands }: { open: boolean; onC
       aria-modal="true"
       aria-label="Command palette"
       onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: "12vh", zIndex: 50 }}
+      style={{ position: "fixed", inset: 0, background: "var(--backdrop)", display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: "12vh", zIndex: 50 }}
     >
       <div onClick={(e) => e.stopPropagation()} style={{ width: "min(560px, calc(100% - 32px))", borderRadius: 14, background: "var(--surface)", border: "1px solid var(--line-strong)", overflow: "hidden" }}>
         <input

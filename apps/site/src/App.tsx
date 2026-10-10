@@ -10,8 +10,9 @@ import { JoinPage } from "./workspace/Join";
 import { Workspace } from "./workspace/Workspace";
 
 const DemoWorkspace = import.meta.env.DEV ? lazy(() => import("./workspace/demo")) : null;
+const ComponentsPreview = import.meta.env.DEV ? lazy(() => import("./ui/Preview")) : null;
 
-type View = { kind: "demo" } | { kind: "loading" } | { kind: "signed-out"; error?: string } | { kind: "welcome"; profile: Profile } | { kind: "app"; profile: Profile };
+type View = { kind: "demo" } | { kind: "components" } | { kind: "loading" } | { kind: "signed-out"; error?: string } | { kind: "welcome"; profile: Profile } | { kind: "app"; profile: Profile };
 
 export function App() {
   const [view, setView] = useState<View>({ kind: "loading" });
@@ -57,6 +58,13 @@ export function App() {
     return DemoWorkspace ? (
       <Suspense fallback={<Centered>Loading…</Centered>}>
         <DemoWorkspace />
+      </Suspense>
+    ) : null;
+  }
+  if (view.kind === "components") {
+    return ComponentsPreview ? (
+      <Suspense fallback={<Centered>Loading…</Centered>}>
+        <ComponentsPreview />
       </Suspense>
     ) : null;
   }
@@ -186,9 +194,10 @@ function oauthError(): string | undefined {
   return /denied|cancel/i.test(d) ? "GitHub sign-in was cancelled." : `GitHub sign-in failed: ${d}`;
 }
 
-/** Development only: look at screens without signing in (?preview=signin|welcome|workspace). */
+/** Development only: look at screens without signing in (?preview=signin|welcome|workspace|components). */
 function previewView(which: string): View {
   if (which === "workspace") return { kind: "demo" };
+  if (which === "components") return { kind: "components" };
   const profile: Profile = { id: "preview", github_login: "octocat", name: "Ana", avatar_url: null, timezone: "America/Toronto", city: "Toronto", onboarded: false };
   if (which === "welcome") return { kind: "welcome", profile };
   return { kind: "signed-out" };
