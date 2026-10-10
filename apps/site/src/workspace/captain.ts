@@ -418,6 +418,60 @@ export function mergeChip(ws: Workspace, t: Ticket): string | null {
   return `Reviewed by ${who(t.approved_by)}, built by ${who(t.assignee_id)}`;
 }
 
+// ------------------------------------------------------------------ look first (S04)
+
+/**
+ * What "Let me look first" shows for a ticket key: the question to answer, who already OK'd it, or
+ * nothing to answer (no such ticket, or it isn't waiting for a merge OK). Built from the ticket alone,
+ * so a refresh or a direct link lands in the same place.
+ */
+export type LookState = { kind: "ask"; need: Need } | { kind: "answered"; by: string | null; at: string } | { kind: "nothing"; why: "unknown" | "not_waiting" };
+
+export function lookState(ws: Workspace, key: string): LookState {
+  const t = ws.byKey.get(key.trim().toUpperCase());
+  if (!t) return { kind: "nothing", why: "unknown" };
+  if (t.merge_ok_at) return { kind: "answered", by: t.merge_ok_by ?? null, at: t.merge_ok_at };
+  const need = needsYou(ws, []).find((n) => n.kind === "risky_merge" && n.ticket?.id === t.id);
+  return need ? { kind: "ask", need } : { kind: "nothing", why: "not_waiting" };
+}
+
+/** The modal's title: Captain's plain-English summary of the change, else the ticket's title. */
+export const lookTitle = (t: Ticket) => t.review?.summary?.trim() || t.title;
+
+export interface LookChip {
+  text: string;
+  /** "verified" chips are facts checked by a reviewer; the rest are plain warnings. */
+  tone: "verified" | "neutral";
+  sha?: string;
+}
+
+/**
+ * The chips under the line that matters, each only when it's true: who approved the exact commit,
+ * and that it can't be undone automatically (anything that waits for a merge OK can't: 00-AMENDMENTS.md).
+ */
+export function lookChips(ws: Workspace, t: Ticket): LookChip[] {
+  const chips: LookChip[] = [];
+  const sha = t.approved_sha?.trim();
+  if (sha && t.approved_by) {
+    const who = t.approved_by === ws.project.lead_agent_id ? "Captain" : ws.nameOf(t.approved_by);
+    chips.push({ text: `${who} approved this exact commit`, tone: "verified", sha: sha.slice(0, 7) });
+  }
+  if (t.needs_human?.startsWith(MERGE_OK_PREFIX) || t.merge_ok_at) chips.push({ text: "Can't be undone automatically", tone: "neutral" });
+  return chips;
+}
+
+/** "Ana already OK'd this at 11:04 am.", or "You …" when it was this person; the day is added when it wasn't today. */
+export function answeredText(ws: Workspace, by: string | null, at: string, me: string, now = new Date()): string {
+  const who = !by ? "Someone" : by === me ? "You" : ws.nameOf(by);
+  const d = new Date(at);
+  const today = d.toDateString() === now.toDateString();
+  const when = today ? clock(at) : `${d.toLocaleDateString([], { month: "long", day: "numeric" })}, ${clock(at)}`;
+  return `${who} already OK'd this at ${when}.`;
+}
+
+/** The code block's lines, with additions marked so they show in green. */
+export const codeLines = (code: string) => code.split("\n").map((text) => ({ text, added: text.startsWith("+") && !text.startsWith("+++") }));
+
 /** Whose agent this is, for the hover on a "Who's doing what" row: "James's agent". */
 export function ownerOf(ws: Workspace, agentId: string): string | null {
   const a = ws.agentOf(agentId);

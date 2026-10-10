@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { href, onNav, go, type Route } from "../lib/router";
+import { href, onNav, go, openLook, type Route } from "../lib/router";
 import { AgentAvatar, Button, Chip, SegmentedProgress, type Segment } from "../ui";
 import { ago, Markdown } from "./bits";
 import {
@@ -434,7 +434,7 @@ function DecisionCard({ ws, cr, need, done, pulse }: { ws: Workspace; cr: Captai
 
   if (done) {
     return (
-      <div role="region" aria-label={question} className="ak-enter ak-indent" style={{ ...cardBox, background: "var(--green-bg)", borderColor: "var(--green-border)" }}>
+      <div id={`need-${need.key}`} tabIndex={-1} role="region" aria-label={question} className="ak-enter ak-indent" style={{ ...cardBox, background: "var(--green-bg)", borderColor: "var(--green-border)" }}>
         <span style={{ display: "flex", gap: 10, alignItems: "baseline", color: "var(--green-ink)", fontSize: 15 }}>
           <span aria-hidden="true" style={{ color: "var(--green)" }}>
             ✓
@@ -498,7 +498,7 @@ function DecisionCard({ ws, cr, need, done, pulse }: { ws: Workspace; cr: Captai
             <Button onClick={() => void run(() => cr.okMerge(need))} disabled={busy} style={amberButton(busy)}>
               Yes, merge it
             </Button>
-            <Button variant="secondary" onClick={openTicket} style={{ height: 44 }}>
+            <Button variant="secondary" onClick={() => t && openLook(slug, t.key)} style={{ height: 44 }}>
               Let me look first
             </Button>
             <button type="button" aria-expanded={saying} onClick={() => setSaying((s) => !s)} style={{ ...textButton, minHeight: 44, color: "var(--text-muted)" }}>

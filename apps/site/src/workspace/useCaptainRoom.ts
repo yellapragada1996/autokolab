@@ -17,7 +17,11 @@ export interface DemoRoom {
   caughtUpAt?: string;
   /** Deliver the room after this long, like the live site does, so the loading path can be checked. */
   delayMs?: number;
+  /** Refuse every answer and post, so the preview can show what a refused one looks like. */
+  refuse?: boolean;
 }
+
+const REFUSED = "the preview is set to refuse answers (?refuse).";
 
 export interface CaptainRoom {
   /** undefined while loading; null when your sign-in isn't in the project's room. */
@@ -141,6 +145,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     try {
       if (demo) {
         await wait(300);
+        if (demo.refuse) throw new Error(REFUSED);
         setDemoReading(true);
         setTimeout(() => setDemoReading(false), 4000);
         setLoaded((l) => [...l, temp]);
@@ -165,8 +170,9 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   };
 
   const real = (run: () => Promise<unknown>) => async () => {
-    if (demo) await wait(300);
-    else await run();
+    if (!demo) return void (await run());
+    await wait(300);
+    if (demo.refuse) throw new Error(REFUSED);
   };
 
   const startCatchUp = () => {

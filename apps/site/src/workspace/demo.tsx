@@ -194,6 +194,8 @@ const demoRoom: DemoRoom = {
   caughtUpAt: iso(600),
   // Arrives a moment after the page, like the live room, so the loading path shows here too.
   delayMs: 800,
+  // ?preview=workspace&refuse: every answer is refused, to see the message it leaves.
+  refuse: new URLSearchParams(location.search).has("refuse"),
 };
 
 demoRoom.room.me = demoRoom.room.members[0];
