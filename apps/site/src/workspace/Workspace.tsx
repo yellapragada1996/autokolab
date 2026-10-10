@@ -432,6 +432,20 @@ function Overview({ ws, me }: { ws: WS; me: string }) {
             const t = ws.byId.get(e.ticket_id);
             const what = describe(ws, e);
             if (!t || !what) return null;
+            const to = e.kind === "status" ? (e.data as { to?: string }).to : undefined;
+            const outcome = t.summary && (to === "done" || to === "review") ? `${to === "done" ? "Shipped" : "Up for review"}: ${t.summary}` : null;
+            if (outcome) {
+              return (
+                <a key={e.id} href={`/p/${ws.project.slug}/t/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "var(--muted)", textDecoration: "none", lineHeight: 1.45 }}>
+                  <span style={{ marginTop: 2 }}>
+                    <StatusIcon status={t.status} size={13} />
+                  </span>
+                  <span>
+                    <span style={{ color: "var(--text-2)" }}>{outcome}</span> <span style={{ color: "var(--faint)" }}>· <KeyText t={t} style={{ color: "var(--faint)" }} /> · {ago(e.created_at)}</span>
+                  </span>
+                </a>
+              );
+            }
             return (
               <a key={e.id} href={`/p/${ws.project.slug}/t/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "var(--muted)", textDecoration: "none", lineHeight: 1.45 }}>
                 <span style={{ marginTop: 2 }}>
