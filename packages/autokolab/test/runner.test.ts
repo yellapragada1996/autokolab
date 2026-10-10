@@ -4,12 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Member, Message, Room } from "../src/core/types.js";
+import { writeConfigFile } from "../src/core/config.js";
 import { parseRunnerConfig, runnerTemplate } from "../src/runner/config.js";
 import { chooseModel, claudeDenyRules, claudeInvocation, codexInvocation, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
 import { installHook } from "../src/runner/githook.js";
 import { buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "../src/runner/prompt.js";
 import { needsRunner } from "../src/setup/connect.js";
-import { STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
+import { Runner, STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
 import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, leadGuide, questionsForLead, untriaged, type Comment, type Ticket } from "../src/core/projects.js";
 import { MERGE_FIELDS, RISKY_PATHS, approvalMessage, checkResult, isRiskyPath, mergeDecision, mergeNeedsHuman, mergedComment, plainGhError, readyToMergeMessage, reviewedShaProblem, shortList, type PrInfo } from "../src/runner/merge.js";
@@ -726,6 +727,49 @@ describe("pre-push guard", () => {
   const { AUTOKOLAB_RUNNER: _, ...human } = process.env;
   const push = (cwd: string, env: Record<string, string>, ...args: string[]) =>
     spawnSync("git", ["push", ...args], { cwd, encoding: "utf8", env: { ...human, ...env } });
+
+  it.each(["chosen", "managed"])("installs the runner's hook in the %s clone", (source) => {
+    const root = mkdtempSync(join(tmpdir(), "ak-hook-clone-"));
+    const oldConfig = process.env.XDG_CONFIG_HOME;
+    const oldData = process.env.XDG_DATA_HOME;
+    const oldState = process.env.XDG_STATE_HOME;
+    const repo = "ana/hook-test";
+    try {
+      process.env.XDG_CONFIG_HOME = join(root, "config");
+      process.env.XDG_DATA_HOME = join(root, "data");
+      process.env.XDG_STATE_HOME = join(root, "state");
+      const remote = join(root, "remote.git");
+      const seed = join(root, "seed");
+      git(root, "init", "-q", "--bare", "-b", "main", remote);
+      git(root, "init", "-q", "-b", "main", seed);
+      git(seed, "config", "user.email", "t@example.com");
+      git(seed, "config", "user.name", "t");
+      writeFileSync(join(seed, "README.md"), "hi");
+      git(seed, "add", ".");
+      git(seed, "commit", "-qm", "init");
+      git(seed, "push", "-q", remote, "main");
+
+      const clone = source === "chosen" ? join(root, "my-checkout") : clonePath(repo);
+      mkdirSync(join(clone, ".."), { recursive: true });
+      git(root, "clone", "-q", remote, clone);
+      if (source === "chosen") writeConfigFile({ repos: { [repo]: clone } });
+
+      const ak = { me: { name: "lee-codex" }, roomById: () => ({ repo }) } as unknown as ConstructorParameters<typeof Runner>[0];
+      const runner = new Runner(ak, cfgFor());
+      const worktree = runner["prepareWorkspace"]({ room_id: "room" } as Message, 50);
+      expect(worktree.clone).toBe(clone);
+      expect(readFileSync(join(clone, ".git", "hooks", "pre-push"), "utf8")).toContain("# autokolab-pre-push");
+      if (source === "chosen") expect(existsSync(clonePath(repo))).toBe(false);
+    } finally {
+      if (oldConfig === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = oldConfig;
+      if (oldData === undefined) delete process.env.XDG_DATA_HOME;
+      else process.env.XDG_DATA_HOME = oldData;
+      if (oldState === undefined) delete process.env.XDG_STATE_HOME;
+      else process.env.XDG_STATE_HOME = oldState;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
   it("blocks agents from protected branches and force-pushes, not humans", () => {
     const root = mkdtempSync(join(tmpdir(), "ak-hook-"));
