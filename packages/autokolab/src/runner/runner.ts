@@ -14,7 +14,7 @@ import { installHook } from "./githook.js";
 import { ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, plainGhError, prNumber, readyToMergeMessage, type MergeDecision, type PrInfo } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
-import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
+import { currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
 // teammate asks it something, starts the agent headless in that thread's own worktree. It also
@@ -534,9 +534,9 @@ export class Runner {
   private prepareWorkspace(m: Message, threadRoot: number): Worktree {
     const room = this.ak.roomById(m.room_id);
     if (!room?.repo) throw new Error(`room ${room?.name ?? m.room_id} isn't linked to a GitHub repo.`);
-    ensureClone(room.repo);
+    const clone = ensureClone(room.repo);
     if (!this.hooked.has(room.repo)) {
-      installHook(clonePath(room.repo), this.cfg.limits.protected_branches);
+      installHook(clone, this.cfg.limits.protected_branches);
       this.hooked.add(room.repo);
     }
     return ensureWorktree(this.ak.me.name, room.repo, threadRoot);
@@ -825,9 +825,9 @@ export class Runner {
     if (job.comments.length) st.seen[t.id] = job.comments[job.comments.length - 1].id;
     this.saveTicketState(st);
 
-    ensureClone(repo);
+    const clone = ensureClone(repo);
     if (!this.hooked.has(repo)) {
-      installHook(clonePath(repo), cfg.limits.protected_branches);
+      installHook(clone, cfg.limits.protected_branches);
       this.hooked.add(repo);
     }
     const worktree = ensureTicketWorktree(ak.me.name, repo, t.key, t.branch ?? ticketBranch(t.key, t.title));
@@ -1010,9 +1010,9 @@ export class Runner {
 
     const repo = p.project.repo;
     if (!repo) return;
-    ensureClone(repo);
+    const clone = ensureClone(repo);
     if (!this.hooked.has(repo)) {
-      installHook(clonePath(repo), cfg.limits.protected_branches);
+      installHook(clone, cfg.limits.protected_branches);
       this.hooked.add(repo);
     }
     // Its own worktree to read the code in, never its person's checkout.
