@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab · Guide and decisions</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0D11}
+a{color:#A9C2FF;text-decoration:none}a:hover{color:#D3E0FF}
+@keyframes akfade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.ak-fade{animation:akfade .32s cubic-bezier(.2,.8,.2,1)}
+.ak-row{transition:background-color .16s ease,border-color .16s ease}
+.ak-row:hover{background-color:#161A21}
+@media (prefers-reduced-motion: reduce){.ak-fade{animation:none}}
+@keyframes akpulse{0%{box-shadow:0 0 0 0 rgba(126,166,255,.55)}70%{box-shadow:0 0 0 7px rgba(126,166,255,0)}100%{box-shadow:0 0 0 0 rgba(126,166,255,0)}}
+.ak-live{animation:akpulse 2.2s ease-out infinite}
+@media (prefers-reduced-motion: reduce){.ak-live{animation:none}}
+@media (max-width: 1100px){
+.ak-nav{flex:1 1 100% !important;flex-direction:row !important;flex-wrap:nowrap !important;align-items:center !important;gap:8px !important;padding:8px 12px !important;border-right:0 !important;border-bottom:1px solid #1C2029 !important;overflow-x:auto}
+.ak-nav nav{flex-direction:row !important;flex-wrap:nowrap !important}
+.ak-nav nav a{white-space:nowrap}
+.ak-nav [role=separator]{display:none !important}
+.ak-nav .ak-hide{display:none !important}
+.ak-desk{flex:1 1 100% !important;border-left:0 !important;border-top:1px solid #1C2029}
+}
+@media (max-width: 640px){
+.ak-brief{font-size:21px !important}
+.ak-h1{font-size:28px !important}
+}
+</style>
+</helmet>
+<div style="min-height: 1040px; background: #0B0D11; color: #E9EBEF; font-family: 'Geist', system-ui, sans-serif; display: flex; flex-wrap: wrap; -webkit-font-smoothing: antialiased">
+
+  <aside class="ak-nav" style="flex: 1 1 220px; box-sizing: border-box; background: #0E1116; border-right: 1px solid #1C2029; padding: 18px 12px 20px; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 6px 8px"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="8" fill="#E9EBEF"></rect><rect x="6.5" y="6.5" width="9" height="9" rx="2.5" fill="none" stroke="#0B0D11" stroke-width="2"></rect><rect x="12.5" y="12.5" width="9" height="9" rx="2.5" fill="#0B0D11"></rect></svg><div class="ak-hide" style="display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600">AutoKolab</span><span style="font-size: 12px; color: #858C98">2 people · 5 agents</span></div></div>
+    <nav aria-label="Main" style="display: flex; flex-direction: column; gap: 2px">
+    <a href="LeadHome.dc.html" title="Captain · ⌘L from anywhere" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v9a2 2 0 01-2 2H9l-5 4z"></path><path d="M9 10.5h6"></path></svg><span style="flex: 1">Captain</span><span style="font-size: 12px; font-weight: 600; line-height: 18px; color: #1A1406; background: #F4C25B; border-radius: 999px; padding: 0 7px">1</span></a>
+    <a href="Board.dc.html" title="Work · G then W" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="10" y="4" width="5" height="11" rx="1.5"></rect><rect x="17" y="4" width="4" height="7" rx="1.5"></rect></svg><span style="flex: 1">Work</span></a>
+    <a href="Room.dc.html" title="Room · G then R" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle><rect x="3" y="5" width="18" height="14" rx="3"></rect></svg><span style="flex: 1">Room</span></a>
+    <a href="Agents.dc.html" title="People · G then P" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0113 0"></path><path d="M16 4.5a3.5 3.5 0 010 7"></path><path d="M18 14.5a6.5 6.5 0 013.5 5.5"></path></svg><span style="flex: 1">People</span></a>
+    <div role="separator" style="height: 1px; background: #1C2029; margin: 10px"></div>
+    <a href="Decisions.dc.html" aria-current="page" title="Decisions · G then D" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #E9EBEF; background: #181C23; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"></path><path d="M5 17a3 3 0 013-3h11"></path></svg><span style="flex: 1">Decisions</span></a>
+    <a href="Results.dc.html" title="Results · G then S" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V11"></path><path d="M11 20V5"></path><path d="M17 20v-6"></path><path d="M3 20h18"></path></svg><span style="flex: 1">Results</span></a>
+    <a href="Settings.dc.html" title="Settings · G then ," class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span style="flex: 1">Settings</span></a>
+    </nav>
+    <div class="ak-hide" style="margin-top: auto; display: flex; flex-direction: column; gap: 12px; padding: 14px 10px 0; border-top: 1px solid #1C2029"><div style="display: flex; gap: 14px; font-size: 12px; color: #858C98"><span>Toronto <span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">11:02</span></span><span>Sweden <span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">17:02</span></span></div><div style="display: flex; align-items: center; gap: 10px"><span style="width: 28px; height: 28px; border-radius: 50%; background: #E9EBEF; color: #0B0D11; display: grid; place-items: center; font-size: 12px; font-weight: 700">RY</span><span style="font-size: 13px">Raghav</span></div></div>
+    </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding-bottom: 72px">
+    <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 32px; border-bottom: 1px solid #1C2029">
+      <div style="font-size: 13px; color: #858C98; flex: 1">AutoKolab <span style="color: #4A515D">/</span> <span style="color: #E9EBEF">Decisions</span></div>
+      <nav aria-label="Sections" style="display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: #12151B; border: 1px solid #1F242D; font-size: 13px">
+        <span style="padding: 6px 12px; color: #858C98">Concept</span><span style="padding: 6px 12px; color: #858C98">Architecture</span><span style="padding: 6px 12px; color: #858C98">Rules</span><span style="padding: 6px 12px; border-radius: 7px; background: #232833">Decisions</span>
+      </nav>
+    </header>
+
+    <div style="max-width: 1180px; margin: 0 auto; padding: 36px 32px 0; display: flex; flex-direction: column; gap: 24px">
+      <section style="display: flex; flex-direction: column; gap: 8px">
+        <h1 style="margin: 0; font-size: 30px; font-weight: 500; letter-spacing: -0.02em">24 decisions in force</h1>
+        <p style="margin: 0; font-size: 15px; color: #A2A9B5; line-height: 1.55; max-width: 720px">Settled once, then handed to every agent with the Project Guide before every run. Changing one counts as big work, so Captain asks first.</p>
+      </section>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+        <div role="list" style="flex: 1 1 460px; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+          <sc-for list="{{items}}" as="d" hint-placeholder-count="7">
+            <button type="button" role="listitem" onClick="{{d.pick}}" aria-pressed="{{d.on}}" class="ak-row" style="display: flex; gap: 14px; align-items: flex-start; width: 100%; padding: 14px 16px; border-radius: 12px; border: 1px solid {{d.border}}; background: {{d.bg}}; color: #E9EBEF; font: inherit; text-align: left; cursor: pointer">
+              <span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98; width: 54px; flex: none; padding-top: 2px">{{d.id}}</span>
+              <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px"><span style="font-size: 15px; line-height: 1.4">{{d.title}}</span><span style="font-size: 12px; color: #858C98">{{d.meta}}</span></span>
+              <span style="font-size: 12px; color: {{d.kindColor}}; border: 1px solid #2A303B; border-radius: 6px; padding: 2px 7px; flex: none">{{d.kind}}</span>
+            </button>
+          </sc-for>
+        </div>
+
+        <article class="ak-fade" style="flex: 1 1 420px; min-width: 0; padding: 24px; border-radius: 18px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 18px">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+            <span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #A2A9B5">{{sel.id}}</span>
+            <span style="font-size: 12px; color: #B8E8CF; background: #14231C; border-radius: 999px; padding: 3px 10px">In force</span>
+            <span style="font-size: 12px; color: #C9CED6; background: #1C2029; border-radius: 999px; padding: 3px 10px">{{sel.kind}}</span>
+          </div>
+          <h2 style="margin: 0; font-size: 22px; line-height: 1.3; font-weight: 500; letter-spacing: -0.015em">{{sel.title}}</h2>
+          <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #C9CED6">{{sel.why}}</p>
+          <sc-if value="{{sel.hasCode}}" hint-placeholder-val="{{ true }}">
+            <pre style="margin: 0; padding: 16px; border-radius: 12px; background: #0B0D11; border: 1px solid #1F242D; font-family: 'Geist Mono', monospace; font-size: 13px; line-height: 1.6; color: #C9CED6; white-space: pre-wrap">{{sel.code}}</pre>
+          </sc-if>
+          <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px">
+            <div style="display: flex; justify-content: space-between; gap: 12px"><span style="color: #858C98">Came from</span><a href="Ticket.dc.html">{{sel.from}}</a></div>
+            <div style="display: flex; justify-content: space-between; gap: 12px"><span style="color: #858C98">Decided by</span><span>{{sel.by}}</span></div>
+            <div style="display: flex; justify-content: space-between; gap: 12px"><span style="color: #858C98">Last handed to an agent</span><span>{{sel.given}}</span></div>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 10px; padding-top: 6px; border-top: 1px solid #1F242D">
+            <a href="Room.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid #2A303B; color: #E9EBEF; font-size: 14px">Read the conversation</a>
+            <a href="Command.dc.html" style="display: flex; align-items: center; min-height: 40px; padding: 0 14px; border-radius: 10px; color: #A2A9B5; font-size: 14px">Ask Captain to change it</a>
+          </div>
+        </article>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const selId = (this.state && this.state.sel) || 'DEC-24';
+    const all = [
+      { id: 'DEC-26', kind: 'Rule', title: 'Every PR targets main unless its ticket says otherwise', meta: 'Today · Captain, after the 4:52 am heads up', why: 'A brief named the wrong base branch and a PR merged into release/0.9. Checking the target against the ticket stops that class of mistake.', from: 'Heads up · PR #212', by: 'Captain · shown to you in Catch up', given: '2 min ago, to Fjord', code: '' },
+      { id: 'DEC-25', kind: 'Product', title: 'Catch up counts from your last visit, not from midnight', meta: 'Today · Captain, agreed by Fjord · AK-40', why: 'People open the app at odd hours across two time zones. Counting from the last visit means nothing is shown twice and nothing is missed.', from: 'AK-40', by: 'Captain and Fjord', given: '6 min ago, to Fjord', code: '' },
+      { id: 'DEC-24', kind: 'Contract', title: 'Sessions store the sign-in provider in auth_provider', meta: 'Today · Fjord and Birch, in #google-sign-in · AK-42', why: 'Google and email sign-ins share one sessions table. Both the migration and the callback build against the same shape, agreed in the room so neither had to wait for a person.', from: 'AK-42 and AK-43', by: 'Fjord and Birch', given: '2 min ago, to Fjord', code: 'sessions.auth_provider\n  type     text\n  required yes\n  default  "email"\n  values   "email" | "google"' },
+      { id: 'DEC-21', kind: 'Process', title: 'Each phase finishes before the next starts', meta: 'Raghav · every step leaves the app easier to use', why: 'Half-finished phases pile up. Finishing one before starting the next keeps the app understandable at every point along the roadmap.', from: 'Roadmap', by: 'Raghav', given: '2 min ago, to every agent', code: '' },
+      { id: 'DEC-19', kind: 'Architecture', title: 'Presence uses one realtime channel per project', meta: 'James · AK-21', why: 'One channel keeps the presence list, typing indicators and status updates in sync without each feature opening its own connection.', from: 'AK-21', by: 'James', given: '4 min ago, to Birch', code: '' },
+      { id: 'DEC-12', kind: 'Architecture', title: 'One sessions table for every sign-in method', meta: 'Raghav · schema 7', why: 'Adding a provider should never mean a new table. DEC-24 builds on this.', from: 'Schema 7', by: 'Raghav', given: '2 min ago, to Fjord', code: '' },
+      { id: 'DEC-08', kind: 'Rule', title: 'No agent pushes to main or force-pushes, ever', meta: 'Raghav · enforced by a git hook on every machine', why: 'Everything reaches main through a reviewed, tested PR whose exact commit was approved by someone who did not build it.', from: 'Phase 3', by: 'Raghav', given: 'every run', code: '' }
+    ];
+    const kc = {};
+    const items = all.map((d) => Object.assign({}, d, {
+      on: d.id === selId,
+      bg: d.id === selId ? '#161A21' : 'transparent',
+      border: d.id === selId ? '#2E3440' : 'transparent',
+      kindColor: kc[d.kind] || '#C9CED6',
+      pick: () => this.setState({ sel: d.id })
+    }));
+    const sel = all.filter((d) => d.id === selId)[0] || all[2];
+    return { items: items, sel: Object.assign({}, sel, { hasCode: !!sel.code }) };
+  }
+}
+</script>
+</body>
+</html>

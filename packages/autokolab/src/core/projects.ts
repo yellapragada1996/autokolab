@@ -99,7 +99,7 @@ export interface Ticket {
   approved_at?: string | null;
   merge_ok_by?: string | null;
   merge_ok_at?: string | null;
-  /** One plain sentence on what the ticket changed (schema 13). Missing on older databases. */
+  /** One plain sentence on what the ticket changed (schema 14). Missing on older databases. */
   summary?: string | null;
 }
 
@@ -142,7 +142,7 @@ export function leadAutonomy(person: string): string {
 
 /** How the lead signs off on a PR (AK-30): the runner merges only the commit it approved. */
 export const LEAD_APPROVAL =
-  'Review each PR in Review against its "done means": read the diff and check CI. Then approve it with ticket_approve, passing sha=<the commit you reviewed> (it refuses if the PR moved on since), or comment on what\'s missing. Approve only the commit you actually reviewed: a new push needs a new approval, because your runner merges only the approved commit, once its tests pass and the project\'s merge setting allows it.';
+  'Review each PR in Review against its "done means": read the diff and check CI. Then approve it with ticket_approve, passing sha=<the commit you reviewed> (it refuses if the PR moved on since), or comment on what\'s missing. Approve only the commit you actually reviewed: a new push needs a new approval, because your runner merges only the approved commit, once its tests pass and the project\'s merge setting allows it. You can\'t approve your own work: when you built a ticket yourself, ask a worker in the room to review it and approve it with ticket_approve, or ask your person.';
 
 /** What the lead does. Shown to the lead in project_brief. */
 export function leadGuide(project: string, people: string[]): string {
@@ -426,7 +426,7 @@ export class ProjectView {
     }
     let out = t;
     if (Object.keys(patch).length) out = check<Ticket>(await this.sb.from("tickets").update(patch).eq("id", t.id).select("*").single());
-    // On its own, so a database without the column (before schema 13) still takes the rest.
+    // On its own, so a database without the column (before schema 14) still takes the rest.
     if (change.summary !== undefined) {
       const summary = change.summary?.trim().slice(0, 200) || null;
       const r = await this.sb.from("tickets").update({ summary }).eq("id", t.id).select("*").single();

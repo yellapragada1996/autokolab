@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab · Heads up</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0D11}
+a{color:#A9C2FF;text-decoration:none}a:hover{color:#D3E0FF}
+@keyframes akfade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.ak-fade{animation:akfade .38s cubic-bezier(.2,.8,.2,1)}
+.ak-row{transition:background-color .16s ease}
+.ak-row:hover{background-color:#161A21}
+.ak-btn{transition:transform .14s cubic-bezier(.2,.8,.2,1),filter .16s ease}
+.ak-btn:hover{transform:translateY(-1px);filter:brightness(1.06)}
+.ak-btn:active{transform:scale(.98)}
+.ak-knob{transition:transform .22s cubic-bezier(.2,.8,.2,1)}
+.ak-track{transition:background-color .22s ease}
+@media (prefers-reduced-motion: reduce){.ak-fade{animation:none}.ak-btn:hover{transform:none}}
+@keyframes akpulse{0%{box-shadow:0 0 0 0 rgba(126,166,255,.55)}70%{box-shadow:0 0 0 7px rgba(126,166,255,0)}100%{box-shadow:0 0 0 0 rgba(126,166,255,0)}}
+.ak-live{animation:akpulse 2.2s ease-out infinite}
+@media (prefers-reduced-motion: reduce){.ak-live{animation:none}}
+@media (max-width: 1100px){
+.ak-nav{flex:1 1 100% !important;flex-direction:row !important;flex-wrap:nowrap !important;align-items:center !important;gap:8px !important;padding:8px 12px !important;border-right:0 !important;border-bottom:1px solid #1C2029 !important;overflow-x:auto}
+.ak-nav nav{flex-direction:row !important;flex-wrap:nowrap !important}
+.ak-nav nav a{white-space:nowrap}
+.ak-nav [role=separator]{display:none !important}
+.ak-nav .ak-hide{display:none !important}
+.ak-desk{flex:1 1 100% !important;border-left:0 !important;border-top:1px solid #1C2029}
+}
+@media (max-width: 640px){
+.ak-brief{font-size:21px !important}
+.ak-h1{font-size:28px !important}
+}
+</style>
+</helmet>
+<div style="min-height: 1040px; background: #0B0D11; color: #E9EBEF; font-family: 'Geist', system-ui, sans-serif; display: flex; flex-wrap: wrap; -webkit-font-smoothing: antialiased">
+
+  <aside class="ak-nav" style="flex: 1 1 220px; box-sizing: border-box; background: #0E1116; border-right: 1px solid #1C2029; padding: 18px 12px 20px; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 6px 8px"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="8" fill="#E9EBEF"></rect><rect x="6.5" y="6.5" width="9" height="9" rx="2.5" fill="none" stroke="#0B0D11" stroke-width="2"></rect><rect x="12.5" y="12.5" width="9" height="9" rx="2.5" fill="#0B0D11"></rect></svg><div class="ak-hide" style="display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600">AutoKolab</span><span style="font-size: 12px; color: #858C98">2 people · 5 agents</span></div></div>
+    <nav aria-label="Main" style="display: flex; flex-direction: column; gap: 2px">
+    <a href="LeadHome.dc.html" aria-current="page" title="Captain · ⌘L from anywhere" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #E9EBEF; background: #181C23; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v9a2 2 0 01-2 2H9l-5 4z"></path><path d="M9 10.5h6"></path></svg><span style="flex: 1">Captain</span><span style="font-size: 12px; font-weight: 600; line-height: 18px; color: #1A1406; background: #F4C25B; border-radius: 999px; padding: 0 7px">1</span></a>
+    <a href="Board.dc.html" title="Work · G then W" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="10" y="4" width="5" height="11" rx="1.5"></rect><rect x="17" y="4" width="4" height="7" rx="1.5"></rect></svg><span style="flex: 1">Work</span></a>
+    <a href="Room.dc.html" title="Room · G then R" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle><rect x="3" y="5" width="18" height="14" rx="3"></rect></svg><span style="flex: 1">Room</span></a>
+    <a href="Agents.dc.html" title="People · G then P" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0113 0"></path><path d="M16 4.5a3.5 3.5 0 010 7"></path><path d="M18 14.5a6.5 6.5 0 013.5 5.5"></path></svg><span style="flex: 1">People</span></a>
+    <div role="separator" style="height: 1px; background: #1C2029; margin: 10px"></div>
+    <a href="Decisions.dc.html" title="Decisions · G then D" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"></path><path d="M5 17a3 3 0 013-3h11"></path></svg><span style="flex: 1">Decisions</span></a>
+    <a href="Results.dc.html" title="Results · G then S" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V11"></path><path d="M11 20V5"></path><path d="M17 20v-6"></path><path d="M3 20h18"></path></svg><span style="flex: 1">Results</span></a>
+    <a href="Settings.dc.html" title="Settings · G then ," class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span style="flex: 1">Settings</span></a>
+    </nav>
+    <div class="ak-hide" style="margin-top: auto; display: flex; flex-direction: column; gap: 12px; padding: 14px 10px 0; border-top: 1px solid #1C2029"><div style="display: flex; gap: 14px; font-size: 12px; color: #858C98"><span>Toronto <span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">08:42</span></span><span>Sweden <span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">14:42</span></span></div><div style="display: flex; align-items: center; gap: 10px"><span style="width: 28px; height: 28px; border-radius: 50%; background: #E9EBEF; color: #0B0D11; display: grid; place-items: center; font-size: 12px; font-weight: 700">RY</span><span style="font-size: 13px">Raghav</span></div></div>
+    </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding-bottom: 72px">
+    <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 32px; border-bottom: 1px solid #1C2029">
+      <div style="font-size: 13px; color: #858C98; flex: 1">AutoKolab <span style="color: #4A515D">/</span> <a href="LeadHome.dc.html" style="color: #858C98">Captain</a> <span style="color: #4A515D">/</span> <span style="color: #E9EBEF">Heads up · 4:52 am</span></div>
+    </header>
+
+    <div style="max-width: 1120px; margin: 0 auto; padding: 40px 32px 0; display: flex; flex-wrap: wrap; gap: 36px; align-items: flex-start">
+      <div style="flex: 2 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 30px">
+        <section style="display: flex; flex-direction: column; gap: 14px">
+          <div style="display: flex; flex-wrap: wrap; gap: 8px">
+            <span style="font-size: 12px; color: #FFB8A8; background: #241614; border-radius: 999px; padding: 4px 10px">Heads up</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #B8E8CF; background: #14231C; border-radius: 999px; padding: 4px 10px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>Handled · nothing needs you</span>
+          </div>
+          <h1 style="margin: 0; font-size: 36px; line-height: 1.2; font-weight: 500; letter-spacing: -0.026em">A PR merged into the wrong branch. It was undone 40 seconds later.</h1>
+          <p style="margin: 0; font-size: 16px; line-height: 1.6; color: #C9CED6; max-width: 700px">Kestrel's presence-list fix (AK-35) went into <span style="font-family: 'Geist Mono', monospace; font-size: 14px; background: #1A1E26; padding: 1px 6px; border-radius: 5px">release/0.9</span> instead of <span style="font-family: 'Geist Mono', monospace; font-size: 14px; background: #1A1E26; padding: 1px 6px; border-radius: 5px">main</span>. AutoKolab reverted it, reopened it against main, and Captain added a rule so it can't happen the same way again.</p>
+        </section>
+
+        <section aria-labelledby="rc-what" style="display: flex; flex-direction: column; gap: 0">
+          <h2 id="rc-what" style="margin: 0 0 16px; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #A2A9B5">What happened, second by second</h2>
+          <div style="display: flex; gap: 16px"><div style="display: flex; flex-direction: column; align-items: center; width: 14px"><span style="width: 10px; height: 10px; border-radius: 50%; background: #5A616D; margin-top: 5px"></span><span style="flex: 1; width: 2px; background: #1F242D"></span></div><div style="flex: 1; padding-bottom: 18px; display: flex; flex-direction: column; gap: 3px"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98">4:51:12</span><span style="font-size: 15px">Captain approved PR #212, commit <span style="font-family: 'Geist Mono', monospace; font-size: 13px">c41e7a0</span>. Tests passed.</span></div></div>
+          <div style="display: flex; gap: 16px"><div style="display: flex; flex-direction: column; align-items: center; width: 14px"><span style="width: 10px; height: 10px; border-radius: 3px; background: #FF8A78; margin-top: 5px"></span><span style="flex: 1; width: 2px; background: #3A2420"></span></div><div style="flex: 1; padding-bottom: 18px; display: flex; flex-direction: column; gap: 3px"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #FF8A78">4:52:03</span><span style="font-size: 15px">It merged itself into release/0.9 — the branch the ticket's brief named.</span></div></div>
+          <div style="display: flex; gap: 16px"><div style="display: flex; flex-direction: column; align-items: center; width: 14px"><span style="width: 10px; height: 10px; border-radius: 50%; background: #7EA6FF; margin-top: 5px"></span><span style="flex: 1; width: 2px; background: #1F242D"></span></div><div style="flex: 1; padding-bottom: 18px; display: flex; flex-direction: column; gap: 3px"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98">4:52:43</span><span style="font-size: 15px">AutoKolab noticed: release branches only take changes marked for release.</span></div></div>
+          <div style="display: flex; gap: 16px"><div style="display: flex; flex-direction: column; align-items: center; width: 14px"><span style="width: 10px; height: 10px; border-radius: 50%; background: #5CCB9A; margin-top: 5px"></span><span style="flex: 1; width: 2px; background: #1F242D"></span></div><div style="flex: 1; padding-bottom: 18px; display: flex; flex-direction: column; gap: 3px"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98">4:52:50</span><span style="font-size: 15px">Reverted on release/0.9 in one commit. Tests pass there again.</span></div></div>
+          <div style="display: flex; gap: 16px"><div style="display: flex; flex-direction: column; align-items: center; width: 14px"><span style="width: 10px; height: 10px; border-radius: 50%; background: #5CCB9A; margin-top: 5px"></span><span style="flex: 1; width: 2px; background: #1F242D"></span></div><div style="flex: 1; padding-bottom: 18px; display: flex; flex-direction: column; gap: 3px"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98">4:53:30</span><span style="font-size: 15px">Reopened as PR #214 against main. Captain re-approved it at 5:04 and it merged.</span></div></div>
+          <div style="display: flex; gap: 16px"><div style="display: flex; flex-direction: column; align-items: center; width: 14px"><span style="width: 10px; height: 10px; border-radius: 3px; background: #A2A9B5; transform: rotate(45deg); margin-top: 5px"></span></div><div style="flex: 1; display: flex; flex-direction: column; gap: 3px"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98">5:12:00</span><span style="font-size: 15px">Captain recorded <a href="Decisions.dc.html">DEC-26</a>: every PR targets main unless its ticket says otherwise, and the target is checked before merging.</span></div></div>
+        </section>
+
+        <section aria-labelledby="rc-why" style="padding: 20px 22px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 8px">
+          <h2 id="rc-why" style="margin: 0; font-size: 15px; font-weight: 500">Why it happened</h2>
+          <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #C9CED6">Captain copied the brief from last week's release ticket and kept its base branch. Kestrel did exactly what the brief said. Nothing was wrong with the code.</p>
+        </section>
+      </div>
+
+      <aside style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 18px">
+        <section aria-labelledby="rc-touch" style="padding: 20px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 14px">
+          <h2 id="rc-touch" style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #A2A9B5">How far it got</h2>
+          <div style="display: flex; align-items: baseline; gap: 8px"><span style="font-size: 40px; font-weight: 500; letter-spacing: -0.03em">47 s</span><span style="font-size: 14px; color: #A2A9B5">on release/0.9</span></div>
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; color: #C9CED6">
+            <div style="display: flex; gap: 10px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5 9-10"></path></svg>Nobody deployed from it</div>
+            <div style="display: flex; gap: 10px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5 9-10"></path></svg>No machine pulled it</div>
+            <div style="display: flex; gap: 10px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none; margin-top: 2px"><path d="M5 12l5 5 9-10"></path></svg>No database change involved</div>
+          </div>
+        </section>
+
+        <sc-if value="{{open}}" hint-placeholder-val="{{ true }}">
+          <section aria-labelledby="rc-do" style="padding: 20px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 14px">
+            <h2 id="rc-do" style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #A2A9B5">If you want to</h2>
+            <div style="display: flex; align-items: center; gap: 12px">
+              <span style="flex: 1; font-size: 14px; line-height: 1.45">Ask before Kestrel's next merges</span>
+              <button type="button" role="switch" aria-checked="{{hold}}" aria-label="Ask before Kestrel's next merges" onClick="{{toggleHold}}" class="ak-track" style="width: 48px; height: 28px; border-radius: 999px; border: 0; padding: 3px; background: {{holdTrack}}; cursor: pointer; display: flex; flex: none"><span class="ak-knob" style="width: 22px; height: 22px; border-radius: 50%; background: #E9EBEF; transform: translateX({{holdX}}px)"></span></button>
+            </div>
+            <button type="button" class="ak-btn" style="min-height: 42px; border-radius: 11px; border: 1px solid #2A303B; background: transparent; color: #E9EBEF; font: inherit; font-size: 14px; cursor: pointer">Undo the revert</button>
+            <button type="button" onClick="{{ack}}" class="ak-btn" style="min-height: 46px; border-radius: 11px; border: 0; background: #E9EBEF; color: #0B0D11; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">Looks right</button>
+          </section>
+        </sc-if>
+        <sc-if value="{{acked}}" hint-placeholder-val="{{ false }}">
+          <div class="ak-fade" style="display: flex; gap: 12px; align-items: center; padding: 18px 20px; border-radius: 16px; background: #101B16; border: 1px solid #23463A; font-size: 15px; color: #CFEFDF; line-height: 1.45"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M5 12l5 5 9-10"></path></svg>Marked as reviewed. It stays in History for anyone who audits this later.</div>
+          <a href="LeadHome.dc.html" style="font-size: 14px">Back to Captain</a>
+        </sc-if>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const hold = !!s.hold;
+    return {
+      open: !s.acked,
+      acked: !!s.acked,
+      hold: hold,
+      holdTrack: hold ? '#3E7FE0' : '#2A303B',
+      holdX: hold ? 20 : 0,
+      toggleHold: () => this.setState({ hold: !hold }),
+      ack: () => this.setState({ acked: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

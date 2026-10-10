@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab phone · Catch up</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0D11}
+a{color:#A9C2FF;text-decoration:none}a:hover{color:#D3E0FF}
+@keyframes akfade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.ak-fade{animation:akfade .4s cubic-bezier(.2,.8,.2,1)}
+.ak-btn{transition:transform .14s cubic-bezier(.2,.8,.2,1),filter .16s ease}
+.ak-btn:active{transform:scale(.97)}
+@media (prefers-reduced-motion: reduce){.ak-fade{animation:none}}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #0B0D11; color: #E9EBEF; font-family: 'Geist', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; -webkit-font-smoothing: antialiased">
+  <div style="flex: 1; overflow-y: auto; padding: 56px 20px 24px; display: flex; flex-direction: column; gap: 22px">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <svg width="26" height="26" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="8" fill="#E9EBEF"></rect><rect x="6.5" y="6.5" width="9" height="9" rx="2.5" fill="none" stroke="#0B0D11" stroke-width="2"></rect><rect x="12.5" y="12.5" width="9" height="9" rx="2.5" fill="#0B0D11"></rect></svg>
+      <span style="font-size: 13px; color: #858C98; flex: 1">AutoKolab · away 9 h</span>
+      <span style="width: 30px; height: 30px; border-radius: 50%; background: #E9EBEF; color: #0B0D11; display: grid; place-items: center; font-size: 12px; font-weight: 700">RY</span>
+    </div>
+
+    <h1 style="margin: 0; font-size: 30px; line-height: 1.18; font-weight: 500; letter-spacing: -0.025em">Three things shipped. <span style="color: {{needColor}}">{{needText}}</span></h1>
+
+    <sc-if value="{{notMerged}}" hint-placeholder-val="{{ true }}">
+      <div class="ak-fade" style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 20px; background: #17140C; border: 1px solid #4A3B17">
+        <span style="font-size: 12px; color: #F4C25B; font-weight: 500">OK a risky merge · database</span>
+        <span style="font-size: 17px; line-height: 1.35; font-weight: 500">A setup-page switch for automatic database updates</span>
+        <span style="font-size: 13px; color: #B8BEC8; line-height: 1.5">Tests 52 of 52 · Captain approved the exact commit · can be undone</span>
+        <button type="button" onClick="{{ok}}" class="ak-btn" style="min-height: 52px; border-radius: 14px; border: 0; background: #F4C25B; color: #1A1406; font: inherit; font-size: 16px; font-weight: 600; cursor: pointer">OK to merge</button>
+        <a href="Ticket.dc.html" style="text-align: center; font-size: 14px; color: #E9EBEF; padding: 4px">Look first</a>
+      </div>
+    </sc-if>
+    <sc-if value="{{merged}}" hint-placeholder-val="{{ false }}">
+      <div class="ak-fade" style="display: flex; gap: 12px; align-items: center; padding: 16px 18px; border-radius: 20px; background: #101B16; border: 1px solid #23463A; font-size: 15px; color: #CFEFDF; line-height: 1.45"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: none"><path d="M5 12l5 5 9-10"></path></svg>Merged. Both machines will have it within 10 minutes.</div>
+    </sc-if>
+
+    <section aria-labelledby="p-ship" style="display: flex; flex-direction: column; gap: 12px">
+      <h2 id="p-ship" style="margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #5CCB9A">Shipped</h2>
+      <div style="display: flex; gap: 12px; font-size: 15px; line-height: 1.4"><span style="width: 6px; height: 6px; border-radius: 50%; background: #5CCB9A; margin-top: 8px; flex: none"></span>Every ticket opens with a one-line summary</div>
+      <div style="display: flex; gap: 12px; font-size: 15px; line-height: 1.4"><span style="width: 6px; height: 6px; border-radius: 50%; background: #5CCB9A; margin-top: 8px; flex: none"></span>The Overview leads with one plain sentence</div>
+      <div style="display: flex; gap: 12px; font-size: 15px; line-height: 1.4"><span style="width: 6px; height: 6px; border-radius: 50%; background: #5CCB9A; margin-top: 8px; flex: none"></span>The room folds away bookkeeping messages</div>
+    </section>
+
+    <section aria-labelledby="p-heads" style="display: flex; flex-direction: column; gap: 12px">
+      <h2 id="p-heads" style="margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #FF8A78">Heads up · both handled</h2>
+      <div style="display: flex; gap: 12px; font-size: 15px; line-height: 1.4; color: #C9CED6"><span style="width: 6px; height: 6px; border-radius: 2px; background: #FF8A78; margin-top: 8px; flex: none"></span>James's agents paused at a subscription limit, resumed at 7 am</div>
+      <a href="Recovery.dc.html" style="display: flex; gap: 12px; font-size: 15px; line-height: 1.4; color: #C9CED6"><span style="width: 6px; height: 6px; border-radius: 2px; background: #FF8A78; margin-top: 8px; flex: none"></span><span>A PR merged into the wrong branch and was undone in 40 s <span style="color: #A9C2FF">· see</span></span></a>
+    </section>
+
+    <section aria-labelledby="p-dec" style="display: flex; flex-direction: column; gap: 12px">
+      <h2 id="p-dec" style="margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #A2A9B5">Decided</h2>
+      <div style="display: flex; gap: 12px; font-size: 15px; line-height: 1.4; color: #C9CED6"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98; margin-top: 3px; flex: none">DEC-25</span>Catch up counts from your last visit</div>
+      <div style="display: flex; gap: 12px; font-size: 15px; line-height: 1.4; color: #C9CED6"><span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98; margin-top: 3px; flex: none">DEC-26</span>Every PR targets main by default</div>
+    </section>
+
+    <a href="PhoneLead.dc.html" class="ak-btn" style="display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 14px; background: #E9EBEF; color: #0B0D11; font-size: 16px; font-weight: 600">I'm caught up</a>
+  </div>
+
+  <nav aria-label="Tabs" style="flex: none; display: flex; justify-content: space-around; padding: 6px 8px 26px; background: #0E1116">
+    <a href="PhoneLead.dc.html" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; min-height: 44px; justify-content: center; color: #E9EBEF; font-size: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v9a2 2 0 01-2 2H9l-5 4z"></path><path d="M9 10.5h6"></path></svg>Captain</a>
+    <a href="PhoneGoal.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; min-height: 44px; justify-content: center; color: #858C98; font-size: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="10" y="4" width="5" height="11" rx="1.5"></rect><rect x="17" y="4" width="4" height="7" rx="1.5"></rect></svg>Work</a>
+    <a href="Room.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; min-height: 44px; justify-content: center; color: #858C98; font-size: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle><rect x="3" y="5" width="18" height="14" rx="3"></rect></svg>Room</a>
+    <a href="PhoneTiers.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; min-height: 44px; justify-content: center; color: #858C98; font-size: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0113 0"></path></svg>You</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const merged = !!(this.state && this.state.merged);
+    return {
+      merged: merged,
+      notMerged: !merged,
+      needText: merged ? 'Nothing needs you.' : 'One thing needs you.',
+      needColor: merged ? '#5CCB9A' : '#F4C25B',
+      ok: () => this.setState({ merged: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

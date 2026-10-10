@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab phone · Overview</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0D11}
+a{color:#A9C2FF;text-decoration:none}a:hover{color:#D3E0FF}
+@keyframes akpulse{0%{box-shadow:0 0 0 0 rgba(126,166,255,.55)}70%{box-shadow:0 0 0 7px rgba(126,166,255,0)}100%{box-shadow:0 0 0 0 rgba(126,166,255,0)}}
+@keyframes akflow{from{background-position:0 0}to{background-position:24px 0}}
+@keyframes akbreathe{0%,100%{opacity:.55}50%{opacity:1}}
+.ak-live{animation:akpulse 2.2s ease-out infinite}
+.ak-flow{background-image:linear-gradient(90deg,rgba(255,255,255,0) 0,rgba(255,255,255,.22) 50%,rgba(255,255,255,0) 100%);background-size:24px 100%;animation:akflow 1.1s linear infinite}
+.ak-breathe{animation:akbreathe 4s ease-in-out infinite}
+@media (prefers-reduced-motion: reduce){.ak-live,.ak-flow,.ak-breathe{animation:none}}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #0B0D11; color: #E9EBEF; font-family: 'Geist', system-ui, sans-serif; display: flex; flex-direction: column; overflow: hidden; -webkit-font-smoothing: antialiased">
+  <div style="flex: 1; overflow-y: auto; padding: 56px 20px 24px; display: flex; flex-direction: column; gap: 24px">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <svg width="26" height="26" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="8" fill="#E9EBEF"></rect><rect x="6.5" y="6.5" width="9" height="9" rx="2.5" fill="none" stroke="#0B0D11" stroke-width="2"></rect><rect x="12.5" y="12.5" width="9" height="9" rx="2.5" fill="#0B0D11"></rect></svg>
+      <span style="font-size: 13px; color: #858C98; flex: 1">AutoKolab · 11:15 am</span>
+      <span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #A2A9B5; background: #12151B; border: 1px solid #232833; border-radius: 999px; padding: 4px 10px"><span class="ak-live" style="width: 6px; height: 6px; border-radius: 50%; background: #7EA6FF"></span>4 working</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 14px; padding: 28px 22px; border-radius: 24px; background: #101B16; border: 1px solid #1E3A30; align-items: flex-start">
+      <div class="ak-breathe" style="width: 46px; height: 46px; border-radius: 15px; background: #14231C; display: grid; place-items: center"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></div>
+      <h1 style="margin: 0; font-size: 30px; line-height: 1.18; font-weight: 500; letter-spacing: -0.025em">Nothing needs you.</h1>
+      <p style="margin: 0; font-size: 15px; line-height: 1.5; color: #B8D8C9">3 agents are building Google sign-in. 3 things shipped today. You'll get a notification only if a decision comes up.</p>
+    </div>
+
+    <section aria-labelledby="po-goals" style="display: flex; flex-direction: column; gap: 12px">
+      <h2 id="po-goals" style="margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #A2A9B5">Goals</h2>
+      <a href="PhoneGoal.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; color: #E9EBEF">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-size: 16px">Google sign-in</span><span style="font-size: 13px; color: #A2A9B5">2 of 5</span></div>
+        <div style="display: flex; gap: 4px"><span style="flex: 1; height: 6px; border-radius: 3px; background: #5CCB9A"></span><span style="flex: 1; height: 6px; border-radius: 3px; background: #5CCB9A"></span><span class="ak-flow" style="flex: 1; height: 6px; border-radius: 3px; background-color: #7EA6FF"></span><span class="ak-flow" style="flex: 1; height: 6px; border-radius: 3px; background-color: #7EA6FF"></span><span class="ak-flow" style="flex: 1; height: 6px; border-radius: 3px; background-color: #7EA6FF"></span></div>
+      </a>
+      <a href="PhoneGoal.dc.html" style="display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; color: #E9EBEF">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><span style="font-size: 16px">Who's typing</span><span style="font-size: 13px; color: #A2A9B5">1 of 2</span></div>
+        <div style="display: flex; gap: 4px"><span style="flex: 1; height: 6px; border-radius: 3px; background: #5CCB9A"></span><span class="ak-flow" style="flex: 1; height: 6px; border-radius: 3px; background-color: #7EA6FF"></span></div>
+      </a>
+    </section>
+
+    <section aria-labelledby="po-now" style="display: flex; flex-direction: column; gap: 14px">
+      <h2 id="po-now" style="margin: 0; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #A2A9B5">Right now</h2>
+      <div style="display: flex; gap: 12px; align-items: center"><span style="width: 30px; height: 30px; border-radius: 9px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 13px; font-weight: 600; flex: none">F</span><span style="flex: 1; font-size: 14px; line-height: 1.4">Running the tests for the Google callback</span></div>
+      <div style="display: flex; gap: 12px; align-items: center"><span style="width: 30px; height: 30px; border-radius: 9px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 13px; font-weight: 600; flex: none">K</span><span style="flex: 1; font-size: 14px; line-height: 1.4">Matching the Google button to the login page</span></div>
+      <div style="display: flex; gap: 12px; align-items: center"><span style="width: 30px; height: 30px; border-radius: 9px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 13px; font-weight: 600; flex: none">B</span><span style="flex: 1; font-size: 14px; line-height: 1.4">Starting "who's typing" now that AK-43 merged</span></div>
+    </section>
+
+    <button type="button" style="min-height: 48px; border-radius: 14px; border: 1px solid #3A2420; background: transparent; color: #FFB8A8; font: inherit; font-size: 15px; cursor: pointer">Pause everyone</button>
+  </div>
+
+  <nav aria-label="Tabs" style="flex: none; display: flex; justify-content: space-around; padding: 8px 8px 28px; border-top: 1px solid #1C2029; background: #0E1116">
+    <a href="PhoneOverview.dc.html" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; min-height: 44px; justify-content: center; color: #E9EBEF; font-size: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-7 9 7"></path><path d="M5 10v10h14V10"></path></svg>Home</a>
+    <a href="PhoneCatchUp.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; min-height: 44px; justify-content: center; color: #858C98; font-size: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13l3-8h12l3 8"></path><path d="M3 13v6h18v-6h-5l-1.5 2h-5L8 13z"></path></svg>Catch up</a>
+    <a href="PhoneGoal.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; min-height: 44px; justify-content: center; color: #858C98; font-size: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="4"></circle></svg>Goals</a>
+    <a href="PhoneDecision.dc.html" style="display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; min-height: 44px; justify-content: center; color: #858C98; font-size: 12px"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"></path></svg>Asks</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

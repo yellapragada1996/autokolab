@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab · Results</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0D11}
+a{color:#A9C2FF;text-decoration:none}a:hover{color:#D3E0FF}
+.ak-row{transition:background-color .16s ease}
+.ak-row:hover{background-color:#161A21}
+.ak-bar{transition:height .45s cubic-bezier(.2,.8,.2,1),background-color .2s ease}
+.ak-bar:hover{background-color:#9DBBFF}
+.ak-chip{transition:background-color .16s ease,color .16s ease}
+@media (prefers-reduced-motion: reduce){.ak-bar{transition:none}}
+@keyframes akpulse{0%{box-shadow:0 0 0 0 rgba(126,166,255,.55)}70%{box-shadow:0 0 0 7px rgba(126,166,255,0)}100%{box-shadow:0 0 0 0 rgba(126,166,255,0)}}
+.ak-live{animation:akpulse 2.2s ease-out infinite}
+@media (prefers-reduced-motion: reduce){.ak-live{animation:none}}
+@media (max-width: 1100px){
+.ak-nav{flex:1 1 100% !important;flex-direction:row !important;flex-wrap:nowrap !important;align-items:center !important;gap:8px !important;padding:8px 12px !important;border-right:0 !important;border-bottom:1px solid #1C2029 !important;overflow-x:auto}
+.ak-nav nav{flex-direction:row !important;flex-wrap:nowrap !important}
+.ak-nav nav a{white-space:nowrap}
+.ak-nav [role=separator]{display:none !important}
+.ak-nav .ak-hide{display:none !important}
+.ak-desk{flex:1 1 100% !important;border-left:0 !important;border-top:1px solid #1C2029}
+}
+@media (max-width: 640px){
+.ak-brief{font-size:21px !important}
+.ak-h1{font-size:28px !important}
+}
+</style>
+</helmet>
+<div style="min-height: 1080px; background: #0B0D11; color: #E9EBEF; font-family: 'Geist', system-ui, sans-serif; display: flex; flex-wrap: wrap; -webkit-font-smoothing: antialiased">
+
+  <aside class="ak-nav" style="flex: 1 1 220px; box-sizing: border-box; background: #0E1116; border-right: 1px solid #1C2029; padding: 18px 12px 20px; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 6px 8px"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="8" fill="#E9EBEF"></rect><rect x="6.5" y="6.5" width="9" height="9" rx="2.5" fill="none" stroke="#0B0D11" stroke-width="2"></rect><rect x="12.5" y="12.5" width="9" height="9" rx="2.5" fill="#0B0D11"></rect></svg><div class="ak-hide" style="display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600">AutoKolab</span><span style="font-size: 12px; color: #858C98">2 people · 5 agents</span></div></div>
+    <nav aria-label="Main" style="display: flex; flex-direction: column; gap: 2px">
+    <a href="LeadHome.dc.html" title="Captain · ⌘L from anywhere" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v9a2 2 0 01-2 2H9l-5 4z"></path><path d="M9 10.5h6"></path></svg><span style="flex: 1">Captain</span><span style="font-size: 12px; font-weight: 600; line-height: 18px; color: #1A1406; background: #F4C25B; border-radius: 999px; padding: 0 7px">1</span></a>
+    <a href="Board.dc.html" title="Work · G then W" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="10" y="4" width="5" height="11" rx="1.5"></rect><rect x="17" y="4" width="4" height="7" rx="1.5"></rect></svg><span style="flex: 1">Work</span></a>
+    <a href="Room.dc.html" title="Room · G then R" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle><rect x="3" y="5" width="18" height="14" rx="3"></rect></svg><span style="flex: 1">Room</span></a>
+    <a href="Agents.dc.html" title="People · G then P" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0113 0"></path><path d="M16 4.5a3.5 3.5 0 010 7"></path><path d="M18 14.5a6.5 6.5 0 013.5 5.5"></path></svg><span style="flex: 1">People</span></a>
+    <div role="separator" style="height: 1px; background: #1C2029; margin: 10px"></div>
+    <a href="Decisions.dc.html" title="Decisions · G then D" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"></path><path d="M5 17a3 3 0 013-3h11"></path></svg><span style="flex: 1">Decisions</span></a>
+    <a href="Results.dc.html" aria-current="page" title="Results · G then S" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #E9EBEF; background: #181C23; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V11"></path><path d="M11 20V5"></path><path d="M17 20v-6"></path><path d="M3 20h18"></path></svg><span style="flex: 1">Results</span></a>
+    <a href="Settings.dc.html" title="Settings · G then ," class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span style="flex: 1">Settings</span></a>
+    </nav>
+    <div class="ak-hide" style="margin-top: auto; display: flex; flex-direction: column; gap: 12px; padding: 14px 10px 0; border-top: 1px solid #1C2029"><div style="display: flex; gap: 14px; font-size: 12px; color: #858C98"><span>Toronto <span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">11:02</span></span><span>Sweden <span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">17:02</span></span></div><div style="display: flex; align-items: center; gap: 10px"><span style="width: 28px; height: 28px; border-radius: 50%; background: #E9EBEF; color: #0B0D11; display: grid; place-items: center; font-size: 12px; font-weight: 700">RY</span><span style="font-size: 13px">Raghav</span></div></div>
+    </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding-bottom: 72px">
+    <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 32px; border-bottom: 1px solid #1C2029">
+      <div style="font-size: 13px; color: #858C98; flex: 1">AutoKolab <span style="color: #4A515D">/</span> <span style="color: #E9EBEF">Results</span></div>
+      <div role="group" aria-label="Period" style="display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: #12151B; border: 1px solid #1F242D">
+        <button type="button" onClick="{{pWeek}}" class="ak-chip" style="min-height: 30px; padding: 0 12px; border-radius: 7px; border: 0; font: inherit; font-size: 12px; cursor: pointer; background: {{bWeek}}; color: {{cWeek}}">This week</button>
+        <button type="button" onClick="{{pMonth}}" class="ak-chip" style="min-height: 30px; padding: 0 12px; border-radius: 7px; border: 0; font: inherit; font-size: 12px; cursor: pointer; background: {{bMonth}}; color: {{cMonth}}">Last 4 weeks</button>
+      </div>
+      <button type="button" style="min-height: 34px; padding: 0 12px; border-radius: 9px; border: 1px solid #2A303B; background: transparent; color: #E9EBEF; font: inherit; font-size: 13px; cursor: pointer">Export audit report</button>
+    </header>
+
+    <div style="max-width: 1180px; margin: 0 auto; padding: 36px 32px 0; display: flex; flex-direction: column; gap: 28px">
+      <section style="display: flex; flex-direction: column; gap: 10px">
+        <div style="font-size: 13px; color: #858C98">{{period}}</div>
+        <h1 style="margin: 0; font-size: 38px; line-height: 1.2; font-weight: 500; letter-spacing: -0.028em; max-width: 900px">{{headline}}</h1>
+      </section>
+
+      <section aria-label="Key numbers" style="display: flex; flex-wrap: wrap; gap: 14px">
+        <div style="flex: 2 1 320px; padding: 22px; border-radius: 16px; background: #101A17; border: 1px solid #23463A; display: flex; flex-direction: column; gap: 8px">
+          <span style="font-size: 13px; color: #B8E8CF">Reviewed tickets per hour of your time</span>
+          <div style="display: flex; align-items: baseline; gap: 14px"><span style="font-size: 54px; font-weight: 500; letter-spacing: -0.03em">{{perHour}}</span><span style="font-size: 15px; color: #A2A9B5">vs <span style="color: #E9EBEF">{{soloPerHour}}</span> running agents yourself</span></div>
+          <span style="font-size: 12px; color: #858C98">Your baseline: the two weeks before AutoKolab, measured the same way</span>
+        </div>
+        <div style="flex: 1 1 180px; padding: 22px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 13px; color: #A2A9B5">Merged</span><span style="font-size: 34px; font-weight: 500; letter-spacing: -0.02em">{{merged}}</span><span style="font-size: 12px; color: #858C98">all reviewed, all tested</span></div>
+        <div style="flex: 1 1 180px; padding: 22px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 13px; color: #A2A9B5">Time to merge</span><span style="font-size: 34px; font-weight: 500; letter-spacing: -0.02em">{{ttm}}</span><span style="font-size: 12px; color: #858C98">median, start to main</span></div>
+        <div style="flex: 1 1 180px; padding: 22px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 13px; color: #A2A9B5">Interruptions</span><span style="font-size: 34px; font-weight: 500; letter-spacing: -0.02em">{{asks}}</span><span style="font-size: 12px; color: #858C98">all of them decisions</span></div>
+        <div style="flex: 1 1 180px; padding: 22px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 8px"><span style="font-size: 13px; color: #A2A9B5">Rework</span><span style="font-size: 34px; font-weight: 500; letter-spacing: -0.02em">{{rework}}</span><span style="font-size: 12px; color: #858C98">tickets reopened after merge</span></div>
+      </section>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: stretch">
+        <section aria-labelledby="chart-h" style="flex: 3 1 520px; min-width: 0; padding: 22px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 18px">
+          <div style="display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px"><h2 id="chart-h" style="margin: 0; font-size: 15px; font-weight: 500; flex: 1">Merged tickets</h2><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #A2A9B5"><span style="width: 10px; height: 10px; border-radius: 3px; background: #7EA6FF"></span>With AutoKolab</span><span style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #A2A9B5"><span style="width: 14px; height: 0; border-top: 2px dashed #C9CED6"></span>Your solo baseline</span></div>
+          <div style="position: relative; height: 220px; display: flex; align-items: flex-end; gap: 14px; padding: 0 4px; border-bottom: 1px solid #262B35" role="img" aria-label="{{chartLabel}}">
+            <div style="position: absolute; left: 0; right: 0; bottom: {{basePct}}%; border-top: 2px dashed #C9CED6; opacity: .55"></div>
+            <sc-for list="{{bars}}" as="b" hint-placeholder-count="6">
+              <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; height: 100%">
+                <span style="font-size: 12px; color: #C9CED6; font-family: 'Geist Mono', monospace">{{b.v}}</span>
+                <div class="ak-bar" style="width: 100%; max-width: 56px; height: {{b.h}}%; border-radius: 6px 6px 2px 2px; background-color: #7EA6FF"></div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display: flex; gap: 14px; padding: 0 4px">
+            <sc-for list="{{bars}}" as="b" hint-placeholder-count="6"><span style="flex: 1; text-align: center; font-size: 12px; color: #858C98">{{b.label}}</span></sc-for>
+          </div>
+        </section>
+
+        <section aria-labelledby="int-h" style="flex: 2 1 300px; min-width: 0; padding: 22px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 16px">
+          <h2 id="int-h" style="margin: 0; font-size: 15px; font-weight: 500">Where your interruptions went</h2>
+          <sc-for list="{{why}}" as="w" hint-placeholder-count="3">
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <div style="display: flex; justify-content: space-between; font-size: 14px"><span>{{w.label}}</span><span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">{{w.n}}</span></div>
+              <div style="height: 8px; border-radius: 4px; background: #1F242D; overflow: hidden"><div class="ak-bar" style="width: {{w.pct}}%; height: 100%; border-radius: 4px; background-color: #F4C25B"></div></div>
+            </div>
+          </sc-for>
+          <div style="font-size: 13px; color: #858C98; line-height: 1.5; padding-top: 4px">Zero chores: no manual merges, machine updates or database steps.</div>
+        </section>
+      </div>
+
+      <section aria-labelledby="per-h" style="border-radius: 16px; background: #12151B; border: 1px solid #1F242D; overflow: hidden">
+        <h2 id="per-h" style="margin: 0; padding: 18px 22px; font-size: 15px; font-weight: 500; border-bottom: 1px solid #1F242D">By agent</h2>
+        <div style="overflow-x: auto">
+          <div style="min-width: 680px">
+            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 12px; padding: 12px 22px; font-size: 12px; color: #858C98; border-bottom: 1px solid #1A1E25"><span>Agent</span><span>Merged</span><span>Time to merge</span><span>Reopened</span><span>Hours worked</span></div>
+            <div class="ak-row" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 12px; padding: 13px 22px; font-size: 14px; border-bottom: 1px solid #1A1E25"><span style="display: flex; align-items: center; gap: 10px"><span style="width: 22px; height: 22px; border-radius: 7px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 12px; font-weight: 600">F</span>Fjord <span style="color: #858C98; font-size: 12px">Opus</span></span><span>5</span><span>2 h 40 m</span><span>0</span><span>21 h</span></div>
+            <div class="ak-row" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 12px; padding: 13px 22px; font-size: 14px; border-bottom: 1px solid #1A1E25"><span style="display: flex; align-items: center; gap: 10px"><span style="width: 22px; height: 22px; border-radius: 7px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 12px; font-weight: 600">B</span>Birch <span style="color: #858C98; font-size: 12px">Sonnet</span></span><span>5</span><span>1 h 50 m</span><span>1</span><span>17 h</span></div>
+            <div class="ak-row" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 12px; padding: 13px 22px; font-size: 14px; border-bottom: 1px solid #1A1E25"><span style="display: flex; align-items: center; gap: 10px"><span style="width: 22px; height: 22px; border-radius: 7px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 12px; font-weight: 600">T</span>Tern <span style="color: #858C98; font-size: 12px">Haiku</span></span><span>5</span><span>55 m</span><span>0</span><span>9 h</span></div>
+            <div class="ak-row" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 12px; padding: 13px 22px; font-size: 14px; border-bottom: 1px solid #1A1E25"><span style="display: flex; align-items: center; gap: 10px"><span style="width: 22px; height: 22px; border-radius: 7px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 12px; font-weight: 600">K</span>Kestrel <span style="color: #858C98; font-size: 12px">Codex</span></span><span>3</span><span>3 h 10 m</span><span>1</span><span>14 h</span></div>
+            <div class="ak-row" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 12px; padding: 13px 22px; font-size: 14px"><span style="display: flex; align-items: center; gap: 10px"><span style="width: 22px; height: 22px; border-radius: 7px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 12px; font-weight: 600">C</span>Captain <span style="color: #858C98; font-size: 12px">Opus</span></span><span style="color: #A2A9B5">18 reviews</span><span style="color: #A2A9B5">—</span><span style="color: #A2A9B5">—</span><span>13 h</span></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const m = !!(this.state && this.state.month);
+    const on = '#232833', off = 'transparent';
+    const week = [3, 4, 2, 4, 3, 2], wl = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const month = [11, 14, 15, 18], ml = ['Sep 14', 'Sep 21', 'Sep 28', 'This week'];
+    const data = m ? month : week, labels = m ? ml : wl;
+    const max = m ? 20 : 5;
+    const base = m ? 9 : 1.5;
+    return {
+      bWeek: m ? off : on, cWeek: m ? '#858C98' : '#E9EBEF',
+      bMonth: m ? on : off, cMonth: m ? '#E9EBEF' : '#858C98',
+      pWeek: () => this.setState({ month: false }),
+      pMonth: () => this.setState({ month: true }),
+      period: m ? 'Sep 14 – Oct 10 · 4 weeks' : 'Oct 5 – Oct 10 · this week',
+      headline: m ? '58 reviewed tickets merged in four weeks, and the gap over working solo is growing.' : '18 reviewed tickets merged this week, with 7 interruptions — twice what you shipped running agents yourself.',
+      perHour: m ? '9.8' : '11.2',
+      soloPerHour: '3.4',
+      merged: m ? '58' : '18',
+      ttm: m ? '2 h 25 m' : '2 h 10 m',
+      asks: m ? '26' : '7',
+      rework: m ? '5' : '2',
+      basePct: Math.round(base / max * 100),
+      chartLabel: m ? 'Merged per week: 11, 14, 15, 18; solo baseline 9 per week' : 'Merged per day: 3, 4, 2, 4, 3, 2; solo baseline 1.5 per day',
+      bars: data.map((v, i) => ({ v: v, label: labels[i], h: Math.round(v / max * 100) })),
+      why: (m ? [['OK a risky merge', 15], ['Answer a product question', 7], ['Approve a plan', 4]] : [['OK a risky merge', 4], ['Answer a product question', 2], ['Approve a plan', 1]]).map((r) => ({ label: r[0], n: r[1], pct: Math.round(r[1] / (m ? 15 : 4) * 100) }))
+    };
+  }
+}
+</script>
+</body>
+</html>

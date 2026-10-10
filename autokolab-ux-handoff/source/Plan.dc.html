@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AutoKolab · Captain's plan</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0B0D11}
+a{color:#A9C2FF;text-decoration:none}a:hover{color:#D3E0FF}
+@keyframes akfade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes akdots{0%,80%,100%{opacity:.25}40%{opacity:1}}
+.ak-fade{animation:akfade .38s cubic-bezier(.2,.8,.2,1)}
+.ak-row{transition:background-color .16s ease,border-color .16s ease}
+.ak-row:hover{background-color:#161A21}
+.ak-btn{transition:transform .14s cubic-bezier(.2,.8,.2,1),filter .16s ease}
+.ak-btn:hover{transform:translateY(-1px);filter:brightness(1.06)}
+.ak-btn:active{transform:translateY(0) scale(.98)}
+@media (prefers-reduced-motion: reduce){.ak-fade{animation:none}.ak-btn:hover{transform:none}}
+@keyframes akpulse{0%{box-shadow:0 0 0 0 rgba(126,166,255,.55)}70%{box-shadow:0 0 0 7px rgba(126,166,255,0)}100%{box-shadow:0 0 0 0 rgba(126,166,255,0)}}
+.ak-live{animation:akpulse 2.2s ease-out infinite}
+@media (prefers-reduced-motion: reduce){.ak-live{animation:none}}
+@media (max-width: 1100px){
+.ak-nav{flex:1 1 100% !important;flex-direction:row !important;flex-wrap:nowrap !important;align-items:center !important;gap:8px !important;padding:8px 12px !important;border-right:0 !important;border-bottom:1px solid #1C2029 !important;overflow-x:auto}
+.ak-nav nav{flex-direction:row !important;flex-wrap:nowrap !important}
+.ak-nav nav a{white-space:nowrap}
+.ak-nav [role=separator]{display:none !important}
+.ak-nav .ak-hide{display:none !important}
+.ak-desk{flex:1 1 100% !important;border-left:0 !important;border-top:1px solid #1C2029}
+}
+@media (max-width: 640px){
+.ak-brief{font-size:21px !important}
+.ak-h1{font-size:28px !important}
+}
+</style>
+</helmet>
+<div style="min-height: 1160px; background: #0B0D11; color: #E9EBEF; font-family: 'Geist', system-ui, sans-serif; display: flex; flex-wrap: wrap; -webkit-font-smoothing: antialiased">
+
+  <aside class="ak-nav" style="flex: 1 1 220px; box-sizing: border-box; background: #0E1116; border-right: 1px solid #1C2029; padding: 18px 12px 20px; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 6px 8px"><svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true"><rect x="1" y="1" width="26" height="26" rx="8" fill="#E9EBEF"></rect><rect x="6.5" y="6.5" width="9" height="9" rx="2.5" fill="none" stroke="#0B0D11" stroke-width="2"></rect><rect x="12.5" y="12.5" width="9" height="9" rx="2.5" fill="#0B0D11"></rect></svg><div class="ak-hide" style="display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0"><span style="font-size: 14px; font-weight: 600">AutoKolab</span><span style="font-size: 12px; color: #858C98">2 people · 5 agents</span></div></div>
+    <nav aria-label="Main" style="display: flex; flex-direction: column; gap: 2px">
+    <a href="LeadHome.dc.html" title="Captain · ⌘L from anywhere" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v9a2 2 0 01-2 2H9l-5 4z"></path><path d="M9 10.5h6"></path></svg><span style="flex: 1">Captain</span><span style="font-size: 12px; font-weight: 600; line-height: 18px; color: #1A1406; background: #F4C25B; border-radius: 999px; padding: 0 7px">1</span></a>
+    <a href="Board.dc.html" aria-current="page" title="Work · G then W" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #E9EBEF; background: #181C23; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="5" height="16" rx="1.5"></rect><rect x="10" y="4" width="5" height="11" rx="1.5"></rect><rect x="17" y="4" width="4" height="7" rx="1.5"></rect></svg><span style="flex: 1">Work</span></a>
+    <a href="Room.dc.html" title="Room · G then R" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="16" cy="12" r="1"></circle><rect x="3" y="5" width="18" height="14" rx="3"></rect></svg><span style="flex: 1">Room</span></a>
+    <a href="Agents.dc.html" title="People · G then P" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"></circle><path d="M2.5 20a6.5 6.5 0 0113 0"></path><path d="M16 4.5a3.5 3.5 0 010 7"></path><path d="M18 14.5a6.5 6.5 0 013.5 5.5"></path></svg><span style="flex: 1">People</span></a>
+    <div role="separator" style="height: 1px; background: #1C2029; margin: 10px"></div>
+    <a href="Decisions.dc.html" title="Decisions · G then D" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"></path><path d="M5 17a3 3 0 013-3h11"></path></svg><span style="flex: 1">Decisions</span></a>
+    <a href="Results.dc.html" title="Results · G then S" class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 20V11"></path><path d="M11 20V5"></path><path d="M17 20v-6"></path><path d="M3 20h18"></path></svg><span style="flex: 1">Results</span></a>
+    <a href="Settings.dc.html" title="Settings · G then ," class="ak-row" style="display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px; color: #A2A9B5; font-size: 14px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"></path><circle cx="15" cy="6" r="2"></circle><circle cx="9" cy="12" r="2"></circle><circle cx="17" cy="18" r="2"></circle></svg><span style="flex: 1">Settings</span></a>
+    </nav>
+    <div class="ak-hide" style="margin-top: auto; display: flex; flex-direction: column; gap: 12px; padding: 14px 10px 0; border-top: 1px solid #1C2029"><div style="display: flex; gap: 14px; font-size: 12px; color: #858C98"><span>Toronto <span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">09:17</span></span><span>Sweden <span style="font-family: 'Geist Mono', monospace; color: #A2A9B5">15:17</span></span></div><div style="display: flex; align-items: center; gap: 10px"><span style="width: 28px; height: 28px; border-radius: 50%; background: #E9EBEF; color: #0B0D11; display: grid; place-items: center; font-size: 12px; font-weight: 700">RY</span><span style="font-size: 13px">Raghav</span></div></div>
+    </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; box-sizing: border-box; padding-bottom: 72px">
+    <header style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 14px 32px; border-bottom: 1px solid #1C2029">
+      <div style="font-size: 13px; color: #858C98; flex: 1">AutoKolab <span style="color: #4A515D">/</span> Captain <span style="color: #4A515D">/</span> <span style="color: #E9EBEF">New plan from Captain</span></div>
+      <span style="font-size: 12px; color: #858C98">Draft · nothing has started</span>
+    </header>
+
+    <div style="max-width: 1180px; margin: 0 auto; padding: 40px 32px 0; display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start">
+
+      <div style="flex: 2 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 22px">
+
+        <div style="display: flex; justify-content: flex-end">
+          <div style="max-width: 520px; display: flex; flex-direction: column; align-items: flex-end; gap: 6px">
+            <div style="font-size: 12px; color: #858C98">You · 9:15 am · from Claude Code on your Mac</div>
+            <div style="padding: 12px 16px; border-radius: 16px 16px 4px 16px; background: #232833; font-size: 15px; line-height: 1.5">We need Google sign-in, and the room should show who's typing.</div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 14px">
+          <span style="width: 34px; height: 34px; border-radius: 10px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 14px; font-weight: 600; flex: none">C</span>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px">
+            <div style="font-size: 12px; color: #858C98">Captain · 9:17 am · Opus, high effort</div>
+            <div style="font-size: 26px; line-height: 1.3; font-weight: 500; letter-spacing: -0.02em">Two goals, six tickets. Sign-in touches auth, so it's big work under our rules. <span style="color: #F4C25B">OK to start?</span></div>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #A2A9B5">
+              <span style="padding: 4px 10px; border-radius: 999px; background: #161A21; border: 1px solid #232833">Read the auth module</span>
+              <span style="padding: 4px 10px; border-radius: 999px; background: #161A21; border: 1px solid #232833">Read the Project Guide</span>
+              <span style="padding: 4px 10px; border-radius: 999px; background: #161A21; border: 1px solid #232833">Checked DEC-12 sessions, DEC-19 presence</span>
+            </div>
+          </div>
+        </div>
+
+        <section aria-labelledby="g1" style="border-radius: 16px; background: #12151B; border: 1px solid #1F242D; overflow: hidden">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid #1F242D">
+            <span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98">GOAL 1</span>
+            <h2 id="g1" style="margin: 0; font-size: 18px; font-weight: 500; flex: 1">Google sign-in</h2>
+            <span style="font-size: 12px; color: #F1D79A; background: #2A2210; border-radius: 999px; padding: 4px 10px">Big work · auth</span>
+            <span style="font-size: 12px; color: #A2A9B5">4 tickets</span>
+          </div>
+          <div style="display: flex; flex-direction: column">
+            <div class="ak-row" style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 1px solid #191D24">
+              <span style="width: 22px; height: 22px; border-radius: 50%; border: 1px solid #3A414D; display: grid; place-items: center; font-size: 12px; color: #A2A9B5; flex: none">1</span>
+              <div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px">Add a sign-in provider column to sessions</span><span style="font-size: 12px; color: #858C98">Database migration · goes first, the callback needs it</span></div>
+              <span style="font-size: 12px; color: #F1D79A; background: #2A2210; border-radius: 6px; padding: 3px 8px">Waits for your OK</span>
+              <span style="font-size: 12px; color: #C9CED6; background: #1C2029; border-radius: 6px; padding: 3px 8px; font-family: 'Geist Mono', monospace">Sonnet · medium</span>
+            </div>
+            <div class="ak-row" style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 1px solid #191D24">
+              <span style="width: 22px; height: 22px; border-radius: 50%; border: 1px solid #3A414D; display: grid; place-items: center; font-size: 12px; color: #A2A9B5; flex: none">2</span>
+              <div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px">Google OAuth callback and session</span><span style="font-size: 12px; color: #858C98">"Opus at high: auth is risky" · after 1</span></div>
+              <span style="font-size: 12px; color: #F1D79A; background: #2A2210; border-radius: 6px; padding: 3px 8px">Waits for your OK</span>
+              <span style="font-size: 12px; color: #C9CED6; background: #1C2029; border-radius: 6px; padding: 3px 8px; font-family: 'Geist Mono', monospace">Opus · high</span>
+            </div>
+            <div class="ak-row" style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 1px solid #191D24">
+              <span style="width: 22px; height: 22px; border-radius: 50%; border: 1px solid #3A414D; display: grid; place-items: center; font-size: 12px; color: #A2A9B5; flex: none">3</span>
+              <div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px">Google button on the login page</span><span style="font-size: 12px; color: #858C98">Follows the design guide · after 2</span></div>
+              <span style="font-size: 12px; color: #B8E8CF; background: #14231C; border-radius: 6px; padding: 3px 8px">Merges itself</span>
+              <span style="font-size: 12px; color: #C9CED6; background: #1C2029; border-radius: 6px; padding: 3px 8px; font-family: 'Geist Mono', monospace">Codex · default</span>
+            </div>
+            <div class="ak-row" style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 20px">
+              <span style="width: 22px; height: 22px; border-radius: 50%; border: 1px solid #3A414D; display: grid; place-items: center; font-size: 12px; color: #A2A9B5; flex: none">↔</span>
+              <div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px">Clearer messages when sign-in fails</span><span style="font-size: 12px; color: #858C98">"Haiku at low: routine copy" · any time</span></div>
+              <span style="font-size: 12px; color: #B8E8CF; background: #14231C; border-radius: 6px; padding: 3px 8px">Merges itself</span>
+              <span style="font-size: 12px; color: #C9CED6; background: #1C2029; border-radius: 6px; padding: 3px 8px; font-family: 'Geist Mono', monospace">Haiku · low</span>
+            </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="g2" style="border-radius: 16px; background: #12151B; border: 1px solid #1F242D; overflow: hidden">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 18px 20px; border-bottom: 1px solid #1F242D">
+            <span style="font-family: 'Geist Mono', monospace; font-size: 12px; color: #858C98">GOAL 2</span>
+            <h2 id="g2" style="margin: 0; font-size: 18px; font-weight: 500; flex: 1">Show who's typing in the room</h2>
+            <span style="font-size: 12px; color: #A2A9B5">2 tickets</span>
+          </div>
+          <div class="ak-row" style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 20px; border-bottom: 1px solid #191D24">
+            <span style="width: 22px; height: 22px; border-radius: 50%; border: 1px solid #3A414D; display: grid; place-items: center; font-size: 12px; color: #A2A9B5; flex: none">1</span>
+            <div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px">Broadcast typing presence</span><span style="font-size: 12px; color: #858C98">Reuses the presence channel from DEC-19</span></div>
+            <span style="font-size: 12px; color: #B8E8CF; background: #14231C; border-radius: 6px; padding: 3px 8px">Merges itself</span>
+            <span style="font-size: 12px; color: #C9CED6; background: #1C2029; border-radius: 6px; padding: 3px 8px; font-family: 'Geist Mono', monospace">Sonnet · medium</span>
+          </div>
+          <div class="ak-row" style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 20px">
+            <span style="width: 22px; height: 22px; border-radius: 50%; border: 1px solid #3A414D; display: grid; place-items: center; font-size: 12px; color: #A2A9B5; flex: none">2</span>
+            <div style="flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 3px"><span style="font-size: 15px">"Fjord is typing…" under the message box</span><span style="font-size: 12px; color: #858C98">Website and Claude Code · after 1</span></div>
+            <span style="font-size: 12px; color: #B8E8CF; background: #14231C; border-radius: 6px; padding: 3px 8px">Merges itself</span>
+            <span style="font-size: 12px; color: #C9CED6; background: #1C2029; border-radius: 6px; padding: 3px 8px; font-family: 'Geist Mono', monospace">Sonnet · low</span>
+          </div>
+        </section>
+
+        <sc-if value="{{pending}}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding-top: 4px">
+            <button type="button" onClick="{{start}}" class="ak-btn" style="min-height: 48px; padding: 0 24px; border-radius: 12px; border: 0; background: #F4C25B; color: #1A1406; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">OK, start both goals</button>
+            <button type="button" onClick="{{toggleEdit}}" class="ak-btn" style="min-height: 48px; padding: 0 20px; border-radius: 12px; border: 1px solid #2A303B; background: transparent; color: #E9EBEF; font: inherit; font-size: 15px; cursor: pointer">Change something</button>
+            <span style="font-size: 13px; color: #858C98">or reply in Claude Code: "yes"</span>
+          </div>
+          <sc-if value="{{editing}}" hint-placeholder-val="{{ false }}">
+            <div class="ak-fade" style="display: flex; flex-direction: column; gap: 8px">
+              <label for="plan-edit" style="font-size: 13px; color: #A2A9B5">Tell Captain what to change</label>
+              <textarea id="plan-edit" rows="3" placeholder="e.g. Start with who's typing, sign-in can wait until Monday" style="background: #12151B; border: 1px solid #2A303B; border-radius: 12px; padding: 12px 14px; color: #E9EBEF; font: inherit; font-size: 15px; resize: vertical"></textarea>
+            </div>
+          </sc-if>
+        </sc-if>
+        <sc-if value="{{started}}" hint-placeholder-val="{{ false }}">
+          <div class="ak-fade" style="display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 16px 20px; border-radius: 14px; background: #101B16; border: 1px solid #23463A">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5CCB9A" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+            <span style="flex: 1 1 300px; font-size: 15px; color: #CFEFDF">Started. Six tickets are on the board and agents on both machines are picking them up.</span>
+            <a href="Board.dc.html" class="ak-btn" style="display: flex; align-items: center; min-height: 40px; padding: 0 16px; border-radius: 10px; background: #E9EBEF; color: #0B0D11; font-size: 14px; font-weight: 600">Watch the board</a>
+          </div>
+        </sc-if>
+      </div>
+
+      <aside style="flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+        <section aria-labelledby="forecast-h" style="padding: 20px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 14px">
+          <h2 id="forecast-h" style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #A2A9B5">What you'll be asked</h2>
+          <div style="display: flex; align-items: baseline; gap: 10px"><span style="font-size: 44px; font-weight: 500; letter-spacing: -0.03em">2</span><span style="font-size: 14px; color: #A2A9B5">decisions, at most</span></div>
+          <div style="display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 1.45; color: #C9CED6">
+            <div style="display: flex; gap: 10px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #F4C25B; margin-top: 7px; flex: none"></span>OK the database change before it merges</div>
+            <div style="display: flex; gap: 10px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #F4C25B; margin-top: 7px; flex: none"></span>OK the auth change before it merges</div>
+            <div style="display: flex; gap: 10px"><span style="width: 8px; height: 8px; border-radius: 50%; background: #5CCB9A; margin-top: 7px; flex: none"></span>Everything else merges itself once tests pass and Captain approves the exact commit</div>
+          </div>
+        </section>
+
+        <section aria-labelledby="who-h" style="padding: 20px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 12px">
+          <h2 id="who-h" style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #A2A9B5">Who picks it up</h2>
+          <div style="font-size: 14px; line-height: 1.5; color: #C9CED6">By load, across both machines. Right now 4 agents are free.</div>
+          <div style="display: flex; gap: 6px"><span style="width: 30px; height: 30px; border-radius: 9px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 13px; font-weight: 600">B</span><span style="width: 30px; height: 30px; border-radius: 9px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 13px; font-weight: 600">F</span><span style="width: 30px; height: 30px; border-radius: 9px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 13px; font-weight: 600">K</span><span style="width: 30px; height: 30px; border-radius: 9px; background: #232833; color: #C9CED6; display: grid; place-items: center; font-size: 13px; font-weight: 600">T</span></div>
+        </section>
+
+        <section aria-labelledby="out-h" style="padding: 20px; border-radius: 16px; background: #12151B; border: 1px solid #1F242D; display: flex; flex-direction: column; gap: 10px">
+          <h2 id="out-h" style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #A2A9B5">Not in this plan</h2>
+          <div style="font-size: 14px; line-height: 1.5; color: #C9CED6">Other sign-in providers · account linking for existing email users · typing indicators in ticket comments</div>
+        </section>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1160}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    return {
+      pending: !s.started,
+      started: !!s.started,
+      editing: !!s.editing,
+      start: () => this.setState({ started: true, editing: false }),
+      toggleEdit: () => this.setState({ editing: !s.editing })
+    };
+  }
+}
+</script>
+</body>
+</html>

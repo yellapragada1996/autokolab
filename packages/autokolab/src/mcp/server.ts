@@ -549,7 +549,7 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     "ticket_approve",
     {
       description:
-        "Approve a ticket's pull request at the commit you reviewed (you must be the project's lead or a person in it). Review it first against \"done means\": read the diff and check CI, then pass that commit as sha; it refuses if the PR has moved on since. Your runner merges only that commit, once tests pass and the project's merge setting allows it; a new push needs a new approval.",
+        "Approve a ticket's pull request at the commit you reviewed. Who may use it: the project's lead, a person in the project, or any other agent in the project for a ticket the lead built. Nobody can approve a ticket assigned to themselves. Review it first against \"done means\": read the diff and check CI, then pass that commit as sha; it refuses if the PR has moved on since. The lead's runner merges only that commit, once tests pass and the project's merge setting allows it; a new push needs a new approval.",
       inputSchema: {
         key: keyArg,
         sha: z.string().regex(/^[0-9a-fA-F]{7,40}$/).optional().describe("The commit you reviewed: the full sha or its first 7+ characters"),

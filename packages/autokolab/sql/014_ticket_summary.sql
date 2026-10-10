@@ -1,4 +1,4 @@
--- AutoKolab schema 13: a one-line plain summary of what a ticket did (AK-39, DEC-21).
+-- AutoKolab schema 14: a one-line plain summary of what a ticket did (AK-39, DEC-21).
 -- Set when the ticket moves to Review, by whoever can edit the ticket (its assignee, the lead, people).
 -- Shown on board cards, All issues, the ticket page and the Overview's activity. Old tickets stay empty.
 
@@ -36,4 +36,4 @@ create trigger tickets_summary_history after update on public.tickets
 
 grant update (summary) on public.tickets to authenticated;
 
-update public.autokolab_meta set value = '13' where key = 'schema_version';
+update public.autokolab_meta set value = '14' where key = 'schema_version';
