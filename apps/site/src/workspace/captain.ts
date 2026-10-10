@@ -27,11 +27,15 @@ export interface Turn {
 /**
  * A person's conversation with Captain: the room's messages between the two of them, oldest first.
  * Captain is the project's lead agent; its member id is the project's lead_agent_id.
+ * A reply the person writes in one of those threads belongs too, whoever it was addressed to:
+ * otherwise an answer given in the Room would leave Captain's question open forever.
  */
 export function conversation(messages: RoomMessage[], meId: string | null | undefined, captainId: string | null | undefined): Turn[] {
   if (!meId || !captainId) return [];
+  const between = (m: RoomMessage) => (m.sender_id === meId && m.to_id === captainId) || (m.sender_id === captainId && m.to_id === meId);
+  const threads = new Set(messages.filter(between).map((m) => m.thread_id ?? m.id));
   return messages
-    .filter((m) => (m.sender_id === meId && m.to_id === captainId) || (m.sender_id === captainId && m.to_id === meId))
+    .filter((m) => between(m) || (m.sender_id === meId && m.thread_id !== null && threads.has(m.thread_id)))
     .sort((a, b) => a.id - b.id)
     .map((m) => {
       const base = { id: m.id, at: m.created_at, body: m.body, thread: m.thread_id ?? m.id };
@@ -116,7 +120,7 @@ export function needsYou(ws: Workspace, turns: Turn[]): Need[] {
 export interface AgentRow {
   agentId: string;
   name: string;
-  /** A lowercase sentence fragment: "running the tests", "working on the Google callback". */
+  /** A sentence fragment: "running the tests", or "working on “Google callback”" when the ticket has no steps. */
   doing: string;
   /** "4 of 7", when the ticket has steps. */
   step: string | null;
@@ -147,13 +151,19 @@ export interface Briefing {
   goals: GoalRow[];
 }
 
-/** "Running the tests" → "running the tests"; leaves "PR review" and "OAuth callback" alone. */
+/**
+ * A step label inside a sentence: "Running the tests" → "running the tests"; leaves "PR review"
+ * and "OAuth callback" alone. For steps only: a ticket's title is a name, so it's quoted as written.
+ */
 export function lowerFirst(s: string): string {
   const t = s.trim();
   if (!t) return t;
   const word = t.split(/\s+/)[0];
   return /[A-Z]/.test(word.slice(1)) ? t : t[0].toLowerCase() + t.slice(1);
 }
+
+/** A ticket's title inside a sentence, as written: “Add the sessions column”. */
+export const named = (title: string) => `“${title.trim()}”`;
 
 const be = (n: number) => (n === 1 ? "is" : "are");
 
@@ -180,7 +190,7 @@ function agentRows(ws: Workspace): AgentRow[] {
     rows.set(t.assignee_id!, {
       agentId: t.assignee_id!,
       name: ws.nameOf(t.assignee_id),
-      doing: now >= 0 ? lowerFirst(steps[now].label) : `working on ${lowerFirst(t.title)}`,
+      doing: now >= 0 ? lowerFirst(steps[now].label) : `working on ${named(t.title)}`,
       step: steps.length ? `${now >= 0 ? now + 1 : Math.min(done + 1, steps.length)} of ${steps.length}` : null,
       needsYou: !!t.needs_human,
       ticket: t,
@@ -216,8 +226,8 @@ function nextLine(ws: Workspace, needs: Need[]): string | null {
   const review = ws.tickets
     .filter((t) => t.type !== "epic" && t.status === "review" && t.pr_url && !t.approved_sha && !t.needs_human && t.assignee_id !== ws.project.lead_agent_id)
     .sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at))[0];
-  const waiting = first ? WAITING[first.kind](first.ticket ? lowerFirst(first.ticket.title) : "") : null;
-  const reviewing = review ? `the review of ${lowerFirst(review.title)}` : null;
+  const waiting = first ? WAITING[first.kind](first.ticket ? named(first.ticket.title) : "") : null;
+  const reviewing = review ? `the review of ${named(review.title)}` : null;
   if (waiting && reviewing) return `Next from me: ${waiting}, then ${reviewing}.`;
   if (waiting) return `Next from me: ${waiting}.`;
   if (reviewing) return `Next from me: ${reviewing}.`;

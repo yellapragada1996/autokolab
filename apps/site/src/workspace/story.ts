@@ -48,10 +48,10 @@ export type GoalState = "waiting" | "moving" | "not_started" | "paused" | "done"
 
 export const goalStateText: Record<GoalState, { label: string; color: string }> = {
   waiting: { label: "Waiting on you", color: "var(--warn)" },
-  moving: { label: "Moving", color: "var(--ok)" },
+  moving: { label: "Moving", color: "var(--blue-text)" },
   not_started: { label: "Not started", color: "var(--faint)" },
   paused: { label: "Paused", color: "var(--muted)" },
-  done: { label: "Done", color: "var(--muted)" },
+  done: { label: "Done", color: "var(--ok)" },
 };
 
 export interface Goal {

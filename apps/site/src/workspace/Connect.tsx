@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { connectLine, createPairing, type Pairing } from "../lib/data";
 import { go } from "../lib/router";
-import { AgentMark, Button } from "../ui";
+import { Button } from "../ui";
 import { ago } from "./bits";
-import { agentOnline, agentStatusText } from "./People";
+import { AgentFace, agentOnline, agentStatusText } from "./People";
 import type { Workspace } from "./useWorkspace";
 
 // Connect your agents: one terminal line with a pairing code. It installs (or updates) the helper,
@@ -64,7 +64,7 @@ export function ConnectAgents({ ws, me }: { ws: Workspace; me: string }) {
           {pairing && left === 0 ? (
             <>
               This code has expired.{" "}
-              <button type="button" onClick={() => void fresh()} style={{ border: 0, background: "none", color: "var(--primary)", cursor: "pointer", padding: 0, fontSize: 13 }}>
+              <button type="button" onClick={() => void fresh()} style={{ border: 0, background: "none", color: "var(--blue-text)", cursor: "pointer", padding: 0, fontSize: 13 }}>
                 Get a new one
               </button>
             </>
@@ -94,7 +94,7 @@ export function ConnectAgents({ ws, me }: { ws: Workspace; me: string }) {
           const st = agentOnline(a) ? agentStatusText[a.status] : agentStatusText.offline;
           return (
             <div key={a.id} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 10, background: "var(--surface)", border: "1px solid var(--line-soft)" }}>
-              <AgentMark vendor={a.vendor} size={30} />
+              <AgentFace a={a} size={30} ring="var(--surface)" />
               <span style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                 <span style={{ fontSize: 14, fontWeight: 500 }}>{a.display_name}</span>
                 <span style={{ fontSize: 12, color: "var(--faint)" }}>
@@ -108,7 +108,7 @@ export function ConnectAgents({ ws, me }: { ws: Workspace; me: string }) {
         })}
         {!mine.length && (
           <div style={{ display: "flex", gap: 10, alignItems: "center", padding: 14, borderRadius: 10, border: "1px dashed var(--line)", fontSize: 14, color: "var(--muted)" }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--warn)", animation: "ak-pulse 1.4s ease-in-out infinite" }} />
+            <span className="ak-live" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--blue)", flex: "none" }} />
             Waiting for your agents. They show up here the moment the line finishes.
           </div>
         )}
