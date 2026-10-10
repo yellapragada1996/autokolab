@@ -1,6 +1,20 @@
 import { waitsForMergeOk, type Ticket, type TicketEvent } from "../lib/data";
 import { describe } from "./TicketPage";
 import type { Workspace } from "./useWorkspace";
+import type { Turn } from "./captain";
+
+export type UndoState = { kind: "none" | "risky" | "can" } | { kind: "asked"; at: string };
+
+export function undoState(ticket: Ticket, turns: Turn[]): UndoState {
+  if (ticket.status !== "done" || !ticket.pr_url) return { kind: "none" };
+  if (ticket.merge_ok_at) return { kind: "risky" };
+  const asked = turns.find((turn) => turn.kind === "you" && turn.body.startsWith(`Undo ${ticket.key} `));
+  return asked ? { kind: "asked", at: asked.at } : { kind: "can" };
+}
+
+export function undoMessage(ticket: Ticket): string {
+  return `Undo ${ticket.key} (“${ticket.title}”): please open a revert of ${ticket.pr_url} as a new ticket, through the normal tests, review and merge. If it changed the database, don't revert it; tell me why instead.`;
+}
 
 export function workSummary(t: Ticket): string {
   return t.review?.summary?.trim() || t.summary?.trim() || t.title;

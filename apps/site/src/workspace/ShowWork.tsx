@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { ticketDetail, type TicketEvent } from "../lib/data";
 import { closeShow, openShow, type ShowPart } from "../lib/router";
-import { Skeleton } from "../ui";
+import { Button, Skeleton } from "../ui";
 import { clock } from "./captain";
-import { workHistory, workRows, workSummary } from "./showWork";
+import { undoMessage, undoState, workHistory, workRows, workSummary } from "./showWork";
+import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
 
 const PARTS: { id: ShowPart; label: string }[] = [
@@ -12,12 +13,30 @@ const PARTS: { id: ShowPart; label: string }[] = [
   { id: "history", label: "History" },
 ];
 
-export function ShowWork({ ws, ticketKey, part, demoEvents }: { ws: Workspace; ticketKey: string; part: ShowPart; demoEvents?: Map<string, TicketEvent[]> }) {
+export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Workspace; captain: CaptainRoom; ticketKey: string; part: ShowPart; demoEvents?: Map<string, TicketEvent[]> }) {
   const ticket = ws.byKey.get(ticketKey);
   const panel = useRef<HTMLElement>(null);
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const [events, setEvents] = useState<TicketEvent[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendFailed, setSendFailed] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
+
+  useEffect(() => { setConfirm(false); setSendFailed(false); setSent(null); }, [ticketKey]);
+
+  const undo = ticket ? undoState(ticket, captain.turns) : { kind: "none" as const };
+  const askedAt = undo.kind === "asked" ? undo.at : sent;
+  const askUndo = async () => {
+    if (!ticket || sending) return;
+    setSending(true);
+    setSendFailed(false);
+    const ok = await captain.send(undoMessage(ticket), null, `undo:${ticket.key}`);
+    setSending(false);
+    if (ok) { setSent(new Date().toISOString()); setConfirm(false); }
+    else setSendFailed(true);
+  };
 
   useEffect(() => {
     panel.current?.focus();
@@ -79,6 +98,15 @@ export function ShowWork({ ws, ticketKey, part, demoEvents }: { ws: Workspace; t
               <p className="ak-show-summary">{workSummary(ticket)}</p>
               {workRows(ws, ticket).length > 0 && <dl className="ak-show-rows">{workRows(ws, ticket).map((row) => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}{row.sha && <> · <code>{row.sha}</code></>}{row.at && <> · {new Date(row.at).toLocaleString()}</>}</dd></div>)}</dl>}
               {ticket.done_means.length > 0 && <section className="ak-show-done"><h3>Done means</h3><ul>{ticket.done_means.map((item, i) => <li key={i}>{(ticket.approved_sha || ticket.status === "done") && <span aria-label="Met" className="ak-show-tick">✓</span>}{item}</li>)}</ul></section>}
+              {undo.kind === "risky" && <p className="ak-show-undo">This change needed an OK to merge (database, CI, dependencies or sign-in), so it can't be undone automatically. Ask Captain if it needs reversing.</p>}
+              {undo.kind === "can" && <div className="ak-show-undo">
+                {askedAt ? <p>Asked Captain to undo this. It will show up as a new ticket.</p> : confirm ? <>
+                  <p>Captain will open a change that reverses this one. It goes through the same tests, review and merge.</p>
+                  <div className="ak-show-undo-actions"><Button size="sm" variant="primary" disabled={sending} onClick={() => void askUndo()}>{sending ? "Sending…" : "Yes, undo it"}</Button><Button size="sm" variant="ghost" disabled={sending} onClick={() => { setConfirm(false); setSendFailed(false); }}>Cancel</Button></div>
+                </> : <Button size="sm" variant="ghost" onClick={() => setConfirm(true)}>Undo this change</Button>}
+                {sendFailed && <p role="alert">Couldn't ask Captain to undo this. Please try again.</p>}
+              </div>}
+              {undo.kind === "asked" && <p className="ak-show-undo">You asked Captain to undo this at {new Date(undo.at).toLocaleString()}.</p>}
             </>}
             {part === "change" && <>
               {ticket.review?.line ? <section className="ak-show-change"><h3>The line that matters</h3><p className="ak-show-file">{ticket.review.line.file}</p><pre>{ticket.review.line.code.split("\n").map((line, i) => <span key={i} className={line.startsWith("+") && !line.startsWith("+++") ? "ak-show-added" : undefined}>{line}{"\n"}</span>)}</pre>{ticket.review.line.plain && <p>In plain words: {ticket.review.line.plain}</p>}</section> : !ticket.pr_url && <p>No change recorded yet.</p>}

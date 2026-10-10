@@ -12,7 +12,7 @@ import { buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from 
 import { needsRunner } from "../src/setup/connect.js";
 import { Runner, STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, leadGuide, questionsForLead, untriaged, type Comment, type Ticket } from "../src/core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_UNDO, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, leadGuide, questionsForLead, untriaged, type Comment, type Ticket } from "../src/core/projects.js";
 import { MERGE_FIELDS, RISKY_PATHS, approvalMessage, checkResult, isRiskyPath, mergeDecision, mergeNeedsHuman, mergedComment, plainGhError, readyToMergeMessage, reviewedShaProblem, shortList, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
@@ -251,6 +251,9 @@ describe("prompt", () => {
     expect(g).toContain("Decide and act on your own");
     expect(g).toContain(BIG_WORK);
     expect(g).toContain(LEAD_APPROVAL);
+    expect(g).toContain(LEAD_UNDO);
+    expect(LEAD_UNDO).toMatch(/git revert.*new branch.*default branch.*normal tests, review, approval and merge/);
+    expect(LEAD_UNDO).toMatch(/Never revert a database migration.*Reply with the new ticket's key/);
     expect(LEAD_APPROVAL).toMatch(/approve it with ticket_approve.*Approve only the commit you actually reviewed: a new push needs a new approval/);
     expect(BIG_WORK).toMatch(/new epic or more than 3 tickets, migrations, dependencies, auth\/security\/CI\/infra changes, deleting a feature, or changing a decision/);
   });

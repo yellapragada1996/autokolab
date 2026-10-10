@@ -229,7 +229,7 @@ export function Workspace({
         />
       )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
-      {ws && route.show && <ShowWork ws={ws} ticketKey={route.show.key} part={route.show.part} demoEvents={demoEvents} />}
+      {ws && route.show && <ShowWork ws={ws} captain={captain} ticketKey={route.show.key} part={route.show.part} demoEvents={demoEvents} />}
     </div>
   );
 }
