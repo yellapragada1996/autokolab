@@ -31,7 +31,17 @@ export interface Project {
   lead_agent_id: string | null;
   /** The project's room (schema 7). */
   room_id: string | null;
+  /** How approved PRs get merged (schema 12, DEC-19). Missing on older servers. */
+  merge_policy?: MergePolicy;
 }
+
+/** DEC-19: ask (a person merges), auto_safe (risky changes wait for a person's OK), auto_all. */
+export type MergePolicy = "ask" | "auto_safe" | "auto_all";
+export const MERGE_POLICY_LABEL: Record<MergePolicy, string> = {
+  ask: "a person merges",
+  auto_safe: "auto-merge safe changes",
+  auto_all: "auto-merge everything",
+};
 
 /** How hard an agent thinks: the five levels both Claude Code and Codex accept (schema 10). */
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
@@ -84,6 +94,11 @@ export interface Ticket {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  /** The PR head commit the lead approved, and a person's OK for a risky change (schema 12). */
+  approved_sha?: string | null;
+  approved_at?: string | null;
+  merge_ok_by?: string | null;
+  merge_ok_at?: string | null;
 }
 
 export interface Step {
@@ -123,6 +138,10 @@ export function leadAutonomy(person: string): string {
   return `You run unattended too, while ${person} is away. Decide and act on your own (answer workers, delegate, create and assign tickets, review), then say what you did. Before big work (${BIG_WORK}), post one kind=question to ${person} in the room and stop; their reply in that thread resumes you.`;
 }
 
+/** How the lead signs off on a PR (AK-30): the runner merges only the commit it approved. */
+export const LEAD_APPROVAL =
+  'Review each PR in Review against its "done means": read the diff and check CI. Then approve it with ticket_approve, passing sha=<the commit you reviewed> (it refuses if the PR moved on since), or comment on what\'s missing. Approve only the commit you actually reviewed: a new push needs a new approval, because your runner merges only the approved commit, once its tests pass and the project\'s merge setting allows it.';
+
 /** What the lead does. Shown to the lead in project_brief. */
 export function leadGuide(project: string, people: string[]): string {
   const who = people.length ? `${people.join(" and ")} ${people.length === 1 ? "talks" : "talk"}` : "The people on this project talk";
@@ -136,7 +155,7 @@ export function leadGuide(project: string, people: string[]): string {
    - Blocked by: tickets that must land first. If two tickets touch the same files, order them with blocked_by instead of running them in parallel.
 4. Assign each ticket to a worker agent (see Agents below: status and open tickets) and put it in Ready so it starts now, or Backlog if it shouldn't start yet. Spread the work; don't stack one agent while another is idle.
 5. Tell your person what you created: keys, who has what, and the order.
-6. Follow up whenever your person comes back or asks: check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. Review pull requests against "done means" and comment what's missing. Record settled choices with decision_add.
+6. Follow up whenever your person comes back or asks: check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. ${LEAD_APPROVAL} Record settled choices with decision_add.
 7. ${leadAutonomy("your person")}
 8. You may change a worker's model and effort with agent_model when the work calls for it: stronger (e.g. opus, high) for hard, risky or wide changes; lighter (e.g. sonnet or haiku, low/medium) for routine, small or docs work. Prefer changing it right before assigning the ticket, and always give the reason. Owners can lock their machine (model_locked), in which case your change won't take effect there.`;
 }
@@ -179,7 +198,8 @@ export class ProjectView {
 
   /** Projects this member is in. Empty if the server doesn't have projects yet. */
   static async mine(sb: SupabaseClient): Promise<Project[]> {
-    const r = await sb.from("projects").select("id, name, slug, repo, default_branch, ticket_prefix, lead_agent_id, room_id").order("created_at");
+    // "*": merge_policy only exists from schema 12, and this must keep working before it.
+    const r = await sb.from("projects").select("*").order("created_at");
     if (r.error) return [];
     return r.data as Project[];
   }
@@ -544,6 +564,29 @@ export class ProjectView {
     return out;
   }
 
+  /** The project's merge setting, read fresh; a server before schema 12 has none, and then a person merges. */
+  async mergePolicy(): Promise<MergePolicy> {
+    const row = check<Project | null>(await this.sb.from("projects").select("*").eq("id", this.project.id).maybeSingle());
+    if (row) this.project.merge_policy = row.merge_policy;
+    return this.project.merge_policy ?? "ask";
+  }
+
+  /** Record the PR head commit the lead (or a person) approved, through approve_ticket (schema 12). */
+  async approve(ref: string, sha: string): Promise<Ticket> {
+    const t = await this.ticket(ref);
+    const r = await this.sb.rpc("approve_ticket", { p_ticket: t.id, p_sha: sha.toLowerCase() });
+    if (r.error && /approve_ticket/.test(r.error.message) && !r.error.message.includes("AUTOKOLAB_")) {
+      throw new AutoKolabError("This AutoKolab server can't record approvals yet (it needs schema 12).");
+    }
+    return check<Ticket>(r);
+  }
+
+  /** For the lead: tickets in Review with a PR and an approved commit, for the runner to merge. */
+  async approvedForMerge(): Promise<Ticket[]> {
+    if (!this.iAmLead) return [];
+    return (await this.tickets()).filter((t) => t.status === "review" && t.pr_url && t.approved_sha);
+  }
+
   /** For the lead: workers' tickets in this project with a question for a person. Empty for anyone else. */
   async openQuestions(): Promise<Ticket[]> {
     if (!this.iAmLead) return [];
@@ -693,8 +736,24 @@ export function agentsLooping(all: Pick<Comment, "author_type">[], fresh: Pick<C
  */
 export function questionsForLead(tickets: Ticket[], leadId: string): Ticket[] {
   return tickets.filter(
-    (t) => t.needs_human && t.needs_human !== AGENT_LOOP_QUESTION && t.assignee_id !== leadId && !["done", "canceled"].includes(t.status) && t.type !== "epic",
+    (t) =>
+      t.needs_human &&
+      t.needs_human !== AGENT_LOOP_QUESTION &&
+      !isMergeQuestion(t.needs_human) &&
+      t.assignee_id !== leadId &&
+      !["done", "canceled"].includes(t.status) &&
+      t.type !== "epic",
   );
+}
+
+/** What the lead's runner puts in "Needs you" while merging (AK-30). They're for a person, not the lead. */
+export const NO_CHECKS_QUESTION = "No automatic tests ran on this PR.";
+export const MERGE_OK_PREFIX = "Ready to merge — needs your OK:";
+export const MERGE_FAILED_PREFIX = "Couldn't merge";
+export const MERGE_GH_PREFIX = "Can't check the PR";
+
+export function isMergeQuestion(text: string | null | undefined): boolean {
+  return !!text && (text === NO_CHECKS_QUESTION || [MERGE_OK_PREFIX, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX].some((p) => text.startsWith(p)));
 }
 
 /** The questions not yet triaged: each ticket's question text is handled once. */

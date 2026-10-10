@@ -6,6 +6,7 @@ import { formatItem, formatMember, formatMessage, formatWork } from "../core/for
 import { connectFromConfig } from "../core/node.js";
 import { EFFORTS, PRIORITIES, ProjectView, STATUSES, TYPES, GUIDE_PARTS, modelChangeMessage, type ModelChange } from "../core/projects.js";
 import { detectRepo, resolveRoom } from "../core/repo.js";
+import { approvalMessage, ghPrView, plainGhError, prNumber, reviewedShaProblem } from "../runner/merge.js";
 import { BULLETIN_KINDS, BULLETIN_STATES, MESSAGE_KINDS } from "../core/types.js";
 
 // stdio MCP server, started by Claude Code or Codex (registered by `autokolab init` / `join`).
@@ -23,7 +24,7 @@ Chat room:
 - Call whoami first: it tells you your name, your role in this repo's room (lead or follower) and who can give instructions.
 - If you're a lead, the person talking to you directs the team through you. When they want something done by another agent, post it with room_post kind=task to that agent (set wait_s, e.g. 120, to wait for their first reply) and tell your person what was said. When your person comes back, start with room_read and summarize what the other agents said or asked; answer the others' questions in their thread (kind=answer), checking with your person when it's their call. You can also just do coding work yourself when asked.
 - At the start of a session: board_list (your open items), then room_read.
-- Lead: assign work with room_post kind=task to a follower (goal, acceptance criteria, branch name). Keep the board's task items current. Review pull requests and post kind=review with file:line findings. Change a worker's model and effort with agent_model when the work calls for it (stronger for hard or risky work, lighter for routine work), always with a reason.
+- Lead: assign work with room_post kind=task to a follower (goal, acceptance criteria, branch name). Keep the board's task items current. Review pull requests and post kind=review with file:line findings; approve the exact commit you reviewed with ticket_approve. Change a worker's model and effort with agent_model when the work calls for it (stronger for hard or risky work, lighter for routine work), always with a reason.
 - Follower: instructions from members who can instruct are your tasks. Post kind=status when you start, are blocked or are done (with PR link).
 - The room is a conversation: ask teammates directly (room_post kind=question with to=<them>), answer when they ask, review each other's branches. When you expect a reply, set wait_s (up to 300) or use room_wait; if none comes, continue with your best judgment and say what you assumed.
 - Don't post acknowledgements ("thanks", "ok"). Post only when you have something useful to add.
@@ -47,6 +48,7 @@ const ACTIVITY: Record<string, string> = {
   room_read: "Reading the room",
   room_wait: "Waiting for a reply",
   agent_model: "Changing an agent's model",
+  ticket_approve: "Approving a pull request",
 };
 
 /** agent_model's input. The database decides who may use it (the agent's owner or the project's lead). */
@@ -538,6 +540,34 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
         told = ` (couldn't tell it in the room: ${(e as Error).message})`;
       }
       return `${name} is now on ${p.modelLine(agentId, false)}, from its next run.${told}`;
+    }),
+  );
+
+  server.registerTool(
+    "ticket_approve",
+    {
+      description:
+        "Approve a ticket's pull request at the commit you reviewed (you must be the project's lead or a person in it). Review it first against \"done means\": read the diff and check CI, then pass that commit as sha; it refuses if the PR has moved on since. Your runner merges only that commit, once tests pass and the project's merge setting allows it; a new push needs a new approval.",
+      inputSchema: {
+        key: keyArg,
+        sha: z.string().regex(/^[0-9a-fA-F]{7,40}$/).optional().describe("The commit you reviewed: the full sha or its first 7+ characters"),
+        project: projectArg,
+      },
+    },
+    ptool(async (p, a: { key: string; sha?: string; project?: string }) => {
+      const t = await p.ticket(a.key);
+      if (!t.pr_url) throw new Error(`${t.key} has no pull request yet; there's nothing to approve.`);
+      let pr: { headRefOid: string; state: string };
+      try {
+        pr = ghPrView(t.pr_url, "headRefOid,state");
+      } catch (e) {
+        throw new Error(`Couldn't read ${t.pr_url}: ${plainGhError((e as Error).message, "on this machine")}`);
+      }
+      if (pr.state !== "OPEN") throw new Error(`PR #${prNumber(t.pr_url)} is ${pr.state.toLowerCase()}; only an open PR can be approved.`);
+      const moved = reviewedShaProblem(t.pr_url, pr.headRefOid, a.sha);
+      if (moved) throw new Error(moved);
+      await p.approve(t.key, pr.headRefOid);
+      return approvalMessage(t.pr_url, pr.headRefOid, await p.mergePolicy());
     }),
   );
 
