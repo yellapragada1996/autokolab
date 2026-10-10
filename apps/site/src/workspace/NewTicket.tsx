@@ -56,7 +56,7 @@ export function NewTicket({ ws, initialStatus, onClose, onCreated }: { ws: Works
   const epics = ws.tickets.filter((t) => t.type === "epic" && t.status !== "done");
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Create issue" onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "8vh 16px", zIndex: 40, overflowY: "auto" }}>
+    <div role="dialog" aria-modal="true" aria-label="Create issue" onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--backdrop)", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "8vh 16px", zIndex: 40, overflowY: "auto" }}>
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}

@@ -250,11 +250,11 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
 /** Jira's status button: the current status, click to move it. */
 function StatusButton({ status, onChange }: { status: Status; onChange: (s: Status) => void }) {
   const blue = status === "in_progress" || status === "review";
-  const tone = status === "done" ? { bg: "#1c3a2a", fg: "#7ee2a8" } : blue ? { bg: "#0c66e4", fg: "#fff" } : { bg: "var(--surface-2)", fg: "var(--text)" };
+  const tone = status === "done" ? { bg: "var(--green-chip)", fg: "var(--green-text)" } : blue ? { bg: "var(--blue-bg)", fg: "var(--blue-text)" } : { bg: "var(--surface-2)", fg: "var(--text)" };
   return (
     <label style={{ position: "relative", display: "inline-flex", alignItems: "center", gap: 8, height: 34, padding: "0 12px", borderRadius: 6, background: tone.bg, color: tone.fg, font: "600 13px var(--sans)", cursor: "pointer", border: "1px solid var(--line)" }}>
       {status === "review" ? "In review" : statusLabel(status)}
-      <span aria-hidden="true" style={{ fontSize: 10, opacity: 0.8 }}>
+      <span aria-hidden="true" style={{ fontSize: 12, opacity: 0.8 }}>
         ▼
       </span>
       <select aria-label="Status" value={status} onChange={(e) => onChange(e.target.value as Status)} style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}>
@@ -447,7 +447,7 @@ function StepsEditor({ steps, onToggle, onReplace }: { steps: Step[]; onToggle: 
           title="Click to move: to do → now → done"
           style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "8px 10px", borderRadius: 9, border: 0, textAlign: "left", cursor: "pointer", background: s.status === "now" ? "var(--surface-2)" : "transparent", color: "var(--text)" }}
         >
-          <span style={{ width: 20, height: 20, flex: "none", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, ...(s.status === "done" ? { background: "var(--ok-bg)", color: "var(--ok)" } : s.status === "now" ? { background: "var(--primary)", color: "var(--on-primary)" } : { border: "1px solid var(--line)", color: "var(--faint)" }) }}>
+          <span style={{ width: 20, height: 20, flex: "none", borderRadius: "50%", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, ...(s.status === "done" ? { background: "var(--ok-bg)", color: "var(--ok)" } : s.status === "now" ? { background: "var(--blue-bg)", color: "var(--blue-text)", border: "1px solid var(--blue)" } : { border: "1px solid var(--line)", color: "var(--faint)" }) }}>
             {s.status === "done" ? "✓" : s.idx + 1}
           </span>
           <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>

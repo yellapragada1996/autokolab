@@ -105,7 +105,7 @@ export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (
           )}
         </div>
         <Button variant="primary" size="sm" onClick={onNew}>
-          Create <kbd style={{ font: "500 11px var(--mono)", opacity: 0.7 }}>C</kbd>
+          Create <kbd style={{ font: "500 12px var(--mono)", opacity: 0.7 }}>C</kbd>
         </Button>
       </div>
       {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}

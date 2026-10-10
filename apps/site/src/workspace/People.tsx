@@ -2,17 +2,18 @@ import { useEffect, useState } from "react";
 import { addPerson, createInvite, EFFORTS, inviteLink, invites as listInvites, MERGE_POLICIES, mergePolicyOf, MODEL_CHOICES, revokeInvite, setAgentModel, setLead, setMergePolicy, showCode, type Agent, type Effort, type Invite, type MergePolicy } from "../lib/data";
 import { placeLine } from "../lib/place";
 import { go, onNav } from "../lib/router";
-import { AgentMark, Avatar, Button } from "../ui";
+import { AgentAvatar, Button, PersonAvatar, type AgentState } from "../ui";
 import { ago, KeyText, LeadBadge } from "./bits";
 import type { Workspace } from "./useWorkspace";
 
-// Who works on this project: people (circles) and their agents (rounded squares), with what each
+// Who works on this project: people (circles) and their agents (neutral squares), with what each
 // agent is doing right now.
 
+// Colour only means status: blue working, amber needs you, coral blocked, the rest neutral.
 export const agentStatusText: Record<Agent["status"], { label: string; color: string }> = {
-  idle: { label: "Online", color: "var(--ok)" },
-  planning: { label: "Working", color: "var(--ok)" },
-  building: { label: "Building", color: "var(--ok)" },
+  idle: { label: "Online", color: "var(--text-muted)" },
+  planning: { label: "Working", color: "var(--blue-text)" },
+  building: { label: "Building", color: "var(--blue-text)" },
   waiting_human: { label: "Needs you", color: "var(--warn)" },
   blocked: { label: "Blocked", color: "var(--danger)" },
   paused: { label: "Paused", color: "var(--faint)" },
@@ -22,6 +23,19 @@ export const agentStatusText: Record<Agent["status"], { label: string; color: st
 /** An agent counts as online if it checked in within the last few minutes. */
 export function agentOnline(a: Agent): boolean {
   return !!a.last_seen_at && Date.now() - Date.parse(a.last_seen_at) < 5 * 60_000 && a.status !== "offline";
+}
+
+/** The dot on an agent's avatar: none when it's offline. */
+export function agentDot(a: Agent): AgentState | undefined {
+  if (!agentOnline(a)) return undefined;
+  if (a.status === "planning" || a.status === "building") return "working";
+  if (a.status === "waiting_human") return "waiting";
+  return "idle";
+}
+
+/** An agent's avatar: a neutral tile with its status dot. */
+export function AgentFace({ a, size, ring }: { a: Agent; size?: number; ring?: string }) {
+  return <AgentAvatar name={a.display_name} vendor={a.vendor} status={agentDot(a)} size={size} ring={ring} />;
 }
 
 export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string; onProjectChanged?: () => void }) {
@@ -50,7 +64,7 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
           const theirAgents = agents.filter((a) => a.owner_profile_id === m.actor_id);
           return (
             <div key={m.actor_id} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line-soft)", flexWrap: "wrap" }}>
-              <Avatar name={p?.name ?? "?"} src={p?.avatar_url} size={34} you={m.actor_id === me} />
+              <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={34} you={m.actor_id === me} />
               <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: "1 1 200px" }}>
                 <span style={{ fontSize: 15, fontWeight: 500 }}>
                   {p?.name ?? "Someone"}
@@ -91,7 +105,7 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
           const cur = a.current_ticket_id ? ws.byId.get(a.current_ticket_id) : undefined;
           return (
             <div key={a.id} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line-soft)", flexWrap: "wrap" }}>
-              <AgentMark vendor={a.vendor} size={34} />
+              <AgentFace a={a} size={34} ring="var(--surface)" />
               <span style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: "1 1 200px" }}>
                 <span style={{ fontSize: 15, fontWeight: 500, display: "flex", gap: 8, alignItems: "center" }}>
                   {a.display_name}
