@@ -38,6 +38,46 @@ export interface Room {
   me: RoomMember | null;
 }
 
+// Agent bookkeeping: the notices a runner posts as it works. A copy of the helper's definitions,
+// keep them in step: isRunnerNotice, isPauseNotice, STALE_RUN_SUMMARY and the "Stopped: my runner
+// restarted" notice in packages/autokolab/src/runner/runner.ts, MODEL_CHANGE_PREFIX in
+// packages/autokolab/src/core/projects.ts.
+const MODEL_CHANGE_PREFIX = "Model change:";
+const PAUSE_NOTICE = /^Pausing this thread after \d+ agent messages in a row\. A person can reply to continue\.$/;
+const RESTART_NOTICE = /^Stopped: my runner restarted while working on #\d+/;
+
+/** A runner's progress ping (started, picked up, queued, paused, model change, skipped): news, not conversation. */
+export function isBookkeeping(body: string): boolean {
+  const first = body.trim();
+  return /^(Started on|Picked up|Queued) #\d+/.test(first) || PAUSE_NOTICE.test(first) || first.startsWith(MODEL_CHANGE_PREFIX) || RESTART_NOTICE.test(first) || first.startsWith("Skipped:");
+}
+
+/** A run that went wrong, as a short plain line ("couldn't continue: session limit (resets 11:20pm Stockholm)"), or null. */
+export function problemOf(body: string): string | null {
+  const text = body.trim();
+  const m = /^(Failed on|Blocked on|Couldn't start|Stopped) #\d+[.:]?\s*([\s\S]*)$/.exec(text);
+  if (!m) return null;
+  const rest = m[2].replace(/^Where it got to:\s*/, "").trim();
+  if (m[1] === "Couldn't start") return `couldn't start: ${firstLine(rest) || "the run didn't start"}`;
+  if (m[1] === "Stopped") return `stopped: ${firstLine(rest) || "the run was stopped"}`;
+  return `couldn't continue: ${limitOf(rest) ?? (firstLine(rest) || "the run failed")}`;
+}
+
+/** "You've hit your session limit · resets 11:20pm (Europe/Stockholm)" → "session limit (resets 11:20pm Stockholm)". */
+function limitOf(text: string): string | null {
+  const kind = /\b(session|usage|weekly|daily|rate) limit\b/i.exec(text);
+  if (!kind) return null;
+  const resets = /\bresets?\s+(?:at\s+)?([^\n(·.]+?)\s*(?:\(([^)]+)\))?\s*(?:[.·\n]|$)/i.exec(text);
+  if (!resets) return `${kind[1].toLowerCase()} limit`;
+  const zone = resets[2] ? ` ${resets[2].split("/").pop()!.replace(/_/g, " ")}` : "";
+  return `${kind[1].toLowerCase()} limit (resets ${resets[1].trim()}${zone})`;
+}
+
+function firstLine(text: string): string {
+  const line = text.split("\n").find((l) => l.trim())?.trim().replace(/[.\s]+$/, "") ?? "";
+  return line.length > 100 ? `${line.slice(0, 99)}…` : line;
+}
+
 function check<T>(r: { data: T | null; error: { message: string } | null }): T {
   if (r.error) throw new Error(friendly(r.error.message));
   return r.data as T;
