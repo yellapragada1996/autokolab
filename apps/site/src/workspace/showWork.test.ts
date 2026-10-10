@@ -3,6 +3,32 @@ import { MERGE_OK_PREFIX, type TicketEvent } from "../lib/data";
 import { parse, showHref } from "../lib/router";
 import { BIRCH, CAPTAIN, at, ticket, workspace } from "./fixtures";
 import { workHistory, workRows, workSummary } from "./showWork";
+import { undoMessage, undoState } from "./showWork";
+import type { Turn } from "./captain";
+
+describe("Undo in Show the work", () => {
+  const done = ticket({ key: "SH-14", title: "Filter search by price", status: "done", pr_url: "https://github.com/ana/shop/pull/40" });
+
+  it("is absent until a ticket is Done with a PR", () => {
+    expect(undoState({ ...done, status: "review" }, [])).toEqual({ kind: "none" });
+    expect(undoState({ ...done, pr_url: null }, [])).toEqual({ kind: "none" });
+  });
+
+  it("does not offer automatic undo after a person's merge OK", () => {
+    expect(undoState({ ...done, merge_ok_at: at("09:00") }, [])).toEqual({ kind: "risky" });
+  });
+
+  it("shows when this person already asked Captain", () => {
+    const asked: Turn = { id: 1, kind: "you", at: at("10:00"), body: undoMessage(done), thread: 1 };
+    expect(undoState(done, [{ ...asked, kind: "captain" }, asked])).toEqual({ kind: "asked", at: at("10:00") });
+    expect(undoState(done, [{ ...asked, body: "Undo SH-140 (different ticket)" }])).toEqual({ kind: "can" });
+  });
+
+  it("offers a request and gives Captain the exact revert instructions", () => {
+    expect(undoState(done, [])).toEqual({ kind: "can" });
+    expect(undoMessage(done)).toBe("Undo SH-14 (“Filter search by price”): please open a revert of https://github.com/ana/shop/pull/40 as a new ticket, through the normal tests, review and merge. If it changed the database, don't revert it; tell me why instead.");
+  });
+});
 
 describe("Show the work sentences", () => {
   it("uses the review summary, then ticket summary, then title", () => {

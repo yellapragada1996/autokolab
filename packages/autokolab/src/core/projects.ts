@@ -167,6 +167,8 @@ export const LEAD_APPROVAL =
   'Review each PR in Review against its "done means": read the diff and check CI. Then approve it with ticket_approve, passing sha=<the commit you reviewed> (it refuses if the PR moved on since), or comment on what\'s missing. Approve only the commit you actually reviewed: a new push needs a new approval, because your runner merges only the approved commit, once its tests pass and the project\'s merge setting allows it. You can\'t approve your own work: when you built a ticket yourself, ask a worker in the room to review it and approve it with ticket_approve, or ask your person. ' +
   REVIEW_EVIDENCE;
 
+export const LEAD_UNDO = "When a person asks to undo a merged ticket, create one new ticket for a worker to revert that pull request's merge commit with git revert on a new branch. Its PR must target the default branch and go through the normal tests, review, approval and merge. Never revert a database migration; tell the person why it needs a manual plan instead. Reply with the new ticket's key.";
+
 /** What the lead does. Shown to the lead in project_brief. */
 export function leadGuide(project: string, people: string[]): string {
   const who = people.length ? `${people.join(" and ")} ${people.length === 1 ? "talks" : "talk"}` : "The people on this project talk";
@@ -182,7 +184,8 @@ export function leadGuide(project: string, people: string[]): string {
 5. Tell your person what you created: keys, who has what, and the order.
 6. Follow up whenever your person comes back or asks: check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. ${LEAD_APPROVAL} Record settled choices with decision_add.
 7. ${leadAutonomy("your person")}
-8. You may change a worker's model and effort with agent_model when the work calls for it: stronger (e.g. opus, high) for hard, risky or wide changes; lighter (e.g. sonnet or haiku, low/medium) for routine, small or docs work. Prefer changing it right before assigning the ticket, and always give the reason. Owners can lock their machine (model_locked), in which case your change won't take effect there.`;
+8. ${LEAD_UNDO}
+9. You may change a worker's model and effort with agent_model when the work calls for it: stronger (e.g. opus, high) for hard, risky or wide changes; lighter (e.g. sonnet or haiku, low/medium) for routine, small or docs work. Prefer changing it right before assigning the ticket, and always give the reason. Owners can lock their machine (model_locked), in which case your change won't take effect there.`;
 }
 
 /** Used when a project has no rules written yet. Same as the website's recommended rules. */
