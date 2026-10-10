@@ -670,6 +670,38 @@ select pg_temp.expect((select data ->> 'to' = 'Risky merges wait for a person' a
   from public.ticket_events where ticket_id = '00000000-0000-0000-0000-0000000000a9' and kind = 'summary' order by id desc offset 1 limit 1),
   'history says who wrote the summary');
 
+-- ------------------------------------------------ last visit (schema 15)
+reset role;
+set role authenticated;
+-- a person in the project marks it as caught up; the time is the server's
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect((select count(*) from public.project_reads) = 0, 'nobody has caught up yet');
+select pg_temp.expect(public.mark_caught_up('00000000-0000-0000-0000-0000000000f1') = now(), 'a person marks a project as caught up');
+select pg_temp.expect((select caught_up_at > now() - interval '1 minute' from public.project_reads where project_id = '00000000-0000-0000-0000-0000000000f1'), 'and reads their own row');
+-- marking again moves the same row forward
+reset role;
+update public.project_reads set caught_up_at = now() - interval '9 hours';
+set role authenticated;
+select pg_temp.expect(public.mark_caught_up('00000000-0000-0000-0000-0000000000f1') = now(), 'marking again moves the time forward');
+select pg_temp.expect((select count(*) from public.project_reads) = 1, 'one row per person and project');
+-- no writing the row directly: the time can't be made up
+select pg_temp.expect_error($q$update public.project_reads set caught_up_at = now() + interval '1 day'$q$, 'permission denied');
+select pg_temp.expect_error($q$insert into public.project_reads (project_id, profile_id) values ('00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-0000000000b2')$q$, 'permission denied');
+select pg_temp.expect_error($q$delete from public.project_reads$q$, 'permission denied');
+-- another person in the project can't see when Mona last visited
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+select pg_temp.expect((select count(*) from public.project_reads) = 0, 'a teammate can''t read someone else''s last visit');
+select pg_temp.expect(public.mark_caught_up('00000000-0000-0000-0000-0000000000f1') = now(), 'the owner has their own row');
+select pg_temp.expect((select count(*) from public.project_reads) = 1, 'and sees only that one');
+-- agents don't have visits; outsiders can't mark a project they aren't in
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+select pg_temp.expect_error($q$select public.mark_caught_up('00000000-0000-0000-0000-0000000000f1')$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b4';
+select pg_temp.expect_error($q$select public.mark_caught_up('00000000-0000-0000-0000-0000000000f1')$q$, 'AUTOKOLAB_FORBIDDEN');
+select pg_temp.expect((select count(*) from public.project_reads) = 0, 'an outsider sees nothing');
+reset role;
+select pg_temp.expect((select count(*) from public.project_reads) = 2, 'two people, two rows');
+
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
 select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from unnest(array[
