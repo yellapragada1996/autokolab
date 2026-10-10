@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { recentEvents, waitsForMergeOk, type Project, type Status, type TicketEvent } from "../lib/data";
 import { go, onNav, type Route } from "../lib/router";
 import type { Profile } from "../lib/session";
-import { AgentMark, Avatar, Button, Icon, Logo, Svg } from "../ui";
+import { Button, Icon, Kbd, Logo, PersonAvatar, Svg } from "../ui";
 import { CommandPalette, useCommandPalette, type Command } from "../ui/CommandPalette";
 import { Backlog } from "./Backlog";
 import { Board, Card, EmptyBoard } from "./Board";
@@ -14,7 +14,7 @@ import type { Room as RoomData, RoomMessage } from "../lib/room";
 import { GuidePage } from "./GuidePage";
 import { ListView } from "./ListView";
 import { NewTicket } from "./NewTicket";
-import { agentOnline, agentStatusText, People } from "./People";
+import { AgentFace, agentOnline, agentStatusText, People } from "./People";
 import { actionFor, activity, goals, goalStateText, headline, plural, type Goal } from "./story";
 import { isPerson, OkToMerge, TicketPage } from "./TicketPage";
 import { useWorkspace, type Workspace as WS } from "./useWorkspace";
@@ -123,7 +123,7 @@ export function Workspace({
             </div>
             {!["board", "backlog", "list", "room", "connect"].includes(route.view) && (
               <Button variant="primary" size="sm" onClick={() => setNewTicket({})}>
-                Create <kbd style={{ font: "500 11px var(--mono)", opacity: 0.7 }}>C</kbd>
+                Create <kbd style={{ font: "500 12px var(--mono)", opacity: 0.7 }}>C</kbd>
               </Button>
             )}
           </header>
@@ -202,7 +202,7 @@ function Sidebar({
           <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.name}</span>
           <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.repo ?? `${project.ticket_prefix}-…`}</span>
         </span>
-        <span aria-hidden="true" style={{ color: "var(--faint)", fontSize: 11 }}>▾</span>
+        <span aria-hidden="true" style={{ color: "var(--faint)", fontSize: 12 }}>▾</span>
         <select
           aria-label="Switch project"
           value={project.slug}
@@ -241,7 +241,7 @@ function Sidebar({
               <Svg size={17}>{n.icon}</Svg>
               {n.label}
               {n.id === "overview" && needs > 0 && (
-                <span style={{ marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 999, background: "var(--warn-bg)", border: "1px solid var(--warn-line)", color: "var(--warn)", fontSize: 11, fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 999, background: "var(--amber)", color: "var(--amber-ink)", fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
                   {needs}
                 </span>
               )}
@@ -259,7 +259,7 @@ function Sidebar({
             const p = ws.people.profiles.get(m.actor_id);
             return (
               <div key={m.actor_id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 10px" }}>
-                <Avatar name={p?.name ?? "?"} src={p?.avatar_url} size={22} you={m.actor_id === profile.id} />
+                <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={22} you={m.actor_id === profile.id} />
                 <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {p?.name ?? "Someone"}
                   {m.actor_id === profile.id ? " (you)" : ""}
@@ -275,13 +275,13 @@ function Sidebar({
             const st = on ? agentStatusText[a.status] : agentStatusText.offline;
             return (
               <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 10px" }} title={a.status_note ?? st.label}>
-                <AgentMark vendor={a.vendor} size={22} />
+                <AgentFace a={a} size={22} ring="var(--sidebar)" />
                 <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
                   <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", gap: 6, alignItems: "center" }}>
                     {a.display_name}
                     {a.id === project.lead_agent_id && <LeadBadge />}
                   </span>
-                  <span style={{ fontSize: 11, color: st.color }}>{st.label}</span>
+                  <span style={{ fontSize: 12, color: st.color }}>{st.label}</span>
                 </span>
               </div>
             );
@@ -300,10 +300,12 @@ function Sidebar({
             {Icon.search}
           </Svg>
           Jump to…
-          <kbd style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 11, color: "var(--faint)" }}>⌘K</kbd>
+          <span style={{ marginLeft: "auto" }}>
+            <Kbd>⌘K</Kbd>
+          </span>
         </button>
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 4px 0" }}>
-          <Avatar name={profile.name} src={profile.avatar_url} size={22} you />
+          <PersonAvatar name={profile.name} src={profile.avatar_url} size={22} you />
           <span style={{ fontSize: 13, color: "var(--text-2)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile.name}</span>
           <Button variant="ghost" size="sm" onClick={onSignOut} style={{ height: 28, padding: "0 8px", fontSize: 12 }}>
             Sign out
@@ -420,7 +422,7 @@ function Overview({ ws, me, demoEvents }: { ws: WS; me: string; demoEvents?: Tic
             const cur = a.current_ticket_id ? ws.byId.get(a.current_ticket_id) : undefined;
             return (
               <div key={a.id} style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <AgentMark vendor={a.vendor} size={26} />
+                <AgentFace a={a} size={26} />
                 <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
                   <span style={{ fontSize: 13, fontWeight: 500 }}>
                     {a.display_name} <span style={{ color: st.color, fontWeight: 400 }}>· {st.label}</span>
@@ -448,10 +450,19 @@ function Overview({ ws, me, demoEvents }: { ws: WS; me: string; demoEvents?: Tic
               <span style={{ marginTop: 2 }}>
                 <StatusIcon status={t.status} size={13} />
               </span>
-              <span>
-                <strong style={{ color: "var(--text-2)", fontWeight: 500 }}>{ws.nameOf(e.actor_id)}</strong> {s.verb} <KeyText t={t} style={{ color: "var(--text-2)" }} />
-                {s.after ? ` ${s.after}` : ""} <span style={{ color: "var(--faint)" }}>· {ago(e.created_at)}</span>
-              </span>
+              {s.outcome ? (
+                <span>
+                  <span style={{ color: "var(--text-2)" }}>{s.outcome}</span>{" "}
+                  <span style={{ color: "var(--faint)" }}>
+                    · <KeyText t={t} style={{ color: "var(--faint)" }} /> · {ago(e.created_at)}
+                  </span>
+                </span>
+              ) : (
+                <span>
+                  <strong style={{ color: "var(--text-2)", fontWeight: 500 }}>{ws.nameOf(e.actor_id)}</strong> {s.verb} <KeyText t={t} style={{ color: "var(--text-2)" }} />
+                  {s.after ? ` ${s.after}` : ""} <span style={{ color: "var(--faint)" }}>· {ago(e.created_at)}</span>
+                </span>
+              )}
             </a>
           ))}
         </section>

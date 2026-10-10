@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { addDecision, supersede, type Decision } from "../lib/data";
 import { onNav } from "../lib/router";
-import { Button } from "../ui";
+import { Button, Chip } from "../ui";
 import { ago, Markdown } from "./bits";
 import type { Workspace } from "./useWorkspace";
 
@@ -51,9 +51,9 @@ function DecisionCard({ ws, d }: { ws: Workspace; d: Decision }) {
   return (
     <article style={{ display: "flex", flexDirection: "column", gap: 8, padding: "14px 16px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line-soft)", opacity: d.superseded_by ? 0.6 : 1 }}>
       <div style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
-        <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: d.kind === "contract" ? "var(--codex)" : "var(--faint)" }}>{d.key}</span>
+        <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--faint)" }}>{d.key}</span>
         <h3 style={{ fontSize: 15, fontWeight: 600, textDecoration: d.superseded_by ? "line-through" : "none" }}>{d.title}</h3>
-        {d.kind === "contract" && <span style={{ fontSize: 12, color: "var(--codex)" }}>Contract</span>}
+        {d.kind === "contract" && <Chip>Contract</Chip>}
         <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--faint)" }}>
           {ws.nameOf(d.created_by)} · {ago(d.created_at)}
         </span>

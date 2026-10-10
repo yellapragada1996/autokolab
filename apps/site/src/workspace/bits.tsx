@@ -1,16 +1,17 @@
 import { Fragment, type CSSProperties, type ReactNode } from "react";
 import type { Priority, Status, Ticket, TicketType } from "../lib/data";
-import { AgentMark, Avatar } from "../ui";
+import { AgentAvatar, PersonAvatar } from "../ui";
 import type { Workspace } from "./useWorkspace";
 
-// Small display pieces shared by the board, list and ticket screens.
+// Small display pieces shared by the board, list and ticket screens. Colour only means status:
+// blue moving, green done, amber needs you, coral heads up; everything else is neutral.
 
 export const statusColor: Record<Status, string> = {
   backlog: "var(--faint)",
   ready: "var(--text-2)",
-  in_progress: "var(--ok)",
-  review: "var(--codex)",
-  done: "var(--muted)",
+  in_progress: "var(--blue)",
+  review: "var(--blue)",
+  done: "var(--green)",
   canceled: "var(--faint)",
 };
 
@@ -36,10 +37,10 @@ export function StatusIcon({ status, size = 14 }: { status: Status; size?: numbe
   );
 }
 
-/** Jira's priority arrows: urgent and high point up (red), medium is "=", low points down. */
+/** Jira's priority arrows: urgent and high point up, medium is "=", low points down. Only urgent is coloured (heads up). */
 export function PriorityIcon({ priority, size = 16 }: { priority: Priority; size?: number }) {
   const label = { urgent: "Urgent", high: "High", medium: "Medium", low: "Low", none: "No priority" }[priority];
-  const c = { urgent: "#ff5630", high: "#ff7452", medium: "#ffab00", low: "#4c9aff", none: "var(--faint)" }[priority];
+  const c = { urgent: "var(--coral)", high: "var(--text-secondary)", medium: "var(--text-muted)", low: "var(--text-dim)", none: "var(--faint)" }[priority];
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" role="img" aria-label={`${label} priority`} style={{ flex: "none" }}>
       <title>{label}</title>
@@ -55,27 +56,20 @@ export function PriorityIcon({ priority, size = 16 }: { priority: Priority; size
 /** Jira's issue type names: a feature is a Story. */
 export const typeLabel: Record<TicketType, string> = { feature: "Story", bug: "Bug", task: "Task", chore: "Chore", epic: "Epic" };
 
-export const typeTone: Record<TicketType, string> = {
-  feature: "#63ba3c",
-  bug: "#e5493a",
-  task: "#4bade8",
-  chore: "#8993a4",
-  epic: "#904ee2",
-};
-
-/** Jira's issue type icons: a small colored square with a white symbol. */
+/** Jira's issue type icons: a small neutral square with a symbol (the symbol tells them apart, not colour). */
 export function TypeIcon({ type, size = 16 }: { type: TicketType; size?: number }) {
+  const ink = "var(--avatar-fg)";
   const glyph = {
-    feature: <path d="M5.5 4h5v8.5L8 10.5l-2.5 2z" fill="#fff" />,
-    bug: <circle cx="8" cy="8" r="3" fill="#fff" />,
-    task: <path d="M4.8 8.2l2.2 2.2 4.2-4.6" stroke="#fff" strokeWidth="1.9" fill="none" strokeLinecap="round" strokeLinejoin="round" />,
-    chore: <path d="M5 8h6" stroke="#fff" strokeWidth="2" strokeLinecap="round" />,
-    epic: <path d="M9.2 3.5L5 9h3l-1.2 3.5L11 7H8z" fill="#fff" />,
+    feature: <path d="M5.5 4h5v8.5L8 10.5l-2.5 2z" fill={ink} />,
+    bug: <circle cx="8" cy="8" r="3" fill={ink} />,
+    task: <path d="M4.8 8.2l2.2 2.2 4.2-4.6" stroke={ink} strokeWidth="1.9" fill="none" strokeLinecap="round" strokeLinejoin="round" />,
+    chore: <path d="M5 8h6" stroke={ink} strokeWidth="2" strokeLinecap="round" />,
+    epic: <path d="M9.2 3.5L5 9h3l-1.2 3.5L11 7H8z" fill={ink} />,
   }[type];
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" role="img" aria-label={typeLabel[type]} style={{ flex: "none" }}>
       <title>{typeLabel[type]}</title>
-      <rect width="16" height="16" rx="3" fill={typeTone[type]} />
+      <rect width="16" height="16" rx="3" fill="var(--avatar-bg)" />
       {glyph}
     </svg>
   );
@@ -90,48 +84,33 @@ export function TypeTag({ type }: { type: TicketType }) {
   );
 }
 
-/** Jira's status lozenge: grey to do, blue in progress, green done. */
+/** Jira's status lozenge: grey to do, blue in progress, green done, amber needs you. */
 export function StatusLozenge({ status, needs }: { status: Status; needs?: boolean }) {
   const tone = needs
-    ? { bg: "var(--warn-bg)", fg: "var(--warn)", line: "var(--warn-line)" }
+    ? { bg: "var(--amber-bg-2)", fg: "var(--amber)", line: "var(--amber-border)" }
     : status === "done"
-      ? { bg: "#1c3a2a", fg: "#7ee2a8", line: "transparent" }
+      ? { bg: "var(--green-chip)", fg: "var(--green-text)", line: "transparent" }
       : status === "in_progress" || status === "review"
-        ? { bg: "#13294b", fg: "#85b8ff", line: "transparent" }
+        ? { bg: "var(--blue-bg)", fg: "var(--blue-text)", line: "transparent" }
         : { bg: "var(--surface-2)", fg: "var(--text-2)", line: "transparent" };
   const text = needs ? "Needs you" : { backlog: "Backlog", ready: "Ready", in_progress: "In progress", review: "In review", done: "Done", canceled: "Canceled" }[status];
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 6px", borderRadius: 4, background: tone.bg, color: tone.fg, border: `1px solid ${tone.line}`, font: "700 11px var(--sans)", letterSpacing: "0.03em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 6px", borderRadius: 4, background: tone.bg, color: tone.fg, border: `1px solid ${tone.line}`, font: "600 12px var(--sans)", letterSpacing: "0.03em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
       {text}
     </span>
   );
 }
 
-/** Each epic gets its own color for its lozenge on cards (Jira-style), stable by key. */
-const EPIC_COLORS = [
-  { bg: "#1f3b2d", fg: "#8fe3b4" },
-  { bg: "#3a2a12", fg: "#f2c14e" },
-  { bg: "#13294b", fg: "#85b8ff" },
-  { bg: "#3a1f1c", fg: "#ff9a8a" },
-  { bg: "#163536", fg: "#79e2d7" },
-  { bg: "#33331a", fg: "#e2e27a" },
-];
-export function epicColor(key: string): { bg: string; fg: string } {
-  let h = 0;
-  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return EPIC_COLORS[h % EPIC_COLORS.length];
-}
-
+/** The goal (epic) a ticket belongs to. Neutral: goals don't get their own colours. */
 export function EpicLozenge({ epic }: { epic: Pick<Ticket, "key" | "title"> }) {
-  const c = epicColor(epic.key);
   return (
-    <span title={`${epic.key} ${epic.title}`} style={{ display: "inline-flex", alignItems: "center", maxWidth: 170, height: 20, padding: "0 6px", borderRadius: 4, background: c.bg, color: c.fg, font: "600 11px var(--sans)", textTransform: "uppercase", letterSpacing: "0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+    <span title={`${epic.key} ${epic.title}`} style={{ display: "inline-flex", alignItems: "center", maxWidth: 170, height: 20, padding: "0 6px", borderRadius: 4, background: "var(--surface-raised)", color: "var(--text-secondary)", font: "500 12px var(--sans)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
       {epic.title}
     </span>
   );
 }
 
-/** A person (circle) or an agent (rounded square), with their name. */
+/** A person (circle) or an agent (neutral square), with their name. */
 export function Who({ ws, id, size = 22, withName = true, you }: { ws: Workspace; id: string | null; size?: number; withName?: boolean; you?: string }) {
   if (!id) {
     return withName ? (
@@ -144,7 +123,7 @@ export function Who({ ws, id, size = 22, withName = true, you }: { ws: Workspace
   const profile = ws.people.profiles.get(id);
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-      {agent ? <AgentMark vendor={agent.vendor} size={size} /> : <Avatar name={profile?.name ?? "?"} src={profile?.avatar_url} size={size} you={id === you} />}
+      {agent ? <AgentAvatar name={agent.display_name} vendor={agent.vendor} size={size} /> : <PersonAvatar name={profile?.name ?? "?"} src={profile?.avatar_url} size={size} you={id === you} />}
       {withName && <span style={{ fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{ws.nameOf(id)}</span>}
       {withName && ws.project.lead_agent_id === id && <LeadBadge />}
     </span>
@@ -153,7 +132,7 @@ export function Who({ ws, id, size = 22, withName = true, you }: { ws: Workspace
 
 export function LeadBadge() {
   return (
-    <span title="The lead writes the tickets and assigns them" style={{ display: "inline-flex", alignItems: "center", height: 18, padding: "0 5px", borderRadius: 4, background: "var(--primary)", color: "var(--on-primary)", font: "700 10px var(--sans)", letterSpacing: "0.04em", textTransform: "uppercase", flex: "none" }}>
+    <span title="The lead writes the tickets and assigns them" style={{ display: "inline-flex", alignItems: "center", height: 18, padding: "0 5px", borderRadius: 4, background: "var(--primary)", color: "var(--on-primary)", font: "700 12px var(--sans)", letterSpacing: "0.04em", textTransform: "uppercase", flex: "none" }}>
       Lead
     </span>
   );
@@ -165,7 +144,7 @@ export function StepProgress({ steps }: { steps: { status: string }[] | undefine
   return (
     <div style={{ display: "flex", gap: 3 }} role="img" aria-label={`${done} of ${steps.length} steps done`}>
       {steps.map((s, i) => (
-        <span key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: s.status === "done" ? "var(--ok-dot)" : s.status === "now" ? "var(--warn)" : "var(--line)" }} />
+        <span key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: s.status === "done" ? "var(--ok-dot)" : s.status === "now" ? "var(--blue)" : "var(--track)" }} />
       ))}
     </div>
   );
@@ -173,7 +152,7 @@ export function StepProgress({ steps }: { steps: { status: string }[] | undefine
 
 export function Label({ children }: { children: ReactNode }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line)", fontSize: 11, color: "var(--text-2)" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 8px", borderRadius: 999, border: "1px solid var(--line)", fontSize: 12, color: "var(--text-2)" }}>
       {children}
     </span>
   );

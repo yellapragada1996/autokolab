@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { updateTicket, type Status, type Ticket, type TicketPatch } from "../lib/data";
 import { onNav } from "../lib/router";
-import { AgentMark, Avatar, Button, Icon, Svg } from "../ui";
+import { AgentAvatar, Button, Icon, PersonAvatar, Svg } from "../ui";
 import { EpicLozenge, KeyText, LeadBadge, PriorityIcon, StepProgress, TypeIcon } from "./bits";
-import { agentOnline, agentStatusText } from "./People";
+import { AgentFace, agentOnline, agentStatusText } from "./People";
 import type { Workspace } from "./useWorkspace";
 
 // The board, modelled on Jira's: columns for the work in flight, swimlanes by assignee or epic,
@@ -53,8 +53,8 @@ export function Filters({ ws, me, f, setF }: { ws: Workspace; me: string; f: Fil
     padding: "0 12px",
     borderRadius: 6,
     border: `1px solid ${on ? "var(--primary)" : "var(--line)"}`,
-    background: on ? "rgba(215,242,92,0.12)" : "transparent",
-    color: on ? "var(--primary)" : "var(--text-2)",
+    background: on ? "var(--surface-active)" : "transparent",
+    color: on ? "var(--text)" : "var(--text-2)",
     fontSize: 13,
     fontWeight: 500,
     cursor: "pointer",
@@ -81,11 +81,11 @@ export function Filters({ ws, me, f, setF }: { ws: Workspace; me: string; f: Fil
               aria-pressed={on}
               style={{ marginLeft: -6, padding: 0, border: 0, borderRadius: agent ? 9 : "50%", background: "none", cursor: "pointer", boxShadow: on ? "0 0 0 2px var(--primary)" : "0 0 0 2px var(--bg)", position: "relative", zIndex: on ? 2 : 1, display: "inline-flex" }}
             >
-              {agent ? <AgentMark vendor={agent.vendor} size={30} /> : <Avatar name={p?.name ?? "?"} src={p?.avatar_url} size={30} you={m.actor_id === me} />}
+              {agent ? <AgentAvatar name={agent.display_name} vendor={agent.vendor} size={30} /> : <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={30} you={m.actor_id === me} />}
             </button>
           );
         })}
-        <button type="button" onClick={() => toggle("none")} title="Unassigned" aria-pressed={f.people.includes("none")} style={{ marginLeft: -6, width: 30, height: 30, borderRadius: "50%", border: "1px dashed var(--line-strong)", background: "var(--bg)", color: "var(--faint)", fontSize: 11, cursor: "pointer", boxShadow: f.people.includes("none") ? "0 0 0 2px var(--primary)" : "0 0 0 2px var(--bg)" }}>
+        <button type="button" onClick={() => toggle("none")} title="Unassigned" aria-pressed={f.people.includes("none")} style={{ marginLeft: -6, width: 30, height: 30, borderRadius: "50%", border: "1px dashed var(--line-strong)", background: "var(--bg)", color: "var(--faint)", fontSize: 12, cursor: "pointer", boxShadow: f.people.includes("none") ? "0 0 0 2px var(--primary)" : "0 0 0 2px var(--bg)" }}>
           ?
         </button>
       </div>
@@ -191,7 +191,7 @@ export function Board({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (st
         tickets: shown.filter((t) => t.assignee_id === id),
         head: (
           <>
-            {agent ? <AgentMark vendor={agent.vendor} size={22} /> : <Avatar name={p?.name ?? "?"} src={p?.avatar_url} size={22} you={id === me} />}
+            {agent ? <AgentFace a={agent} size={22} /> : <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={22} you={id === me} />}
             <span style={{ fontWeight: 600 }}>
               {ws.nameOf(id)}
               {id === me ? " (you)" : ""}
@@ -251,7 +251,7 @@ export function Board({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (st
             </select>
           </label>
           <Button variant="primary" size="sm" onClick={() => onNew("ready")}>
-            Create <kbd style={{ font: "500 11px var(--mono)", opacity: 0.7 }}>C</kbd>
+            Create <kbd style={{ font: "500 12px var(--mono)", opacity: 0.7 }}>C</kbd>
           </Button>
         </div>
       </div>
@@ -406,19 +406,24 @@ export function Card({ ws, t, me, action, dragging, onDragStart, onDragEnd }: { 
         color: "var(--text)",
         opacity: dragging ? 0.4 : 1,
         cursor: onDragStart ? "grab" : "pointer",
-        boxShadow: "0 1px 1px rgba(0,0,0,0.35)",
+        boxShadow: "var(--shadow-sm)",
         ...(needs ? { background: "var(--warn-bg)", border: "1px solid var(--warn-line)" } : { background: "var(--surface)", border: `1px ${waiting ? "dashed" : "solid"} var(--line)` }),
       }}
     >
-      {action && <span style={{ fontSize: 13, fontWeight: 600, color: needs ? "var(--warn)" : "var(--codex)" }}>{action}</span>}
+      {action && <span style={{ fontSize: 13, fontWeight: 600, color: needs ? "var(--warn)" : "var(--text-secondary)" }}>{action}</span>}
       <span style={{ fontSize: 14, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.title}</span>
+      {t.summary && (
+        <span title={t.summary} style={{ fontSize: 12, lineHeight: 1.4, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {t.summary}
+        </span>
+      )}
       {steps && steps.length > 0 && t.status !== "done" && <StepProgress steps={steps} />}
       {meta && <span style={{ fontSize: 12, lineHeight: 1.4, color: needs ? "var(--warn)" : "var(--muted)" }}>{meta}</span>}
       {(parent || t.labels.length > 0) && (
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
           {parent && <EpicLozenge epic={parent} />}
           {t.labels.slice(0, 2).map((l) => (
-            <span key={l} style={{ height: 20, padding: "0 6px", borderRadius: 4, border: "1px solid var(--line)", fontSize: 11, color: "var(--text-2)", display: "inline-flex", alignItems: "center" }}>
+            <span key={l} style={{ height: 20, padding: "0 6px", borderRadius: 4, border: "1px solid var(--line)", fontSize: 12, color: "var(--text-2)", display: "inline-flex", alignItems: "center" }}>
               {l}
             </span>
           ))}
@@ -428,7 +433,7 @@ export function Card({ ws, t, me, action, dragging, onDragStart, onDragEnd }: { 
         <TypeIcon type={t.type} />
         <KeyText t={t} style={{ textDecoration: t.status === "done" ? "line-through" : "none" }} />
         {t.pr_url && (
-          <span title="Pull request open" style={{ fontSize: 11, color: "var(--codex)", fontFamily: "var(--mono)" }}>
+          <span title="Pull request open" style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
             PR
           </span>
         )}
@@ -447,7 +452,7 @@ export function WhoMark({ ws, id, me, size = 22 }: { ws: Workspace; id: string |
   const p = ws.people.profiles.get(id);
   return (
     <span title={ws.nameOf(id)} style={{ display: "inline-flex", flex: "none" }}>
-      {agent ? <AgentMark vendor={agent.vendor} size={size} /> : <Avatar name={p?.name ?? "?"} src={p?.avatar_url} size={size} you={id === me} />}
+      {agent ? <AgentAvatar name={agent.display_name} vendor={agent.vendor} size={size} /> : <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={size} you={id === me} />}
     </span>
   );
 }
