@@ -13,7 +13,7 @@ import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineR
 import { installHook } from "./githook.js";
 import { ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, plainGhError, prNumber, readyToMergeMessage, type MergeDecision, type PrInfo } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
-import { SHIP_FAILED_PREFIX, realIo, ship, shipBody, shipNeedsHuman, shipPlan, worktreeFacts } from "./ship.js";
+import { SHIP_FAILED_PREFIX, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts, worktreeGitDir } from "./ship.js";
 import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
@@ -970,10 +970,16 @@ export class Runner {
   private deliver(t: Ticket, worktree: Worktree, repo: string, summary: string | undefined, message: string): { pr: string } | { problem: string } | { note: string | null } {
     const { ak, cfg } = this;
     const where = `on ${ak.ownerName(ak.me)}'s machine`;
-    const branch = currentBranch(worktree.path) ?? worktree.branch;
+    // Git is pointed at the clone's own record of this worktree, never at the `.git` link inside
+    // the folder: the agent could have replaced that, and the runner isn't sandboxed.
+    const gitDir = worktreeGitDir(clonePath(repo), worktree.path);
+    if (!gitDir) return { problem: shipNeedsHuman("commit", "not one of the runner's working copies", where) };
+    const io = trustedIo(gitDir);
+    let branch: string;
     let facts: { dirty: boolean; ahead: number };
     try {
-      facts = worktreeFacts(realIo, worktree.path, worktree.base);
+      branch = io.git(worktree.path, "branch", "--show-current") || worktree.branch;
+      facts = worktreeFacts(io, worktree.path, worktree.base);
     } catch (e) {
       return { problem: shipNeedsHuman("commit", (e as Error).message, where) };
     }
@@ -984,7 +990,7 @@ export class Runner {
       return { note: null };
     }
     const title = `${t.key}: ${t.title}`.slice(0, 200);
-    const r = ship(realIo, { path: worktree.path, repo, branch, base: worktree.base, title, body: shipBody(ak.me.name, t.key, summary, message), steps: plan.steps });
+    const r = ship(io, { path: worktree.path, repo, branch, base: worktree.base, title, body: shipBody(ak.me.name, t.key, summary, message), steps: plan.steps });
     if (!r.ok) {
       this.log(`${t.key}: couldn't ${r.step}: ${redactSecrets(r.error).slice(0, 300)}`);
       return { problem: shipNeedsHuman(r.step, redactSecrets(r.error), where) };

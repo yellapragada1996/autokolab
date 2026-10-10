@@ -1,12 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseRunnerConfig } from "../src/runner/config.js";
-import { codexInvocation, gitCommonDir } from "../src/runner/engines.js";
+import { codexInvocation } from "../src/runner/engines.js";
 import { buildTicketPrompt } from "../src/runner/prompt.js";
-import { SHIP_FAILED_PREFIX, looksPrivate, plainGitError, realIo, ship, shipBody, shipNeedsHuman, shipPlan, worktreeFacts, type ShipFacts, type ShipIo } from "../src/runner/ship.js";
+import { SHIP_FAILED_PREFIX, changedPaths, looksPrivate, plainGitError, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts, worktreeGitDir, type ShipFacts, type ShipIo } from "../src/runner/ship.js";
 
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -34,8 +34,17 @@ describe("what the runner delivers for an agent (AK-46)", () => {
     expect(shipPlan(facts({ branch: "trunk", base: "trunk", protectedBranches: [] }))).toEqual({ skip: "protected" });
   });
   it("knows a local secret file from an example", () => {
-    for (const p of [".env", "apps/site/.env.local", "certs/server.pem", "deploy/id_ed25519", "x.key"]) expect(looksPrivate(p), p).toBe(true);
-    for (const p of [".env.example", "config/.env.sample", "src/env.ts", "docs/keys.md", "src/monkey.ts"]) expect(looksPrivate(p), p).toBe(false);
+    for (const p of [".env", "apps/site/.env.local", "certs/server.pem", "deploy/id_ed25519", "x.key", ".envrc", ".npmrc", "home/.netrc", "infra/prod.tfvars", "credentials.json", "config/secrets.yml"]) {
+      expect(looksPrivate(p), p).toBe(true);
+    }
+    for (const p of [".env.example", "config/.env.sample", "src/env.ts", "docs/keys.md", "src/monkey.ts", "src/core/secrets.ts", "docs/credentials.md", "secrets.yml.example"]) {
+      expect(looksPrivate(p), p).toBe(false);
+    }
+  });
+  it("reads what a commit of everything would add or change", () => {
+    const status = [" M src/a.ts", "?? new file.ts", "A  added.ts", "R  old.ts -> renamed.ts", " D gone.ts", "D  staged-gone.ts", '?? "odd name.ts"', "MM both.ts"].join("\n");
+    expect(changedPaths(status)).toEqual(["src/a.ts", "new file.ts", "added.ts", "renamed.ts", "odd name.ts", "both.ts"]);
+    expect(changedPaths("")).toEqual([]);
   });
   it("says in plain words which step failed", () => {
     const where = "on lee's machine";
@@ -61,13 +70,11 @@ describe("delivering from a real worktree", () => {
   const ghCalls: string[][] = [];
   let open: string | null = null;
   let ghCreate: { ok: boolean; out: string; err: string } = { ok: true, out: "https://github.com/ana/shop/pull/7\n", err: "" };
-  const io: ShipIo = {
-    git: realIo.git,
-    gh: (args) => {
-      ghCalls.push(args);
-      if (args[1] === "list") return { ok: true, out: JSON.stringify(open ? [{ url: open }] : []), err: "" };
-      return ghCreate;
-    },
+  let io: ShipIo;
+  const fakeGh: ShipIo["gh"] = (args) => {
+    ghCalls.push(args);
+    if (args[1] === "list") return { ok: true, out: JSON.stringify(open ? [{ url: open }] : []), err: "" };
+    return ghCreate;
   };
   const job = (steps: ("commit" | "push" | "open_pr")[]) => ({ path: wt, repo: "ana/shop", branch: "sh-2-retries", base: "main", title: "SH-2: Add retries", body: "body", steps });
 
@@ -84,6 +91,13 @@ describe("delivering from a real worktree", () => {
     git(clone, "commit", "-q", "-m", "first");
     git(clone, "push", "-q", "-u", "origin", "main");
     git(clone, "worktree", "add", "-q", "-b", "sh-2-retries", wt, "origin/main");
+    io = { git: trustedIo(worktreeGitDir(clone, wt)!).git, gh: fakeGh };
+  });
+
+  it("finds a worktree's Git folder from the clone's own records", () => {
+    expect(worktreeGitDir(clone, wt)).toBe(join(clone, ".git", "worktrees", "wt"));
+    expect(worktreeGitDir(clone, root)).toBeNull();
+    expect(worktreeGitDir(join(root, "nowhere"), wt)).toBeNull();
   });
   afterAll(() => rmSync(root, { recursive: true, force: true }));
 
@@ -97,7 +111,8 @@ describe("delivering from a real worktree", () => {
     const r = ship(io, job(["commit", "push", "open_pr"]));
     expect(r).toMatchObject({ ok: false, step: "commit" });
     expect(!r.ok && r.error).toContain(".env");
-    expect(git(wt, "diff", "--cached", "--name-only")).toBe("");
+    expect(!r.ok && r.error).toContain("didn't commit anything");
+    expect(git(wt, "status", "--porcelain")).toBe("?? .env\n?? retry.ts"); // nothing staged, nothing lost
     expect(worktreeFacts(io, wt, "main")).toEqual({ dirty: true, ahead: 0 });
     rmSync(join(wt, ".env"));
   });
@@ -133,19 +148,47 @@ describe("delivering from a real worktree", () => {
     expect(r).toMatchObject({ ok: false, step: "push" });
     expect(git(wt, "log", "-1", "--format=%s")).toBe("SH-2: Add retries"); // the commit stays, ready for the next try
     git(wt, "remote", "set-url", "origin", remote);
+    ghCreate = { ok: true, out: "https://github.com/ana/shop/pull/7\n", err: "" };
   });
 
-  it("lets Codex write the repository's Git folder, so it can commit in a worktree", () => {
-    expect(gitCommonDir(wt)).toBe(join(clone, ".git"));
-    expect(gitCommonDir(root)).toBeNull();
+  it("refuses to push a secret file the agent committed itself", () => {
+    writeFileSync(join(wt, ".npmrc"), "//registry.npmjs.org/:_authToken=not-a-real-one\n");
+    git(wt, "add", "-A");
+    git(wt, "commit", "-q", "-m", "oops");
+    const before = git(remote, "rev-parse", "sh-2-retries");
+    const r = ship(io, job(["push", "open_pr"]));
+    expect(r).toMatchObject({ ok: false, step: "push" });
+    expect(!r.ok && r.error).toContain(".npmrc");
+    expect(git(remote, "rev-parse", "sh-2-retries")).toBe(before);
+    // Taking it out of the branch again is fine: a deletion isn't a secret.
+    git(wt, "reset", "-q", "--hard", "HEAD~1");
+    expect(ship(io, job(["push", "open_pr"]))).toMatchObject({ ok: true });
+  });
+
+  it("isn't steered by a Git link the agent replaced: its hooks and settings never run", () => {
+    // What a sandboxed agent can do: swap the folder's `.git` link for Git data of its own, with a
+    // hook that would run outside the sandbox when the runner commits.
+    const proof = join(root, "escaped");
+    rmSync(join(wt, ".git"));
+    git(wt, "init", "-q", "-b", "sh-2-retries");
+    mkdirSync(join(wt, ".git", "hooks"), { recursive: true });
+    for (const hook of ["pre-commit", "pre-push", "post-commit"]) writeFileSync(join(wt, ".git", "hooks", hook), `#!/bin/sh\ntouch ${JSON.stringify(proof)}\n`, { mode: 0o755 });
+    git(wt, "config", "remote.origin.url", join(root, "somewhere-else.git"));
+    writeFileSync(join(wt, "extra.ts"), "export const extra = 1;\n");
+    writeFileSync(join(wt, ".gitignore"), ".git\n");
+
+    const r = ship(io, job(["commit", "push", "open_pr"]));
+    expect(r).toMatchObject({ ok: true, did: ["commit", "push", "open_pr"] });
+    expect(existsSync(proof)).toBe(false);
+    expect(git(remote, "show", "--stat", "--format=", "sh-2-retries")).toContain("extra.ts"); // pushed to the real remote
+    expect(existsSync(join(root, "somewhere-else.git"))).toBe(false);
+  });
+
+  it("doesn't give Codex the repository's Git folder: the runner commits instead", () => {
     const mcp = { command: "/usr/bin/node", args: ["cli.js", "mcp"] };
     const cfg = parseRunnerConfig(`agent_id = "${AID}"\nengine = "codex"`, "lee-codex");
-    const want = `sandbox_workspace_write.writable_roots=[${JSON.stringify(join(clone, ".git"))}]`;
-    expect(codexInvocation(cfg, mcp, null, wt).args).toContain(want);
-    expect(codexInvocation(cfg, mcp, "thread-9", wt).args).toContain(want);
-    expect(codexInvocation(cfg, mcp, null, root).args.join(" ")).not.toContain("writable_roots");
-    const readOnly = parseRunnerConfig(`agent_id = "${AID}"\nengine = "codex"\n[codex]\nsandbox = "read-only"`, "lee-codex");
-    expect(codexInvocation(readOnly, mcp, null, wt).args.join(" ")).not.toContain("writable_roots");
+    expect(codexInvocation(cfg, mcp, null, wt).args.join(" ")).not.toContain("writable_roots");
+    expect(codexInvocation(cfg, mcp, "thread-9", wt).args.join(" ")).not.toContain("writable_roots");
   });
 });
 
@@ -154,6 +197,7 @@ describe("the ticket prompt", () => {
     const cfg = parseRunnerConfig(`agent_id = "${AID}"\nengine = "claude"`, "lee-claude");
     const p = buildTicketPrompt({ myName: "b", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg, worktree: { path: "/tmp/wt", branch: "sh-2-retries", base: "main", created: true }, followUp: false, newComments: null });
     expect(p).toContain("If you can't commit, push or open the pull request from where you run");
+    expect(p).toContain("uncommitted if you can't commit");
     expect(p).toContain("pushes sh-2-retries and opens the pull request for you");
   });
 });

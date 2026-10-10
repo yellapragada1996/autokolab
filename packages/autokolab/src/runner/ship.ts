@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { gh, plainGhError } from "./merge.js";
 
 // Delivering an agent's work when the agent can't (AK-46). Some agents run in a sandbox that can't
@@ -6,6 +8,12 @@ import { gh, plainGhError } from "./merge.js";
 // isn't sandboxed and already has the machine's GitHub access, so when an agent says its ticket is
 // ready for review and there is no pull request, the runner commits what's left, pushes the branch
 // and opens the pull request. The decision is plain code, like the merge decision.
+//
+// The runner does this outside the sandbox, so nothing the agent could write may steer it:
+// - The repository's Git folder (hooks, config) stays read-only for the agent. Codex is not given
+//   it as a writable root, which is why the runner commits instead.
+// - Git is pointed at that folder directly (GIT_DIR), found from the runner's clone and never from
+//   the `.git` link inside the agent's folder, which the agent could have replaced.
 
 export type ShipStep = "commit" | "push" | "open_pr";
 
@@ -34,11 +42,25 @@ export function shipPlan(f: ShipFacts): ShipPlan {
   return { steps: [...(f.dirty ? (["commit"] as const) : []), "push", "open_pr"] };
 }
 
-/** Files that are never committed on an agent's behalf: local secrets. Examples and templates are fine. */
+/** Files that are never delivered on an agent's behalf: local secrets. Examples and templates are fine. */
 export function looksPrivate(path: string): boolean {
   const name = (path.split("/").pop() ?? path).toLowerCase();
   if (/\.(example|sample|template|dist)$/.test(name)) return false;
-  return /^\.env(\..+)?$/.test(name) || /\.(pem|p12|pfx|key)$/.test(name) || /^id_(rsa|dsa|ecdsa|ed25519)$/.test(name);
+  return (
+    /^\.env(\..+)?$/.test(name) ||
+    /^\.(envrc|npmrc|netrc|pypirc)$/.test(name) ||
+    /\.(pem|p12|pfx|key|tfvars)$/.test(name) ||
+    /^id_(rsa|dsa|ecdsa|ed25519)$/.test(name) ||
+    /^(credentials|secrets?)\.(json|ya?ml|toml|env)$/.test(name)
+  );
+}
+
+/** Paths from `git status --porcelain`: what a commit of everything would add or change (not deletions). */
+export function changedPaths(porcelain: string): string[] {
+  return porcelain
+    .split("\n")
+    .filter((l) => l.length > 3 && !/^(D |.D) /.test(l.slice(0, 3)))
+    .map((l) => l.slice(3).split(" -> ").pop()!.replace(/^"|"$/g, ""));
 }
 
 const STEP_WORDS: Record<ShipStep, string> = {
@@ -64,6 +86,7 @@ export function plainGitError(err: string, where: string): string {
   if (/non-fast-forward|\[rejected\]|fetch first/i.test(s)) return "GitHub has commits on this branch that this machine doesn't.";
   if (/protected branch|pre-push|hook declined/i.test(s)) return "The push was refused by a branch rule.";
   if (/local secrets/i.test(s)) return s;
+  if (/not a git repository|not one of the runner's/i.test(s)) return "This folder is no longer one of the runner's working copies.";
   const line = s.split("\n").find((l) => l.trim() && !/^(hint|remote):?\s*$/i.test(l.trim()))?.trim();
   return line ? `${line.replace(/^(fatal|error):\s*/i, "").slice(0, 300).replace(/\.?$/, ".")}` : "git failed without saying why.";
 }
@@ -80,17 +103,41 @@ const GIT_ENV = {
   GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
 };
 
-export const realIo: ShipIo = {
-  git: (cwd, ...args) => {
+const real = (p: string) => (existsSync(p) ? realpathSync(p) : p);
+
+/**
+ * The Git folder for one of the clone's worktrees, read from the clone's own records
+ * (`<clone>/.git/worktrees/<name>/gitdir`), which an agent can't write. Null if `path` isn't one.
+ */
+export function worktreeGitDir(clone: string, path: string): string | null {
+  const root = join(clone, ".git", "worktrees");
+  if (!existsSync(root)) return null;
+  for (const name of readdirSync(root)) {
     try {
-      return execFileSync("git", args, { cwd, encoding: "utf8", env: GIT_ENV, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 }).trim();
-    } catch (e) {
-      const x = e as { stderr?: string; stdout?: string; message: string };
-      throw new Error((x.stderr || x.stdout || x.message).toString().trim());
+      const link = readFileSync(join(root, name, "gitdir"), "utf8").trim(); // "<worktree>/.git"
+      if (real(dirname(link)) === real(path)) return join(root, name);
+    } catch {
+      // Not a worktree record.
     }
-  },
-  gh,
-};
+  }
+  return null;
+}
+
+/** Git run against a known Git folder, whatever the `.git` link inside the working copy says. */
+export function trustedIo(gitDir: string): ShipIo {
+  return {
+    git: (cwd, ...args) => {
+      try {
+        const env = { ...GIT_ENV, GIT_DIR: gitDir, GIT_WORK_TREE: cwd };
+        return execFileSync("git", args, { cwd, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 }).trim();
+      } catch (e) {
+        const x = e as { stderr?: string; stdout?: string; message: string };
+        throw new Error((x.stderr || x.stdout || x.message).toString().trim());
+      }
+    },
+    gh,
+  };
+}
 
 /** What the worktree holds that GitHub's default branch doesn't. */
 export function worktreeFacts(io: ShipIo, path: string, base: string): { dirty: boolean; ahead: number } {
@@ -118,6 +165,19 @@ export interface ShipJob {
 
 export type ShipResult = { ok: true; pr: string; did: ShipStep[] } | { ok: false; step: ShipStep; error: string };
 
+const shown = (paths: string[]) => `${paths.slice(0, 5).join(", ")}${paths.length > 5 ? ` and ${paths.length - 5} more` : ""}`;
+
+/** Files the branch adds or changes compared with the default branch on GitHub (every file, if that isn't known). */
+function pushedPaths(io: ShipIo, path: string, base: string): string[] {
+  let out: string;
+  try {
+    out = io.git(path, "diff", "--name-only", "--diff-filter=d", `origin/${base}...HEAD`);
+  } catch {
+    out = io.git(path, "ls-tree", "-r", "--name-only", "HEAD");
+  }
+  return out.split("\n").filter(Boolean);
+}
+
 const PR_URL = /https:\/\/github\.com\/[^\s)>\]]+\/pull\/\d+/i;
 
 /** Carries out the plan, stopping at the first step that fails. */
@@ -126,15 +186,15 @@ export function ship(io: ShipIo, job: ShipJob): ShipResult {
   for (const step of job.steps) {
     try {
       if (step === "commit") {
+        // Checked before anything is staged, so a refusal leaves the folder exactly as it was.
+        const secret = changedPaths(io.git(job.path, "status", "--porcelain", "--untracked-files=all")).filter(looksPrivate);
+        if (secret.length) throw new Error(`These look like local secrets, so I didn't commit anything: ${shown(secret)}. Remove them or add them to .gitignore.`);
         io.git(job.path, "add", "-A");
-        const staged = io.git(job.path, "diff", "--cached", "--name-only").split("\n").filter(Boolean);
-        const secret = staged.filter(looksPrivate);
-        if (secret.length) {
-          io.git(job.path, "reset", "-q");
-          throw new Error(`These look like local secrets, so I didn't commit anything: ${secret.slice(0, 5).join(", ")}. Remove them or add them to .gitignore.`);
-        }
-        if (staged.length) io.git(job.path, "commit", "-q", "-m", job.title);
+        if (io.git(job.path, "diff", "--cached", "--name-only")) io.git(job.path, "commit", "-q", "-m", job.title);
       } else if (step === "push") {
+        // Commits the agent made itself get the same check as the ones made here.
+        const secret = pushedPaths(io, job.path, job.base).filter(looksPrivate);
+        if (secret.length) throw new Error(`These look like local secrets, so I didn't push anything: ${shown(secret)}. Take them out of the branch's commits.`);
         io.git(job.path, "push", "-q", "-u", "origin", `HEAD:refs/heads/${job.branch}`);
       } else {
         const found = io.gh(["pr", "list", "--repo", job.repo, "--head", job.branch, "--state", "open", "--json", "url", "--limit", "1"]);
