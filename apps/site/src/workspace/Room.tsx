@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import type { Profile } from "../lib/session";
 import { isBookkeeping, postToRoom, problemOf, roomFor, roomMessages, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
 import { go } from "../lib/router";
-import { AgentMark, Avatar, Button } from "../ui";
+import { AgentAvatar, Button, PersonAvatar } from "../ui";
 import { ago, LeadBadge, Markdown } from "./bits";
 import type { Workspace } from "./useWorkspace";
 
@@ -12,9 +12,9 @@ import type { Workspace } from "./useWorkspace";
 const KIND: Partial<Record<RoomMessage["kind"], { label: string; color: string; bg: string }>> = {
   task: { label: "Task", color: "var(--on-primary)", bg: "var(--primary)" },
   question: { label: "Question", color: "var(--warn)", bg: "var(--warn-bg)" },
-  answer: { label: "Answer", color: "var(--ok)", bg: "var(--ok-bg)" },
+  answer: { label: "Answer", color: "var(--text-2)", bg: "var(--surface-2)" },
   status: { label: "Status", color: "var(--text-2)", bg: "var(--surface-2)" },
-  review: { label: "Review", color: "#85b8ff", bg: "#13294b" },
+  review: { label: "Review", color: "var(--text-2)", bg: "var(--surface-2)" },
   handoff: { label: "Handoff", color: "var(--text-2)", bg: "var(--surface-2)" },
   decision: { label: "Decision", color: "var(--on-primary)", bg: "var(--primary)" },
 };
@@ -37,8 +37,8 @@ function online(m: RoomMember): boolean {
 }
 
 function Mark({ m, size = 30, me }: { m?: RoomMember; size?: number; me?: string }) {
-  if (!m) return <Avatar name="?" size={size} />;
-  return m.kind === "agent" ? <AgentMark vendor={m.client === "codex" ? "codex" : "claude"} size={size} /> : <Avatar name={m.name} size={size} you={m.id === me} />;
+  if (!m) return <PersonAvatar name="?" size={size} />;
+  return m.kind === "agent" ? <AgentAvatar name={m.name} vendor={m.client === "codex" ? "codex" : "claude"} size={size} /> : <PersonAvatar name={m.name} size={size} you={m.id === me} />;
 }
 
 function time(iso: string): string {
@@ -159,7 +159,7 @@ export function Room({ ws, profile, demo }: { ws: Workspace; profile: Profile; d
                     {m.name}
                     {ws.project.lead_agent_id === m.id && <LeadBadge />}
                   </span>
-                  <span style={{ fontSize: 11, color: "var(--faint)" }}>
+                  <span style={{ fontSize: 12, color: "var(--faint)" }}>
                     {m.paused ? "Paused by its owner" : m.runner_state === "working" ? "Working" : online(m) ? "Online" : m.last_seen_at ? `Seen ${ago(m.last_seen_at)}` : "Not connected yet"}
                   </span>
                 </span>
@@ -261,7 +261,7 @@ function MessageList({ ws, messages, byId, me, showActivity, onReply, onThread }
             <strong style={{ fontWeight: 600 }}>{s?.name ?? "someone"}</strong>
             {m.to_id && <span style={{ color: "var(--muted)" }}>→ {byId.get(m.to_id)?.name ?? "someone"}</span>}
             {kind && (
-              <span style={{ height: 18, padding: "0 6px", borderRadius: 4, background: kind.bg, color: kind.color, font: "700 10px var(--sans)", letterSpacing: "0.04em", textTransform: "uppercase", display: "inline-flex", alignItems: "center" }}>{kind.label}</span>
+              <span style={{ height: 18, padding: "0 6px", borderRadius: 4, background: kind.bg, color: kind.color, font: "700 12px var(--sans)", letterSpacing: "0.04em", textTransform: "uppercase", display: "inline-flex", alignItems: "center" }}>{kind.label}</span>
             )}
             <span style={{ color: "var(--faint)", fontSize: 12 }} title={new Date(m.created_at).toLocaleString()}>
               {time(m.created_at)}
