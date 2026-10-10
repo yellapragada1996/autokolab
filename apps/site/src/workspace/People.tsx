@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addPerson, createInvite, EFFORTS, inviteLink, invites as listInvites, MODEL_CHOICES, revokeInvite, setAgentModel, setLead, showCode, type Agent, type Effort, type Invite } from "../lib/data";
+import { addPerson, createInvite, EFFORTS, inviteLink, invites as listInvites, MERGE_POLICIES, mergePolicyOf, MODEL_CHOICES, revokeInvite, setAgentModel, setLead, setMergePolicy, showCode, type Agent, type Effort, type Invite, type MergePolicy } from "../lib/data";
 import { placeLine } from "../lib/place";
 import { go, onNav } from "../lib/router";
 import { AgentMark, Avatar, Button } from "../ui";
@@ -73,6 +73,8 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
         {isOwner && <AddPerson ws={ws} />}
       </section>
 
+      <Merging ws={ws} canEdit={ws.project.owner_id === me} onProjectChanged={onProjectChanged} />
+
       <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <h2 style={{ fontSize: 16, fontWeight: 600 }}>Agents · {agents.length}</h2>
         <p style={{ fontSize: 14, color: "var(--muted)" }}>
@@ -126,6 +128,69 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
         )}
       </section>
     </div>
+  );
+}
+
+/**
+ * How merging works in this project (DEC-19). The owner picks one of three; everyone else sees which
+ * one is in force. Before schema 12 the project row has no merge_policy, so there's nothing to change yet.
+ */
+function Merging({ ws, canEdit, onProjectChanged }: { ws: Workspace; canEdit: boolean; onProjectChanged?: () => void }) {
+  const current = mergePolicyOf(ws.project);
+  const [picked, setPicked] = useState(current);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => setPicked(current), [current]);
+  const ready = ws.project.merge_policy !== undefined;
+  const editable = canEdit && ready;
+
+  const pick = async (policy: MergePolicy) => {
+    if (policy === current) return;
+    setPicked(policy);
+    setBusy(true);
+    setErr("");
+    try {
+      await setMergePolicy(ws.project.id, policy);
+      onProjectChanged?.();
+    } catch (e) {
+      setErr((e as Error).message);
+      setPicked(current);
+    }
+    setBusy(false);
+  };
+
+  const shown = editable ? MERGE_POLICIES : MERGE_POLICIES.filter((p) => p.id === current);
+  return (
+    <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <h2 style={{ fontSize: 16, fontWeight: 600 }}>Merging</h2>
+      <p style={{ fontSize: 14, color: "var(--muted)" }}>
+        {editable ? "What happens when the lead has reviewed a pull request and its tests pass." : `How pull requests get merged here.${canEdit ? "" : " Only the project's owner can change this."}`}
+      </p>
+      <fieldset disabled={!editable || busy} style={{ border: 0, margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+        <legend className="sr-only">How merging works</legend>
+        {shown.map((p) => {
+          const on = picked === p.id;
+          return (
+            <label
+              key={p.id}
+              style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "12px 14px", borderRadius: 12, background: "var(--surface)", border: `1px solid ${on && editable ? "var(--primary)" : "var(--line-soft)"}`, cursor: editable ? "pointer" : "default" }}
+            >
+              {editable && <input type="radio" name="merge-policy" value={p.id} checked={on} onChange={() => void pick(p.id)} style={{ marginTop: 3, accentColor: "var(--primary)" }} />}
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <span style={{ fontSize: 15, fontWeight: 500 }}>{p.label}</span>
+                <span style={{ fontSize: 13, color: "var(--muted)" }}>{p.sub}</span>
+              </span>
+            </label>
+          );
+        })}
+      </fieldset>
+      {err && (
+        <p role="alert" style={{ fontSize: 13, color: "var(--danger)" }}>
+          {err}
+        </p>
+      )}
+      {!ready && <p style={{ fontSize: 13, color: "var(--faint)" }}>This can be changed once the project's database has its latest update.</p>}
+    </section>
   );
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { recentEvents, type Project, type Status, type TicketEvent } from "../lib/data";
+import { recentEvents, waitsForMergeOk, type Project, type Status, type TicketEvent } from "../lib/data";
 import { go, onNav, type Route } from "../lib/router";
 import type { Profile } from "../lib/session";
 import { AgentMark, Avatar, Button, Icon, Logo, Svg } from "../ui";
@@ -15,7 +15,7 @@ import { GuidePage } from "./GuidePage";
 import { ListView } from "./ListView";
 import { NewTicket } from "./NewTicket";
 import { agentOnline, agentStatusText, People } from "./People";
-import { describe, TicketPage } from "./TicketPage";
+import { describe, isPerson, OkToMerge, TicketPage } from "./TicketPage";
 import { useWorkspace, type Workspace as WS } from "./useWorkspace";
 
 // The project workspace: sidebar (projects, views, people and agents) and the current view.
@@ -377,9 +377,17 @@ function Overview({ ws, me }: { ws: WS; me: string }) {
         )}
 
         <Group title="Needs you" count={needs.length + review.length} empty="Nothing is waiting on you. Questions from agents and pull requests to review show up here.">
-          {[...needs, ...review].map((t) => (
-            <Card key={t.id} ws={ws} t={t} me={me} />
-          ))}
+          {[...needs, ...review].map((t) =>
+            waitsForMergeOk(t) && isPerson(ws, me) ? (
+              // The card is a link, so the button sits under it rather than inside.
+              <div key={t.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <Card ws={ws} t={t} me={me} />
+                <OkToMerge ws={ws} t={t} />
+              </div>
+            ) : (
+              <Card key={t.id} ws={ws} t={t} me={me} />
+            ),
+          )}
         </Group>
 
         <Group title="In progress" count={moving.length} empty={ready.length ? `${ready.length} ticket${ready.length === 1 ? " is" : "s are"} in Ready, waiting for an agent.` : "Nothing in progress right now."}>

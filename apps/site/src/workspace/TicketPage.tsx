@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   addBlocker,
   addComment,
+  allowMerge,
   PRIORITIES,
   removeBlocker,
   setSteps,
@@ -11,6 +12,7 @@ import {
   ticketDetail,
   TYPES,
   updateTicket,
+  waitsForMergeOk,
   type Comment,
   type Step,
   type Ticket,
@@ -106,9 +108,13 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
               <span style={{ flex: 1, fontSize: 14 }}>
                 <strong style={{ color: "var(--warn)" }}>Needs you.</strong> {t.needs_human}
               </span>
-              <Button size="sm" variant="secondary" onClick={() => save({ needs_human: null })}>
-                Resolved
-              </Button>
+              {waitsForMergeOk(t) && isPerson(ws, me) ? (
+                <OkToMerge ws={ws} t={t} />
+              ) : (
+                <Button size="sm" variant="secondary" onClick={() => save({ needs_human: null })}>
+                  Resolved
+                </Button>
+              )}
             </div>
           )}
           {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
@@ -206,6 +212,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
                 <LabelsEditor labels={t.labels} onSave={(labels) => save({ labels })} />
               </dd>
               <CodeLinks t={t} repo={ws.project.repo} onSave={save} />
+              <MergeRows ws={ws} t={t} me={me} />
             </dl>
           </section>
 
@@ -524,6 +531,83 @@ function CodeLinks({ t, repo, onSave }: { t: Ticket; repo: string | null; onSave
   );
 }
 
+/** People in the project can OK a risky merge; agents can't (allow_merge refuses them too). */
+export const isPerson = (ws: Workspace, me: string) => ws.people.members.some((m) => m.actor_id === me && m.actor_type === "human");
+
+/**
+ * The lead's approval of an exact commit, and a person's OK for a risky merge (DEC-19). Nothing shows
+ * for tickets without either, including every ticket before schema 12.
+ */
+function MergeRows({ ws, t, me }: { ws: Workspace; t: Ticket; me: string }) {
+  const waiting = waitsForMergeOk(t);
+  const sha = t.approved_sha;
+  return (
+    <>
+      {sha && (
+        <>
+          <dt style={{ color: "var(--muted)" }}>Approval</dt>
+          <dd style={{ margin: 0, minWidth: 0 }}>
+            Approved by {ws.nameOf(t.approved_by ?? null)} for commit{" "}
+            {ws.project.repo ? (
+              <a href={`https://github.com/${ws.project.repo}/commit/${sha}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                {sha.slice(0, 7)}
+              </a>
+            ) : (
+              <code style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{sha.slice(0, 7)}</code>
+            )}
+            {t.approved_at && <span style={{ color: "var(--faint)" }}> · {ago(t.approved_at)}</span>}
+          </dd>
+        </>
+      )}
+      {(waiting || t.merge_ok_at) && (
+        <>
+          <dt style={{ color: "var(--muted)" }}>Merge</dt>
+          <dd style={{ margin: 0, minWidth: 0 }}>
+            {t.merge_ok_at ? (
+              <span>
+                OK'd by {ws.nameOf(t.merge_ok_by ?? null)} <span style={{ color: "var(--faint)" }}>· {ago(t.merge_ok_at)}</span>
+              </span>
+            ) : isPerson(ws, me) ? (
+              <OkToMerge ws={ws} t={t} />
+            ) : (
+              <span style={{ color: "var(--warn)" }}>Waiting for a person's OK</span>
+            )}
+          </dd>
+        </>
+      )}
+    </>
+  );
+}
+
+/** One click: a person OKs merging a risky change the lead approved. Its error shows next to it. */
+export function OkToMerge({ ws, t }: { ws: Workspace; t: Ticket }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const ok = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      await allowMerge(t.id);
+      await ws.reload();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+    setBusy(false);
+  };
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
+      <Button size="sm" variant="primary" disabled={busy} onClick={() => void ok()} title="The lead merges it once tests pass">
+        {busy ? "Saving…" : "OK to merge"}
+      </Button>
+      {err && (
+        <span role="alert" style={{ fontSize: 12, color: "var(--danger)" }}>
+          {err}
+        </span>
+      )}
+    </span>
+  );
+}
+
 /** One line of history, e.g. "moved it from Ready to In progress". */
 export function describe(ws: Workspace, e: TicketEvent): string | null {
   const d = e.data as Record<string, string>;
@@ -548,6 +632,10 @@ export function describe(ws: Workspace, e: TicketEvent): string | null {
       return `needs a person: ${d.note}`;
     case "comment":
       return "commented";
+    case "approval":
+      return d.to ? `approved commit ${d.to.slice(0, 7)}` : d.reason === "pr_changed" ? null : "withdrew the approval";
+    case "merge_ok":
+      return d.by ? "OK'd the merge" : null;
     default:
       return null;
   }

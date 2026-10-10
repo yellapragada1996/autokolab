@@ -43,7 +43,24 @@ export interface Project {
   /** The project's room (live chat). */
   room_id: string | null;
   created_at: string;
+  /** How merging works (schema 12, DEC-19); absent before it, which reads as the default. */
+  merge_policy?: MergePolicy;
 }
+
+export type MergePolicy = "ask" | "auto_safe" | "auto_all";
+
+export const MERGE_POLICIES: { id: MergePolicy; label: string; sub: string }[] = [
+  { id: "ask", label: "Ask me", sub: "The lead reviews; a person merges." },
+  { id: "auto_safe", label: "Auto-merge safe changes (recommended)", sub: "The lead merges when tests pass and it approved the change. Database, dependency, CI and security changes wait for your OK." },
+  { id: "auto_all", label: "Fully hands-off", sub: "The lead merges everything once tests pass and it approved the change." },
+];
+
+export const mergePolicyOf = (p: Project): MergePolicy => p.merge_policy ?? "auto_safe";
+
+/** The lead's runner (AK-30) starts needs_human with this when a risky change waits for a person's OK. */
+export const MERGE_OK_PREFIX = "Ready to merge — needs your OK:";
+
+export const waitsForMergeOk = (t: Ticket) => !!t.needs_human?.startsWith(MERGE_OK_PREFIX) && !t.merge_ok_at;
 
 export interface Agent {
   id: string;
@@ -107,6 +124,13 @@ export interface Ticket {
   updated_at: string;
   started_at: string | null;
   completed_at: string | null;
+  /** The PR head commit the lead approved, who approved it and when (schema 12; absent before it). */
+  approved_sha?: string | null;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  /** A person's one-click OK to merge a risky change (schema 12). */
+  merge_ok_by?: string | null;
+  merge_ok_at?: string | null;
 }
 
 export interface Step {
@@ -172,6 +196,7 @@ function check<T>(r: { data: T | null; error: { message: string } | null }): T {
 export function friendly(m: string): string {
   if (m.includes("AUTOKOLAB_")) return m.replace(/^.*AUTOKOLAB_[A-Z_]+:\s*/, "");
   if (/row-level security|permission denied/i.test(m)) return "You can't change that here.";
+  if (/could not find the function/i.test(m)) return "This needs the latest database update. Ask the project's admin to apply it.";
   if (/JWT|expired/i.test(m)) return "Your session expired. Reload the page.";
   return m;
 }
@@ -283,6 +308,20 @@ export const connectLine = (code: string) => `curl -fsSL ${PUBLIC_SITE}/install.
 
 export async function setLead(projectId: string, agentId: string | null): Promise<void> {
   check(await supabase.from("projects").update({ lead_agent_id: agentId }).eq("id", projectId));
+}
+
+/** Only the project's owner can; the refusal comes back as a plain sentence. */
+export async function setMergePolicy(projectId: string, policy: MergePolicy): Promise<Project> {
+  return check(await supabase.rpc("set_merge_policy", { p_project: projectId, p_policy: policy }));
+}
+
+/**
+ * A person OKs merging a risky change, then the question is cleared: the lead's runner merges on
+ * merge_ok_by, not on the question.
+ */
+export async function allowMerge(ticketId: string): Promise<Ticket> {
+  const t = check<Ticket>(await supabase.rpc("allow_merge", { p_ticket: ticketId }));
+  return t.needs_human?.startsWith(MERGE_OK_PREFIX) ? updateTicket(ticketId, { needs_human: null }) : t;
 }
 
 export async function addPerson(projectId: string, githubLogin: string): Promise<void> {
