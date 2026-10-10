@@ -71,9 +71,9 @@ const tickets: Ticket[] = [
   ticket(11, { title: "Checkout", status: "in_progress", type: "epic", priority: "high", description: "Paying should take under a minute." }),
   ticket(12, { title: "Pay with Apple Pay", status: "in_progress", type: "feature", priority: "medium", parent_id: "t11", assignee_id: REVIEWER, assignee_type: "agent", started_at: iso(25) }),
   ticket(13, { title: "Search", status: "in_progress", type: "epic", description: "Find any product in two keystrokes." }),
-  ticket(14, { title: "Filter search by price", status: "done", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/40", completed_at: iso(40) }),
+  ticket(14, { title: "Filter search by price", status: "done", summary: "Shoppers can narrow search results to a price range", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/40", completed_at: iso(40) }),
   ticket(15, { title: "Order history", status: "backlog", type: "epic", description: "Shoppers can see what they bought." }),
-  ticket(5, { title: "Checkout shows the wrong tax for Ontario", status: "review", type: "bug", priority: "urgent", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/41", labels: ["checkout"], approved_sha: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912", approved_by: LEAD, approved_at: iso(5) }),
+  ticket(5, { title: "Checkout shows the wrong tax for Ontario", status: "review", type: "bug", priority: "urgent", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/41", labels: ["checkout"], summary: "Checkout charges the right tax for Ontario again", approved_sha: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912", approved_by: LEAD, approved_at: iso(5) }),
   ticket(10, {
     title: "Store sessions in Postgres",
     status: "review",
@@ -91,8 +91,8 @@ const tickets: Ticket[] = [
   }),
   ticket(6, { title: "Order history page", status: "backlog", type: "feature", priority: "low", parent_id: "t15" }),
   ticket(7, { title: "Upgrade to React 19", status: "backlog", type: "chore", assignee_id: LEE, assignee_type: "human" }),
-  ticket(8, { title: "Product search", status: "done", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(300) }),
-  ticket(9, { title: "Write the Project Guide", status: "done", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(900) }),
+  ticket(8, { title: "Product search", status: "done", summary: "Shoppers can search products by name from any page", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(300) }),
+  ticket(9, { title: "Write the Project Guide", status: "done", summary: "Agents now read one guide with the concept and rules before they start", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(900) }),
 ];
 
 const event = (id: number, ticket: string, actor: string, minAgo: number, kind: string, data: Record<string, unknown> = {}): TicketEvent => ({

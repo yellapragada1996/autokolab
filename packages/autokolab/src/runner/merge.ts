@@ -173,7 +173,7 @@ export function plainGhError(stderr: string, where: string): string {
 
 const GH_ENV = { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" };
 
-function gh(args: string[]): { ok: boolean; out: string; err: string } {
+export function gh(args: string[]): { ok: boolean; out: string; err: string } {
   const r = spawnSync("gh", args, { encoding: "utf8", env: GH_ENV, timeout: 60_000, stdio: ["ignore", "pipe", "pipe"] });
   if (r.error) return { ok: false, out: "", err: `gh: ${r.error.message}` };
   return { ok: r.status === 0, out: r.stdout ?? "", err: r.stderr ?? "" };

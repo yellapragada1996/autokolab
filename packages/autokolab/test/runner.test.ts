@@ -365,9 +365,19 @@ describe("tickets", () => {
     expect(parseOutcome("```autokolab\nstatus: In progress\nquestion: Redis or Postgres?\n```")).toMatchObject({ status: "in_progress", question: "Redis or Postgres?" });
     expect(parseOutcome("no block here")).toEqual({ body: "no block here", newTickets: [] });
   });
-  it("asks for the ending block", () => {
+  it("reads the summary line", () => {
+    const o = parseOutcome("Done.\n```autokolab\nstatus: review\nsummary: \"Checkout now remembers your card\"\nquestion: none\n```");
+    expect(o.summary).toBe("Checkout now remembers your card");
+    expect(parseOutcome("```autokolab\nsummary: none\n```").summary).toBeUndefined();
+    expect(parseOutcome("```autokolab\nsummary: <one plain sentence on what changed, for someone who doesn't code>\n```").summary).toBeUndefined();
+    expect(parseOutcome(`\`\`\`autokolab\nsummary: ${"a".repeat(300)}\n\`\`\``).summary).toHaveLength(200);
+  });
+  it("asks for the ending block and a plain summary", () => {
     const p = buildTicketPrompt({ myName: "b", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg: cfgFor(), worktree: wt, followUp: false, newComments: null });
     expect(p).toContain("```autokolab");
+    expect(p).toContain("summary: <one plain sentence");
+    expect(p).toMatch(/summary="<one sentence>"/);
+    expect(p).toContain("outcome, not the implementation");
   });
   it("has default rules that protect the default branch", () => {
     expect(defaultRules("trunk")).toContain("Never push to trunk");

@@ -423,13 +423,14 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     "ticket_update",
     {
       description:
-        "Change a ticket: status (in_progress when you start, review with pr_url when the PR is open), branch, pr_url, needs_human (a short question for a person; null when answered), assignee, priority, title, description, done_means, labels, epic, blockers. Pass only what changes.",
+        "Change a ticket: status (in_progress when you start, review with pr_url and summary when the PR is open), branch, pr_url, summary (one plain sentence on what changed, for someone who doesn't code), needs_human (a short question for a person; null when answered), assignee, priority, title, description, done_means, labels, epic, blockers. Pass only what changes.",
       inputSchema: {
         key: keyArg,
         status: z.enum(STATUSES).optional(),
         branch: z.string().max(200).nullable().optional(),
         pr_url: z.string().url().nullable().optional(),
         needs_human: z.string().max(1000).nullable().optional(),
+        summary: z.string().max(200).nullable().optional().describe('e.g. "People page now shows which model each agent last ran": the outcome, not the code'),
         assignee: z.string().nullable().optional(),
         priority: z.enum(PRIORITIES).optional(),
         type: z.enum(TYPES).optional(),
@@ -447,7 +448,8 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
       const { key, project: _p, ...change } = a;
       const t = await p.update(key, change);
       if (change.needs_human) await p.status("waiting_human", change.needs_human.slice(0, 200), t.id).catch(() => undefined);
-      return `Updated ${t.key}: ${t.title} [${t.status}]${t.needs_human ? ` · needs a person: ${t.needs_human}` : ""}`;
+      const oldDb = change.summary !== undefined && t.summary === undefined;
+      return `Updated ${t.key}: ${t.title} [${t.status}]${t.needs_human ? ` · needs a person: ${t.needs_human}` : ""}${oldDb ? " · the summary wasn't saved: this project's database doesn't have it yet" : ""}`;
     }),
   );
 

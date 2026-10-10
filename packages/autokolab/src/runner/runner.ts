@@ -13,6 +13,7 @@ import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineR
 import { installHook } from "./githook.js";
 import { ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, plainGhError, prNumber, readyToMergeMessage, type MergeDecision, type PrInfo } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
+import { SHIP_FAILED_PREFIX, realIo, ship, shipBody, shipNeedsHuman, shipPlan, worktreeFacts } from "./ship.js";
 import { clonePath, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
@@ -934,10 +935,21 @@ export class Runner {
       outcome = o.status === "blocked" ? "blocked" : "done";
       if (text) await p.comment(t.key, text).catch((e) => this.log(`Couldn't comment on ${t.key}: ${(e as Error).message}`));
       // The ending block (or just a PR link) moves the ticket, so agents without the tools can finish too.
-      const pr = ourPr(o.pr) ?? ourPr(text.match(/https:\/\/github\.com\/[^\s)>\]]+\/pull\/\d+/i)?.[0]);
+      let pr = ourPr(o.pr) ?? ourPr(text.match(/https:\/\/github\.com\/[^\s)>\]]+\/pull\/\d+/i)?.[0]);
       const change: Parameters<ProjectView["update"]>[1] = {};
       if (o.question) change.needs_human = o.question;
       else if (o.status === "blocked") change.needs_human = "I'm blocked; see my last comment.";
+      // The agent says it's ready but there's no pull request: it couldn't reach GitHub from where
+      // it runs, so the runner delivers the work for it (AK-46).
+      if (!pr && !after.pr_url && o.status === "review") {
+        const shipped = this.deliver(t, worktree, repo, o.summary, text);
+        if ("pr" in shipped) pr = shipped.pr;
+        else if ("problem" in shipped) change.needs_human = shipped.problem;
+        else if (shipped.note) await p.comment(t.key, shipped.note).catch(() => undefined);
+      }
+      // An earlier delivery failed and there's a pull request now: the note is out of date.
+      if ((pr || after.pr_url) && after.needs_human?.startsWith(SHIP_FAILED_PREFIX) && change.needs_human === undefined) change.needs_human = null;
+      if (o.summary && o.summary !== after.summary) change.summary = o.summary;
       if (pr && !after.pr_url) change.pr_url = pr;
       if (pr && after.status === "in_progress" && (!o.status || o.status === "review")) change.status = "review";
       if (Object.keys(change).length) await p.update(t.key, change).catch((e) => this.log(`Couldn't update ${t.key}: ${(e as Error).message}`));
@@ -952,6 +964,33 @@ export class Runner {
     await this.setStatus(ak.me.paused ? "paused" : "idle");
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
     this.log(`${t.key} ${outcome}.${result.costUsd !== undefined ? ` (estimated API cost $${result.costUsd.toFixed(2)})` : ""}`);
+  }
+
+  /** Commits, pushes and opens the pull request for an agent that said it's done but couldn't. */
+  private deliver(t: Ticket, worktree: Worktree, repo: string, summary: string | undefined, message: string): { pr: string } | { problem: string } | { note: string | null } {
+    const { ak, cfg } = this;
+    const where = `on ${ak.ownerName(ak.me)}'s machine`;
+    const branch = currentBranch(worktree.path) ?? worktree.branch;
+    let facts: { dirty: boolean; ahead: number };
+    try {
+      facts = worktreeFacts(realIo, worktree.path, worktree.base);
+    } catch (e) {
+      return { problem: shipNeedsHuman("commit", (e as Error).message, where) };
+    }
+    const plan = shipPlan({ declaredReview: true, hasPr: false, ...facts, branch, base: worktree.base, protectedBranches: cfg.limits.protected_branches });
+    if ("skip" in plan) {
+      if (plan.skip === "nothing") return { note: `I said ${t.key} was ready for review, but there's nothing to deliver: no changes and no new commits on ${branch}.` };
+      if (plan.skip === "protected") return { problem: `${SHIP_FAILED_PREFIX} the work is on ${branch}, which agents never push. It needs its own branch.` };
+      return { note: null };
+    }
+    const title = `${t.key}: ${t.title}`.slice(0, 200);
+    const r = ship(realIo, { path: worktree.path, repo, branch, base: worktree.base, title, body: shipBody(ak.me.name, t.key, summary, message), steps: plan.steps });
+    if (!r.ok) {
+      this.log(`${t.key}: couldn't ${r.step}: ${redactSecrets(r.error).slice(0, 300)}`);
+      return { problem: shipNeedsHuman(r.step, redactSecrets(r.error), where) };
+    }
+    this.log(`${t.key}: delivered for the agent (${r.did.join(", ")}): ${r.pr}`);
+    return { pr: r.pr };
   }
 
   /** The lead looks at one worker's question: answers it on the ticket, or asks its person once. */
