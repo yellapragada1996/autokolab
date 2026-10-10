@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Agent, Decision, Guide, Member, Project, Step, Ticket } from "../lib/data";
+import type { Agent, Decision, Guide, Member, Project, Step, Ticket, TicketEvent } from "../lib/data";
 import { useRoute } from "../lib/router";
 import type { Profile } from "../lib/session";
 import { starterRules } from "./GuidePage";
@@ -68,7 +68,12 @@ const tickets: Ticket[] = [
   }),
   ticket(3, { title: "Remember me for 30 days", status: "ready", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", priority: "medium", labels: ["auth"] }),
   ticket(4, { title: "Pick the session store", status: "in_progress", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", needs_human: "Redis or Postgres for sessions? Postgres is simpler, Redis is faster.", priority: "high" }),
-  ticket(5, { title: "Checkout shows the wrong tax for Ontario", status: "review", type: "bug", priority: "urgent", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/41", labels: ["checkout"], approved_sha: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912", approved_by: LEAD, approved_at: iso(5) }),
+  ticket(11, { title: "Checkout", status: "in_progress", type: "epic", priority: "high", description: "Paying should take under a minute." }),
+  ticket(12, { title: "Pay with Apple Pay", status: "in_progress", type: "feature", priority: "medium", parent_id: "t11", assignee_id: REVIEWER, assignee_type: "agent", started_at: iso(25) }),
+  ticket(13, { title: "Search", status: "in_progress", type: "epic", description: "Find any product in two keystrokes." }),
+  ticket(14, { title: "Filter search by price", status: "done", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/40", completed_at: iso(40) }),
+  ticket(15, { title: "Order history", status: "backlog", type: "epic", description: "Shoppers can see what they bought." }),
+  ticket(5, { title: "Checkout shows the wrong tax for Ontario", status: "review", type: "bug", priority: "urgent", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/41", labels: ["checkout"], approved_sha: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912", approved_by: LEAD, approved_at: iso(5) }),
   ticket(10, {
     title: "Store sessions in Postgres",
     status: "review",
@@ -84,10 +89,29 @@ const tickets: Ticket[] = [
     approved_at: iso(12),
     needs_human: "Ready to merge — needs your OK: a database change (db/migrations/004_sessions.sql).",
   }),
-  ticket(6, { title: "Order history page", status: "backlog", type: "feature", priority: "low" }),
+  ticket(6, { title: "Order history page", status: "backlog", type: "feature", priority: "low", parent_id: "t15" }),
   ticket(7, { title: "Upgrade to React 19", status: "backlog", type: "chore", assignee_id: LEE, assignee_type: "human" }),
-  ticket(8, { title: "Product search", status: "done", type: "feature", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(300) }),
+  ticket(8, { title: "Product search", status: "done", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(300) }),
   ticket(9, { title: "Write the Project Guide", status: "done", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(900) }),
+];
+
+const event = (id: number, ticket: string, actor: string, minAgo: number, kind: string, data: Record<string, unknown> = {}): TicketEvent => ({
+  id, ticket_id: ticket, actor_id: actor, actor_type: actor === ANA || actor === LEE ? "human" : "agent", kind, data, created_at: iso(minAgo),
+});
+// Newest first, like recentEvents(); the step and branch events are bookkeeping the Overview hides.
+const events: TicketEvent[] = [
+  event(12, "t2", BUILDER, 4, "step", { idx: 2, label: "Create profiles for new users", status: "now" }),
+  event(11, "t5", LEAD, 5, "approval", { to: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912" }),
+  event(10, "t10", LEAD, 12, "needs_human", { note: "Ready to merge — needs your OK: a database change (db/migrations/004_sessions.sql)." }),
+  event(9, "t4", REVIEWER, 20, "needs_human", { note: "Redis or Postgres for sessions?" }),
+  event(8, "t12", REVIEWER, 25, "status", { from: "ready", to: "in_progress" }),
+  event(7, "t12", REVIEWER, 25, "branch", { branch: "SH-12-apple-pay" }),
+  event(6, "t14", LEAD, 40, "status", { from: "review", to: "done" }),
+  event(5, "t2", BUILDER, 50, "status", { from: "ready", to: "in_progress" }),
+  event(4, "t3", LEAD, 54, "assignee", { from: null, to: REVIEWER }),
+  event(3, "t1", LEAD, 55, "created", { status: "in_progress" }),
+  event(2, "t5", BUILDER, 70, "status", { from: "in_progress", to: "review" }),
+  event(1, "t9", ANA, 900, "comment", { comment_id: 1 }),
 ];
 
 const steps = new Map<string, Step[]>([
@@ -184,5 +208,5 @@ export default function DemoWorkspace() {
     };
   }, []);
   const r = route.view === "home" || route.view === "new-project" || route.view === "join" ? ({ view: "overview", project: "shop" } as const) : route;
-  return <Workspace project={project} projects={[project]} route={r} profile={profile} demo={ws} demoRoom={demoRoom} onSignOut={() => undefined} onEditProfile={() => undefined} />;
+  return <Workspace project={project} projects={[project]} route={r} profile={profile} demo={ws} demoRoom={demoRoom} demoEvents={events} onSignOut={() => undefined} onEditProfile={() => undefined} />;
 }
