@@ -168,7 +168,7 @@ export function Workspace({
             </div>
           )}
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
-            <Button variant="secondary" size="sm" onClick={() => setPaletteOpen(true)} title="Search and jump anywhere (⌘K)" aria-keyshortcuts="Meta+K Control+K">
+            <Button variant="secondary" size="sm" className="ak-tap" onClick={() => setPaletteOpen(true)} title="Search and jump anywhere (⌘K)" aria-keyshortcuts="Meta+K Control+K">
               <Svg size={15} width={2}>
                 {Icon.search}
               </Svg>

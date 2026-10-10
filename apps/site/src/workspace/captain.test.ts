@@ -245,6 +245,9 @@ describe("the timeline", () => {
       "card:ticket_question",
       "catchup",
     ]);
+    // What the person says after arriving goes below the catch-up.
+    const later = conversation([...msgs, message(ME, CAPTAIN, "Thanks", { created_at: at("12:05") })], ME, CAPTAIN);
+    expect(timeline(folded(later), [], at("12:00")).map((e) => (e.kind === "row" ? e.row.kind : e.kind)).slice(-2)).toEqual(["catchup", "you"]);
     // An answered question is a normal message again.
     expect(timeline(folded(turns), []).map((e) => e.kind === "row" && e.row.kind)).toEqual(["you", "fold", "question", "captain"]);
   });

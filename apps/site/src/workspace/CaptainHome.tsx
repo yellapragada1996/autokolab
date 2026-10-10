@@ -97,7 +97,7 @@ function Briefing({ ws, b, online, onNeeds }: { ws: Workspace; b: BriefingData; 
         </p>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
           {b.next && <span style={{ fontSize: 14, color: "var(--text-muted)", flex: "1 1 260px", minWidth: 0 }}>{b.next}</span>}
-          <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{ ...textButton, marginLeft: "auto", minHeight: 32 }}>
+          <button type="button" className="ak-tap" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{ ...textButton, marginLeft: "auto", minHeight: 32 }}>
             {open ? "Hide" : "Who's doing what"}
           </button>
         </div>
@@ -264,7 +264,7 @@ function Conversation({ ws, cr, pulse }: { ws: Workspace; cr: CaptainRoom; pulse
         {cr.working && (
           <span role="status" className="ak-indent" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-dim)" }}>
             <span className="ak-live" aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", flex: "none" }} />
-            {cr.captain?.status_note || "Captain is reading…"}
+            {(cr.captain && agentDot(cr.captain) === "working" && cr.captain.status_note) || "Captain is reading…"}
           </span>
         )}
         <div aria-live="polite" className="sr-only">
@@ -340,6 +340,7 @@ function QuietFold({ turns }: { turns: Turn[] }) {
     <div className="ak-indent" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <button
         type="button"
+        className="ak-tap"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 36, padding: "6px 14px", borderRadius: "var(--radius-md)", border: "1px dashed var(--border-strong)", background: "none", color: "var(--text-muted)", fontSize: 13, cursor: "pointer", textAlign: "left" }}
@@ -382,7 +383,7 @@ function CatchUpMessage({ ws, c, at, needs }: { ws: Workspace; c: CatchUp; at: s
         <div style={{ borderRadius: "var(--radius-lg)", border: "1px solid var(--border)", background: "var(--surface)", overflow: "hidden" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 14px", fontSize: 13, color: "var(--text-secondary)", flexWrap: "wrap" }}>
             <span style={{ flex: 1, minWidth: 0 }}>{summary}</span>
-            <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{ ...textButton, minHeight: 32 }}>
+            <button type="button" className="ak-tap" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{ ...textButton, minHeight: 32 }}>
               {open ? "Hide" : `Show all ${items.length}`}
             </button>
           </div>

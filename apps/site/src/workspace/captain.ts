@@ -346,7 +346,8 @@ const rowAt = (r: Row) => (r.kind === "fold" ? r.turns[0].at : r.at);
 /**
  * The conversation as one timeline: the folded rows, with a card for each need at the time it
  * started waiting. A question Captain asked becomes its card in place; ticket needs are slotted in
- * by time without reordering the messages. The catch-up, when there is one, comes last.
+ * by time without reordering the messages. The catch-up, when there is one, sits at the time it was
+ * worked out: the newest message on arrival, with anything said after it below.
  */
 export function timeline(rows: Row[], cards: Need[], catchUpAt?: string | null): Entry[] {
   const asked = new Map(cards.filter((n) => n.turnId !== null).map((n) => [n.turnId, n]));
@@ -355,13 +356,13 @@ export function timeline(rows: Row[], cards: Need[], catchUpAt?: string | null):
     return need ? { kind: "card", key: need.key, at: rowAt(r), need } : { kind: "row", key: `${r.kind}:${r.id}`, at: rowAt(r), row: r };
   });
   const loose = cards.filter((n) => n.turnId === null || !rows.some((r) => r.kind === "question" && r.id === n.turnId)).sort((a, b) => Date.parse(a.since) - Date.parse(b.since));
-  for (const need of loose) {
-    const i = out.findIndex((e) => Date.parse(e.at) > Date.parse(need.since));
-    const entry: Entry = { kind: "card", key: need.key, at: need.since, need };
+  const slot = (entry: Entry) => {
+    const i = out.findIndex((e) => Date.parse(e.at) > Date.parse(entry.at));
     if (i < 0) out.push(entry);
     else out.splice(i, 0, entry);
-  }
-  if (catchUpAt) out.push({ kind: "catchup", key: "catchup", at: catchUpAt });
+  };
+  for (const need of loose) slot({ kind: "card", key: need.key, at: need.since, need });
+  if (catchUpAt) slot({ kind: "catchup", key: "catchup", at: catchUpAt });
   return out;
 }
 
