@@ -1,9 +1,10 @@
 import { useMemo } from "react";
-import type { Agent, Decision, Guide, Member, Project, Step, Ticket, TicketEvent } from "../lib/data";
+import type { Agent, Decision, Guide, Member, Project, Step, Ticket } from "../lib/data";
 import { useRoute } from "../lib/router";
 import type { Profile } from "../lib/session";
 import { starterRules } from "./GuidePage";
-import type { Room as RoomData, RoomMessage } from "../lib/room";
+import type { Room as RoomData } from "../lib/room";
+import type { DemoRoom } from "./useCaptainRoom";
 import type { Workspace as WS } from "./useWorkspace";
 import { Workspace } from "./Workspace";
 
@@ -69,7 +70,7 @@ const tickets: Ticket[] = [
   ticket(3, { title: "Remember me for 30 days", status: "ready", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", priority: "medium", labels: ["auth"] }),
   ticket(4, { title: "Pick the session store", status: "in_progress", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", needs_human: "Redis or Postgres for sessions? Postgres is simpler, Redis is faster.", priority: "high" }),
   ticket(11, { title: "Checkout", status: "in_progress", type: "epic", priority: "high", description: "Paying should take under a minute." }),
-  ticket(12, { title: "Pay with Apple Pay", status: "in_progress", type: "feature", priority: "medium", parent_id: "t11", assignee_id: REVIEWER, assignee_type: "agent", started_at: iso(25) }),
+  ticket(12, { title: "Pay with Apple Pay", status: "in_progress", type: "feature", priority: "medium", parent_id: "t11", assignee_id: REVIEWER, assignee_type: "agent", started_at: iso(25), needs_human: "I stopped: hit the 60-minute limit. Where it got to: the Apple Pay button shows; paying isn't wired yet.", updated_at: iso(8) }),
   ticket(13, { title: "Search", status: "in_progress", type: "epic", description: "Find any product in two keystrokes." }),
   ticket(14, { title: "Filter search by price", status: "done", summary: "Shoppers can narrow search results to a price range", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/40", completed_at: iso(40) }),
   ticket(15, { title: "Order history", status: "backlog", type: "epic", description: "Shoppers can see what they bought." }),
@@ -87,31 +88,14 @@ const tickets: Ticket[] = [
     approved_sha: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
     approved_by: LEAD,
     approved_at: iso(12),
-    needs_human: "Ready to merge — needs your OK: a database change (db/migrations/004_sessions.sql).",
+    updated_at: iso(11),
+    review: { question: "Everyone who is signed in now will be signed out once, when this ships. Is that OK?", less_sure: "Nothing I'm unsure about here." },
+    needs_human: "Ready to merge — needs your OK: Everyone who is signed in now will be signed out once, when this ships. Is that OK? (db/migrations/004_sessions.sql)",
   }),
   ticket(6, { title: "Order history page", status: "backlog", type: "feature", priority: "low", parent_id: "t15" }),
   ticket(7, { title: "Upgrade to React 19", status: "backlog", type: "chore", assignee_id: LEE, assignee_type: "human" }),
   ticket(8, { title: "Product search", status: "done", summary: "Shoppers can search products by name from any page", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(300) }),
   ticket(9, { title: "Write the Project Guide", status: "done", summary: "Agents now read one guide with the concept and rules before they start", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(900) }),
-];
-
-const event = (id: number, ticket: string, actor: string, minAgo: number, kind: string, data: Record<string, unknown> = {}): TicketEvent => ({
-  id, ticket_id: ticket, actor_id: actor, actor_type: actor === ANA || actor === LEE ? "human" : "agent", kind, data, created_at: iso(minAgo),
-});
-// Newest first, like recentEvents(); the step and branch events are bookkeeping the Overview hides.
-const events: TicketEvent[] = [
-  event(12, "t2", BUILDER, 4, "step", { idx: 2, label: "Create profiles for new users", status: "now" }),
-  event(11, "t5", LEAD, 5, "approval", { to: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912" }),
-  event(10, "t10", LEAD, 12, "needs_human", { note: "Ready to merge — needs your OK: a database change (db/migrations/004_sessions.sql)." }),
-  event(9, "t4", REVIEWER, 20, "needs_human", { note: "Redis or Postgres for sessions?" }),
-  event(8, "t12", REVIEWER, 25, "status", { from: "ready", to: "in_progress" }),
-  event(7, "t12", REVIEWER, 25, "branch", { branch: "SH-12-apple-pay" }),
-  event(6, "t14", LEAD, 40, "status", { from: "review", to: "done" }),
-  event(5, "t2", BUILDER, 50, "status", { from: "ready", to: "in_progress" }),
-  event(4, "t3", LEAD, 54, "assignee", { from: null, to: REVIEWER }),
-  event(3, "t1", LEAD, 55, "created", { status: "in_progress" }),
-  event(2, "t5", BUILDER, 70, "status", { from: "in_progress", to: "review" }),
-  event(1, "t9", ANA, 900, "comment", { comment_id: 1 }),
 ];
 
 const steps = new Map<string, Step[]>([
@@ -162,26 +146,31 @@ const guide: Guide = {
 const roomMember = (id: string, name: string, kind: "human" | "agent", client: string | null, role: RoomData["members"][number]["role"], seen: number) => ({
   id, name, kind, client, owner_id: ANA, runner_state: "idle", paused: false, last_seen_at: iso(seen), role, can_instruct: role !== "follower",
 });
-const demoRoom: { room: RoomData; messages: RoomMessage[] } = {
+const demoRoom: DemoRoom = {
   room: {
     id: "room", name: "shop", repo: "ana/shop",
     members: [roomMember(ANA, "ana", "human", "web", "human", 1), roomMember(LEE, "lee", "human", "web", "human", 30), roomMember(LEAD, "ana-claude", "agent", "claude-code", "lead", 1), roomMember(BUILDER, "builder", "agent", "claude-code", "follower", 1), roomMember(REVIEWER, "lee-codex", "agent", "codex", "follower", 2)],
     me: null as RoomData["me"],
   },
   messages: [
-    { id: 1, room_id: "room", thread_id: null, sender_id: ANA, to_id: LEAD, kind: "chat", body: "@ana-claude let's add Google sign-in. Plan it on the board.", refs: {}, created_at: iso(60) },
-    { id: 2, room_id: "room", thread_id: 1, sender_id: LEAD, to_id: ANA, kind: "answer", body: "Planned the **Sign-in** goal: SH-2 (Google sign-in) for builder, SH-3 and SH-4 for lee-codex. SH-3 waits on SH-4.", refs: {}, created_at: iso(55) },
-    { id: 3, room_id: "room", thread_id: 1, sender_id: LEAD, to_id: null, kind: "status", body: "Picked up #1, continuing.", refs: {}, created_at: iso(54) },
-    { id: 4, room_id: "room", thread_id: null, sender_id: BUILDER, to_id: null, kind: "status", body: "Started on #2 (branch sh-2-add-google-sign-in).", refs: {}, created_at: iso(50) },
-    { id: 5, room_id: "room", thread_id: null, sender_id: REVIEWER, to_id: null, kind: "status", body: "Queued #2: lee has paused me; I'll start when resumed.", refs: {}, created_at: iso(49) },
-    { id: 6, room_id: "room", thread_id: null, sender_id: LEAD, to_id: BUILDER, kind: "status", body: "Model change: ana-claude moved builder to opus, high effort: SH-2 touches sign-in. Applies from your next run.", refs: {}, created_at: iso(48) },
-    { id: 7, room_id: "room", thread_id: null, sender_id: REVIEWER, to_id: LEAD, kind: "question", body: "@ana-claude for SH-4: Redis or Postgres for sessions? Postgres is simpler, Redis is faster.", refs: {}, created_at: iso(20) },
-    { id: 8, room_id: "room", thread_id: 7, sender_id: LEAD, to_id: null, kind: "status", body: "Started on #7 (branch sh-4-sessions).", refs: {}, created_at: iso(19) },
-    { id: 9, room_id: "room", thread_id: 7, sender_id: LEAD, to_id: ANA, kind: "question", body: "@ana that's a product choice: Postgres keeps us on one database (DEC-1). OK to go with Postgres?", refs: {}, created_at: iso(18) },
-    { id: 10, room_id: "room", thread_id: 7, sender_id: REVIEWER, to_id: null, kind: "status", body: "Pausing this thread after 4 agent messages in a row. A person can reply to continue.", refs: {}, created_at: iso(17) },
-    { id: 11, room_id: "room", thread_id: null, sender_id: BUILDER, to_id: null, kind: "status", body: "Failed on #2.\n\nYou've hit your session limit · resets 11:20pm (Europe/Stockholm)", refs: {}, created_at: iso(12) },
-    { id: 12, room_id: "room", thread_id: null, sender_id: REVIEWER, to_id: LEAD, kind: "status", body: "Blocked on #5: SH-3 needs the session table from SH-4, which isn't merged yet.", refs: {}, created_at: iso(6) },
+    { id: 1, room_id: "room", thread_id: null, sender_id: ANA, to_id: LEAD, kind: "chat", body: "Can Apple Pay be in before Friday?", refs: {}, created_at: iso(60 * 26) },
+    { id: 2, room_id: "room", thread_id: 1, sender_id: LEAD, to_id: ANA, kind: "answer", body: "Yes. lee-codex picks up SH-12 tomorrow morning; I'll tell you when it's in review.", refs: {}, created_at: iso(60 * 26 - 3) },
+    { id: 3, room_id: "room", thread_id: null, sender_id: ANA, to_id: LEAD, kind: "chat", body: "@ana-claude let's add Google sign-in. Plan it on the board.", refs: {}, created_at: iso(60) },
+    { id: 4, room_id: "room", thread_id: 3, sender_id: LEAD, to_id: ANA, kind: "status", body: "Started on #3 (branch sh-1-plan-sign-in).", refs: {}, created_at: iso(58) },
+    { id: 5, room_id: "room", thread_id: 3, sender_id: LEAD, to_id: ANA, kind: "status", body: "Picked up #3, continuing.", refs: {}, created_at: iso(56) },
+    { id: 6, room_id: "room", thread_id: 3, sender_id: LEAD, to_id: ANA, kind: "answer", body: "Planned the **Sign-in** goal: SH-2 (Google sign-in) for builder, SH-3 and SH-4 for lee-codex. SH-3 waits on SH-4.", refs: {}, created_at: iso(55) },
+    { id: 7, room_id: "room", thread_id: null, sender_id: BUILDER, to_id: null, kind: "status", body: "Started on #2 (branch sh-2-add-google-sign-in).", refs: {}, created_at: iso(50) },
+    { id: 8, room_id: "room", thread_id: null, sender_id: REVIEWER, to_id: null, kind: "status", body: "Queued #2: lee has paused me; I'll start when resumed.", refs: {}, created_at: iso(49) },
+    { id: 9, room_id: "room", thread_id: null, sender_id: LEAD, to_id: BUILDER, kind: "status", body: "Model change: ana-claude moved builder to opus, high effort: SH-2 touches sign-in. Applies from your next run.", refs: {}, created_at: iso(48) },
+    { id: 10, room_id: "room", thread_id: null, sender_id: REVIEWER, to_id: LEAD, kind: "question", body: "@ana-claude for SH-4: Redis or Postgres for sessions? Postgres is simpler, Redis is faster.", refs: {}, created_at: iso(20) },
+    { id: 11, room_id: "room", thread_id: 10, sender_id: LEAD, to_id: null, kind: "status", body: "Started on #10 (branch sh-4-sessions).", refs: {}, created_at: iso(19) },
+    { id: 12, room_id: "room", thread_id: 10, sender_id: LEAD, to_id: ANA, kind: "question", body: "@ana that's a product choice: Postgres keeps us on one database (DEC-1). OK to go with Postgres?", refs: {}, created_at: iso(18) },
+    { id: 13, room_id: "room", thread_id: 10, sender_id: REVIEWER, to_id: null, kind: "status", body: "Pausing this thread after 4 agent messages in a row. A person can reply to continue.", refs: {}, created_at: iso(17) },
+    { id: 14, room_id: "room", thread_id: null, sender_id: BUILDER, to_id: null, kind: "status", body: "Failed on #2.\n\nYou've hit your session limit · resets 11:20pm (Europe/Stockholm)", refs: {}, created_at: iso(12) },
+    { id: 15, room_id: "room", thread_id: null, sender_id: REVIEWER, to_id: LEAD, kind: "status", body: "Blocked on #5: SH-3 needs the session table from SH-4, which isn't merged yet.", refs: {}, created_at: iso(6) },
   ],
+  // Last caught up 10 hours ago, so the preview opens with a catch-up.
+  caughtUpAt: iso(600),
 };
 
 demoRoom.room.me = demoRoom.room.members[0];
@@ -215,5 +204,5 @@ export default function DemoWorkspace() {
     };
   }, []);
   const r = route.view === "home" || route.view === "new-project" || route.view === "join" ? ({ view: "overview", project: "shop" } as const) : route;
-  return <Workspace project={project} projects={[project]} route={r} profile={profile} demo={ws} demoRoom={demoRoom} demoEvents={events} onSignOut={() => undefined} onEditProfile={() => undefined} />;
+  return <Workspace project={project} projects={[project]} route={r} profile={profile} demo={ws} demoRoom={demoRoom} onSignOut={() => undefined} onEditProfile={() => undefined} />;
 }

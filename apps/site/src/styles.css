@@ -55,7 +55,17 @@ h1, h2, h3, p { margin: 0; }
   .ak-nav nav a { white-space: nowrap; }
   .ak-nav .ak-hide, .ak-nav [role="separator"] { display: none !important; }
 }
+/* Captain home (S01): the briefing headline, cards and lines indented under Captain's avatar, and the
+   1 s outline pulse on the card the amber clause points at. */
+.ak-headline { font-size: 26px; }
+.ak-indent { margin-left: 40px; }
+@keyframes ak-outline-pulse { from { outline-color: var(--amber); } to { outline-color: transparent; } }
+.ak-pulse { outline: 2px solid transparent; outline-offset: 3px; animation: ak-outline-pulse 1s ease-out; }
+@media (prefers-reduced-motion: reduce) { .ak-pulse { animation: none; outline-color: var(--amber); } }
+
 /* Phone: 16px side padding. */
 @media (max-width: 639px) {
   .ak-page { padding-left: 16px !important; padding-right: 16px !important; }
+  .ak-headline { font-size: 21px; }
+  .ak-indent { margin-left: 0; }
 }

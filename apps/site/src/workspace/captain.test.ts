@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MERGE_OK_PREFIX } from "../lib/data";
-import { awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, lowerFirst, mergeChip, mergeQuestion, needsYou, openQuestions, ownerOf, timeline } from "./captain";
+import { awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, lowerFirst, mergeChip, mergeQuestion, needsYou, openQuestions, ownerOf, riskyPart, timeline } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, message, ticket, workspace } from "./fixtures";
 
 describe("the conversation with Captain", () => {
@@ -267,11 +267,15 @@ describe("the timeline", () => {
 
 describe("decision cards", () => {
   it("asks Captain's review question, or falls back to a plain one", () => {
-    const t = ticket({ key: "SH-2", title: "Sessions column", status: "review", needs_human: `${MERGE_OK_PREFIX} a database change` });
+    const t = ticket({ key: "SH-2", title: "Sessions column", status: "review", needs_human: `${MERGE_OK_PREFIX} db/004_sessions.sql` });
     const [need] = needsYou(workspace([t]), []);
     expect(mergeQuestion(need)).toBe("OK to merge “Sessions column”?");
-    const asked = { ...need, ticket: { ...t, review: { question: "Everyone signed up before today becomes an email sign-in. Right?", less_sure: "" } } };
-    expect(mergeQuestion(asked)).toBe("Everyone signed up before today becomes an email sign-in. Right?");
+    expect(riskyPart(need)).toBe("db/004_sessions.sql");
+    const question = "Everyone signed up before today becomes an email sign-in. Right?";
+    const reviewed = { ...t, needs_human: `${MERGE_OK_PREFIX} ${question} (db/004_sessions.sql, ci.yml)`, review: { question, less_sure: "" } };
+    const [asked] = needsYou(workspace([reviewed]), []);
+    expect(mergeQuestion(asked)).toBe(question);
+    expect(riskyPart(asked)).toBe("db/004_sessions.sql, ci.yml");
   });
 
   it("shows who reviewed and who built only when the ticket says both", () => {

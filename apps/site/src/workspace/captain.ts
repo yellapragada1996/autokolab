@@ -352,7 +352,7 @@ export function timeline(rows: Row[], cards: Need[], catchUpAt?: string | null):
   const asked = new Map(cards.filter((n) => n.turnId !== null).map((n) => [n.turnId, n]));
   const out: Entry[] = rows.map((r) => {
     const need = r.kind === "question" ? asked.get(r.id) : undefined;
-    return need ? { kind: "card", key: need.key, at: r.at, need } : { kind: "row", key: `${r.kind}:${r.id}`, at: rowAt(r), row: r };
+    return need ? { kind: "card", key: need.key, at: rowAt(r), need } : { kind: "row", key: `${r.kind}:${r.id}`, at: rowAt(r), row: r };
   });
   const loose = cards.filter((n) => n.turnId === null || !rows.some((r) => r.kind === "question" && r.id === n.turnId)).sort((a, b) => Date.parse(a.since) - Date.parse(b.since));
   for (const need of loose) {
@@ -383,9 +383,9 @@ export const foldText = (n: number) => plural(n, "quiet update");
 
 // ------------------------------------------------------------------ decision cards
 
-/** What a card is about, after "Needs you · ". */
+/** What a card is about, after "Needs you · ". The ticket's key and title follow the ones ending in "on". */
 export const NEED_WHAT: Record<NeedKind, string> = {
-  risky_merge: "a risky merge",
+  risky_merge: "a risky merge on",
   ticket_question: "a question on",
   captain_question: "my question",
   problem: "a problem on",
@@ -397,6 +397,17 @@ export const NEED_WHAT: Record<NeedKind, string> = {
  */
 export function mergeQuestion(need: Need): string {
   return need.ticket?.review?.question?.trim() || `OK to merge ${named(need.ticket?.title ?? "this")}?`;
+}
+
+/**
+ * What makes a merge risky, from what the runner wrote after the prefix (runner/merge.ts
+ * mergeOkQuestion): "<question> (<files>)", or the files alone. Null when there's nothing left.
+ */
+export function riskyPart(need: Need): string | null {
+  const q = need.ticket?.review?.question?.trim();
+  let s = need.question.trim();
+  if (q && s.startsWith(q)) s = s.slice(q.length).trim().replace(/^\((.*)\)$/s, "$1").trim();
+  return s || null;
 }
 
 /** The evidence chip on a risky-merge card, from facts on the ticket only: "Reviewed by Captain, built by Birch". */
