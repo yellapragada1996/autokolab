@@ -6,7 +6,7 @@ import { AgentMark, Avatar, Button, Icon, Logo, Svg } from "../ui";
 import { CommandPalette, useCommandPalette, type Command } from "../ui/CommandPalette";
 import { Backlog } from "./Backlog";
 import { Board, Card, EmptyBoard } from "./Board";
-import { ago, KeyText, LeadBadge, StatusIcon } from "./bits";
+import { ago, KeyText, LeadBadge, StatusIcon, Who } from "./bits";
 import { ConnectAgents } from "./Connect";
 import { Decisions } from "./Decisions";
 import { Room } from "./Room";
@@ -15,7 +15,8 @@ import { GuidePage } from "./GuidePage";
 import { ListView } from "./ListView";
 import { NewTicket } from "./NewTicket";
 import { agentOnline, agentStatusText, People } from "./People";
-import { describe, isPerson, OkToMerge, TicketPage } from "./TicketPage";
+import { actionFor, activity, goals, goalStateText, headline, plural, type Goal } from "./story";
+import { isPerson, OkToMerge, TicketPage } from "./TicketPage";
 import { useWorkspace, type Workspace as WS } from "./useWorkspace";
 
 // The project workspace: sidebar (projects, views, people and agents) and the current view.
@@ -43,6 +44,7 @@ export function Workspace({
   onProjectChanged,
   demo,
   demoRoom,
+  demoEvents,
 }: {
   project: Project;
   projects: Project[];
@@ -55,6 +57,7 @@ export function Workspace({
   /** Development preview data instead of the live project. */
   demo?: WS;
   demoRoom?: { room: RoomData; messages: RoomMessage[] };
+  demoEvents?: TicketEvent[];
 }) {
   const live = useWorkspace(demo ? null : project);
   const ws = demo ?? live.ws;
@@ -148,7 +151,7 @@ export function Workspace({
           ) : route.view === "people" ? (
             <People ws={ws} me={me} onProjectChanged={onProjectChanged} />
           ) : (
-            <Overview ws={ws} me={me} />
+            <Overview ws={ws} me={me} demoEvents={demoEvents} />
           )}
         </div>
       </main>
@@ -313,9 +316,10 @@ function Sidebar({
 
 // ------------------------------------------------------------------ overview
 
-function Overview({ ws, me }: { ws: WS; me: string }) {
-  const [events, setEvents] = useState<TicketEvent[] | null>(null);
+function Overview({ ws, me, demoEvents }: { ws: WS; me: string; demoEvents?: TicketEvent[] }) {
+  const [events, setEvents] = useState<TicketEvent[] | null>(demoEvents ?? null);
   useEffect(() => {
+    if (demoEvents) return;
     let live = true;
     recentEvents(ws.project.id)
       .then((e) => live && setEvents(e))
@@ -323,7 +327,14 @@ function Overview({ ws, me }: { ws: WS; me: string }) {
     return () => {
       live = false;
     };
-  }, [ws]);
+  }, [ws, demoEvents]);
+  const sentences = events
+    ?.flatMap((e) => {
+      const t = ws.byId.get(e.ticket_id);
+      const s = t && activity(ws, e, t);
+      return t && s ? [{ e, t, s }] : [];
+    })
+    .slice(0, 15);
 
   const open = ws.tickets.filter((t) => !["done", "canceled"].includes(t.status));
   const needs = open.filter((t) => t.needs_human);
@@ -344,6 +355,8 @@ function Overview({ ws, me }: { ws: WS; me: string }) {
   return (
     <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-start" }}>
       <div style={{ flex: "999 1 460px", minWidth: 0, display: "flex", flexDirection: "column", gap: 28 }}>
+        <Headline ws={ws} />
+
         {setupLeft > 0 && (
           <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <h2 style={{ fontSize: 16, fontWeight: 600 }}>
@@ -381,14 +394,16 @@ function Overview({ ws, me }: { ws: WS; me: string }) {
             waitsForMergeOk(t) && isPerson(ws, me) ? (
               // The card is a link, so the button sits under it rather than inside.
               <div key={t.id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <Card ws={ws} t={t} me={me} />
+                <Card ws={ws} t={t} me={me} action={actionFor(t)} />
                 <OkToMerge ws={ws} t={t} />
               </div>
             ) : (
-              <Card key={t.id} ws={ws} t={t} me={me} />
+              <Card key={t.id} ws={ws} t={t} me={me} action={actionFor(t)} />
             ),
           )}
         </Group>
+
+        {ws.tickets.length > 0 && <Goals ws={ws} me={me} />}
 
         <Group title="In progress" count={moving.length} empty={ready.length ? `${ready.length} ticket${ready.length === 1 ? " is" : "s are"} in Ready, waiting for an agent.` : "Nothing in progress right now."}>
           {moving.map((t) => (
@@ -427,40 +442,123 @@ function Overview({ ws, me }: { ws: WS; me: string }) {
         <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <span className="eyebrow">Recent activity</span>
           {events === null && <span style={{ fontSize: 13, color: "var(--faint)" }}>Loading…</span>}
-          {events?.length === 0 && <span style={{ fontSize: 13, color: "var(--faint)" }}>Nothing yet.</span>}
-          {events?.map((e) => {
-            const t = ws.byId.get(e.ticket_id);
-            const what = describe(ws, e);
-            if (!t || !what) return null;
-            const to = e.kind === "status" ? (e.data as { to?: string }).to : undefined;
-            const outcome = t.summary && (to === "done" || to === "review") ? `${to === "done" ? "Shipped" : "Up for review"}: ${t.summary}` : null;
-            if (outcome) {
-              return (
-                <a key={e.id} href={`/p/${ws.project.slug}/t/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "var(--muted)", textDecoration: "none", lineHeight: 1.45 }}>
-                  <span style={{ marginTop: 2 }}>
-                    <StatusIcon status={t.status} size={13} />
-                  </span>
-                  <span>
-                    <span style={{ color: "var(--text-2)" }}>{outcome}</span> <span style={{ color: "var(--faint)" }}>· <KeyText t={t} style={{ color: "var(--faint)" }} /> · {ago(e.created_at)}</span>
-                  </span>
-                </a>
-              );
-            }
-            return (
-              <a key={e.id} href={`/p/${ws.project.slug}/t/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "var(--muted)", textDecoration: "none", lineHeight: 1.45 }}>
-                <span style={{ marginTop: 2 }}>
-                  <StatusIcon status={t.status} size={13} />
-                </span>
+          {sentences?.length === 0 && <span style={{ fontSize: 13, color: "var(--faint)" }}>Nothing yet.</span>}
+          {sentences?.map(({ e, t, s }) => (
+            <a key={e.id} href={`/p/${ws.project.slug}/t/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} title={t.title} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "var(--muted)", textDecoration: "none", lineHeight: 1.45 }}>
+              <span style={{ marginTop: 2 }}>
+                <StatusIcon status={t.status} size={13} />
+              </span>
+              {s.outcome ? (
                 <span>
-                  <strong style={{ color: "var(--text-2)", fontWeight: 500 }}>{ws.nameOf(e.actor_id)}</strong> {what} on <KeyText t={t} style={{ color: "var(--text-2)" }} />{" "}
-                  <span style={{ color: "var(--faint)" }}>· {ago(e.created_at)}</span>
+                  <span style={{ color: "var(--text-2)" }}>{s.outcome}</span>{" "}
+                  <span style={{ color: "var(--faint)" }}>
+                    · <KeyText t={t} style={{ color: "var(--faint)" }} /> · {ago(e.created_at)}
+                  </span>
                 </span>
-              </a>
-            );
-          })}
+              ) : (
+                <span>
+                  <strong style={{ color: "var(--text-2)", fontWeight: 500 }}>{ws.nameOf(e.actor_id)}</strong> {s.verb} <KeyText t={t} style={{ color: "var(--text-2)" }} />
+                  {s.after ? ` ${s.after}` : ""} <span style={{ color: "var(--faint)" }}>· {ago(e.created_at)}</span>
+                </span>
+              )}
+            </a>
+          ))}
         </section>
       </aside>
     </div>
+  );
+}
+
+/** One sentence that says what's going on: who's building what, what shipped today, what needs you. */
+function Headline({ ws }: { ws: WS }) {
+  const h = headline(ws);
+  const epicLink = (e: { key: string; title: string }) => (
+    <a key={e.key} href={`/p/${ws.project.slug}/t/${e.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: e.key })} style={{ color: "var(--primary)", textDecoration: "none", fontWeight: 600 }}>
+      {e.title}
+    </a>
+  );
+  let building: React.ReactNode;
+  if (!h.building) building = "All quiet. Nothing is being built right now.";
+  else {
+    const { workers, agentsOnly, epics, tickets } = h.building;
+    const who = workers ? `${plural(workers, agentsOnly ? "agent" : "teammate")} ${workers === 1 ? "is" : "are"} ` : "";
+    const shown = epics.slice(0, 2);
+    const more = epics.length - shown.length;
+    building = epics.length ? (
+      <>
+        {who ? `${who}building ` : "Work is moving on "}
+        {shown.map((e, i) => (
+          <span key={e.id}>
+            {i > 0 && (more ? ", " : " and ")}
+            {epicLink(e)}
+          </span>
+        ))}
+        {more > 0 && ` and ${plural(more, "more goal")}`}.
+      </>
+    ) : (
+      `${who ? `${who}working on` : "Work is moving on"} ${plural(tickets, "ticket")}.`
+    );
+  }
+  return (
+    <p style={{ fontSize: 20, lineHeight: 1.45, fontWeight: 500, color: "var(--text)", maxWidth: 760 }}>
+      {building}
+      {h.shipped > 0 && ` ${plural(h.shipped, "thing")} shipped today.`}
+      {h.needs > 0 && <span style={{ color: "var(--warn)" }}>{` ${plural(h.needs, "decision")} ${h.needs === 1 ? "needs" : "need"} you.`}</span>}
+    </p>
+  );
+}
+
+/** Each open epic with its progress, then the tickets with no epic as "Other work". */
+function Goals({ ws, me }: { ws: WS; me: string }) {
+  const list = goals(ws);
+  return (
+    <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <h2 style={{ fontSize: 16, fontWeight: 600 }}>
+        Goals <span style={{ color: "var(--faint)", fontWeight: 400, fontSize: 14 }}>{list.filter((g) => g.epic).length}</span>
+      </h2>
+      {list.length ? (
+        <div style={{ display: "flex", flexDirection: "column", borderRadius: 12, border: "1px solid var(--line-soft)", overflow: "hidden" }}>
+          {list.map((g, i) => (
+            <GoalRow key={g.epic?.id ?? "other"} ws={ws} me={me} g={g} first={i === 0} />
+          ))}
+        </div>
+      ) : (
+        <div style={{ padding: 14, borderRadius: 12, border: "1px dashed var(--line)", fontSize: 13, color: "var(--muted)" }}>No open goals. Ask the lead to group the next piece of work into an epic.</div>
+      )}
+    </section>
+  );
+}
+
+function GoalRow({ ws, me, g, first }: { ws: WS; me: string; g: Goal; first: boolean }) {
+  const st = goalStateText[g.state];
+  const pct = g.total ? Math.round((g.done / g.total) * 100) : 0;
+  const to: Route = g.epic ? { view: "ticket", project: ws.project.slug, key: g.epic.key } : { view: "backlog", project: ws.project.slug };
+  return (
+    <a
+      href={g.epic ? `/p/${ws.project.slug}/t/${g.epic.key}` : `/p/${ws.project.slug}/backlog`}
+      onClick={onNav(to)}
+      style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", background: "var(--surface)", borderTop: first ? 0 : "1px solid var(--line-soft)", textDecoration: "none", color: "var(--text)" }}
+    >
+      <span style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 14, fontWeight: 500, flex: "1 1 200px", minWidth: 0 }}>{g.epic ? g.epic.title : "Other work"}</span>
+        <span style={{ fontSize: 12, fontWeight: 600, color: st.color }}>{st.label}</span>
+      </span>
+      <span role="progressbar" aria-label={`${g.epic ? g.epic.title : "Other work"} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} style={{ height: 6, borderRadius: 3, background: "var(--line)", overflow: "hidden" }}>
+        <span style={{ display: "block", height: "100%", width: `${pct}%`, borderRadius: 3, background: g.state === "waiting" ? "var(--warn)" : "var(--ok-dot)" }} />
+      </span>
+      <span style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--muted)" }}>
+        {g.total ? `${g.done} of ${g.total} done` : "No tickets yet"}
+        {g.who.length > 0 && (
+          <span style={{ marginLeft: "auto", display: "inline-flex", gap: 4 }} aria-label={`On it: ${g.who.map((id) => ws.nameOf(id)).join(", ")}`}>
+            {g.who.slice(0, 5).map((id) => (
+              <span key={id} title={ws.nameOf(id)}>
+                <Who ws={ws} id={id} size={20} withName={false} you={me} />
+              </span>
+            ))}
+          </span>
+        )}
+      </span>
+    </a>
   );
 }
 
