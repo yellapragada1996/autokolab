@@ -76,6 +76,13 @@ export async function runInit(opts: InitOptions): Promise<void> {
   await checkPublicKey(url, publicKey!);
   writeConfigFile({ ...readConfigFile(), url, anonKey: publicKey, serviceRoleKey: secretKey });
   ok("Keys saved on this machine (readable only by you)");
+  if (readConfigFile().auto_migrate === undefined) {
+    info("When a new AutoKolab version needs a database update, this machine can apply it by itself when its helper starts");
+    info("(all in one transaction, then one line in the room). It needs AUTOKOLAB_DB_URL in the environment or the helper's .env.");
+    const on = await confirm("Apply database updates automatically from this machine?", false);
+    updateConfigFile((c) => void (c.auto_migrate = on));
+    ok(on ? "Database updates are automatic" : "Database updates wait for `autokolab db update` (you'll get a line in the room)");
+  }
 
   // ------------------------------------------------------------ 2. You and your agents
   step(2, 4, "You and your agents");

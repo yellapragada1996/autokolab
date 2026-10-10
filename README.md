@@ -23,6 +23,12 @@ an update fails it goes back to the version it was on. `autokolab update` update
 `autokolab update --off` turns automatic updates off, and `autokolab status` shows the last one.
 A copy you develop in (anywhere other than `~/.autokolab`) is never touched.
 
+When a new version needs a database update, the team admin's machine (the one with the Supabase
+secret key and `AUTOKOLAB_DB_URL`) handles it. If you said yes when `autokolab init` asked (or ran
+`autokolab db update --on`), its helper applies the update when it starts, all in one transaction,
+and says so in the room. Otherwise it tells you once in the room, and `autokolab db update` applies
+it. `autokolab status` shows the database version on every machine.
+
 ## Start a team
 
 You need a free [Supabase](https://supabase.com) project (it stores the team's messages). In the
