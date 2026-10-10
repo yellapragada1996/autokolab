@@ -3,7 +3,7 @@ import { AutoKolab, type RoomMemberView, type RoomView, type WorkEntry } from "@
 import type { BulletinItem, Message } from "@core/types";
 import { Avatar, Dot } from "./icons";
 import { isLocal, local, STALE_EVENT, type SetupState } from "./local";
-import { InviteBox, RepoPicker, Setup, Wordmark } from "./Setup";
+import { DatabaseUpdates, InviteBox, RepoPicker, Setup, Wordmark } from "./Setup";
 
 // ------------------------------------------------------------------ sign-in (when not opened by the app)
 
@@ -137,7 +137,7 @@ export function App() {
 
 function Shell({ ak, localState, onLocalChange }: { ak: AutoKolab; localState: SetupState | null; onLocalChange: () => void }) {
   const [rooms, setRooms] = useState(ak.rooms());
-  const [dialog, setDialog] = useState<"invite" | "repo" | null>(null);
+  const [dialog, setDialog] = useState<"invite" | "repo" | "database" | null>(null);
   const [roomId, setRoomId] = useState<string>(() => {
     let saved: string | null = null;
     try {
@@ -192,6 +192,9 @@ function Shell({ ak, localState, onLocalChange }: { ak: AutoKolab; localState: S
             <button className="small ghost" onClick={() => setDialog("repo")}>
               Add repo
             </button>
+            <button className="small ghost" onClick={() => setDialog("database")}>
+              Database updates
+            </button>
           </>
         )}
       </header>
@@ -200,13 +203,15 @@ function Shell({ ak, localState, onLocalChange }: { ak: AutoKolab; localState: S
         <div className="modal-back" onClick={() => setDialog(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="row between" style={{ marginBottom: 16 }}>
-              <h2>{dialog === "invite" ? "Invite a teammate" : "Add a repo"}</h2>
+              <h2>{dialog === "invite" ? "Invite a teammate" : dialog === "repo" ? "Add a repo" : "Database updates"}</h2>
               <button className="ghost small" onClick={() => setDialog(null)}>
                 Close
               </button>
             </div>
             {dialog === "invite" ? (
               <InviteBox />
+            ) : dialog === "database" ? (
+              localState && <DatabaseUpdates initial={localState} />
             ) : (
               <RepoPicker
                 onDone={async () => {

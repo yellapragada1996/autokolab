@@ -74,7 +74,7 @@ export function Setup({ initial, onFinished }: { initial: SetupState; onFinished
         <div className="setup-card">
           {step === "welcome" && <Welcome onStart={() => setStep("keys")} onJoin={() => setStep("join")} />}
           {step === "keys" && <Keys onDone={(db) => void refresh(db === "ready" ? undefined : "database")} onBack={() => setStep("welcome")} />}
-          {step === "database" && <Database onDone={() => void refresh()} />}
+          {step === "database" && <Database state={state} onDone={() => void refresh()} />}
           {step === "you" && <AdminYou state={state} onDone={() => void refresh()} />}
           {step === "repo" && <RepoPicker onDone={() => void refresh("done")} />}
           {step === "done" && <Done state={state} onOpen={onFinished} />}
@@ -258,21 +258,21 @@ function Keys({ onDone, onBack }: { onDone: (db: "ready" | "missing") => void; o
   );
 }
 
-function Database({ onDone }: { onDone: () => void }) {
-  const [hasDbUrl, setHasDbUrl] = useState<boolean | null>(null);
+function Database({ state, onDone }: { state: SetupState; onDone: () => void }) {
+  const [hasDbUrl, setHasDbUrl] = useState<boolean | null>(state.hasDbUrl ? true : null);
   const [dbUrl, setDbUrl] = useState("");
   const [sql, setSql] = useState("");
   const { busy, error, run } = useAction();
   useEffect(() => {
-    void local.env().then((e) => setHasDbUrl(e.dbUrl)).catch(() => setHasDbUrl(false));
-  }, []);
+    if (!state.hasDbUrl) void local.env().then((e) => setHasDbUrl(e.dbUrl)).catch(() => setHasDbUrl(false));
+  }, [state.hasDbUrl]);
   return (
     <>
       <h1>Set up the database</h1>
       <p className="lead">A one-time step that creates AutoKolab's tables in your project.</p>
       {hasDbUrl ? (
         <div className="panel">
-          <Check>Found your database connection in your .env file.</Check>
+          <Check>Found your database connection on this computer.</Check>
         </div>
       ) : (
         <label className="field">
@@ -405,6 +405,55 @@ export function RepoPicker({ onDone }: { onDone: () => void }) {
   );
 }
 
+export function DatabaseUpdates({ initial }: { initial: SetupState }) {
+  const [hasDbUrl, setHasDbUrl] = useState(initial.hasDbUrl);
+  const [on, setOn] = useState(initial.autoMigrate);
+  const [connection, setConnection] = useState("");
+  const { busy, error, run } = useAction();
+  if (!initial.admin) return null;
+  const help = "After each update, this computer applies pending database changes in one all-or-nothing step and says so in the room.";
+  return (
+    <div className="panel">
+      {hasDbUrl ? (
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={on}
+            disabled={busy}
+            onChange={(e) => {
+              const next = e.target.checked;
+              void run(async () => {
+                await local.setDatabaseUpdates({ on: next });
+                setOn(next);
+              });
+            }}
+          />
+          <span>Apply database updates automatically</span>
+        </label>
+      ) : (
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          void run(async () => {
+            await local.setDatabaseUpdates({ on: true, dbUrl: connection });
+            setConnection("");
+            setHasDbUrl(true);
+            setOn(true);
+          });
+        }}>
+          <label className="field">
+            <span>Paste the database connection string once</span>
+            <input type="password" value={connection} onChange={(e) => setConnection(e.target.value)} autoComplete="off" />
+            <small className="muted">Supabase → Connect (top bar) → Session pooler. Put your database password in place of [YOUR-PASSWORD].</small>
+          </label>
+          <button className="primary" disabled={busy || !connection.trim()}>Save and turn on</button>
+        </form>
+      )}
+      <p className="small muted">{help}</p>
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
 function Done({ state, onOpen }: { state: SetupState; onOpen: () => void }) {
   return (
     <>
@@ -422,6 +471,7 @@ function Done({ state, onOpen }: { state: SetupState; onOpen: () => void }) {
           </Check>
         ))}
       </div>
+      {state.admin && <DatabaseUpdates initial={state} />}
       <h2 className="label">Invite a teammate</h2>
       <InviteBox />
       <div className="actions">

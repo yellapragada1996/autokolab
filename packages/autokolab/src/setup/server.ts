@@ -46,6 +46,7 @@ const routes: Record<string, Handler> = {
   "GET /api/signin": () => actions.signIn(),
   "POST /api/keys": (b) => actions.saveKeys(b as never),
   "POST /api/database": (b) => actions.setUpDatabase(b as never),
+  "POST /api/database/updates": (b) => actions.setDatabaseUpdates(b as never),
   "POST /api/me": (b) => actions.createTeamMember(b as never),
   "POST /api/repos": (b) => actions.addRepo(b as never),
   "POST /api/invite": (b) => actions.invite(b as never),

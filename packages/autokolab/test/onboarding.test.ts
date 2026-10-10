@@ -1,5 +1,8 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { codeHash, decryptPayload, encryptPayload, formatInvite, newCode, parseInvite, type InvitePayload } from "../src/core/invite.js";
 import { normalizeRepo, roomNameFor } from "../src/core/repo.js";
@@ -8,6 +11,29 @@ import { upsertCodexBlock, upsertInstructions } from "../src/setup/agents.js";
 import { parseEngines } from "../src/setup/invite.js";
 import { NAME_RULE, slug } from "../src/setup/ui.js";
 import { applySchema, schemaFiles } from "../src/setup/team.js";
+import { writeConfigFile } from "../src/core/config.js";
+import { getState } from "../src/setup/actions.js";
+
+describe("local setup state", () => {
+  it("reports database settings without sending the connection string", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "autokolab-setup-"));
+    const previous = process.env.XDG_CONFIG_HOME;
+    const connection = "postgresql://user:pass@localhost:5432/db";
+    try {
+      process.env.XDG_CONFIG_HOME = dir;
+      writeConfigFile({ dbUrl: connection, auto_migrate: true });
+      const state = await getState();
+      expect(state.hasDbUrl).toBe(true);
+      expect(state.autoMigrate).toBe(true);
+      expect(JSON.stringify(state)).not.toContain(connection);
+      expect(JSON.stringify(state)).not.toContain("pass");
+    } finally {
+      if (previous === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = previous;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 const payload: InvitePayload = {
   invitedBy: "ana",

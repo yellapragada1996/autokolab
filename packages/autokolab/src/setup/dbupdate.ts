@@ -73,9 +73,9 @@ export function dbStatusLine(live: number, helper: number): string {
 
 // ------------------------------------------------------------------ doing it
 
-/** The connection string, from the environment or the .env next to the helper. Never printed. */
-export function dbUrl(): string | undefined {
-  return process.env.AUTOKOLAB_DB_URL || envFileKeys().dbUrl || undefined;
+/** The connection string, from the environment, machine config, or install .env. Never printed. */
+export function dbUrl(cfg: ConfigFile = readConfigFile(), envFile = envFileKeys): string | undefined {
+  return process.env.AUTOKOLAB_DB_URL || cfg.dbUrl || envFile().dbUrl || undefined;
 }
 
 function hasSecretKey(cfg: ConfigFile): boolean {
@@ -84,7 +84,7 @@ function hasSecretKey(cfg: ConfigFile): boolean {
 
 /** The admin's machine: it has the secret key and a database connection string. */
 export function isAdminMachine(cfg: ConfigFile = readConfigFile()): boolean {
-  return hasSecretKey(cfg) && !!dbUrl();
+  return hasSecretKey(cfg) && !!dbUrl(cfg);
 }
 
 /** The live schema version, read with the secret key on the admin's machine, else as this person. */

@@ -12,6 +12,8 @@ export interface SetupState {
   database: "ready" | "missing" | "unknown";
   databaseError?: string;
   admin: boolean;
+  autoMigrate: boolean;
+  hasDbUrl: boolean;
   me: { id: string; name: string; needsName: boolean } | null;
   agents: { id: string; name: string; engine: Engine; needsName: boolean; installed: boolean }[];
   engines: Record<Engine, boolean>;
@@ -134,6 +136,7 @@ export const local = {
   signIn: () => call<{ url: string; anonKey: string; token: string }>("GET", "signin"),
   saveKeys: (b: { url?: string; publicKey?: string; secretKey?: string }) => call<{ database: "ready" | "missing" }>("POST", "keys", b),
   setUpDatabase: (b: { dbUrl?: string }) => call<void>("POST", "database", b),
+  setDatabaseUpdates: (b: { on: boolean; dbUrl?: string }) => call<void>("POST", "database/updates", b),
   createMe: (b: { name: string; agents: Partial<Record<Engine, string>> }) => call<void>("POST", "me", b),
   addRepo: (b: { path: string; addEveryone?: boolean; instructions?: boolean }) => call<{ room: string; repo: string; instructions: string[] }>("POST", "repos", b),
   invite: (b: { lead?: boolean }) => call<InviteResult>("POST", "invite", b),
