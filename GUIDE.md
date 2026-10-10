@@ -99,7 +99,7 @@ There are four parts:
 | **Done means** | The acceptance checklist: what must be true for the ticket to be done. Agents must make every item true before moving a ticket to Review. |
 | **Steps** | The plan for one ticket, ticked off live as the agent works (each is to do, now, or done). This is how you see where a ticket is. |
 | **Blocked by** | "This ticket waits for that one." Agents won't start a ticket until its blockers are done. |
-| **Needs you** | A short question from an agent to a person. The ticket turns yellow and shows up at the top of the Overview. |
+| **Needs you** | A short question from an agent to a person. The ticket turns yellow and the question shows as a card on the Captain page. |
 | **Comments** | The conversation on a ticket. A person's comment on an agent's ticket is an instruction: the agent picks it up and continues. |
 | **History** | Every change to a ticket, recorded automatically (status changes, assignments, steps, branch, PR…). Shown mixed with comments. |
 | **Project Guide** | Three sections every agent reads before working: **Concept** (what we're building and for whom), **Architecture** (stack, folders, how to run and test) and **Rules** (what agents must and must not do). |
@@ -128,7 +128,7 @@ This is the core loop. Example: a project called Shop with tickets `SH-n`.
    - the **full ticket** (description, done means, steps, blockers, epic, every comment),
    - the **owner's machine rules** (protected branches, forbidden files, time limits),
    - instructions on **how to report** back.
-6. **The agent works, and the board updates live.** It plans steps and marks them as it goes, sets "Needs you" if it needs a decision, comments on what it found, records decisions, and creates new tickets for extra work it discovers. Everyone sees this live on the website. The agent's status ("Building · Create profiles for new users") shows in the sidebar and on the Overview.
+6. **The agent works, and the board updates live.** It plans steps and marks them as it goes, sets "Needs you" if it needs a decision, comments on what it found, records decisions, and creates new tickets for extra work it discovers. Everyone sees this live on the website. The agent's status ("Building · Create profiles for new users") shows on the People page and under "Who's doing what" on the Captain page.
 7. **It finishes.** It commits, pushes, opens a pull request with the ticket key in the title against the default branch (`main`, even when it builds on another ticket's unmerged branch, so merging it always lands the work in `main`), and moves the ticket to **Review** with the PR link. Its short final message ("what I did, how I checked it, anything left") is posted as a comment.
 8. **People steer at any time.** A comment from a person on the ticket starts a follow-up run: the agent resumes the same session in the same worktree and gets the new comments as instructions.
 9. **A person reviews and merges** the pull request on GitHub, and moves the ticket to Done.
@@ -235,7 +235,7 @@ The work happened in two generations. **Version 1** proved the core idea with a 
 
 **The project workspace (done)**
 
-- **Overview:** one plain sentence on what's happening (who's building which goal, what shipped today, how many decisions need you), what needs you with the action asked of you ("Answer a question", "OK a risky merge", "Review a PR"), each goal (epic) with its progress and who's on it, what's in progress, what each agent is doing right now, recent activity in sentences, and a setup checklist for new projects (write the guide, add people, connect an agent, first ticket).
+- **Captain:** your conversation with Captain. On top, one pinned sentence on what's happening and whether anything needs you, with "Who's doing what" (each goal's progress and what each agent is on) a click away. Below, the conversation: Captain's runner updates folded into "quiet updates", a catch-up when you've been away 30 minutes or more, and one amber card for each thing that needs you (a risky merge to OK, a question on a ticket, a question from Captain, a problem), answered right there. You write to Captain in the box at the bottom. New projects also get a setup checklist until every step is done.
 - **Board, modelled on Jira:** columns Ready · In progress · In review · Done with counts; **swimlanes** by assignee (each agent's lane shows its live status, the lead first) or by epic, collapsible; drag cards between columns and between lanes (dropping into another agent's lane reassigns it). Jira-style cards: summary, step progress, the current step or "Needs you" in yellow, the epic's colored lozenge, labels, then the issue type icon, key, PR marker, priority arrow and assignee. Jira's **avatar row** to show one person's or agent's work, **quick filters** (Only mine, Needs you, Recently updated) and search. Done issues leave the board after 14 days.
 - **Backlog, like Jira's Kanban backlog:** the issues on the board at the top, the ranked backlog below; drag to rank, drag up to start, change status from the lozenge, "+ Create issue" inline, filter by epic.
 - **All issues:** a sortable table with type icons, status lozenges and epics.
@@ -286,7 +286,7 @@ autokolab/                      (github.com/yellapragada1996/autokolab)
 │  ├─ web/                       version 1 local web app (room, setup, invites)
 │  └─ site/                      version 2: autokolab.com
 │     ├─ src/screens/            sign-in, welcome
-│     ├─ src/workspace/          Overview, Board, Backlog, List, TicketPage, GuidePage,
+│     ├─ src/workspace/          CaptainHome, Board, Backlog, List, TicketPage, GuidePage,
 │     │                          Decisions, People, CreateProject, NewTicket, Workspace shell
 │     ├─ src/lib/                data access (data.ts), session (GitHub sign-in), router
 │     └─ src/ui/                 design system components, ⌘K palette

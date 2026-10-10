@@ -48,7 +48,7 @@ function time(iso: string): string {
 }
 
 /** Ticket keys like VV-12 in a message become links to the ticket. */
-function withTicketLinks(body: string, ws: Workspace): string {
+export function withTicketLinks(body: string, ws: Workspace): string {
   const prefix = ws.project.ticket_prefix;
   return body.replace(new RegExp(`(^|[^\\w/\\[])(${prefix}-\\d+)\\b`, "g"), (all, pre: string, key: string) =>
     ws.byKey.has(key) ? `${pre}[${key}](${location.origin}/p/${ws.project.slug}/work/${key})` : all,
