@@ -598,6 +598,47 @@ select pg_temp.expect_error($q$select public.set_merge_policy('00000000-0000-000
 reset role;
 select pg_temp.expect((select merge_policy = 'ask' from public.projects where slug = 'modelz'), 'refused calls left the policy alone');
 
+-- ------------------------------------------------ nobody approves their own work (schema 13)
+reset role;
+update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000e1', assignee_type = 'agent' where key = 'MZ-1';
+set role authenticated;
+-- the lead built MZ-1: it can't approve it, or clear an approval on it
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('a1', 20))$q$, 'AUTOKOLAB_FORBIDDEN: The lead can''t approve its own work');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', null)$q$, 'AUTOKOLAB_FORBIDDEN');
+-- another agent in the project can approve the lead's ticket
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+select pg_temp.expect((select approved_sha = repeat('f6', 20) and approved_by = '00000000-0000-0000-0000-0000000000e2'
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('f6', 20))), 'a worker approves the lead''s ticket');
+-- a person can too
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect((select approved_sha = repeat('a7', 20) and approved_by = '00000000-0000-0000-0000-0000000000b2'
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('a7', 20))), 'a person approves the lead''s ticket');
+-- agents outside the project still can't
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e3';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('b2', 20))$q$, 'AUTOKOLAB_FORBIDDEN');
+-- a worker's ticket: the worker can't approve it, another worker can't either, the lead can
+reset role;
+update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000e2', assignee_type = 'agent' where key = 'MZ-1';
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('b2', 20))$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e4';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('b2', 20))$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select pg_temp.expect((select approved_by = '00000000-0000-0000-0000-0000000000e1'
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('b8', 20))), 'the lead approves a worker''s ticket');
+-- a person's own ticket needs someone else too
+reset role;
+update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000b2', assignee_type = 'human' where key = 'MZ-1';
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('c9', 20))$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+select pg_temp.expect((select approved_by = '00000000-0000-0000-0000-0000000000b1'
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000a9', repeat('c9', 20))), 'another person approves a person''s ticket');
+reset role;
+
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
 select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from unnest(array[
