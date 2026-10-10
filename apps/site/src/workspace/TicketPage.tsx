@@ -536,18 +536,28 @@ export const isPerson = (ws: Workspace, me: string) => ws.people.members.some((m
 
 /**
  * The lead's approval of an exact commit, and a person's OK for a risky merge (DEC-19). Nothing shows
- * for tickets without either, including every ticket before schema 12.
+ * for tickets without either, including every ticket before schema 12. The lead can't approve a ticket
+ * it built (AK-34), so those say who approved it, or that they wait for someone else.
  */
 function MergeRows({ ws, t, me }: { ws: Workspace; t: Ticket; me: string }) {
   const waiting = waitsForMergeOk(t);
   const sha = t.approved_sha;
+  const leadBuilt = !!ws.project.lead_agent_id && t.assignee_id === ws.project.lead_agent_id;
+  const approver = t.approved_by ? (isPerson(ws, t.approved_by) ? "a person" : "another agent") : null;
   return (
     <>
+      {!sha && leadBuilt && t.status === "review" && t.pr_url && (
+        <>
+          <dt style={{ color: "var(--muted)" }}>Approval</dt>
+          <dd style={{ margin: 0, minWidth: 0, color: "var(--warn)" }}>Waiting for a person or another agent: the lead built this, so it can't approve it</dd>
+        </>
+      )}
       {sha && (
         <>
           <dt style={{ color: "var(--muted)" }}>Approval</dt>
           <dd style={{ margin: 0, minWidth: 0 }}>
-            Approved by {ws.nameOf(t.approved_by ?? null)} for commit{" "}
+            Approved by {ws.nameOf(t.approved_by ?? null)}
+            {leadBuilt && approver && ` (${approver}, since the lead built this)`} for commit{" "}
             {ws.project.repo ? (
               <a href={`https://github.com/${ws.project.repo}/commit/${sha}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
                 {sha.slice(0, 7)}

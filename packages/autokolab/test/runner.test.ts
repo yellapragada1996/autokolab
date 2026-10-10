@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -858,5 +858,32 @@ describe("the lead's auto-merge (AK-30)", () => {
     expect(plainGhError("Pull request ana/shop#12 is not mergeable: the merge commit cannot be cleanly created.", where)).toMatch(/conflicts/);
     expect(plainGhError("GraphQL: Head branch was modified. Review and try the merge again.", where)).toMatch(/approve it again/);
     expect(plainGhError("\nsomething odd\nmore", where)).toBe("something odd");
+  });
+});
+
+describe("nobody approves their own work (AK-34)", () => {
+  // The runner merges only approved_sha, so the guard lives in approve_ticket: its latest
+  // definition must refuse the ticket's assignee before it writes the approval.
+  const sqlDir = new URL("../sql/", import.meta.url);
+  const latest = readdirSync(sqlDir)
+    .filter((f) => /^\d+_.*\.sql$/.test(f))
+    .sort()
+    .map((f) => readFileSync(new URL(f, sqlDir), "utf8"))
+    .filter((s) => s.includes("function public.approve_ticket"))
+    .pop()!;
+  const body = latest.slice(latest.indexOf("function public.approve_ticket"));
+
+  it("so a ticket the lead built can't carry the lead's own approval", () => {
+    const refuse = body.indexOf("if assignee = auth.uid() then");
+    expect(refuse).toBeGreaterThan(0);
+    expect(body).toContain("AUTOKOLAB_FORBIDDEN: The lead can''t approve its own work; a person or another agent has to.");
+    expect(refuse).toBeLessThan(body.indexOf("update public.tickets"));
+  });
+  it("lets another agent approve only a ticket the lead built", () => {
+    expect(body).toMatch(/member_type = 'agent' and assignee = lead/);
+  });
+  it("tells the lead to ask someone else", () => {
+    expect(LEAD_APPROVAL).toMatch(/can't approve your own work: when you built a ticket yourself, ask a worker in the room to review it and approve it with ticket_approve, or ask your person/);
+    expect(leadGuide("Shop", ["ana"])).toContain("ask a worker in the room to review it");
   });
 });
