@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { href, onNav, go, openShow, showHref, type Route } from "../lib/router";
+import { href, onNav, go, type Route } from "../lib/router";
 import { AgentAvatar, Button, Chip, SegmentedProgress, type Segment } from "../ui";
 import { ago, Markdown } from "./bits";
 import {
@@ -24,6 +24,7 @@ import {
   type Segment as GoalSegment,
   type Turn,
 } from "./captain";
+import { EvidencePanel } from "./EvidencePanel";
 import { agentDot } from "./People";
 import { withTicketLinks } from "./Room";
 import type { CaptainRoom } from "./useCaptainRoom";
@@ -419,6 +420,7 @@ function DecisionCard({ ws, cr, need, done, pulse }: { ws: Workspace; cr: Captai
   const [reply, setReply] = useState("");
   const [saying, setSaying] = useState(false); // "No, something's off" opened its reason field
   const [busy, setBusy] = useState(false);
+  const [knowing, setKnowing] = useState(false); // "How do you know?" opened the evidence
   const t = need.ticket;
   const slug = ws.project.slug;
   const question = need.kind === "risky_merge" ? mergeQuestion(need) : need.question;
@@ -463,7 +465,11 @@ function DecisionCard({ ws, cr, need, done, pulse }: { ws: Workspace; cr: Captai
           Needs you · {NEED_WHAT[need.kind]}
           {ticketLink && <> {ticketLink}</>}
         </span>
-        {t && <a href={showHref(t.key)} onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; e.preventDefault(); openShow(t.key); }} style={{ fontSize: 12, color: "var(--text-secondary)", whiteSpace: "nowrap", marginLeft: "auto" }}>Show the work</a>}
+        {t && (
+          <button type="button" className="ak-tap" aria-expanded={knowing} aria-controls={`evidence-${need.key}`} onClick={() => setKnowing((k) => !k)} style={{ ...textButton, fontSize: 13, minHeight: 32, whiteSpace: "nowrap", marginLeft: "auto" }}>
+            {knowing ? "Hide how I know" : "How do you know?"}
+          </button>
+        )}
       </div>
       {need.kind === "captain_question" ? (
         <div style={{ fontSize: 17, fontWeight: 500, lineHeight: 1.4, color: "var(--text)" }}>
@@ -484,6 +490,7 @@ function DecisionCard({ ws, cr, need, done, pulse }: { ws: Workspace; cr: Captai
           )}
         </div>
       )}
+      {t && knowing && <EvidencePanel ws={ws} ticket={t} id={`evidence-${need.key}`} />}
 
       {need.kind === "risky_merge" && (
         <>
