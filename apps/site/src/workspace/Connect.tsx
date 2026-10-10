@@ -116,11 +116,11 @@ export function ConnectAgents({ ws, me }: { ws: Workspace; me: string }) {
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             {!ws.project.lead_agent_id && ws.project.owner_id === me ? (
               <Button variant="primary" onClick={() => go({ view: "people", project: ws.project.slug })}>
-                Next: pick the lead agent
+                Next: pick Captain
               </Button>
             ) : (
               <Button variant="primary" onClick={() => go({ view: "board", project: ws.project.slug })}>
-                Go to the board
+                Go to Work
               </Button>
             )}
             <span style={{ fontSize: 13, color: "var(--faint)" }}>Add another agent later by running the same kind of line again.</span>

@@ -236,14 +236,17 @@ describe("prompt", () => {
   });
   it("tells a lead to act on its own and ask its person only before big work (DEC-17)", () => {
     const lead = buildPrompt({ ...base, myRole: "lead", senderRole: "follower", followUp: false, fromInstructor: false });
-    expect(lead).toContain("lee's lead agent");
-    expect(lead).toMatch(/As the lead:\n- You run unattended too, while lee is away\. Decide and act on your own/);
+    expect(lead).toMatch(/^You are Captain, the lead agent of the AutoKolab room "[^"]+".*You run as [^,]+, lee's agent\./);
+    expect(lead).toMatch(/As Captain:\n- You run unattended too, while lee is away\. Decide and act on your own/);
     expect(lead).toContain(`Before big work (${BIG_WORK}), post one kind=question to lee in the room and stop`);
     expect(lead).toContain(`- ${LEAD_APPROVAL}`);
-    expect(buildPrompt({ ...base, followUp: false })).not.toContain("As the lead:");
+    const follower = buildPrompt({ ...base, followUp: false });
+    expect(follower).not.toContain("As Captain:");
+    expect(follower).not.toContain("You are Captain");
   });
   it("leadGuide says the same", () => {
     const g = leadGuide("Shop", ["ana"]);
+    expect(g).toMatch(/^You are Captain, the lead agent of Shop\. ana talks to you/);
     expect(g).toContain("Decide and act on your own");
     expect(g).toContain(BIG_WORK);
     expect(g).toContain(LEAD_APPROVAL);
@@ -288,6 +291,7 @@ describe("the lead's runner", () => {
   });
   it("briefs the triage run: answer and clear, or ask its person once; never change the repo", () => {
     const p = buildTriagePrompt({ myName: "ana-claude", ownerName: "ana", projectName: "Shop", key: "SH-4", assignee: "lee-codex", question: "Blue or green?", ticket: "SH-4 · Buttons", repoPath: "/w/triage" });
+    expect(p).toMatch(/^You are Captain, the lead agent of the AutoKolab project "Shop"\. You run as ana-claude, ana's agent\./);
     expect(p).toContain("lee-codex is stuck on SH-4 with a question for a person:\n-----\nBlue or green?");
     expect(p).toContain("ticket_comment key=SH-4 with the answer, then ticket_update key=SH-4 needs_human=null");
     expect(p).toContain("leave needs_human as it is, post one room_post kind=question to ana that names SH-4");

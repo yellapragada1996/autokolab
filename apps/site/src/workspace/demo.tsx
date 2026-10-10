@@ -130,7 +130,7 @@ const steps = new Map<string, Step[]>([
 ]);
 
 const agents: Agent[] = [
-  { id: LEAD, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "ana-claude", status: "idle", status_note: "Planned the Sign-in epic", current_ticket_id: null, last_seen_at: iso(3), model: "opus", effort: "high", model_set_by: ANA, model_set_at: iso(60), effective_model: "claude-opus-5-5", effective_effort: "high", effective_at: iso(20) },
+  { id: LEAD, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "ana-claude", status: "idle", status_note: "Planned the Sign-in goal", current_ticket_id: null, last_seen_at: iso(3), model: "opus", effort: "high", model_set_by: ANA, model_set_at: iso(60), effective_model: "claude-opus-5-5", effective_effort: "high", effective_at: iso(20) },
   { id: BUILDER, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "builder", status: "building", status_note: "Creating profiles for new users", current_ticket_id: "t2", last_seen_at: iso(1), model: "sonnet", effort: "medium", model_set_by: LEAD, model_set_at: iso(30), effective_model: "haiku", effective_effort: "medium", effective_at: iso(1) },
   { id: REVIEWER, owner_profile_id: LEE, owner_label: "lee", vendor: "codex", display_name: "lee-codex", status: "waiting_human", status_note: "Asked about the session store", current_ticket_id: "t4", last_seen_at: iso(2), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "gpt-5.5-codex", effective_effort: null, effective_at: iso(120) },
   { id: SPARE, owner_profile_id: LEE, owner_label: "lee", vendor: "claude", display_name: "lee-claude", status: "offline", status_note: null, current_ticket_id: null, last_seen_at: iso(60 * 24 * 3), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: null, effective_effort: null, effective_at: null },
@@ -170,7 +170,7 @@ const demoRoom: { room: RoomData; messages: RoomMessage[] } = {
   },
   messages: [
     { id: 1, room_id: "room", thread_id: null, sender_id: ANA, to_id: LEAD, kind: "chat", body: "@ana-claude let's add Google sign-in. Plan it on the board.", refs: {}, created_at: iso(60) },
-    { id: 2, room_id: "room", thread_id: 1, sender_id: LEAD, to_id: ANA, kind: "answer", body: "Planned the **Sign-in** epic: SH-2 (Google sign-in) for builder, SH-3 and SH-4 for lee-codex. SH-3 waits on SH-4.", refs: {}, created_at: iso(55) },
+    { id: 2, room_id: "room", thread_id: 1, sender_id: LEAD, to_id: ANA, kind: "answer", body: "Planned the **Sign-in** goal: SH-2 (Google sign-in) for builder, SH-3 and SH-4 for lee-codex. SH-3 waits on SH-4.", refs: {}, created_at: iso(55) },
     { id: 3, room_id: "room", thread_id: 1, sender_id: LEAD, to_id: null, kind: "status", body: "Picked up #1, continuing.", refs: {}, created_at: iso(54) },
     { id: 4, room_id: "room", thread_id: null, sender_id: BUILDER, to_id: null, kind: "status", body: "Started on #2 (branch sh-2-add-google-sign-in).", refs: {}, created_at: iso(50) },
     { id: 5, room_id: "room", thread_id: null, sender_id: REVIEWER, to_id: null, kind: "status", body: "Queued #2: lee has paused me; I'll start when resumed.", refs: {}, created_at: iso(49) },

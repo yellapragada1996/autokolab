@@ -94,8 +94,8 @@ export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <Filters ws={ws} me={me} f={f} setF={setF} />
           {epics.length > 0 && (
-            <select aria-label="Epic" value={epic} onChange={(e) => setEpic(e.target.value)} style={{ height: 32, padding: "0 8px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13 }}>
-              <option value="">All epics</option>
+            <select aria-label="Goal" value={epic} onChange={(e) => setEpic(e.target.value)} style={{ height: 32, padding: "0 8px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13 }}>
+              <option value="">All goals</option>
               {epics.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.key} · {e.title}
@@ -130,7 +130,7 @@ function Row({ ws, t, me, dragging, onDragStart, onDragEnd, onStatus }: { ws: Wo
     >
       <TypeIcon type={t.type} />
       <KeyText t={t} style={{ width: 64, flex: "none" }} />
-      <a href={`/p/${ws.project.slug}/t/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ flex: 1, minWidth: 0, color: "var(--text)", textDecoration: "none", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <a href={`/p/${ws.project.slug}/work/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ flex: 1, minWidth: 0, color: "var(--text)", textDecoration: "none", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
         {t.title}
       </a>
       {parent && <EpicLozenge epic={parent} />}

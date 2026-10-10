@@ -77,7 +77,7 @@ export function Filters({ ws, me, f, setF }: { ws: Workspace; me: string; f: Fil
               key={m.actor_id}
               type="button"
               onClick={() => toggle(m.actor_id)}
-              title={`${ws.nameOf(m.actor_id)}${m.actor_id === lead ? " (lead)" : ""}`}
+              title={`${ws.nameOf(m.actor_id)}${m.actor_id === lead ? " (Captain)" : ""}`}
               aria-pressed={on}
               style={{ marginLeft: -6, padding: 0, border: 0, borderRadius: agent ? 9 : "50%", background: "none", cursor: "pointer", boxShadow: on ? "0 0 0 2px var(--primary)" : "0 0 0 2px var(--bg)", position: "relative", zIndex: on ? 2 : 1, display: "inline-flex" }}
             >
@@ -107,7 +107,7 @@ export function Filters({ ws, me, f, setF }: { ws: Workspace; me: string; f: Fil
   );
 }
 
-type GroupBy = "none" | "assignee" | "epic";
+export type GroupBy = "none" | "assignee" | "epic";
 interface Lane {
   id: string;
   /** What dropping a card into this lane changes. */
@@ -134,9 +134,9 @@ export function useStored<T extends string>(key: string, initial: T): [T, (v: T)
   return [v, setV];
 }
 
-export function Board({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (status?: Status) => void }) {
+/** The board under Work: lanes by agent (and person), or by goal. */
+export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; onNew: (status?: Status) => void; groupBy: GroupBy }) {
   const [f, setF] = useState<FilterState>(emptyFilter);
-  const [groupBy, setGroupBy] = useStored<GroupBy>("autokolab.board.groupBy", "assignee");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<{ lane: string; status: Status; index: number } | null>(null);
@@ -172,7 +172,7 @@ export function Board({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (st
           ),
         };
       });
-      out.push({ id: "no-epic", patch: { parent_id: null }, tickets: shown.filter((t) => !t.parent_id || !epics.some((e) => e.id === t.parent_id)), head: <span style={{ fontWeight: 600 }}>Issues without an epic</span> });
+      out.push({ id: "no-epic", patch: { parent_id: null }, tickets: shown.filter((t) => !t.parent_id || !epics.some((e) => e.id === t.parent_id)), head: <span style={{ fontWeight: 600 }}>Not in a goal</span> });
       return out.filter((l) => l.tickets.length || l.id !== "no-epic");
     }
     // By assignee: the lead and the worker agents first, then people, then unassigned.
@@ -242,14 +242,6 @@ export function Board({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (st
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <Filters ws={ws} me={me} f={f} setF={setF} />
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--muted)" }}>
-            Group by
-            <select value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)} style={{ height: 32, padding: "0 8px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13 }}>
-              <option value="none">None</option>
-              <option value="assignee">Assignee</option>
-              <option value="epic">Epic</option>
-            </select>
-          </label>
           <Button variant="primary" size="sm" onClick={() => onNew("ready")}>
             Create <kbd style={{ font: "500 12px var(--mono)", opacity: 0.7 }}>C</kbd>
           </Button>
@@ -350,17 +342,17 @@ export function EmptyBoard({ ws }: { ws: Workspace }) {
     <>
       <strong style={{ color: "var(--text)" }}>The board is empty.</strong>
       <span>
-        Tell your lead, <strong style={{ color: "var(--text)" }}>{lead}</strong>, what you want built. In Claude Code, for example:
+        Tell Captain, <strong style={{ color: "var(--text)" }}>{lead}</strong>, what you want built. In Claude Code, for example:
       </span>
       <code style={{ display: "block", padding: "10px 14px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--line)", font: "13px var(--mono)", color: "var(--text-2)", textAlign: "left" }}>
         Plan "add Google sign-in" on the AutoKolab board and assign the tickets.
       </code>
-      <span style={{ fontSize: 13, color: "var(--faint)" }}>It writes complete tickets and assigns them to the worker agents, who start right away.</span>
+      <span style={{ fontSize: 13, color: "var(--faint)" }}>It writes complete tickets and assigns them to the other agents, who start right away.</span>
     </>
   ) : (
     <>
       <strong style={{ color: "var(--text)" }}>The board is empty.</strong>
-      <span>Pick a lead agent on the People page: it writes the tickets and assigns them to the other agents.</span>
+      <span>Pick Captain on the People page: it writes the tickets and assigns them to the other agents.</span>
     </>
   );
 }
@@ -387,7 +379,7 @@ export function Card({ ws, t, me, action, dragging, onDragStart, onDragEnd }: { 
         : null;
   return (
     <a
-      href={`/p/${ws.project.slug}/t/${t.key}`}
+      href={`/p/${ws.project.slug}/work/${t.key}`}
       onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })}
       draggable={!!onDragStart}
       onDragStart={(e) => {

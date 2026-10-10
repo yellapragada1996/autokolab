@@ -37,8 +37,25 @@ h1, h2, h3, p { margin: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--faint); }
 
-/* Phone: the room first, then what needs you, then navigation. */
-@media (max-width: 720px) {
-  .room-main { order: -2; min-height: 70vh; }
-  .room-right { order: -1; }
+/* Below 1100px the sidebar becomes one row of items across the top (07-interaction-motion-a11y.md):
+   the logo and the items, scrolling sideways if needed; project name, divider, clocks and person hide. */
+@media (max-width: 1099px) {
+  .ak-nav {
+    flex: 1 1 100% !important;
+    max-width: none !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 8px 12px !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--border-subtle);
+    overflow-x: auto;
+  }
+  .ak-nav nav { flex-direction: row !important; }
+  .ak-nav nav a { white-space: nowrap; }
+  .ak-nav .ak-hide, .ak-nav [role="separator"] { display: none !important; }
+}
+/* Phone: 16px side padding. */
+@media (max-width: 639px) {
+  .ak-page { padding-left: 16px !important; padding-right: 16px !important; }
 }

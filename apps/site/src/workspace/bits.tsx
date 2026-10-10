@@ -54,7 +54,7 @@ export function PriorityIcon({ priority, size = 16 }: { priority: Priority; size
 }
 
 /** Jira's issue type names: a feature is a Story. */
-export const typeLabel: Record<TicketType, string> = { feature: "Story", bug: "Bug", task: "Task", chore: "Chore", epic: "Epic" };
+export const typeLabel: Record<TicketType, string> = { feature: "Story", bug: "Bug", task: "Task", chore: "Chore", epic: "Goal" };
 
 /** Jira's issue type icons: a small neutral square with a symbol (the symbol tells them apart, not colour). */
 export function TypeIcon({ type, size = 16 }: { type: TicketType; size?: number }) {
@@ -132,8 +132,8 @@ export function Who({ ws, id, size = 22, withName = true, you }: { ws: Workspace
 
 export function LeadBadge() {
   return (
-    <span title="The lead writes the tickets and assigns them" style={{ display: "inline-flex", alignItems: "center", height: 18, padding: "0 5px", borderRadius: 4, background: "var(--primary)", color: "var(--on-primary)", font: "700 12px var(--sans)", letterSpacing: "0.04em", textTransform: "uppercase", flex: "none" }}>
-      Lead
+    <span title="Captain writes the tickets and assigns them" style={{ display: "inline-flex", alignItems: "center", height: 18, padding: "0 5px", borderRadius: 4, background: "var(--primary)", color: "var(--on-primary)", font: "700 12px var(--sans)", letterSpacing: "0.04em", textTransform: "uppercase", flex: "none" }}>
+      Captain
     </span>
   );
 }
