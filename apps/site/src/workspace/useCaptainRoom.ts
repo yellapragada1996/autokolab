@@ -15,6 +15,8 @@ export interface DemoRoom {
   messages: RoomMessage[];
   /** When the person last caught up, so the preview shows a catch-up. */
   caughtUpAt?: string;
+  /** Deliver the room after this long, like the live site does, so the loading path can be checked. */
+  delayMs?: number;
 }
 
 export interface CaptainRoom {
@@ -34,6 +36,8 @@ export interface CaptainRoom {
   /** Captain's agent is running: "Captain is reading…". */
   working: boolean;
   catchUp: { c: CatchUp; at: string } | null;
+  /** The catch-up has been worked out (whether or not there is one): the conversation is complete. */
+  catchUpReady: boolean;
   /** Work out the catch-up once per visit, the first time the Captain page shows. */
   startCatchUp: () => void;
   send: (text: string, thread?: number | null, errorKey?: string) => Promise<boolean>;
@@ -47,22 +51,28 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let tempId = 1e15;
 
 export function useCaptainRoom(project: Project, ws: Workspace | null, profileId: string, demo?: DemoRoom): CaptainRoom {
-  const [room, setRoom] = useState<RoomData | null | undefined>(demo ? demo.room : undefined);
-  const [loaded, setLoaded] = useState<RoomMessage[]>(demo?.messages ?? []);
+  // `room` is the "ready" signal: it is only set together with its messages, so nothing that waits
+  // for the room (the catch-up, landing at the newest message) ever sees an empty conversation.
+  const [room, setRoom] = useState<RoomData | null | undefined>(undefined);
+  const [loaded, setLoaded] = useState<RoomMessage[]>([]);
   const [pending, setPending] = useState<RoomMessage[]>([]);
   const [loadError, setLoadError] = useState("");
   const [settled, setSettled] = useState<Map<string, { since: string; need: Need; ok: boolean }>>(new Map());
   const [errors, setErrors] = useState<Map<string, string>>(new Map());
   const [cu, setCu] = useState<{ c: CatchUp; at: string } | null>(null);
+  const [cuReady, setCuReady] = useState(false);
   const [demoReading, setDemoReading] = useState(false);
   const started = useRef(false);
 
   const load = useCallback(async () => {
-    if (demo) return;
     try {
-      const r = await roomFor(project.room_id, profileId);
+      // The preview goes through the same path, with the room and its messages each arriving late.
+      const r = demo ? await wait((demo.delayMs ?? 0) / 2).then(() => demo.room) : await roomFor(project.room_id, profileId);
+      const msgs = !r ? [] : demo ? await wait((demo.delayMs ?? 0) / 2).then(() => demo.messages) : await roomMessages(r.id);
+      // Set together, in one render. A reload keeps the old room and messages until the new ones
+      // are in, so watching never flashes the page back to "Loading…".
+      setLoaded(msgs);
       setRoom(r);
-      if (r) setLoaded(await roomMessages(r.id));
       setLoadError("");
     } catch (e) {
       setLoadError((e as Error).message);
@@ -71,16 +81,16 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   }, [project.room_id, profileId, demo]);
 
   useEffect(() => {
-    if (demo) return;
     setRoom(undefined);
     setLoaded([]);
     setPending([]);
     setSettled(new Map());
     setErrors(new Map());
     setCu(null);
+    setCuReady(false);
     started.current = false;
     void load();
-  }, [load, demo]);
+  }, [load]);
   useEffect(() => (room && !demo ? watchRoom(room.id, () => void load()) : undefined), [room?.id, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const messages = useMemo(() => [...loaded, ...pending], [loaded, pending]);
@@ -167,9 +177,10 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
       .then((since) => {
         const c = catchUp(ws, all, since, ws.nameOf);
         setCu(c ? { c, at: new Date().toISOString() } : null);
+        setCuReady(true);
         if (!demo) return markCaughtUp(project.id);
       })
-      .catch(() => undefined);
+      .catch(() => setCuReady(true));
   };
 
   return {
@@ -184,6 +195,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     online,
     working,
     catchUp: cu,
+    catchUpReady: cuReady,
     startCatchUp,
     send,
     okMerge: (need) => settle(need, real(() => allowMerge(need.ticket!.id))),

@@ -194,13 +194,15 @@ function Conversation({ ws, cr, pulse }: { ws: Workspace; cr: CaptainRoom; pulse
   const noCaptain = !ws.project.lead_agent_id;
   const canPost = !noCaptain && !!cr.room?.me && cr.room.me.role !== "observer";
 
-  // Opening the page lands at the newest message.
+  // Opening the page lands at the newest message, once the messages and the catch-up are both in
+  // (the catch-up is the newest message when there is one).
   const landed = useRef(false);
+  const complete = cr.room !== undefined && (cr.catchUpReady || !cr.room);
   useLayoutEffect(() => {
-    if (landed.current || cr.room === undefined) return;
+    if (landed.current || !complete) return;
     landed.current = true;
     window.scrollTo(0, document.documentElement.scrollHeight);
-  }, [cr.room, entries.length]);
+  }, [complete, entries.length]);
 
   // New Captain messages are read out politely; the ones already there when the page opened aren't.
   const [announce, setAnnounce] = useState("");

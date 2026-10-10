@@ -171,6 +171,8 @@ const demoRoom: DemoRoom = {
   ],
   // Last caught up 10 hours ago, so the preview opens with a catch-up.
   caughtUpAt: iso(600),
+  // Arrives a moment after the page, like the live room, so the loading path shows here too.
+  delayMs: 800,
 };
 
 demoRoom.room.me = demoRoom.room.members[0];
