@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "../lib/session";
-import { postToRoom, roomFor, roomMessages, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
+import { isBookkeeping, postToRoom, problemOf, roomFor, roomMessages, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
 import { go } from "../lib/router";
 import { AgentMark, Avatar, Button } from "../ui";
 import { ago, LeadBadge, Markdown } from "./bits";
@@ -18,9 +18,19 @@ const KIND: Partial<Record<RoomMessage["kind"], { label: string; color: string; 
   handoff: { label: "Handoff", color: "var(--text-2)", bg: "var(--surface-2)" },
   decision: { label: "Decision", color: "var(--on-primary)", bg: "var(--primary)" },
 };
-const SYSTEM = /^(Started on|Picked up) #\d+/;
-const PROBLEM = /^(Blocked|Failed|Stopped|Couldn't)\b/;
 const ONLINE_MS = 5 * 60_000;
+const SHOW_ACTIVITY_KEY = "autokolab.room.showActivity";
+
+function readShowActivity(): boolean {
+  try {
+    return localStorage.getItem(SHOW_ACTIVITY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** A message the list shows, or a run of agent bookkeeping folded into one line. */
+type Item = { type: "message"; m: RoomMessage } | { type: "activity"; runs: RoomMessage[] };
 
 function online(m: RoomMember): boolean {
   return !!m.last_seen_at && Date.now() - Date.parse(m.last_seen_at) < ONLINE_MS;
@@ -51,6 +61,15 @@ export function Room({ ws, profile, demo }: { ws: Workspace; profile: Profile; d
   const [thread, setThread] = useState<number | null>(null);
   const [replyTo, setReplyTo] = useState<RoomMessage | null>(null);
   const [err, setErr] = useState("");
+  const [showActivity, setShowActivity] = useState(readShowActivity);
+  const toggleActivity = (on: boolean) => {
+    setShowActivity(on);
+    try {
+      localStorage.setItem(SHOW_ACTIVITY_KEY, on ? "1" : "0");
+    } catch {
+      // Private mode: the choice lasts until the page closes.
+    }
+  };
 
   const load = useCallback(async () => {
     if (demo) return;
@@ -91,15 +110,26 @@ export function Room({ ws, profile, demo }: { ws: Workspace; profile: Profile; d
   return (
     <div style={{ display: "flex", gap: 24, alignItems: "stretch", flexWrap: "wrap", flex: 1, minHeight: 0 }}>
       <div style={{ flex: "999 1 520px", minWidth: 0, display: "flex", flexDirection: "column", borderRadius: 12, border: "1px solid var(--line-soft)", background: "var(--sidebar)", minHeight: "min(72vh, 760px)", maxHeight: "calc(100vh - 150px)" }}>
-        {thread && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid var(--line-soft)", fontSize: 13 }}>
-            <button type="button" onClick={() => setThread(null)} style={{ border: 0, background: "none", color: "var(--muted)", cursor: "pointer", fontSize: 13 }}>
-              ← Whole room
-            </button>
-            <span style={{ color: "var(--text-2)" }}>Thread #{thread}{root ? ` · ${byId.get(root.sender_id)?.name ?? "someone"}: ${root.body.slice(0, 80)}` : ""}</span>
-          </div>
-        )}
-        <MessageList ws={ws} messages={shown} byId={byId} me={room.me?.id} onReply={(m) => setReplyTo(m)} onThread={(id) => setThread(id)} />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 14px", borderBottom: "1px solid var(--line-soft)", fontSize: 13, flexWrap: "wrap" }}>
+          {thread ? (
+            <>
+              <button type="button" onClick={() => setThread(null)} style={{ border: 0, background: "none", color: "var(--muted)", cursor: "pointer", fontSize: 13, padding: 0 }}>
+                ← Whole room
+              </button>
+              <span style={{ color: "var(--text-2)", minWidth: 0, flex: "1 1 160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                Thread #{thread}
+                {root ? ` · ${byId.get(root.sender_id)?.name ?? "someone"}: ${root.body.slice(0, 80)}` : ""}
+              </span>
+            </>
+          ) : (
+            <span style={{ color: "var(--text-2)", flex: 1 }}>Conversation</span>
+          )}
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 6, marginLeft: "auto", color: "var(--muted)", fontSize: 12, cursor: "pointer" }}>
+            <input type="checkbox" checked={showActivity} onChange={(e) => toggleActivity(e.target.checked)} style={{ accentColor: "var(--primary)", margin: 0 }} />
+            Show agent activity
+          </label>
+        </div>
+        <MessageList ws={ws} messages={shown} byId={byId} me={room.me?.id} showActivity={showActivity} onReply={(m) => setReplyTo(m)} onThread={(id) => setThread(id)} />
         {err && <p style={{ color: "var(--danger)", fontSize: 13, padding: "0 14px" }}>{err}</p>}
         <Composer room={room} replyTo={replyTo} thread={thread} onClearReply={() => setReplyTo(null)} onPosted={load} />
       </div>
@@ -153,18 +183,112 @@ function Presence({ on }: { on: boolean }) {
   return <span title={on ? "Online" : "Offline"} style={{ width: 8, height: 8, borderRadius: "50%", background: on ? "var(--ok-dot)" : "var(--line-strong)", flex: "none" }} />;
 }
 
-function MessageList({ ws, messages, byId, me, onReply, onThread }: { ws: Workspace; messages: RoomMessage[]; byId: Map<string, RoomMember>; me?: string; onReply: (m: RoomMessage) => void; onThread: (id: number) => void }) {
+function names(list: RoomMessage[], byId: Map<string, RoomMember>): string {
+  const all = [...new Set(list.map((m) => byId.get(m.sender_id)?.name ?? "someone"))];
+  return all.length <= 2 ? all.join(" and ") : `${all.slice(0, -1).join(", ")} and ${all[all.length - 1]}`;
+}
+
+function ActivityLine({ m, sender }: { m: RoomMessage; sender?: RoomMember }) {
+  return (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8, fontSize: 12, color: "var(--muted)", paddingLeft: 40, flexWrap: "wrap" }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--line-strong)", flex: "none", alignSelf: "center" }} />
+      <strong style={{ color: "var(--text-2)", fontWeight: 500 }}>{sender?.name ?? "someone"}</strong>
+      <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{m.body.replace(/\.$/, "")}</span>
+      <span style={{ color: "var(--faint)" }}>· {time(m.created_at)}</span>
+    </div>
+  );
+}
+
+function ProblemLine({ m, sender, summary }: { m: RoomMessage; sender?: RoomMember; summary: string }) {
+  return (
+    <div role="status" style={{ marginLeft: 40, padding: "6px 10px", borderRadius: 8, border: "1px solid var(--warn)", background: "var(--warn-bg)", fontSize: 13, color: "var(--text-2)" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ color: "var(--warn)", fontWeight: 600 }}>Problem</span>
+        <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>
+          <strong style={{ fontWeight: 600, color: "var(--text)" }}>{sender?.name ?? "someone"}</strong> {summary}
+        </span>
+        <span style={{ color: "var(--faint)", fontSize: 12 }} title={new Date(m.created_at).toLocaleString()}>
+          {time(m.created_at)}
+        </span>
+      </div>
+      <details style={{ marginTop: 4 }}>
+        <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: 12 }}>details</summary>
+        <pre className="mono" style={{ margin: "6px 0 0", fontSize: 12, whiteSpace: "pre-wrap", overflowWrap: "anywhere", color: "var(--text-2)" }}>
+          {m.body}
+        </pre>
+      </details>
+    </div>
+  );
+}
+
+function MessageList({ ws, messages, byId, me, showActivity, onReply, onThread }: { ws: Workspace; messages: RoomMessage[]; byId: Map<string, RoomMember>; me?: string; showActivity: boolean; onReply: (m: RoomMessage) => void; onThread: (id: number) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  const [opened, setOpened] = useState<Set<number>>(new Set());
   useLayoutEffect(() => {
     const el = ref.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  }, [messages, showActivity]);
+  // Only agents post bookkeeping; a person's message is never folded away.
+  const bookkeeping = useCallback((m: RoomMessage) => byId.get(m.sender_id)?.kind !== "human" && isBookkeeping(m.body), [byId]);
   const replies = useMemo(() => {
     const n = new Map<number, number>();
-    for (const m of messages) if (m.thread_id) n.set(m.thread_id, (n.get(m.thread_id) ?? 0) + 1);
+    for (const m of messages) if (m.thread_id && !bookkeeping(m)) n.set(m.thread_id, (n.get(m.thread_id) ?? 0) + 1);
     return n;
-  }, [messages]);
+  }, [messages, bookkeeping]);
+  const items = useMemo(() => {
+    const out: Item[] = [];
+    for (const m of messages) {
+      const last = out[out.length - 1];
+      if (!bookkeeping(m)) out.push({ type: "message", m });
+      else if (last?.type === "activity") last.runs.push(m);
+      else out.push({ type: "activity", runs: [m] });
+    }
+    return out;
+  }, [messages, bookkeeping]);
+  const renderMessage = (m: RoomMessage) => {
+    const s = byId.get(m.sender_id);
+    const problem = s?.kind !== "human" ? problemOf(m.body) : null;
+    if (problem) return <ProblemLine key={m.id} m={m} sender={s} summary={problem} />;
+    const kind = KIND[m.kind];
+    const parent = m.thread_id ? messages.find((x) => x.id === m.thread_id) : undefined;
+    const n = replies.get(m.id);
+    return (
+      <div key={m.id} style={{ display: "flex", gap: 10 }}>
+        <Mark m={s} me={me} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13, marginBottom: 2 }}>
+            <strong style={{ fontWeight: 600 }}>{s?.name ?? "someone"}</strong>
+            {m.to_id && <span style={{ color: "var(--muted)" }}>→ {byId.get(m.to_id)?.name ?? "someone"}</span>}
+            {kind && (
+              <span style={{ height: 18, padding: "0 6px", borderRadius: 4, background: kind.bg, color: kind.color, font: "700 10px var(--sans)", letterSpacing: "0.04em", textTransform: "uppercase", display: "inline-flex", alignItems: "center" }}>{kind.label}</span>
+            )}
+            <span style={{ color: "var(--faint)", fontSize: 12 }} title={new Date(m.created_at).toLocaleString()}>
+              {time(m.created_at)}
+            </span>
+            <span style={{ marginLeft: "auto", display: "inline-flex", gap: 10 }}>
+              <button type="button" onClick={() => onReply(m)} style={{ border: 0, background: "none", color: "var(--faint)", fontSize: 12, cursor: "pointer", padding: 0 }}>
+                Reply
+              </button>
+            </span>
+          </div>
+          {parent && (
+            <button type="button" onClick={() => onThread(m.thread_id!)} style={{ display: "block", border: 0, borderLeft: "2px solid var(--line-strong)", background: "none", color: "var(--faint)", fontSize: 12, padding: "0 0 0 8px", margin: "2px 0 4px", cursor: "pointer", textAlign: "left", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              Replying to {byId.get(parent.sender_id)?.name ?? "someone"}: {parent.body.slice(0, 90)}
+            </button>
+          )}
+          <div style={{ fontSize: 14 }}>
+            <Markdown text={withTicketLinks(m.body, ws)} />
+          </div>
+          {n ? (
+            <button type="button" onClick={() => onThread(m.id)} style={{ border: 0, background: "none", color: "var(--primary)", fontSize: 12, cursor: "pointer", padding: 0 }}>
+              {n} repl{n === 1 ? "y" : "ies"} in thread
+            </button>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div
@@ -177,55 +301,27 @@ function MessageList({ ws, messages, byId, me, onReply, onThread }: { ws: Worksp
       aria-live="polite"
     >
       {!messages.length && <p style={{ color: "var(--faint)", fontSize: 14 }}>No messages yet. Say hello, or start with @name to talk to an agent.</p>}
-      {messages.map((m) => {
-        const s = byId.get(m.sender_id);
-        if (SYSTEM.test(m.body)) {
+      {items.map((it) => {
+        if (it.type === "message") return renderMessage(it.m);
+        const first = it.runs[0].id;
+        if (showActivity || opened.has(first))
           return (
-            <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--muted)", paddingLeft: 40 }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--warn)" }} />
-              <strong style={{ color: "var(--text-2)", fontWeight: 500 }}>{s?.name}</strong> {m.body.replace(/\.$/, "")}
-              <span style={{ color: "var(--faint)" }}>· {time(m.created_at)}</span>
-            </div>
+            <Fragment key={`activity-${first}`}>
+              {it.runs.map((m) => (
+                <ActivityLine key={m.id} m={m} sender={byId.get(m.sender_id)} />
+              ))}
+            </Fragment>
           );
-        }
-        const kind = KIND[m.kind];
-        const problem = m.kind === "status" && PROBLEM.test(m.body);
-        const parent = m.thread_id ? messages.find((x) => x.id === m.thread_id) : undefined;
-        const n = replies.get(m.id);
+        const n = it.runs.length;
         return (
-          <div key={m.id} style={{ display: "flex", gap: 10 }}>
-            <Mark m={s} me={me} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13, marginBottom: 2 }}>
-                <strong style={{ fontWeight: 600 }}>{s?.name ?? "someone"}</strong>
-                {m.to_id && <span style={{ color: "var(--muted)" }}>→ {byId.get(m.to_id)?.name ?? "someone"}</span>}
-                {kind && (
-                  <span style={{ height: 18, padding: "0 6px", borderRadius: 4, background: kind.bg, color: kind.color, font: "700 10px var(--sans)", letterSpacing: "0.04em", textTransform: "uppercase", display: "inline-flex", alignItems: "center" }}>{kind.label}</span>
-                )}
-                {problem && <span style={{ fontSize: 12, color: "var(--danger)" }}>needs attention</span>}
-                <span style={{ color: "var(--faint)", fontSize: 12 }} title={new Date(m.created_at).toLocaleString()}>
-                  {time(m.created_at)}
-                </span>
-                <span style={{ marginLeft: "auto", display: "inline-flex", gap: 10 }}>
-                  <button type="button" onClick={() => onReply(m)} style={{ border: 0, background: "none", color: "var(--faint)", fontSize: 12, cursor: "pointer", padding: 0 }}>
-                    Reply
-                  </button>
-                </span>
-              </div>
-              {parent && (
-                <button type="button" onClick={() => onThread(m.thread_id!)} style={{ display: "block", border: 0, borderLeft: "2px solid var(--line-strong)", background: "none", color: "var(--faint)", fontSize: 12, padding: "0 0 0 8px", margin: "2px 0 4px", cursor: "pointer", textAlign: "left", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  Replying to {byId.get(parent.sender_id)?.name ?? "someone"}: {parent.body.slice(0, 90)}
-                </button>
-              )}
-              <div style={{ fontSize: 14 }}>
-                <Markdown text={withTicketLinks(m.body, ws)} />
-              </div>
-              {n ? (
-                <button type="button" onClick={() => onThread(m.id)} style={{ border: 0, background: "none", color: "var(--primary)", fontSize: 12, cursor: "pointer", padding: 0 }}>
-                  {n} repl{n === 1 ? "y" : "ies"} in thread
-                </button>
-              ) : null}
-            </div>
+          <div key={`activity-${first}`} style={{ display: "flex", alignItems: "baseline", gap: 6, fontSize: 12, color: "var(--faint)", paddingLeft: 40, flexWrap: "wrap" }}>
+            <span>
+              {names(it.runs, byId)} worked on {n} thing{n === 1 ? "" : "s"}
+            </span>
+            <span aria-hidden>·</span>
+            <button type="button" onClick={() => setOpened((s) => new Set(s).add(first))} style={{ border: 0, background: "none", color: "var(--muted)", fontSize: 12, cursor: "pointer", padding: 0, textDecoration: "underline" }} aria-label={`Show ${n} agent update${n === 1 ? "" : "s"}`}>
+              show
+            </button>
           </div>
         );
       })}
