@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { addComment, allowMerge, lastCaughtUp, markCaughtUp, updateTicket, type Agent, type Project, type Ticket } from "../lib/data";
+import { addComment, allowMerge, approveTicket, lastCaughtUp, markCaughtUp, updateTicket, type Agent, type Project, type Ticket } from "../lib/data";
 import { postToRoom, roomFor, roomMessages, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
 import { catchUp, conversation, needsYou, NO_ANSWER_NEEDED, OK_START, plans as plansOf, type Answer, type CatchUp, type Need, type Plan, type Turn } from "./captain";
 import { agentDot, agentOnline } from "./People";
@@ -62,6 +62,8 @@ export interface CaptainRoom {
   startCatchUp: () => void;
   send: (text: string, thread?: number | null, errorKey?: string) => Promise<boolean>;
   okMerge: (need: Need) => Promise<boolean>;
+  /** "Approve this change": the person approves the commit they were shown, with their note if any. */
+  approve: (need: Need, sha: string, note: string) => Promise<boolean>;
   answerTicket: (need: Need, text: string) => Promise<boolean>;
   answerCaptain: (need: Need, text: string) => Promise<boolean>;
   /** "No" on a risky merge: "No on <KEY>: <why>" goes to Captain. */
@@ -320,6 +322,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     startCatchUp,
     send,
     okMerge: (need) => settle(need, "yes", real(() => allowMerge(need.ticket!.id))),
+    approve: (need, sha, note) => settle(need, "approved", real(() => approveTicket(need.ticket!.id, sha, note))),
     answerTicket: (need, text) =>
       settle(
         need,
