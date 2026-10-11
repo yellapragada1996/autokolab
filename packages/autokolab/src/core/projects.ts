@@ -193,6 +193,8 @@ interface Guide {
 
 /** DEC-17: the lead acts on its own and asks its person only before big work. */
 export const BIG_WORK = "a new epic or more than 3 tickets, migrations, dependencies, auth/security/CI/infra changes, deleting a feature, or changing a decision";
+/** DEC-24: Captain's messages to people should read like a short chat. */
+export const LEAD_VOICE = "To a person (room, Needs you, ticket reply), write like a helpful colleague texting: two or three short plain sentences, about 400 characters. Ask one question, last; prefer yes/no. No headings, tables, code, file paths or commit ids unless asked; lists only for two or three short items. Put detail in a ticket comment and name its key. Say what happened and what you need; never paste logs or tool output. Messages to agents can be as detailed as needed.";
 /** CON-23: the block a plan message ends with. The website shows it as a plan card. */
 export const PLAN_BLOCK = "```autokolab-plan\ngoals: AK-60, AK-61\nasks: AK-62, AK-64\nnot: Password reset and account deletion are not in this plan.\n```";
 
@@ -232,7 +234,8 @@ export function leadGuide(project: string, people: string[]): string {
 6. Your runner starts you on a review of each worker's PR by itself once its tests pass, and sends failing tests back to the worker, so nobody has to ask. Whenever your person comes back or asks, also check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. ${LEAD_APPROVAL} Record settled choices with decision_add.
 7. ${leadAutonomy("your person")}
 8. ${LEAD_UNDO}
-9. You may change a worker's model and effort with agent_model when the work calls for it: stronger (e.g. opus, high) for hard, risky or wide changes; lighter (e.g. sonnet or haiku, low/medium) for routine, small or docs work. Prefer changing it right before assigning the ticket, and always give the reason. Owners can lock their machine (model_locked), in which case your change won't take effect there.`;
+9. You may change a worker's model and effort with agent_model when the work calls for it: stronger (e.g. opus, high) for hard, risky or wide changes; lighter (e.g. sonnet or haiku, low/medium) for routine, small or docs work. Prefer changing it right before assigning the ticket, and always give the reason. Owners can lock their machine (model_locked), in which case your change won't take effect there.
+${LEAD_VOICE}`;
 }
 
 /** Used when a project has no rules written yet. Same as the website's recommended rules. */
@@ -244,7 +247,7 @@ export function defaultRules(defaultBranch: string): string {
     `- Never push to ${defaultBranch}. Open a pull request against ${defaultBranch} (even when your branch builds on unmerged work) and move the ticket to Review.`,
     '- Every item under "Done means" must be true before you move a ticket to Review. Run the tests and the type checker first.',
     "- Follow the decisions. If you need to break one, ask first.",
-    '- If something is ambiguous, set "Needs you" on the ticket with a short question.',
+    '- If something is ambiguous, first put the background in a ticket comment, then set "Needs you" to one short question a person can answer without opening anything.',
     "- If you find more work, create a new ticket instead of growing this one.",
     "- Never put keys, tokens or passwords in tickets, comments or code.",
   ].join("\n");

@@ -18,7 +18,7 @@ Project board (when this repo has an AutoKolab project):
 - The lead agent is called Captain: people talk to it, and it turns what they ask for into complete tickets and assigns them to the worker agents (project_brief explains how). Workers do the tickets assigned to them, exactly as written. People see epics as goals; tool names and role values stay lead and epic.
 - Tickets are the source of truth for work. Before you work on one, read it with ticket_get (description, "done means", steps, comments). Comments from people are instructions for that ticket.
 - ticket_get includes full decisions and contracts the ticket mentions. Use decision_get with a key (or up to 10 keys) for any other decision or contract, or when project_brief points to its full text.
-- While working: move it to in_progress, plan with ticket_steps (plan), mark each step now/done as you go, set the branch with ticket_update, comment on decisions or findings. Set needs_human (a short question) when you need a person; clear it when answered.
+- While working: move it to in_progress, plan with ticket_steps (plan), mark each step now/done as you go, set the branch with ticket_update, comment on decisions or findings. Before setting needs_human, put the background in a ticket comment; Needs you is one short question a person can answer without opening anything. Clear it when answered.
 - When done: every "done means" item true, pull request open, ticket_update status=review with pr_url, and a short comment with what changed.
 - More work found: ticket_create instead of growing the ticket. Settled a choice others must follow: decision_add.
 Chat room:
@@ -64,6 +64,19 @@ export const AGENT_MODEL_INPUT = {
 };
 /** After this long without a tool call, an interactive agent shows as online but idle. */
 const QUIET_MS = 3 * 60_000;
+
+/** A reminder after delivery; long messages are never blocked or shortened. */
+export function roomPostLengthNudge(body: string, senderRole: string | undefined, recipientKind: "human" | "agent" | undefined): string {
+  return senderRole === "lead" && recipientKind === "human" && body.length > 500
+    ? `Posted. That was long for a chat message to a person (${body.length} characters). Next time keep it to two or three sentences and put the detail on a ticket.`
+    : "";
+}
+
+export function needsHumanLengthNudge(question: string | null | undefined): string {
+  return question && question.length > 300
+    ? `That Needs you question was long (${question.length} characters). Next time ask one short question and put the background in a ticket comment.`
+    : "";
+}
 
 export async function runMcpServer(profile?: string, fixedRoom?: string, fixedProject?: string): Promise<void> {
   // Presence on the board (agents.last_seen_at and status). Under a runner, the runner reports it;
@@ -212,11 +225,13 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
       const r = room();
       const m = await r.post({ body: a.body, kind: a.kind, to: a.to, thread: a.thread, refs: a.refs });
       const posted = `Posted #${m.id} in ${r.room.name}${a.thread ? ` (thread #${a.thread})` : ""}.`;
-      if (!a.wait_s) return posted;
+      const nudge = roomPostLengthNudge(m.body, r.myRole(), r.members().find((member) => member.id === m.to_id)?.kind);
+      const result = nudge ? `${posted}\n${nudge}` : posted;
+      if (!a.wait_s) return result;
       const thread = a.thread ?? m.id;
       const replies = await r.waitInThread(thread, m.id, a.wait_s);
-      if (!replies.length) return `${posted} No reply within ${a.wait_s}s; check later with room_read or room_thread ${thread}.`;
-      return `${posted} Replies so far:\n\n${replies.map((x) => formatMessage(c, x)).join("\n\n")}`;
+      if (!replies.length) return `${result} No reply within ${a.wait_s}s; check later with room_read or room_thread ${thread}.`;
+      return `${result} Replies so far:\n\n${replies.map((x) => formatMessage(c, x)).join("\n\n")}`;
     }),
   );
 
@@ -425,7 +440,7 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     "ticket_update",
     {
       description:
-        "Change a ticket: status (in_progress when you start, review with pr_url and summary when the PR is open), branch, pr_url, summary (one plain sentence on what changed, for someone who doesn't code), needs_human (a short question for a person; null when answered), assignee, priority, title, description, done_means, labels, epic, blockers. Pass only what changes.",
+        "Change a ticket: status (in_progress when you start, review with pr_url and summary when the PR is open), branch, pr_url, summary (one plain sentence on what changed, for someone who doesn't code), needs_human (one short question a person can answer without opening anything; put the background in a ticket comment first; null when answered), assignee, priority, title, description, done_means, labels, epic, blockers. Pass only what changes.",
       inputSchema: {
         key: keyArg,
         status: z.enum(STATUSES).optional(),
@@ -451,7 +466,9 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
       const t = await p.update(key, change);
       if (change.needs_human) await p.status("waiting_human", change.needs_human.slice(0, 200), t.id).catch(() => undefined);
       const oldDb = change.summary !== undefined && t.summary === undefined;
-      return `Updated ${t.key}: ${t.title} [${t.status}]${t.needs_human ? ` · needs a person: ${t.needs_human}` : ""}${oldDb ? " · the summary wasn't saved: this project's database doesn't have it yet" : ""}`;
+      const updated = `Updated ${t.key}: ${t.title} [${t.status}]${t.needs_human ? ` · needs a person: ${t.needs_human}` : ""}${oldDb ? " · the summary wasn't saved: this project's database doesn't have it yet" : ""}`;
+      const nudge = needsHumanLengthNudge(change.needs_human);
+      return nudge ? `${updated}\n${nudge}` : updated;
     }),
   );
 

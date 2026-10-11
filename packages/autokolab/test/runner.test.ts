@@ -12,7 +12,7 @@ import { REVIEW_DIFF_LIMIT, buildPrompt, buildReviewPrompt, buildTicketPrompt, b
 import { needsRunner } from "../src/setup/connect.js";
 import { Runner, STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
 import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
@@ -241,9 +241,11 @@ describe("prompt", () => {
     expect(lead).toMatch(/As Captain:\n- You run unattended too, while lee is away\. Decide and act on your own/);
     expect(lead).toContain(`Before big work (${BIG_WORK}), ask lee first. ${LEAD_PLAN}`);
     expect(lead).toContain(`- ${LEAD_APPROVAL}`);
+    expect(lead).toContain(`- ${LEAD_VOICE}`);
     const follower = buildPrompt({ ...base, followUp: false });
     expect(follower).not.toContain("As Captain:");
     expect(follower).not.toContain("You are Captain");
+    expect(follower).not.toContain(LEAD_VOICE);
   });
   it("leadGuide says the same", () => {
     const g = leadGuide("Shop", ["ana"]);
@@ -252,6 +254,7 @@ describe("prompt", () => {
     expect(g).toContain(BIG_WORK);
     expect(g).toContain(LEAD_APPROVAL);
     expect(g).toContain(LEAD_UNDO);
+    expect(g).toContain(LEAD_VOICE);
     expect(LEAD_UNDO).toMatch(/git revert.*new branch.*default branch.*normal tests, review, approval and merge/);
     expect(LEAD_UNDO).toMatch(/Never revert a database migration.*Reply with the new ticket's key/);
     expect(LEAD_APPROVAL).toMatch(/approve it with ticket_approve.*Approve only the commit you actually reviewed: a new push needs a new approval/);
@@ -306,9 +309,10 @@ describe("the lead's runner", () => {
     expect(p).toMatch(/^You are Captain, the lead agent of the AutoKolab project "Shop"\. You run as ana-claude, ana's agent\./);
     expect(p).toContain("lee-codex is stuck on SH-4 with a question for a person:\n-----\nBlue or green?");
     expect(p).toContain("ticket_comment key=SH-4 with the answer, then ticket_update key=SH-4 needs_human=null");
-    expect(p).toContain("leave needs_human as it is, post one room_post kind=question to ana that names SH-4");
+    expect(p).toContain("leave needs_human as it is, put the background in a ticket comment, post one room_post kind=question to ana that names SH-4");
     expect(p).toContain("/w/triage (read only: don't change, commit or push anything there)");
     expect(p).toContain("exactly NO_REPLY");
+    expect(p).toContain(LEAD_VOICE);
   });
 });
 
@@ -337,6 +341,8 @@ describe("tickets", () => {
     expect(p).toMatch(/needs_human=.* only for a real product choice a person must make, or if nobody answers/);
     expect(p).toContain("Comments from people and from the lead are instructions");
     expect(p).toContain("BLOCKED: <the question>");
+    expect(p).toContain("background in a ticket comment first; Needs you is one short question a person can answer without opening anything");
+    expect(defaultRules("main")).toContain("background in a ticket comment, then set \"Needs you\" to one short question a person can answer without opening anything");
   });
   it("continues a ticket with comments, naming who wrote them", () => {
     const p = buildTicketPrompt({ myName: "builder", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg: cfgFor(), worktree: wt, followUp: true, newComments: "ana (person): use the blue button" });
@@ -1179,6 +1185,7 @@ describe("Captain reviews by itself (AK-59)", () => {
       expect(p).toContain("+dark");
       expect(p).toContain("- DEC-22: Captain is the single point of contact");
       expect(p).toContain(LEAD_APPROVAL);
+      expect(p).toContain(LEAD_VOICE);
       expect(p).toContain(`ticket_approve key=SH-9 sha=${SHA}`);
       expect(p).toContain("ticket_comment key=SH-9");
       expect(p).toContain("ticket_update key=SH-9 status=in_progress");
