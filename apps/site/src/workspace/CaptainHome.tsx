@@ -15,11 +15,15 @@ import {
   mergeQuestion,
   NEED_WHAT,
   ownerOf,
+  planAsks,
+  planTitle,
   riskyPart,
   timeline,
+  withoutPlan,
   type Briefing as BriefingData,
   type CatchUp,
   type Need,
+  type Plan,
   type Row,
   type Segment as GoalSegment,
   type Turn,
@@ -27,7 +31,7 @@ import {
 import { EvidencePanel } from "./EvidencePanel";
 import { agentDot } from "./People";
 import { withTicketLinks } from "./Room";
-import type { CaptainRoom } from "./useCaptainRoom";
+import { planKey, type CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
 
 // Captain home (AK-49, autokolab-ux-handoff/screens/S01-captain-home.md): the pinned briefing, the
@@ -192,6 +196,7 @@ function Conversation({ ws, cr, pulse }: { ws: Workspace; cr: CaptainRoom; pulse
   const slug = ws.project.slug;
   const okd = useMemo(() => new Set(cr.okd.map((n) => n.key)), [cr.okd]);
   const entries = useMemo(() => timeline(folded(cr.turns), [...cr.needs, ...cr.okd], cr.catchUp?.at), [cr.turns, cr.needs, cr.okd, cr.catchUp]);
+  const planOf = useMemo(() => new Map(cr.plans.map((p) => [p.turnId, p])), [cr.plans]);
   const noCaptain = !ws.project.lead_agent_id;
   const canPost = !noCaptain && !!cr.room?.me && cr.room.me.role !== "observer";
 
@@ -211,7 +216,7 @@ function Conversation({ ws, cr, pulse }: { ws: Workspace; cr: CaptainRoom; pulse
   useEffect(() => {
     const last = [...cr.turns].reverse().find((t) => t.kind === "captain" || t.kind === "question" || t.kind === "problem");
     if (!last) return;
-    if (seen.current !== null && last.id > seen.current) setAnnounce(`Captain: ${last.problem ?? last.body}`);
+    if (seen.current !== null && last.id > seen.current) setAnnounce(`Captain: ${last.problem ?? withoutPlan(last.body)}`);
     seen.current = Math.max(seen.current ?? 0, last.id);
   }, [cr.turns]);
 
@@ -249,7 +254,9 @@ function Conversation({ ws, cr, pulse }: { ws: Workspace; cr: CaptainRoom; pulse
       lastDay = day;
       let item: ReactNode;
       if (e.kind === "catchup") item = cr.catchUp && <CatchUpMessage ws={ws} c={cr.catchUp.c} at={cr.catchUp.at} needs={cr.needs.length} />;
+      else if (e.kind === "card" && e.need.kind === "plan" && planOf.has(e.need.turnId!)) item = <PlanCard ws={ws} cr={cr} plan={planOf.get(e.need.turnId!)!} need={e.need} pulse={pulse === e.need.key} />;
       else if (e.kind === "card") item = <DecisionCard ws={ws} cr={cr} need={e.need} done={okd.has(e.need.key)} pulse={pulse === e.need.key} />;
+      else if (e.row.kind !== "fold" && planOf.has(e.row.id)) item = <PlanCard ws={ws} cr={cr} plan={planOf.get(e.row.id)!} need={null} pulse={false} />;
       else item = <RowView ws={ws} row={e.row} />;
       return (
         <Fragment key={e.key}>
@@ -321,7 +328,7 @@ function RowView({ ws, row }: { ws: Workspace; row: Row }) {
   }
   return (
     <CaptainMessage at={row.at}>
-      <Markdown text={withTicketLinks(row.body, ws)} />
+      <Markdown text={withTicketLinks(withoutPlan(row.body), ws)} />
     </CaptainMessage>
   );
 }
@@ -560,6 +567,95 @@ function DecisionCard({ ws, cr, need, done, pulse }: { ws: Workspace; cr: Captai
         </span>
       )}
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ plan cards
+
+/** Captain's plan (CON-23), in place of its message: amber while it waits on the person, quiet after. */
+function PlanCard({ ws, cr, plan, need, pulse }: { ws: Workspace; cr: CaptainRoom; plan: Plan; need: Need | null; pulse: boolean }) {
+  const [changing, setChanging] = useState(false);
+  const [reply, setReply] = useState("");
+  const [busy, setBusy] = useState(false);
+  const title = planTitle(plan);
+  const titleId = `plan-title-${plan.turnId}`;
+  const asks = planAsks(plan);
+  const err = cr.errors.get(planKey(plan));
+  const pending = plan.status === "pending";
+  const slug = ws.project.slug;
+
+  const start = async () => {
+    setBusy(true);
+    await cr.startPlan(plan);
+    setBusy(false);
+  };
+  const change = async () => {
+    const text = reply.trim();
+    if (!text) return;
+    setBusy(true);
+    const ok = await cr.changePlan(plan, text);
+    setBusy(false);
+    if (ok) {
+      setReply("");
+      setChanging(false);
+    }
+  };
+
+  const look: CSSProperties = pending ? cardBox : { ...cardBox, background: "var(--surface)", borderColor: "var(--border)", ...(plan.status === "replaced" ? { opacity: 0.6 } : {}) };
+  let state: ReactNode = null;
+  if (plan.status === "started") state = <Chip tone="verified">{plan.byYou && plan.okAt ? `You said OK · ${clock(plan.okAt)}` : "Started"}</Chip>;
+  else if (plan.status === "changes_asked") state = <Chip>{plan.changedAt ? `You asked for changes · ${clock(plan.changedAt)}` : "You asked for changes"}</Chip>;
+  else if (plan.status === "replaced") state = <span style={{ fontSize: 13, color: "var(--text-dim)" }}>Replaced by a newer plan</span>;
+
+  return (
+    <CaptainMessage at={plan.at}>
+      {plan.text && <Markdown text={withTicketLinks(plan.text, ws)} />}
+      <div id={need ? `need-${need.key}` : undefined} tabIndex={need ? -1 : undefined} role="region" aria-labelledby={titleId} className={pulse ? "ak-pulse" : undefined} style={look}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <h3 id={titleId} style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.4, color: pending ? "var(--text)" : "var(--text-secondary)", overflowWrap: "anywhere" }}>
+            {title}
+          </h3>
+          {state}
+        </div>
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+          {plan.goals.map(({ goal, tickets }) => {
+            const to: Route = { view: "ticket", project: slug, key: goal.key };
+            return (
+              <li key={goal.id} style={{ display: "flex", alignItems: "baseline", gap: 12, fontSize: 15, minWidth: 0 }}>
+                <a href={href(to)} onClick={onNav(to)} style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere", color: "var(--text-body)", textDecoration: "none" }}>
+                  {goal.title}
+                </a>
+                <span style={{ fontSize: 13, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{tickets.length === 1 ? "1 ticket" : `${tickets.length} tickets`}</span>
+              </li>
+            );
+          })}
+        </ul>
+        {(asks || plan.not) && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 14, color: "var(--text-muted)" }}>
+            {asks && <span>{asks}</span>}
+            {plan.not && <span style={{ overflowWrap: "anywhere" }}>{plan.not}</span>}
+          </div>
+        )}
+        {pending && (
+          <>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <Button onClick={() => void start()} disabled={busy} style={amberButton(busy)}>
+                OK, start
+              </Button>
+              <Button variant="secondary" aria-expanded={changing} onClick={() => setChanging((c) => !c)} style={{ height: 44 }}>
+                Change something
+              </Button>
+            </div>
+            {changing && <ReplyBox label="Tell Captain what to change" placeholder="Tell Captain what to change" value={reply} onChange={setReply} busy={busy} action="Send to Captain" onSend={change} />}
+          </>
+        )}
+        {err && (
+          <span role="alert" style={{ fontSize: 13, color: "var(--coral-text)" }}>
+            That didn't go through: {err}
+          </span>
+        )}
+      </div>
+    </CaptainMessage>
   );
 }
 

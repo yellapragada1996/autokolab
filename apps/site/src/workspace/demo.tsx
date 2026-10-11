@@ -107,6 +107,14 @@ const tickets: Ticket[] = [
   ticket(6, { title: "Order history page", status: "backlog", type: "feature", priority: "low", parent_id: "t15" }),
   ticket(7, { title: "Upgrade to React 19", status: "backlog", type: "chore", assignee_id: LEE, assignee_type: "human" }),
   ticket(8, { title: "Product search", status: "done", summary: "Shoppers can search products by name from any page", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(300) }),
+  // Captain's plan (AK-60): two goals whose tickets are drafts in Backlog until Ana says "OK, start".
+  ticket(30, { title: "Wishlists", status: "backlog", type: "epic", description: "Shoppers can save things for later." }),
+  ticket(31, { title: "Heart button on products", status: "backlog", type: "feature", parent_id: "t30", assignee_id: BUILDER, assignee_type: "agent" }),
+  ticket(32, { title: "Store wishlists in the database", status: "backlog", type: "feature", parent_id: "t30", assignee_id: REVIEWER, assignee_type: "agent" }),
+  ticket(33, { title: "Wishlist page", status: "backlog", type: "feature", parent_id: "t30", assignee_id: BUILDER, assignee_type: "agent" }),
+  ticket(40, { title: "Gift cards", status: "backlog", type: "epic", description: "Shoppers can buy and redeem gift cards." }),
+  ticket(41, { title: "Charge for a gift card", status: "backlog", type: "feature", parent_id: "t40", assignee_id: REVIEWER, assignee_type: "agent" }),
+  ticket(42, { title: "Redeem a gift card at checkout", status: "backlog", type: "feature", parent_id: "t40", assignee_id: BUILDER, assignee_type: "agent" }),
   ticket(9, { title: "Write the Project Guide", status: "done", summary: "Agents now read one guide with the concept and rules before they start", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(900) }),
 ];
 
@@ -192,6 +200,12 @@ const demoRoom: DemoRoom = {
     { id: 13, room_id: "room", thread_id: 10, sender_id: REVIEWER, to_id: null, kind: "status", body: "Pausing this thread after 4 agent messages in a row. A person can reply to continue.", refs: {}, created_at: iso(17) },
     { id: 14, room_id: "room", thread_id: null, sender_id: BUILDER, to_id: null, kind: "status", body: "Failed on #2.\n\nYou've hit your session limit · resets 11:20pm (Europe/Stockholm)", refs: {}, created_at: iso(12) },
     { id: 15, room_id: "room", thread_id: null, sender_id: REVIEWER, to_id: LEAD, kind: "status", body: "Blocked on #5: SH-3 needs the session table from SH-4, which isn't merged yet.", refs: {}, created_at: iso(6) },
+    // A plan, a change asked for, and the newer plan that replaces it. The newer one waits on Ana:
+    // OK, start shows it started; Change something shows it changes-asked.
+    { id: 16, room_id: "room", thread_id: null, sender_id: ANA, to_id: LEAD, kind: "chat", body: "Next: wishlists, please.", refs: {}, created_at: iso(5) },
+    { id: 17, room_id: "room", thread_id: 16, sender_id: LEAD, to_id: ANA, kind: "question", body: "One goal, three tickets. I'll ask you before the database change.\n\n```autokolab-plan\ngoals: SH-30\nasks: SH-32\n```", refs: {}, created_at: iso(4.5) },
+    { id: 18, room_id: "room", thread_id: 16, sender_id: ANA, to_id: LEAD, kind: "chat", body: "Add gift cards to the same plan.", refs: {}, created_at: iso(4) },
+    { id: 19, room_id: "room", thread_id: 16, sender_id: LEAD, to_id: ANA, kind: "question", body: "Two goals, five tickets. Wishlists touch the database and gift cards take payments, so I'll ask you before those two merges, and nothing else.\n\n```autokolab-plan\ngoals: SH-30, SH-40\nasks: SH-32, SH-41\nnot: Sharing a wishlist with friends is not in this plan.\n```", refs: {}, created_at: iso(3) },
   ],
   // Last caught up 10 hours ago, so the preview opens with a catch-up.
   caughtUpAt: iso(600),

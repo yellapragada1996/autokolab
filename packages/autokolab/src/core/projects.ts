@@ -193,8 +193,16 @@ interface Guide {
 
 /** DEC-17: the lead acts on its own and asks its person only before big work. */
 export const BIG_WORK = "a new epic or more than 3 tickets, migrations, dependencies, auth/security/CI/infra changes, deleting a feature, or changing a decision";
+/** CON-23: the block a plan message ends with. The website shows it as a plan card. */
+export const PLAN_BLOCK = "```autokolab-plan\ngoals: AK-60, AK-61\nasks: AK-62, AK-64\nnot: Password reset and account deletion are not in this plan.\n```";
+
+/** CON-23 / AK-60: how the lead proposes big work. Its tickets wait in Backlog until the person says "OK, start". */
+export const LEAD_PLAN = `Propose it as a plan instead of starting it. First create the goal(s) (epics) and every ticket under them in Backlog, complete and assigned. Then post ONE kind=question message to them in the room: a short plain summary (how many goals and tickets, and what you'll ask them about), ending with this block, in this exact format, with nothing after it:
+${PLAN_BLOCK}
+goals: the keys of the plan's goals, comma-separated (their tickets are the plan; don't list them). asks (optional): the keys of the plan's tickets you expect to wait for their OK (database, CI, dependencies or sign-in changes). not (optional): one sentence on what is out of scope. Then stop. When they reply "OK, start" in that thread, the website has already moved the tickets to Ready: there is nothing to move, so reply only if something needs saying. Any other reply asks for changes: edit the draft tickets, then post a new plan message with the same goals, which replaces the old one.`;
+
 export function leadAutonomy(person: string): string {
-  return `You run unattended too, while ${person} is away. Decide and act on your own (answer workers, delegate, create and assign tickets, review), then say what you did. Before big work (${BIG_WORK}), post one kind=question to ${person} in the room and stop; their reply in that thread resumes you.`;
+  return `You run unattended too, while ${person} is away. Decide and act on your own (answer workers, delegate, create and assign tickets, review), then say what you did. Before big work (${BIG_WORK}), ask ${person} first. ${LEAD_PLAN}`;
 }
 
 /** How to write what goes with an approval. People read it on the website to decide whether to trust the change. */
