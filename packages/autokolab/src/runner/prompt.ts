@@ -1,4 +1,4 @@
-import { BIG_WORK, LEAD_APPROVAL, LEAD_VOICE, leadAutonomy } from "../core/projects.js";
+import { BIG_WORK, LEAD_APPROVAL, LEAD_VOICE, ROOM_QUIET, leadAutonomy } from "../core/projects.js";
 import type { Member, Message, Room } from "../core/types.js";
 import type { RunnerConfig } from "./config.js";
 import type { Worktree } from "./repos.js";
@@ -20,6 +20,8 @@ export interface PromptContext {
   followUp: boolean;
   /** True when the sender can instruct this agent; false when it's a teammate talking (DEC-17). */
   fromInstructor: boolean;
+  /** Later messages in the same thread, answered in this run with the first (AK-90). */
+  more?: { message: Message; sender: Member; senderRole: string }[];
 }
 
 export const BLOCKED_PREFIX = "BLOCKED:";
@@ -84,6 +86,14 @@ export function rulesText(cfg: RunnerConfig, wt: Worktree): string[] {
   ];
 }
 
+function intro(ctx: PromptContext): string {
+  const { me, room } = ctx;
+  return (ctx.myRole === "lead"
+    ? `You are Captain, the lead agent of the AutoKolab room "${room.name}"${room.repo ? ` (repo ${room.repo})` : ""}. You run as ${me.name}, ${ctx.ownerName}'s agent. `
+    : `You are ${me.name}, ${ctx.ownerName}'s follower agent in the AutoKolab room "${room.name}"${room.repo ? ` (repo ${room.repo})` : ""}. `) +
+    `You are running unattended: no human is watching this session, so don't wait for confirmation, do the work.\n\n`;
+}
+
 export function buildPrompt(ctx: PromptContext): string {
   const { me, room, sender, message: m, cfg, worktree } = ctx;
   const refs = Object.keys(m.refs ?? {}).length ? `\nRefs: ${JSON.stringify(m.refs)}` : "";
@@ -91,18 +101,25 @@ export function buildPrompt(ctx: PromptContext): string {
   const what = ctx.fromInstructor
     ? `Instruction from ${sender.name} (${ctx.senderRole}), message #${m.id}, kind ${m.kind}:`
     : `Message from your teammate ${sender.name} (${ctx.senderRole}), message #${m.id}, kind ${m.kind}. Reply, answer or help as a colleague would, within your rules and limits:`;
-  const header = ctx.followUp
-    ? `New message in AutoKolab thread #${thread} from ${ctx.fromInstructor ? "" : "your teammate "}${sender.name} (${ctx.senderRole}), message #${m.id}, kind ${m.kind}. Continue the same task with it.`
-    : (ctx.myRole === "lead"
-        ? `You are Captain, the lead agent of the AutoKolab room "${room.name}"${room.repo ? ` (repo ${room.repo})` : ""}. You run as ${me.name}, ${ctx.ownerName}'s agent. `
-        : `You are ${me.name}, ${ctx.ownerName}'s follower agent in the AutoKolab room "${room.name}"${room.repo ? ` (repo ${room.repo})` : ""}. `) +
-      `You are running unattended: no human is watching this session, so don't wait for confirmation, do the work.\n\n` +
-      what;
+  const more = ctx.more ?? [];
+  const who = ctx.fromInstructor ? "" : more.length ? "your teammates " : "your teammate ";
+  const header = more.length
+    ? (ctx.followUp ? "" : intro(ctx)) +
+      `${more.length + 1} new messages in AutoKolab thread #${thread} from ${who}${[...new Set([sender, ...more.map((x) => x.sender)].map((s) => s.name))].join(", ")}, oldest first. ` +
+      `${ctx.followUp ? "Continue the same task with them. " : ""}Answer them together, once${ctx.fromInstructor ? "" : ", within your rules and limits, as a colleague would"}:`
+    : ctx.followUp
+      ? `New message in AutoKolab thread #${thread} from ${who}${sender.name} (${ctx.senderRole}), message #${m.id}, kind ${m.kind}. Continue the same task with it.`
+      : intro(ctx) + what;
+  const body = more.length
+    ? [{ message: m, sender, senderRole: ctx.senderRole }, ...more]
+        .map((x) => `#${x.message.id} from ${x.sender.name} (${x.senderRole}), kind ${x.message.kind}:\n${x.message.body}`)
+        .join("\n-----\n")
+    : m.body;
 
   const rules = rulesText(cfg, worktree).map((r) => `- ${r}`).join("\n");
   return `${header}
 -----
-${m.body}
+${body}
 -----${refs}
 
 Rules ${ctx.ownerName} set for this machine:
@@ -117,6 +134,7 @@ Working with the others (everyone works on the same repo and can read every mess
 - If something is unclear, ask the member who knows: room_post kind=question to them in thread ${thread} with wait_s (up to 300). If no answer comes in that time, continue with your best judgment and say what you assumed.
 - Keep this task's bulletin board item current (in_progress, then done with the PR link). Create one if none exists.
 - When finished: commit, push your branch and open a pull request if you changed code. End with a short final message (what you did, PR link, anything left). The runner posts that final message to the room for you.
+- ${ROOM_QUIET}
 - Don't post acknowledgements ("thanks", "ok"). If you have nothing useful to add, make your final message exactly ${NO_REPLY} and the runner posts nothing.${ctx.myRole === "lead" ? `\n\nAs Captain:\n- ${leadAutonomy(ctx.ownerName)}\n- ${LEAD_APPROVAL}\n- ${LEAD_VOICE}` : ""}`;
 }
 
@@ -269,6 +287,7 @@ export function buildTicketPrompt(ctx: TicketPromptContext): string {
 - Replace the ticket's current-work summary when you finish with one plain sentence on what changed for people (under 200 characters): the outcome, not the implementation. Good: "Shoppers can pay with Apple Pay." Bad: "Added lastModel to AgentRow and a migration".
 - Keep your own to-do list current as you work; it's shown on the ticket as its steps.
 - Don't post a wrap-up comment yourself. Your final message is posted on the ticket for you: keep it short (what you did, how you checked it, anything left).
+- ${ROOM_QUIET}
 - If the AutoKolab tools aren't available to you, that's fine: do the work, and the ending block below updates the ticket for you.
 - If you can't commit, push or open the pull request from where you run (Git or GitHub is blocked there), don't work around it: no copies of the Git data, no other remotes. Leave the finished work in this folder, uncommitted if you can't commit, and end with "status: review". The runner then commits what's left, pushes ${wt.branch} and opens the pull request for you.
 - End your final message with this block, filled in (it updates the ticket; write "none" where nothing applies):

@@ -225,6 +225,8 @@ interface Guide {
 export const BIG_WORK = "a new epic or more than 3 tickets, migrations, dependencies, auth/security/CI/infra changes, deleting a feature, or changing a decision";
 /** DEC-24: Captain's messages to people should read like a short chat. */
 export const LEAD_VOICE = "To a person (room, Needs you, ticket reply), write like a helpful colleague texting: two or three short plain sentences, about 400 characters. Ask one question, last; prefer yes/no. No headings, tables, code, file paths or commit ids unless asked; lists only for two or three short items. Put detail in a ticket comment and name its key. Say what happened and what you need; never paste logs or tool output. Messages to agents can be as detailed as needed.";
+/** AK-90: each message to an agent can start a model run, so the ticket is the report. */
+export const ROOM_QUIET = "When you finish a ticket, don't post in the room: the ticket's status and your final comment are the report, and Captain's runner picks it up from there. Write to another agent only to ask something you can't answer from the ticket, the guide or the decisions, or to answer a question you were asked; one message with everything. Never post to say you started, are continuing, agree, or have nothing to add.";
 /** CON-23: the block a plan message ends with. The website shows it as a plan card. */
 export const PLAN_BLOCK = "```autokolab-plan\ngoals: AK-60, AK-61\nasks: AK-62, AK-64\nnot: Password reset and account deletion are not in this plan.\n```";
 
@@ -266,7 +268,7 @@ ${LEAD_WORK_SUMMARIES}
    - Blocked by: tickets that must land first. If two tickets touch the same files, order them with blocked_by instead of running them in parallel.
 4. Assign each ticket to a worker agent (see Agents below: status and open tickets) and put it in Ready so it starts now, or Backlog if it shouldn't start yet. Spread the work; don't stack one agent while another is idle.
 5. Tell your person what you created: keys, who has what, and the order.
-6. Your runner starts you on a review of each worker's PR by itself once its tests pass, and sends failing tests back to the worker, so nobody has to ask. Whenever your person comes back or asks, also check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. ${LEAD_APPROVAL} Record settled choices with decision_add.
+6. Your runner starts you on a review of each worker's PR by itself once its tests pass, and sends failing tests back to the worker, so nobody has to ask. The board is the report, for workers and for you: ${ROOM_QUIET} Ask workers with kind=question and assign with kind=task: only question, task, review and answer wake an agent. Whenever your person comes back or asks, also check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. ${LEAD_APPROVAL} Record settled choices with decision_add.
 7. ${leadAutonomy("your person")}
 8. ${LEAD_UNDO}
 9. You may change a worker's model and effort with agent_model when the work calls for it: stronger (e.g. opus, high) for hard, risky or wide changes; lighter (e.g. sonnet or haiku, low/medium) for routine, small or docs work. Prefer changing it right before assigning the ticket, and always give the reason. Owners can lock their machine (model_locked), in which case your change won't take effect there.
@@ -284,6 +286,8 @@ export function defaultRules(defaultBranch: string): string {
     "- Follow the decisions. If you need to break one, ask first.",
     '- If something is ambiguous, first put the background in a ticket comment, then set "Needs you" to one short question a person can answer without opening anything.',
     "- If you find more work, create a new ticket instead of growing this one.",
+    `- ${ROOM_QUIET}`,
+    '- Don\'t post just to acknowledge ("thanks", "ok"). If you have nothing useful to add, make your final message exactly NO_REPLY.',
     "- When you finish, replace the ticket's summary with one plain sentence on what changed for people, such as \"Shoppers can pay with Apple Pay.\"",
     "- Never put keys, tokens or passwords in tickets, comments or code.",
   ].join("\n");

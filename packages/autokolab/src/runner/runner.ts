@@ -32,11 +32,71 @@ const TEAMMATE_THREAD_KINDS: MessageKind[] = ["question", "answer", "review"];
 const POLL_MS = 30_000;
 const HEARTBEAT_MS = 30_000;
 
-interface Job {
+export interface Job {
   run: TaskRun;
   message: Message;
   /** The sender can give this agent instructions (a person, or the lead side). */
   fromInstructor: boolean;
+  /** Later messages in the same thread, answered in the same run, oldest first (AK-90). */
+  more: { run: TaskRun; message: Message }[];
+  /** Don't start before this time (ms); 0 starts as soon as the agent is free. */
+  notBefore: number;
+  /** When the first message was queued (ms). */
+  queuedAt: number;
+}
+
+/** A teammate's message waits this long for more in the same thread, and never more than BATCH_MAX_MS in all. */
+export const BATCH_WAIT_MS = 20_000;
+export const BATCH_MAX_MS = 120_000;
+
+/**
+ * Queue a message's run. A message in the same thread as one still waiting (and from the same side:
+ * instructions don't mix with teammates' requests) joins that job, so the agent answers them once.
+ * A teammate's message waits briefly to collect a burst; a person's message is never delayed, and
+ * starts the job it joins right away.
+ */
+export function addToQueue(
+  queue: Job[],
+  entry: { run: TaskRun; message: Message; fromInstructor: boolean },
+  delay: boolean,
+  now: number,
+): "run" | "merged" {
+  const job = queue.find((j) => j.message.room_id === entry.message.room_id && j.run.thread_root === entry.run.thread_root && j.fromInstructor === entry.fromInstructor);
+  if (!job) {
+    queue.push({ ...entry, more: [], notBefore: delay ? now + BATCH_WAIT_MS : 0, queuedAt: now });
+    return "run";
+  }
+  job.more.push({ run: entry.run, message: entry.message });
+  job.notBefore = !delay || job.notBefore === 0 ? 0 : Math.min(now + BATCH_WAIT_MS, job.queuedAt + BATCH_MAX_MS);
+  return "merged";
+}
+
+/**
+ * How a reply run's final text goes out: as an answer to the teammate agent who asked (a question,
+ * task or review request), which wakes them; otherwise as a status report, which wakes nobody.
+ */
+export function replyAs(messages: Pick<Message, "sender_id" | "kind">[], isHuman: (id: string) => boolean): { kind: MessageKind; to: string } {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (!isHuman(m.sender_id) && ASKING_KINDS.includes(m.kind)) return { kind: "answer", to: m.sender_id };
+  }
+  return { kind: "status", to: messages[messages.length - 1].sender_id };
+}
+
+export interface WakeCounts {
+  /** Messages to this agent or to everyone, from someone else. */
+  seen: number;
+  /** Messages that started a run. */
+  run: number;
+  /** Messages answered in a run another message started. */
+  merged: number;
+}
+
+/** Add one to today's count, keeping the last two weeks. */
+export function countWake(counts: Record<string, WakeCounts>, day: string, what: keyof WakeCounts): Record<string, WakeCounts> {
+  const out = { ...counts, [day]: { ...{ seen: 0, run: 0, merged: 0 }, ...counts[day] } };
+  out[day][what]++;
+  return Object.fromEntries(Object.entries(out).sort(([a], [b]) => a.localeCompare(b)).slice(-14));
 }
 
 /** What the runner knows about a message's sender when deciding whether to wake its agent. */
@@ -51,6 +111,13 @@ export interface WakeContext {
   inThread: boolean;
   /** The owner also lets this agent take tasks addressed to everyone. */
   acceptBroadcastTasks: boolean;
+  /** The sender is a person, not an agent. */
+  fromPerson: boolean;
+  /**
+   * An older runner's reply posted as `status`: the first message from this sender after this
+   * agent asked it something in the thread. Counts as an answer (AK-90).
+   */
+  legacyAnswer?: boolean;
 }
 
 export interface WakeDecision {
@@ -58,11 +125,16 @@ export interface WakeDecision {
   fromInstructor: boolean;
 }
 
+/** From another agent, only these need a model run; the other kinds are news (AK-90). */
+export const AGENT_WAKE_KINDS: MessageKind[] = ["question", "task", "review", "answer"];
+/** A run started by a teammate's message of these kinds posts its reply as an answer. */
+export const ASKING_KINDS: MessageKind[] = ["question", "task", "review"];
+
 /**
- * Does this message wake this agent? Anyone in the room wakes it by addressing it directly, any
- * kind (so a runner's status report reaches the agent that asked), except with a runner notice.
- * Otherwise instructors work as they always have, and teammates (anyone else in the room) wake it
- * only by talking in a thread it's already working in.
+ * Does this message wake this agent? A person wakes it by addressing it directly, any kind; an
+ * agent only with a question, task, review request or answer (the rest is news, and the board is
+ * the report). A runner notice never wakes anyone. Otherwise instructors work as they always have,
+ * and teammates (anyone else in the room) wake it only by talking in a thread it's already working in.
  */
 export function shouldWake(m: Pick<Message, "sender_id" | "to_id" | "thread_id" | "kind" | "body">, ctx: WakeContext): WakeDecision {
   const from = ctx.fromInstructor;
@@ -70,6 +142,10 @@ export function shouldWake(m: Pick<Message, "sender_id" | "to_id" | "thread_id" 
   if (m.sender_id === ctx.meId || !ctx.senderInRoom) return { wake: false, fromInstructor: false };
   // A runner saying "Started on #12" isn't something to answer.
   if (isRunnerNotice(m.body)) return no;
+  if (!ctx.fromPerson && !AGENT_WAKE_KINDS.includes(m.kind)) {
+    if (m.to_id === ctx.meId && ctx.legacyAnswer) return { wake: true, fromInstructor: from };
+    return no;
+  }
   if (m.to_id === ctx.meId) return { wake: true, fromInstructor: from };
   if (m.to_id !== null) return no;
   if (from) {
@@ -78,6 +154,26 @@ export function shouldWake(m: Pick<Message, "sender_id" | "to_id" | "thread_id" 
   }
   if (m.thread_id && TEAMMATE_THREAD_KINDS.includes(m.kind) && ctx.inThread) return { wake: true, fromInstructor: false };
   return no;
+}
+
+/**
+ * Runners before AK-90 post every reply as `status`. Until every machine updates, a `status` from
+ * an agent is still an answer when it's that agent's first message in the thread since this agent
+ * last asked it something there (a question, task or review request). Runner notices don't count.
+ */
+export function isLegacyAnswer(
+  thread: Pick<Message, "id" | "sender_id" | "kind" | "body">[],
+  m: Pick<Message, "id" | "sender_id" | "kind">,
+  meId: string,
+): boolean {
+  if (m.kind !== "status") return false;
+  for (let i = thread.length - 1; i >= 0; i--) {
+    const x = thread[i];
+    if (x.id >= m.id || isRunnerNotice(x.body)) continue;
+    if (x.sender_id === m.sender_id) return false;
+    if (x.sender_id === meId) return ASKING_KINDS.includes(x.kind);
+  }
+  return false;
 }
 
 /**
@@ -137,12 +233,19 @@ export function runOutcome(
   return { state: "done", report: text || `Done with #${ctx.messageId}.`, quiet };
 }
 
-/** The loop guard's count: messages in a thread since the last one from a person, leaving out runner notices. */
+/**
+ * The loop guard's count: agent turns in a thread since the last message from a person. Consecutive
+ * messages from the same agent are one turn (one merged run answers a burst); runner notices are
+ * left out and don't split a turn.
+ */
 export function agentTurnsSinceHuman(thread: Pick<Message, "sender_id" | "body">[], isHuman: (senderId: string) => boolean): number {
   let turns = 0;
+  let previous: string | null = null;
   for (let i = thread.length - 1; i >= 0; i--) {
     if (isHuman(thread[i].sender_id)) break;
-    if (!isRunnerNotice(thread[i].body)) turns++;
+    if (isRunnerNotice(thread[i].body)) continue;
+    if (thread[i].sender_id !== previous) turns++;
+    previous = thread[i].sender_id;
   }
   return turns;
 }
@@ -501,7 +604,7 @@ export class Runner {
       if (r.state === "running") {
         if (this.limitWait?.kind === "message" && this.limitWait.messageId === r.message_id) {
           const message = await this.ak.messageById(r.message_id);
-          if (message) this.queue.unshift({ run: r, message, fromInstructor: this.ak.canInstruct(message.sender_id, message.room_id) });
+          if (message) this.queue.unshift({ run: r, message, fromInstructor: this.ak.canInstruct(message.sender_id, message.room_id), more: [], notBefore: 0, queuedAt: Date.now() });
           await this.ak.updateRun(r.id, { state: "queued", summary: "Waiting for usage limit to reset" });
           continue;
         }
@@ -516,7 +619,7 @@ export class Runner {
           this.log(`Dropped queued #${message.id}: ${STALE_RUN_SUMMARY.toLowerCase()}.`);
           continue;
         }
-        this.queue.push({ run: r, message, fromInstructor });
+        addToQueue(this.queue, { run: r, message, fromInstructor }, false, Date.now());
       }
     }
   }
@@ -535,11 +638,26 @@ export class Runner {
             const batch = await this.ak.messagesAfter(this.lastSeenId, 100);
             for (const m of batch) {
               this.lastSeenId = Math.max(this.lastSeenId, m.id);
+              if (m.sender_id === this.ak.me.id || (m.to_id !== null && m.to_id !== this.ak.me.id)) continue;
               const d = await this.decideWake(m);
-              if (!d.wake) continue;
-              if (staleTeammateMessage(m, d.fromInstructor, this.startedAt)) continue;
-              if (!d.fromInstructor && !(await this.withinAgentTurns(m))) continue;
-              await this.enqueue(m, d.fromInstructor);
+              // One line per decision, so the runner log shows what woke the model and what didn't (AK-90).
+              const what = `#${m.id} from ${this.ak.nameOf(m.sender_id)}: ${m.kind}`;
+              this.countWake("seen");
+              if (!d.wake) {
+                this.log(`${what}, no run.`);
+                continue;
+              }
+              if (staleTeammateMessage(m, d.fromInstructor, this.startedAt)) {
+                this.log(`${what}, no run (from before I started).`);
+                continue;
+              }
+              if (!d.fromInstructor && !(await this.withinAgentTurns(m))) {
+                this.log(`${what}, no run (thread paused).`);
+                continue;
+              }
+              const queued = await this.enqueue(m, d.fromInstructor);
+              if (queued) this.countWake(queued);
+              this.log(`${what}, ${queued === "run" ? "run" : queued === "merged" ? "answered with the waiting messages in its thread" : "already taken"}.`);
             }
             if (batch.length < 100) break;
           }
@@ -558,18 +676,31 @@ export class Runner {
     if (!ak.roomById(m.room_id) || !ak.membership(m.room_id, m.sender_id)) await ak.refresh();
     // Only a broadcast in a thread needs the extra lookup, so most messages cost nothing.
     const threaded = m.to_id === null && m.thread_id !== null && (THREAD_KINDS.includes(m.kind) || TEAMMATE_THREAD_KINDS.includes(m.kind));
+    const fromPerson = ak.isHuman(m.sender_id);
+    // Likewise, only an agent's status to this agent in a thread could be an older runner's answer.
+    let legacyAnswer = false;
+    if (!fromPerson && m.kind === "status" && m.to_id === ak.me.id && m.thread_id !== null && !isRunnerNotice(m.body)) {
+      try {
+        legacyAnswer = isLegacyAnswer(await ak.threadMessages(m.room_id, m.thread_id), m, ak.me.id);
+      } catch (e) {
+        this.log(`Couldn't read thread #${m.thread_id}: ${(e as Error).message}`);
+      }
+    }
     return shouldWake(m, {
       meId: ak.me.id,
       senderInRoom: ak.inRoom(m.sender_id, m.room_id),
       fromInstructor: ak.canInstruct(m.sender_id, m.room_id),
       inThread: threaded ? (await ak.runsIn(m.thread_id!)).length > 0 : false,
       acceptBroadcastTasks: this.cfg.accept_broadcast_tasks,
+      fromPerson,
+      legacyAnswer,
     });
   }
 
   /**
-   * The loop guard: agents talking only to each other stop after max_agent_turns messages, and the
-   * thread gets one notice saying a person can restart it. Anyone's reply resets the count.
+   * The loop guard: agents talking only to each other stop after max_agent_turns turns, and the
+   * thread gets one notice saying a person can restart it. A person's reply resets the count. It runs
+   * for each incoming message, but a burst from one agent is one turn, so a merged run counts once.
    */
   private async withinAgentTurns(m: Message): Promise<boolean> {
     const root = m.thread_id ?? m.id;
@@ -584,19 +715,39 @@ export class Runner {
     if (turns < this.cfg.limits.max_agent_turns) return true;
     const last = thread[thread.length - 1];
     if (!last || !isPauseNotice(last.body)) {
-      this.log(`Pausing thread #${root}: ${turns} agent messages since a person's.`);
+      this.log(`Pausing thread #${root}: ${turns} agent turns since a person's.`);
       await this.say(m.room_id, root, null, pauseNotice(turns));
     }
     return false;
   }
 
-  private async enqueue(m: Message, fromInstructor: boolean): Promise<void> {
+  private async enqueue(m: Message, fromInstructor: boolean): Promise<"run" | "merged" | null> {
     const run = await this.ak.claimRun(m);
-    if (!run) return;
-    this.log(`Queued #${m.id} from ${this.ak.nameOf(m.sender_id)} in ${this.ak.roomById(m.room_id)?.name}.`);
-    this.queue.push({ run, message: m, fromInstructor });
-    if (this.ak.me.paused && fromInstructor) {
+    if (!run) return null;
+    const queued = addToQueue(this.queue, { run, message: m, fromInstructor }, !this.ak.isHuman(m.sender_id), Date.now());
+    if (queued === "run" && this.ak.me.paused && fromInstructor) {
       await this.say(m.room_id, run.thread_root, m.sender_id, `Queued #${m.id}: ${this.ak.ownerName(this.ak.me)} has paused me; I'll start when resumed.`);
+    }
+    return queued;
+  }
+
+  private wakeCountsPath(): string {
+    return join(stateDir(), "wakes", `${this.ak.me.id}.json`);
+  }
+
+  /** Per day: messages seen, messages that started a run, and messages merged into another's run. */
+  private countWake(what: keyof WakeCounts): void {
+    try {
+      let counts: Record<string, WakeCounts> = {};
+      try {
+        counts = JSON.parse(readFileSync(this.wakeCountsPath(), "utf8")) as Record<string, WakeCounts>;
+      } catch {
+        // First count on this machine.
+      }
+      mkdirSync(join(stateDir(), "wakes"), { recursive: true });
+      writeFileSync(this.wakeCountsPath(), JSON.stringify(countWake(counts, today(), what), null, 2));
+    } catch (e) {
+      this.log(`Couldn't count messages: ${(e as Error).message}`);
     }
   }
 
@@ -687,11 +838,17 @@ export class Runner {
           break;
         }
         if (this.limitWait && Date.now() < Date.parse(this.limitWait.until)) break;
-        const job = this.queue.shift()!;
+        const ready = this.queue.findIndex((j) => j.notBefore <= Date.now());
+        if (ready < 0) {
+          // Only teammates' messages are waiting, collecting a burst: come back when the first is due.
+          this.workLater(Math.min(...this.queue.map((j) => j.notBefore)) - Date.now());
+          break;
+        }
+        const [job] = this.queue.splice(ready, 1);
         await this.execute(job).catch(async (e) => {
           const msg = (e as Error).message;
           this.log(`#${job.message.id} failed to start: ${msg}`);
-          await this.ak.updateRun(job.run.id, { state: "failed", summary: msg.slice(0, 16000), finished_at: now() }).catch(() => undefined);
+          await this.updateRuns(job, { state: "failed", summary: msg.slice(0, 16000), finished_at: now() }).catch(() => undefined);
           await this.say(job.message.room_id, job.run.thread_root, job.message.sender_id, `Couldn't start #${job.message.id}: ${msg}`);
         });
       }
@@ -729,6 +886,16 @@ export class Runner {
     }
   }
 
+  private workTimer: NodeJS.Timeout | null = null;
+  private workLater(ms: number): void {
+    if (this.workTimer) clearTimeout(this.workTimer);
+    this.workTimer = setTimeout(() => {
+      this.workTimer = null;
+      void this.work();
+    }, Math.max(ms, 0) + 50);
+    this.workTimer.unref();
+  }
+
   private prepareWorkspace(m: Message, threadRoot: number): Worktree {
     const room = this.ak.roomById(m.room_id);
     if (!room?.repo) throw new Error(`room ${room?.name ?? m.room_id} isn't linked to a GitHub repo.`);
@@ -748,6 +915,11 @@ export class Runner {
     const worktree = this.prepareWorkspace(m, run.thread_root);
     const resume = await ak.lastSession(run.thread_root);
     const instructors = ak.membersOf(room.id).filter((x) => x.can_instruct).map((x) => x.name);
+    const more = [];
+    for (const x of job.more) {
+      const from = (await ak.memberFresh(x.message.sender_id)) ?? sender;
+      more.push({ message: x.message, sender: from, senderRole: ak.membership(room.id, from.id)?.role ?? "member" });
+    }
     const prompt = buildPrompt({
       me: ak.me,
       ownerName: ak.ownerName(ak.me),
@@ -761,17 +933,19 @@ export class Runner {
       worktree,
       followUp: Boolean(resume),
       fromInstructor: job.fromInstructor,
+      more,
     });
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, room.name) };
     const choice = await this.modelChoice();
     const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, resume, choice) : codexInvocation(cfg, mcp, resume, worktree.path, choice);
     const logFile = join(this.logDir, `${room.name}-run${run.id}-msg${m.id}.log`);
+    const ids = [m, ...job.more.map((x) => x.message)].map((x) => `#${x.id}`).join(", ");
 
     const abort = new AbortController();
-    this.current = { what: `#${m.id}`, abort };
-    await ak.updateRun(run.id, { state: "running", branch: worktree.branch, started_at: now() });
+    this.current = { what: ids, abort };
+    await this.updateRuns(job, { state: "running", branch: worktree.branch, started_at: now() });
     await ak.heartbeat("working").catch(() => undefined);
-    this.log(`Working on #${m.id} in ${room.name} (${worktree.branch})${resume ? ", continuing session" : ""}.`);
+    this.log(`Working on ${ids} in ${room.name} (${worktree.branch})${resume ? ", continuing session" : ""}.`);
     const notice = this.limitWait?.kind === "message" ? null : startNotice(m.id, worktree.branch, Boolean(resume), job.fromInstructor);
     if (notice) await this.say(room.id, run.thread_root, sender.id, notice);
 
@@ -788,8 +962,8 @@ export class Runner {
     const text = redactSecrets(result.finalText.trim()).slice(0, 12000);
     const limited = await this.waitForUsage(result, "message", undefined, m.id);
     if (limited) {
-      await ak.updateRun(run.id, { state: "queued", session_id: result.sessionId, summary: "Waiting for usage limit to reset" });
-      this.queue.unshift(job);
+      await this.updateRuns(job, { state: "queued", session_id: result.sessionId, summary: "Waiting for usage limit to reset" });
+      this.queue.unshift({ ...job, notBefore: 0 });
       if (limited.notice) await this.say(room.id, run.thread_root, sender.id,
         `I've reached my ${cfg.engine === "claude" ? "Claude" : "Codex"} usage limit. I'll continue with #${m.id} at about ${this.waitTime(limited.wait)}.`);
       return;
@@ -805,11 +979,20 @@ export class Runner {
     });
 
     const branch = currentBranch(worktree.clone, worktree.path) ?? worktree.branch;
-    await ak.updateRun(run.id, { state, session_id: result.sessionId, branch, summary: report.slice(0, 16000), finished_at: now() });
-    if (!quiet) await this.say(room.id, run.thread_root, sender.id, report);
+    await this.updateRuns(job, { state, session_id: result.sessionId, branch, summary: report.slice(0, 16000), finished_at: now() });
+    // A teammate's question, task or review request gets an answer, which wakes them; anything
+    // else is a report, which wakes nobody (AK-90).
+    const reply = replyAs([m, ...job.more.map((x) => x.message)], (id) => ak.isHuman(id));
+    if (!quiet) await this.say(room.id, run.thread_root, reply.to, report, state === "done" ? reply.kind : "status");
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
     // Cost is an API-price estimate (not a bill on a Claude subscription); keep it out of the room.
-    this.log(`#${m.id} ${state}.${result.costUsd !== undefined ? ` (estimated API cost $${result.costUsd.toFixed(2)})` : ""}`);
+    this.log(`${ids} ${state}.${result.costUsd !== undefined ? ` (estimated API cost $${result.costUsd.toFixed(2)})` : ""}`);
+  }
+
+  /** A job's runs: the first message's, and those of the messages answered with it. */
+  private async updateRuns(job: Job, patch: Parameters<AutoKolab["updateRun"]>[1]): Promise<void> {
+    await this.ak.updateRun(job.run.id, patch);
+    for (const x of job.more) await this.ak.updateRun(x.run.id, patch).catch((e) => this.log(`Couldn't update run ${x.run.id}: ${(e as Error).message}`));
   }
 
 
@@ -1573,9 +1756,9 @@ export class Runner {
     this.log(`${t.key} review: ${result.aborted ? "stopped" : result.timedOut ? "hit the time limit" : result.isError ? "failed" : said || "done"}.`);
   }
 
-  private async say(roomId: string, thread: number, to: string | null, body: string): Promise<void> {
+  private async say(roomId: string, thread: number, to: string | null, body: string, kind: MessageKind = "status"): Promise<void> {
     try {
-      await this.ak.room(roomId).post({ body, kind: "status", to, thread });
+      await this.ak.room(roomId).post({ body, kind, to, thread });
     } catch (e) {
       this.log(`Couldn't post to the room: ${(e as Error).message}`);
       if ((e as Error).message.includes("key or token")) {
@@ -1591,6 +1774,7 @@ export class Runner {
     this.stopping = true;
     this.queue = [];
     for (const t of this.timers) clearInterval(t);
+    if (this.workTimer) clearTimeout(this.workTimer);
     if (this.current) {
       this.current.abort.abort();
       const deadline = Date.now() + 20_000;
