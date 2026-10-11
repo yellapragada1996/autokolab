@@ -28,6 +28,10 @@ const project: Project = { id: "demo", name: "Shop", slug: "shop", repo: "ana/sh
 
 const profile: Profile = { id: ANA, github_login: "ana", name: "Ana", avatar_url: null, timezone: "America/Toronto", city: "Toronto", onboarded: true };
 
+// A made-up commit and its passing tests, for tickets that have merged.
+const sha = (n: number) => n.toString(16).padStart(2, "0").repeat(20);
+const passing = (n: number): NonNullable<Ticket["pr_facts"]> => ({ sha: sha(n), checks: { passed: 48, total: 48, state: "success" }, files: { total: 3, risky: [] }, additions: 40 + n, deletions: n });
+
 function ticket(n: number, t: Partial<Ticket> & Pick<Ticket, "title" | "status">): Ticket {
   return {
     id: `t${n}`,
@@ -78,8 +82,8 @@ const allTickets: Ticket[] = [
   ticket(11, { title: "Checkout", status: "in_progress", type: "epic", priority: "high", description: "Paying should take under a minute." }),
   ticket(12, { title: "Pay with Apple Pay", status: "in_progress", type: "feature", priority: "medium", parent_id: "t11", assignee_id: REVIEWER, assignee_type: "agent", started_at: iso(25), needs_human: "I stopped: hit the 60-minute limit. Where it got to: the Apple Pay button shows; paying isn't wired yet.", updated_at: iso(8) }),
   ticket(13, { title: "Search", status: "in_progress", type: "epic", description: "Find any product in two keystrokes." }),
-  ticket(14, { title: "Filter search by price", status: "done", summary: "Shoppers can narrow search results to a price range", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/40", completed_at: iso(40) }),
-  ticket(16, { title: "Store saved baskets in the database", status: "done", summary: "Saved baskets now remain available after sign-out", type: "feature", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/39", merge_ok_at: iso(70), merge_ok_by: ANA, completed_at: iso(60) }),
+  ticket(14, { title: "Filter search by price", status: "done", summary: "Shoppers can narrow search results to a price range", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/40", started_at: iso(150), completed_at: iso(40), approved_sha: sha(14), approved_by: LEAD, approved_at: iso(48), pr_facts: passing(14) }),
+  ticket(16, { title: "Store saved baskets in the database", status: "done", summary: "Saved baskets now remain available after sign-out", type: "feature", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/39", merge_ok_at: iso(70), merge_ok_by: ANA, started_at: iso(265), completed_at: iso(60), approved_sha: sha(16), approved_by: LEAD, approved_at: iso(95), pr_facts: passing(16) }),
   ticket(15, { title: "Order history", status: "backlog", type: "epic", description: "Shoppers can see what they bought." }),
   ticket(5, { title: "Checkout shows the wrong tax for Ontario", status: "review", type: "bug", priority: "urgent", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/41", labels: ["checkout"], summary: "Checkout charges the right tax for Ontario again", approved_sha: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912", approved_by: LEAD, approved_at: iso(5), pr_facts: { sha: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912", checks: { passed: 31, total: 48, state: "pending" }, files: { total: 2, risky: [] }, additions: 9, deletions: 3, checked_at: iso(4) } }),
   ticket(10, {
@@ -146,6 +150,77 @@ const demoEvents = new Map<string, TicketEvent[]>([["t2", [
   { id: 7, ticket_id: "t10", actor_id: REVIEWER, actor_type: "agent", kind: "status", data: { from: "ready", to: "in_progress" }, created_at: iso(80) },
   { id: 8, ticket_id: "t10", actor_id: REVIEWER, actor_type: "agent", kind: "status", data: { from: "in_progress", to: "review" }, created_at: iso(20) },
 ]]]);
+
+// Results (AK-71): four weeks of merged work and its history, so both periods have something to count.
+const DAY = 24 * 60;
+// number, title, goal, who built it, minutes since it merged, minutes it took
+const shipped: [number, string, string, string, number, number][] = [
+  [50, "Show delivery estimates in the basket", "t11", BUILDER, 1 * DAY + 180, 95],
+  [51, "Sort search by newest", "t13", REVIEWER, 1 * DAY + 420, 140],
+  [52, "Keep the basket after sign-in", "t11", BUILDER, 2 * DAY + 60, 70],
+  [53, "Sign out everywhere", "t1", REVIEWER, 3 * DAY + 300, 210],
+  [54, "Search understands plurals", "t13", BUILDER, 4 * DAY + 90, 55],
+  [55, "Show the basket total with tax", "t11", LEE, 5 * DAY + 200, 320],
+  [56, "Lock sign-in after ten wrong passwords", "t1", REVIEWER, 8 * DAY + 120, 180],
+  [57, "Search by product code", "t13", BUILDER, 9 * DAY + 400, 85],
+  [58, "Email a receipt after paying", "t11", BUILDER, 10 * DAY + 30, 150],
+  [59, "Reset a forgotten password", "t1", REVIEWER, 12 * DAY + 240, 260],
+  [60, "Remember the last search", "t13", BUILDER, 15 * DAY + 100, 45],
+  [61, "Pay with a saved card", "t11", REVIEWER, 16 * DAY + 380, 290],
+  [62, "Show sold-out products last", "t13", BUILDER, 17 * DAY + 50, 60],
+  [63, "Confirm the email address on sign-up", "t1", BUILDER, 19 * DAY + 210, 125],
+  [64, "Free delivery over $50", "t11", REVIEWER, 22 * DAY + 330, 170],
+  [65, "Search suggestions as you type", "t13", BUILDER, 24 * DAY + 140, 240],
+];
+
+let eventId = 100;
+const happened = (ticketId: string, minAgo: number, actor: string, kind: string, data: Record<string, unknown> = {}): TicketEvent => ({
+  id: eventId++,
+  ticket_id: ticketId,
+  actor_id: actor,
+  actor_type: actor === ANA || actor === LEE ? "human" : "agent",
+  kind,
+  data,
+  created_at: iso(minAgo),
+});
+
+const history: TicketEvent[] = [...demoEvents.values()].flat();
+for (const [n, title, goal, who, ago, took] of shipped) {
+  const id = `t${n}`;
+  allTickets.push(
+    ticket(n, { title, status: "done", type: "feature", parent_id: goal, assignee_id: who, assignee_type: who === LEE ? "human" : "agent", pr_url: `https://github.com/ana/shop/pull/${n}`, created_at: iso(ago + took + 30), updated_at: iso(ago), started_at: iso(ago + took), completed_at: iso(ago), approved_sha: sha(n), approved_by: LEAD, approved_at: iso(ago + 8), pr_facts: passing(n) }),
+  );
+  history.push(
+    happened(id, ago + took + 30, LEAD, "created", { status: "ready" }),
+    happened(id, ago + took, who, "status", { from: "ready", to: "in_progress" }),
+    happened(id, ago + 20, who, "status", { from: "in_progress", to: "review" }),
+    happened(id, ago + 8, LEAD, "approval", { to: sha(n) }),
+    happened(id, ago, LEAD, "status", { from: "review", to: "done" }),
+  );
+}
+// Today's two merges, the times a person was asked, and the work that was sent back.
+for (const [id, n, started, done] of [["t14", 14, 150, 40], ["t16", 16, 265, 60]] as const) {
+  history.push(happened(id, started, BUILDER, "status", { from: "ready", to: "in_progress" }), happened(id, done + 8, LEAD, "approval", { to: sha(n) }), happened(id, done, LEAD, "status", { from: "review", to: "done" }));
+}
+const okAsked: [string, number, string][] = [
+  ["t16", 90, "This adds a baskets table. OK to add it?"],
+  ["t53", 3 * DAY + 310, "Everyone is signed out once when this ships. Is that OK?"],
+  ["t61", 16 * DAY + 390, "Saved cards are kept by the payment provider, not by us. OK to ship?"],
+];
+for (const [id, ago, question] of okAsked) {
+  history.push(happened(id, ago, LEAD, "needs_human", { note: `Ready to merge — needs your OK: ${question}` }), happened(id, ago - 6, ANA, "merge_ok", { by: ANA }));
+}
+history.push(
+  happened("t4", 30, REVIEWER, "needs_human", { note: "Redis or Postgres for sessions? Postgres is simpler, Redis is faster." }),
+  happened("t12", 8, REVIEWER, "needs_human", { note: "I stopped: hit the 60-minute limit. Where it got to: the Apple Pay button shows; paying isn't wired yet." }),
+  happened("t10", 13, LEAD, "needs_human", { note: "Ready to merge — needs your OK: Everyone who is signed in now will be signed out once, when this ships. Is that OK?" }),
+  happened("t59", 12 * DAY + 400, REVIEWER, "needs_human", { note: "Should the reset link last an hour or a day?" }),
+  happened("t55", 5 * DAY + 260, LEAD, "status", { from: "review", to: "in_progress" }),
+  happened("t64", 22 * DAY + 400, LEAD, "status", { from: "review", to: "in_progress" }),
+  happened("t8", 2 * DAY, ANA, "status", { from: "done", to: "in_progress" }),
+  happened("t8", 300, BUILDER, "status", { from: "in_progress", to: "done" }),
+);
+history.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
 
 const agents: Agent[] = [
   { id: LEAD, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "ana-claude", status: "idle", status_note: "Planned the Sign-in goal", current_ticket_id: null, last_seen_at: iso(3), model: "opus", effort: "high", model_set_by: ANA, model_set_at: iso(60), effective_model: "claude-opus-5-5", effective_effort: "high", effective_at: iso(20) },
@@ -259,6 +334,7 @@ export default function DemoWorkspace() {
       blockersOf: (tid) => links.filter((l) => l.ticket_id === tid).map((l) => byId.get(l.blocked_by)!),
       unblocks: (tid) => links.filter((l) => l.blocked_by === tid).map((l) => byId.get(l.ticket_id)!),
       childrenOf: (tid) => tickets.filter((t) => t.parent_id === tid),
+      demoEvents: demoEmpty ? [] : history,
     };
   }, []);
   const previewRoute = parse("/p/shop", location.search);
