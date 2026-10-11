@@ -36,10 +36,10 @@ function download(name: string, type: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
-export function Results({ ws }: { ws: Workspace }) {
+export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment the page was opened. */ at?: Date }) {
   const [period, setPeriod] = useState<Period>(() => periodOf(location.search));
   // The period ends when the page was opened, so the numbers don't shift while someone reads them.
-  const [now] = useState(() => new Date());
+  const [now] = useState(() => at ?? new Date());
   const [events, setEvents] = useState<TicketEvent[] | null>(ws.demoEvents ?? null);
   const [error, setError] = useState("");
 
