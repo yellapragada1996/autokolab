@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MERGE_OK_PREFIX } from "../lib/data";
 import { awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, lowerFirst, mergeChip, mergeQuestion, needsYou, openQuestions, ownerOf, riskyPart, timeline } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, message, ticket, workspace } from "./fixtures";
@@ -93,6 +93,14 @@ describe("needs you", () => {
 });
 
 describe("the briefing", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(at("10:00")));
+  });
+  afterEach(() => vi.useRealTimers());
+  const running = (ws: ReturnType<typeof workspace>, ...ids: string[]) => {
+    for (const id of ids) Object.assign(ws.agentOf(id)!, { status: "building", last_seen_at: at("09:59") });
+  };
   const goal = ticket({ key: "SH-10", type: "epic", title: "Google sign-in", status: "in_progress" });
   const child = (key: string, over: Parameters<typeof ticket>[0] | object = {}) => ticket({ key, parent_id: goal.id, ...over });
 
@@ -108,6 +116,7 @@ describe("the briefing", () => {
       ],
       { steps: { "SH-12": [["Read the auth module", "done"], ["Write the callback", "done"], ["Running the tests", "now"], ["Open the PR", "todo"]] } },
     );
+    running(ws, FJORD);
     const b = briefing(ws, needsYou(ws, []));
     expect(b.work).toBe("1 agent is building Google sign-in.");
     expect(b.needs).toEqual({ text: "1 thing needs you.", tone: "amber", count: 1 });
@@ -125,8 +134,10 @@ describe("the briefing", () => {
       child("SH-11", { status: "in_progress", assignee_id: BIRCH }),
       ticket({ key: "SH-21", parent_id: other.id, status: "in_progress", assignee_id: FJORD }),
     ]);
+    running(two, BIRCH, FJORD);
     expect(briefing(two, []).work).toBe("2 agents are working on 2 goals.");
     const loose = workspace([ticket({ key: "SH-30", status: "in_progress", assignee_id: BIRCH }), ticket({ key: "SH-31", status: "in_progress", assignee_id: FJORD })]);
+    running(loose, BIRCH, FJORD);
     expect(briefing(loose, []).work).toBe("2 agents are working on 2 tickets.");
     const mixed = workspace([goal, child("SH-11", { status: "in_progress", assignee_id: ME, assignee_type: "human" })]);
     expect(briefing(mixed, []).work).toBe("1 teammate is building Google sign-in.");
@@ -142,6 +153,7 @@ describe("the briefing", () => {
 
   it("describes an agent without steps by its ticket, and quotes titles as written", () => {
     const ws = workspace([ticket({ key: "SH-1", title: "Google sign-in", status: "in_progress", assignee_id: BIRCH, needs_human: "Blue or green?" })]);
+    running(ws, BIRCH);
     const b = briefing(ws, needsYou(ws, []));
     expect(b.agents[0]).toMatchObject({ doing: "working on “Google sign-in”", step: null, needsYou: true });
     // A title written as an instruction still reads as a name.
@@ -149,6 +161,35 @@ describe("the briefing", () => {
     expect(briefing(cmd, needsYou(cmd, [])).next).toBe("Next from me: “Add the sessions column” is waiting on your answer.");
     expect(lowerFirst("Running the tests")).toBe("running the tests");
     expect(lowerFirst("PR review")).toBe("PR review");
+  });
+
+  it("shows stopped tickets when nobody is running, including a stale heartbeat", () => {
+    const ws = workspace([
+      ticket({ key: "SH-1", title: "Checkout", status: "in_progress", assignee_id: BIRCH, needs_human: "I stopped: the run failed." }),
+      ticket({ key: "SH-2", title: "Search", status: "in_progress", assignee_id: FJORD }),
+    ], { steps: { "SH-1": [["Run tests", "now"]] } });
+    Object.assign(ws.agentOf(FJORD)!, { status: "building", last_seen_at: at("09:54") });
+    expect(briefing(ws, needsYou(ws, [])).work).toBe("Nobody is working; 2 tickets are stopped.");
+    expect(briefing(ws, []).agents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "Birch", doing: "stopped on “Checkout”", step: null, needsYou: true }),
+      expect.objectContaining({ name: "Fjord", doing: "stopped on “Search”", step: null }),
+    ]));
+    ws.tickets.pop();
+    expect(briefing(ws, []).work).toBe("Nobody is working; 1 ticket is stopped.");
+  });
+
+  it("counts only the running ticket and keeps a stopped agent's question", () => {
+    const ws = workspace([
+      goal,
+      child("SH-16", { title: "Callback", status: "in_progress", assignee_id: BIRCH }),
+      child("SH-17", { title: "Session store", status: "in_progress", assignee_id: FJORD, needs_human: "Which store?" }),
+    ]);
+    running(ws, BIRCH);
+    expect(briefing(ws, needsYou(ws, [])).work).toBe("1 agent is building Google sign-in.");
+    expect(briefing(ws, needsYou(ws, [])).agents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ doing: "working on “Callback”", needsYou: false }),
+      expect.objectContaining({ doing: "stopped on “Session store”", step: null, needsYou: true }),
+    ]));
   });
 
   it("doesn't promise to review Captain's own work", () => {

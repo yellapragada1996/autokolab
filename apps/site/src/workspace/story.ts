@@ -1,10 +1,23 @@
-import { MERGE_OK_PREFIX, waitsForMergeOk, type Ticket, type TicketEvent } from "../lib/data";
+import { MERGE_OK_PREFIX, waitsForMergeOk, type Agent, type Ticket, type TicketEvent } from "../lib/data";
 import type { Workspace } from "./useWorkspace";
 
 // The Overview's plain-English story, worked out from the board without any AI: the headline,
 // each goal's progress, what a person is asked to do, and activity as sentences.
 
 const isOpen = (t: Ticket) => t.status !== "done" && t.status !== "canceled";
+
+/** An agent counts as online if it checked in within the last five minutes. */
+export function agentOnline(a: Agent, now = new Date()): boolean {
+  return !!a.last_seen_at && now.getTime() - Date.parse(a.last_seen_at) < 5 * 60_000 && a.status !== "offline";
+}
+
+/** The dot on an agent's avatar: none when it's offline. */
+export function agentDot(a: Agent, now = new Date()): "working" | "waiting" | "idle" | undefined {
+  if (!agentOnline(a, now)) return undefined;
+  if (a.status === "planning" || a.status === "building") return "working";
+  if (a.status === "waiting_human") return "waiting";
+  return "idle";
+}
 
 /** The epic a ticket belongs to, following parents up (an epic is its own goal). */
 export function epicOf(ws: Workspace, t: Ticket): Ticket | undefined {
@@ -17,8 +30,10 @@ export function epicOf(ws: Workspace, t: Ticket): Ticket | undefined {
 }
 
 export interface Headline {
-  /** Who is building what; null when nothing is in progress. */
+  /** Who is building what; null when nobody is working. */
   building: { workers: number; agentsOnly: boolean; epics: Ticket[]; tickets: number } | null;
+  /** In progress tickets whose assignee is not working. */
+  stopped: number;
   /** Tickets moved to Done since local midnight. */
   shipped: number;
   /** Open tickets with a question for a person or waiting for a merge OK. */
@@ -28,7 +43,12 @@ export interface Headline {
 export function headline(ws: Workspace, now = new Date()): Headline {
   const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const work = ws.tickets.filter((t) => t.type !== "epic");
-  const moving = work.filter((t) => t.status === "in_progress");
+  const inProgress = work.filter((t) => t.status === "in_progress");
+  const moving = inProgress.filter((t) => {
+    if (t.assignee_type === "human") return !!t.assignee_id;
+    const agent = ws.agentOf(t.assignee_id);
+    return !!agent && agentDot(agent, now) === "working";
+  });
   const workers = new Set(moving.map((t) => t.assignee_id).filter((id): id is string => !!id));
   const epics: Ticket[] = [];
   for (const t of moving) {
@@ -37,6 +57,7 @@ export function headline(ws: Workspace, now = new Date()): Headline {
   }
   return {
     building: moving.length ? { workers: workers.size, agentsOnly: [...workers].every((id) => !!ws.agentOf(id)), epics, tickets: moving.length } : null,
+    stopped: inProgress.length - moving.length,
     shipped: work.filter((t) => t.status === "done" && t.completed_at && Date.parse(t.completed_at) >= midnight).length,
     needs: ws.tickets.filter((t) => isOpen(t) && (t.needs_human || waitsForMergeOk(t))).length,
   };

@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import { addPerson, createInvite, EFFORTS, inviteLink, invites as listInvites, MERGE_POLICIES, mergePolicyOf, MODEL_CHOICES, revokeInvite, setAgentModel, setLead, setMergePolicy, showCode, type Agent, type Effort, type Invite, type MergePolicy } from "../lib/data";
 import { placeLine } from "../lib/place";
 import { go, href, onNav } from "../lib/router";
-import { AgentAvatar, Button, PersonAvatar, type AgentState } from "../ui";
+import { AgentAvatar, Button, PersonAvatar } from "../ui";
 import { ago, KeyText, LeadBadge } from "./bits";
+import { agentDot, agentOnline } from "./story";
 import type { Workspace } from "./useWorkspace";
+
+export { agentDot, agentOnline } from "./story";
 
 // Who works on this project: people (circles) and their agents (neutral squares), with what each
 // agent is doing right now.
@@ -19,19 +22,6 @@ export const agentStatusText: Record<Agent["status"], { label: string; color: st
   paused: { label: "Paused", color: "var(--faint)" },
   offline: { label: "Offline", color: "var(--faint)" },
 };
-
-/** An agent counts as online if it checked in within the last few minutes. */
-export function agentOnline(a: Agent): boolean {
-  return !!a.last_seen_at && Date.now() - Date.parse(a.last_seen_at) < 5 * 60_000 && a.status !== "offline";
-}
-
-/** The dot on an agent's avatar: none when it's offline. */
-export function agentDot(a: Agent): AgentState | undefined {
-  if (!agentOnline(a)) return undefined;
-  if (a.status === "planning" || a.status === "building") return "working";
-  if (a.status === "waiting_human") return "waiting";
-  return "idle";
-}
 
 /** An agent's avatar: a neutral tile with its status dot. */
 export function AgentFace({ a, size, ring }: { a: Agent; size?: number; ring?: string }) {

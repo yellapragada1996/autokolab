@@ -20,20 +20,49 @@ describe("the headline", () => {
       ticket({ key: "SH-6", status: "review", needs_human: `${MERGE_OK_PREFIX} sql` }),
       ticket({ key: "SH-7", status: "canceled", needs_human: "old" }),
     ]);
+    Object.assign(ws.agentOf(BIRCH)!, { status: "building", last_seen_at: at("11:59") });
+    Object.assign(ws.agentOf(FJORD)!, { status: "planning", last_seen_at: at("11:59") });
     const h = headline(ws, now);
     expect(h.building).toMatchObject({ workers: 2, agentsOnly: true, tickets: 2 });
     expect(h.building!.epics.map((e) => e.key)).toEqual(["SH-1"]);
+    expect(h.stopped).toBe(0);
     expect(h.shipped).toBe(1);
     expect(h.needs).toBe(2);
   });
 
   it("has nobody building when nothing is in progress", () => {
-    expect(headline(workspace([ticket({ key: "SH-1", status: "ready" })])).building).toBeNull();
+    expect(headline(workspace([ticket({ key: "SH-1", status: "ready" })]), new Date(at("12:00")))).toMatchObject({ building: null, stopped: 0 });
   });
 
   it("notices when a person is building too", () => {
     const ws = workspace([ticket({ key: "SH-1", status: "in_progress", assignee_id: ME, assignee_type: "human" }), ticket({ key: "SH-2", status: "in_progress", assignee_id: BIRCH })]);
-    expect(headline(ws).building).toMatchObject({ workers: 2, agentsOnly: false });
+    Object.assign(ws.agentOf(BIRCH)!, { status: "building", last_seen_at: at("11:59") });
+    expect(headline(ws, new Date(at("12:00"))).building).toMatchObject({ workers: 2, agentsOnly: false });
+  });
+
+  it("counts idle and long-unseen agents' tickets as stopped, but not a person's", () => {
+    const ws = workspace([
+      ticket({ key: "SH-1", status: "in_progress", assignee_id: BIRCH }),
+      ticket({ key: "SH-2", status: "in_progress", assignee_id: FJORD }),
+      ticket({ key: "SH-3", status: "in_progress", assignee_id: ME, assignee_type: "human" }),
+    ]);
+    Object.assign(ws.agentOf(BIRCH)!, { status: "idle", last_seen_at: at("11:59") });
+    Object.assign(ws.agentOf(FJORD)!, { status: "building", last_seen_at: at("11:54") });
+    const h = headline(ws, new Date(at("12:00")));
+    expect(h.building).toMatchObject({ workers: 1, agentsOnly: false, tickets: 1 });
+    expect(h.stopped).toBe(2);
+  });
+
+  it("counts a mix of running and stopped tickets without inflating the goal", () => {
+    const goal = ticket({ key: "SH-1", type: "epic", title: "Checkout" });
+    const ws = workspace([
+      goal,
+      ticket({ key: "SH-2", parent_id: goal.id, status: "in_progress", assignee_id: BIRCH }),
+      ticket({ key: "SH-3", parent_id: goal.id, status: "in_progress", assignee_id: FJORD }),
+    ]);
+    Object.assign(ws.agentOf(BIRCH)!, { status: "building", last_seen_at: at("11:59") });
+    Object.assign(ws.agentOf(FJORD)!, { status: "idle", last_seen_at: at("11:59") });
+    expect(headline(ws, new Date(at("12:00")))).toMatchObject({ building: { workers: 1, tickets: 1, epics: [goal] }, stopped: 1 });
   });
 });
 
