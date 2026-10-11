@@ -6,7 +6,22 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { parseRunnerConfig } from "../src/runner/config.js";
 import { codexInvocation } from "../src/runner/engines.js";
 import { buildTicketPrompt } from "../src/runner/prompt.js";
-import { SHIP_FAILED_PREFIX, changedPaths, looksPrivate, plainGitError, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts, type ShipFacts, type ShipIo } from "../src/runner/ship.js";
+import {
+  SHIP_FAILED_PREFIX,
+  changedPaths,
+  fetchBranch,
+  looksPrivate,
+  movesToReview,
+  plainGitError,
+  ship,
+  shipBody,
+  shipNeedsHuman,
+  shipPlan,
+  trustedIo,
+  worktreeFacts,
+  type ShipFacts,
+  type ShipIo,
+} from "../src/runner/ship.js";
 import { worktreeGitDir } from "../src/runner/repos.js";
 
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
@@ -15,9 +30,25 @@ const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd,
 const facts = (over: Partial<ShipFacts> = {}): ShipFacts => ({ declaredReview: true, hasPr: false, dirty: false, ahead: 1, branch: "ak-33-switch", base: "main", protectedBranches: ["main", "prod"], ...over });
 
 describe("what the runner delivers for an agent (AK-46)", () => {
-  it("acts only when the agent said the work is ready and there's no pull request", () => {
+  it("acts only when the agent said the work is ready", () => {
     expect(shipPlan(facts({ declaredReview: false }))).toEqual({ skip: "not_asked" });
-    expect(shipPlan(facts({ hasPr: true }))).toEqual({ skip: "has_pr" });
+    expect(shipPlan(facts({ declaredReview: false, hasPr: true, dirty: true }))).toEqual({ skip: "not_asked" });
+  });
+  it("pushes follow-up work to the pull request's branch without opening another (AK-66)", () => {
+    expect(shipPlan(facts({ hasPr: true }))).toEqual({ steps: ["push"] });
+    expect(shipPlan(facts({ hasPr: true, dirty: true, ahead: 0 }))).toEqual({ steps: ["commit", "push"] });
+    expect(shipPlan(facts({ hasPr: true, ahead: 0, behind: 0 }))).toEqual({ skip: "nothing" });
+    expect(shipPlan(facts({ hasPr: true, dirty: true, ahead: 0, behind: 2 }))).toEqual({ skip: "moved" });
+    expect(shipPlan(facts({ hasPr: true, branch: "main" }))).toEqual({ skip: "protected" });
+  });
+  it("moves the ticket to Review after status: review once there's a pull request, unless delivery failed", () => {
+    expect(movesToReview("review", false, true, false)).toBe(true); // the runner pushed, or the agent did
+    expect(movesToReview("review", true, true, false)).toBe(true);
+    expect(movesToReview("review", false, true, true)).toBe(false); // the follow-up couldn't be delivered
+    expect(movesToReview("review", false, false, false)).toBe(false);
+    expect(movesToReview(undefined, true, true, false)).toBe(true); // just a link in the message
+    expect(movesToReview(undefined, false, true, false)).toBe(false);
+    expect(movesToReview("in_progress", true, true, false)).toBe(false);
   });
   it("pushes and opens the pull request when the agent committed", () => {
     expect(shipPlan(facts())).toEqual({ steps: ["push", "open_pr"] });
@@ -103,7 +134,7 @@ describe("delivering from a real worktree", () => {
   afterAll(() => rmSync(root, { recursive: true, force: true }));
 
   it("sees nothing to deliver in a fresh worktree", () => {
-    expect(worktreeFacts(io, wt, "main")).toEqual({ dirty: false, ahead: 0 });
+    expect(worktreeFacts(io, wt, "main")).toEqual({ dirty: false, ahead: 0, behind: 0 });
   });
 
   it("refuses to commit local secrets, and leaves the work as it was", () => {
@@ -114,19 +145,19 @@ describe("delivering from a real worktree", () => {
     expect(!r.ok && r.error).toContain(".env");
     expect(!r.ok && r.error).toContain("didn't commit anything");
     expect(git(wt, "status", "--porcelain")).toBe("?? .env\n?? retry.ts"); // nothing staged, nothing lost
-    expect(worktreeFacts(io, wt, "main")).toEqual({ dirty: true, ahead: 0 });
+    expect(worktreeFacts(io, wt, "main")).toEqual({ dirty: true, ahead: 0, behind: 0 });
     rmSync(join(wt, ".env"));
   });
 
   it("commits what's left, pushes the branch and opens the pull request", () => {
-    expect(worktreeFacts(io, wt, "main")).toEqual({ dirty: true, ahead: 0 });
+    expect(worktreeFacts(io, wt, "main")).toEqual({ dirty: true, ahead: 0, behind: 0 });
     ghCalls.length = 0;
     const r = ship(io, job(["commit", "push", "open_pr"]));
     expect(r).toEqual({ ok: true, pr: "https://github.com/ana/shop/pull/7", did: ["commit", "push", "open_pr"] });
     expect(git(wt, "log", "-1", "--format=%s")).toBe("SH-2: Add retries");
     expect(git(remote, "log", "-1", "--format=%s", "sh-2-retries")).toBe("SH-2: Add retries");
     expect(git(remote, "show", "--stat", "--format=", "sh-2-retries")).toContain("retry.ts");
-    expect(worktreeFacts(io, wt, "main")).toEqual({ dirty: false, ahead: 1 });
+    expect(worktreeFacts(io, wt, "main")).toEqual({ dirty: false, ahead: 1, behind: 0 });
     expect(ghCalls[1]).toEqual(["pr", "create", "--repo", "ana/shop", "--base", "main", "--head", "sh-2-retries", "--title", "SH-2: Add retries", "--body", "body"]);
   });
 
@@ -220,6 +251,113 @@ describe("delivering from a real worktree", () => {
     const cfg = parseRunnerConfig(`agent_id = "${AID}"\nengine = "codex"`, "lee-codex");
     expect(codexInvocation(cfg, mcp, null, wt).args.join(" ")).not.toContain("writable_roots");
     expect(codexInvocation(cfg, mcp, "thread-9", wt).args.join(" ")).not.toContain("writable_roots");
+  });
+});
+
+describe("delivering follow-up work to an open pull request (AK-66)", () => {
+  let root: string, remote: string, clone: string, other: string, wt: string;
+  const ghCalls: string[][] = [];
+  const pr = "https://github.com/ana/shop/pull/50";
+  let io: ShipIo;
+  const branch = "sh-65-wait";
+  const job = (steps: ("commit" | "push" | "open_pr")[]) => ({ path: wt, repo: "ana/shop", branch, base: "main", title: "SH-65: Wait for the limit (follow-up)", body: "body", steps, pr });
+  const remoteHead = () => git(remote, "rev-parse", branch);
+  const plan = (hasPr = true) => shipPlan({ declaredReview: true, hasPr, ...worktreeFacts(io, wt, "main", branch), branch, base: "main", protectedBranches: ["main"] });
+
+  beforeAll(() => {
+    root = realpathSync(mkdtempSync(join(tmpdir(), "ak-followup-")));
+    remote = join(root, "remote.git");
+    clone = join(root, "clone");
+    other = join(root, "other");
+    wt = join(root, "wt");
+    git(root, "init", "-q", "--bare", "-b", "main", remote);
+    git(root, "clone", "-q", remote, clone);
+    for (const [k, v] of [["user.email", "t@example.com"], ["user.name", "T"], ["commit.gpgsign", "false"]]) git(clone, "config", k, v);
+    writeFileSync(join(clone, "README.md"), "hi\n");
+    git(clone, "add", "-A");
+    git(clone, "commit", "-q", "-m", "first");
+    git(clone, "push", "-q", "-u", "origin", "main");
+    git(clone, "worktree", "add", "-q", "-b", branch, wt, "origin/main");
+    io = { git: trustedIo(worktreeGitDir(clone, wt)!).git, gh: (args) => (ghCalls.push(args), { ok: true, out: "[]", err: "" }) };
+    // The first delivery: the pull request's branch is on GitHub.
+    writeFileSync(join(wt, "wait.ts"), "export const wait = 1;\n");
+    git(wt, "add", "-A");
+    git(wt, "commit", "-q", "-m", "SH-65: Wait for the limit");
+    git(wt, "push", "-q", "-u", "origin", `HEAD:refs/heads/${branch}`);
+  });
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  it("does nothing when the worktree is clean and level with the branch on GitHub", () => {
+    expect(fetchBranch(io, wt, branch)).toBe(true);
+    expect(worktreeFacts(io, wt, "main", branch)).toEqual({ dirty: false, ahead: 0, behind: 0 });
+    expect(plan()).toEqual({ skip: "nothing" });
+  });
+
+  it("knows when the branch is gone from GitHub", () => {
+    expect(fetchBranch(io, wt, "no-such-branch")).toBe(false);
+  });
+
+  it("commits uncommitted changes and pushes them to the same branch, opening no pull request", () => {
+    writeFileSync(join(wt, "wait.ts"), "export const wait = 2;\n");
+    expect(plan()).toEqual({ steps: ["commit", "push"] });
+    ghCalls.length = 0;
+    const r = ship(io, job(["commit", "push"]));
+    expect(r).toEqual({ ok: true, pr, did: ["commit", "push"] });
+    expect(ghCalls).toEqual([]);
+    expect(remoteHead()).toBe(git(wt, "rev-parse", "HEAD"));
+    expect(git(remote, "log", "-1", "--format=%s", branch)).toBe("SH-65: Wait for the limit (follow-up)");
+    expect(plan()).toEqual({ skip: "nothing" });
+  });
+
+  it("pushes commits the agent made that the branch on GitHub doesn't have", () => {
+    writeFileSync(join(wt, "retry.ts"), "export const retry = 1;\n");
+    git(wt, "add", "-A");
+    git(wt, "commit", "-q", "-m", "retry");
+    expect(worktreeFacts(io, wt, "main", branch)).toEqual({ dirty: false, ahead: 1, behind: 0 });
+    expect(plan()).toEqual({ steps: ["push"] });
+    ghCalls.length = 0;
+    expect(ship(io, job(["push"]))).toEqual({ ok: true, pr, did: ["push"] });
+    expect(ghCalls).toEqual([]);
+    expect(remoteHead()).toBe(git(wt, "rev-parse", "HEAD"));
+  });
+
+  it("refuses a secret in the follow-up, uncommitted or committed", () => {
+    const before = remoteHead();
+    writeFileSync(join(wt, ".env"), "TOKEN=not-a-real-one\n");
+    const r = ship(io, job(["commit", "push"]));
+    expect(r).toMatchObject({ ok: false, step: "commit" });
+    expect(!r.ok && r.error).toContain(".env");
+    git(wt, "add", "-f", ".env");
+    git(wt, "commit", "-q", "-m", "oops");
+    const again = ship(io, job(["push"]));
+    expect(again).toMatchObject({ ok: false, step: "push" });
+    expect(!again.ok && again.error).toContain(".env");
+    expect(remoteHead()).toBe(before);
+    git(wt, "reset", "-q", "--hard", "HEAD~1");
+    expect(plan()).toEqual({ skip: "nothing" });
+  });
+
+  it("never overwrites a branch that moved on GitHub", () => {
+    // Someone else pushes to the branch.
+    git(root, "clone", "-q", "-b", branch, remote, other);
+    for (const [k, v] of [["user.email", "o@example.com"], ["user.name", "O"], ["commit.gpgsign", "false"]]) git(other, "config", k, v);
+    writeFileSync(join(other, "theirs.ts"), "export const theirs = 1;\n");
+    git(other, "add", "-A");
+    git(other, "commit", "-q", "-m", "theirs");
+    git(other, "push", "-q", "origin", branch);
+    const theirs = remoteHead();
+
+    writeFileSync(join(wt, "mine.ts"), "export const mine = 1;\n");
+    expect(fetchBranch(io, wt, branch)).toBe(true);
+    expect(worktreeFacts(io, wt, "main", branch)).toEqual({ dirty: true, ahead: 0, behind: 1 });
+    expect(plan()).toEqual({ skip: "moved" });
+    // Even pushed straight away, Git refuses rather than overwrite: the runner never forces.
+    git(wt, "add", "-A");
+    git(wt, "commit", "-q", "-m", "mine");
+    const r = ship(io, job(["push"]));
+    expect(r).toMatchObject({ ok: false, step: "push" });
+    expect(!r.ok && plainGitError(r.error, "")).toBe("GitHub has commits on this branch that this machine doesn't.");
+    expect(remoteHead()).toBe(theirs);
   });
 });
 
