@@ -1,4 +1,3 @@
-import { onNav } from "../lib/router";
 import { InvitePanel, Merging } from "./People";
 import type { Workspace } from "./useWorkspace";
 
@@ -17,17 +16,5 @@ export function Settings({ ws, me, onProjectChanged }: { ws: Workspace; me: stri
   );
 }
 
-/** Results has nothing to measure yet (phase 9). */
-export function Results({ ws }: { ws: Workspace }) {
-  const captain = { view: "overview", project: ws.project.slug } as const;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 780 }}>
-      <p style={{ fontSize: 20, lineHeight: 1.45, fontWeight: 500 }}>Results will appear here once there's a week of work to measure.</p>
-      <p>
-        <a href={`/p/${ws.project.slug}`} onClick={onNav(captain)}>
-          Back to Captain
-        </a>
-      </p>
-    </div>
-  );
-}
+// The Results tab (AK-71). Exported from here because the workspace shell imports it from here.
+export { Results } from "./ResultsPage";

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as data from "../lib/data";
-import type { Agent, Decision, Guide, Link, People, Project, Step, Ticket } from "../lib/data";
+import type { Agent, Decision, Guide, Link, People, Project, Step, Ticket, TicketEvent } from "../lib/data";
 
 // One live snapshot of a project: tickets, steps, links, people, agents, decisions and the guide.
 // Re-loads whenever anything changes (realtime), so every screen stays current.
@@ -22,6 +22,8 @@ export interface Workspace {
   blockersOf: (ticketId: string) => Ticket[];
   unblocks: (ticketId: string) => Ticket[];
   childrenOf: (ticketId: string) => Ticket[];
+  /** Preview only (?preview=workspace): the project's events, which the live site reads from the database. */
+  demoEvents?: TicketEvent[];
 }
 
 export function useWorkspace(project: Project | null): { ws: Workspace | null; error: string } {
