@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { addComment, allowMerge, lastCaughtUp, markCaughtUp, updateTicket, type Agent, type Project } from "../lib/data";
+import { addComment, allowMerge, lastCaughtUp, markCaughtUp, updateTicket, type Agent, type Project, type Ticket } from "../lib/data";
 import { postToRoom, roomFor, roomMessages, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
-import { catchUp, conversation, needsYou, type CatchUp, type Need, type Turn } from "./captain";
+import { catchUp, conversation, needsYou, OK_START, plans as plansOf, type CatchUp, type Need, type Plan, type Turn } from "./captain";
 import { agentDot, agentOnline } from "./People";
 import type { Workspace } from "./useWorkspace";
 
@@ -30,6 +30,8 @@ export interface CaptainRoom {
   turns: Turn[];
   /** Everything still waiting on the person, after the answers given on this visit. */
   needs: Need[];
+  /** Captain's plans, with the tickets moved on this visit already counted as Ready. */
+  plans: Plan[];
   /** Risky merges OK'd on this visit: their cards stay, in green. */
   okd: Need[];
   /** A plain message per card (by need key), or "composer", when the server refused. */
@@ -49,7 +51,14 @@ export interface CaptainRoom {
   answerTicket: (need: Need, text: string) => Promise<void>;
   answerCaptain: (need: Need, text: string) => Promise<void>;
   clearNeed: (need: Need) => Promise<void>;
+  /** OK, start: the plan's Backlog tickets go to Ready, then "OK, start" goes to Captain in the plan's thread. */
+  startPlan: (plan: Plan) => Promise<void>;
+  /** Change something: the person's words go to Captain in the plan's thread. No ticket changes. */
+  changePlan: (plan: Plan, text: string) => Promise<boolean>;
 }
+
+/** Where a plan card's refusal is kept in `errors`; the same key as its need. */
+export const planKey = (plan: Plan) => `plan:${plan.turnId}`;
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let tempId = 1e15;
@@ -66,6 +75,8 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   const [cu, setCu] = useState<{ c: CatchUp; at: string } | null>(null);
   const [cuReady, setCuReady] = useState(false);
   const [demoReading, setDemoReading] = useState(false);
+  // Tickets "OK, start" moved on this visit, shown as Ready before the board reloads.
+  const [moved, setMoved] = useState<Set<string>>(new Set());
   const started = useRef(false);
 
   const load = useCallback(async () => {
@@ -90,6 +101,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     setPending([]);
     setSettled(new Map());
     setErrors(new Map());
+    setMoved(new Set());
     setCu(null);
     setCuReady(false);
     started.current = false;
@@ -100,7 +112,9 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   const messages = useMemo(() => [...loaded, ...pending], [loaded, pending]);
   const captainId = project.lead_agent_id;
   const turns = useMemo(() => conversation(messages, room?.me?.id, captainId), [messages, room, captainId]);
-  const raw = useMemo(() => (ws ? needsYou(ws, turns) : []), [ws, turns]);
+  const planWs = useMemo(() => (ws && moved.size ? { ...ws, tickets: ws.tickets.map((t) => (moved.has(t.id) && t.status === "backlog" ? { ...t, status: "ready" as const } : t)) } : ws), [ws, moved]);
+  const plans = useMemo(() => (planWs ? plansOf(planWs, turns) : []), [planWs, turns]);
+  const raw = useMemo(() => (planWs ? needsYou(planWs, turns) : []), [planWs, turns]);
   // An answer hides the card it answered, not a newer question on the same ticket.
   const needs = useMemo(() => raw.filter((n) => settled.get(n.key)?.since !== n.since), [raw, settled]);
   const okd = useMemo(() => [...settled.values()].filter((s) => s.ok && s.need.kind === "risky_merge").map((s) => s.need), [settled]);
@@ -175,6 +189,49 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     if (demo.refuse) throw new Error(REFUSED);
   };
 
+  const startPlan = async (plan: Plan) => {
+    const key = planKey(plan);
+    setError(key, null);
+    // Only the ones still in Backlog: a second click retries what was refused, nothing else.
+    const drafts = plan.tickets.filter((t) => t.status === "backlog");
+    const mark = (ids: string[], on: boolean) =>
+      setMoved((m) => {
+        const next = new Set(m);
+        for (const id of ids) {
+          if (on) next.add(id);
+          else next.delete(id);
+        }
+        return next;
+      });
+    mark(drafts.map((t) => t.id), true);
+    const refused: Ticket[] = [];
+    let reason = "";
+    for (const t of drafts) {
+      try {
+        await real(() => updateTicket(t.id, { status: "ready" }))();
+      } catch (e) {
+        refused.push(t);
+        reason ||= (e as Error).message || "the server refused it.";
+      }
+    }
+    if (refused.length) {
+      mark(refused.map((t) => t.id), false);
+      const left = drafts.length - refused.length;
+      const which = refused.map((t) => t.key).join(", ");
+      setError(key, `${which} ${refused.length === 1 ? "is" : "are"} still in Backlog: ${reason}${left ? ` The other ${left} moved to Ready.` : ""} OK, start again tries only ${refused.length === 1 ? "that one" : "those"}.`);
+    } else {
+      try {
+        await post(OK_START, plan.thread);
+      } catch (e) {
+        setError(key, `the tickets are on the board, but Captain didn't get your OK: ${(e as Error).message || "the server refused it."}`);
+      }
+    }
+    if (!demo) {
+      await ws?.reload();
+      mark(drafts.map((t) => t.id), false);
+    }
+  };
+
   const startCatchUp = () => {
     if (started.current || !ws || room === undefined) return;
     started.current = true;
@@ -193,6 +250,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     room,
     messages,
     turns,
+    plans,
     needs,
     okd,
     errors,
@@ -218,5 +276,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
       return settle(need, () => post(text, thread));
     },
     clearNeed: (need) => settle(need, real(() => updateTicket(need.ticket!.id, { needs_human: null }))),
+    startPlan,
+    changePlan: (plan, text) => send(text, plan.thread, planKey(plan)),
   };
 }
