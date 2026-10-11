@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { Member, Message, Room, TaskRun } from "../src/core/types.js";
 import { writeConfigFile } from "../src/core/config.js";
 import { parseRunnerConfig, runnerTemplate } from "../src/runner/config.js";
-import { chooseModel, chooseReplyModel, claudeDenyRules, claudeInvocation, codexInvocation, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
+import { chooseModel, chooseReplyModel, claudeDenyRules, claudeInvocation, codexInvocation, noUsage, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
 import { installHook } from "../src/runner/githook.js";
 import { NO_REPLY, REVIEW_DIFF_LIMIT, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyPromptContext } from "../src/runner/prompt.js";
 import { needsRunner } from "../src/setup/connect.js";
@@ -1704,17 +1704,14 @@ describe("quick replies to teammate agents (AK-91)", () => {
     expect(() => cfgFor(`[claude]\nreply_effort = "ultra"`)).toThrow(/reply_effort/);
   });
 
-  it("reads turns and tokens from both engines, and logs them per run", () => {
+  it("logs each run's prompt size, model, turns and tokens, from both engines", () => {
     const run: EngineRun = { sessionId: null, finalText: "", exitCode: null, timedOut: false, aborted: false, isError: false };
     parseEvent("claude", JSON.stringify({ type: "result", subtype: "success", result: "ok", num_turns: 3, usage: { input_tokens: 12, cache_creation_input_tokens: 2000, cache_read_input_tokens: 15000, output_tokens: 250 } }), run);
-    expect(run).toMatchObject({ turns: 3, tokens: { read: 15000, input: 2012, written: 250 } });
+    expect(runCostLine("Reply", "#5", 2345, "sonnet", "low", run.usage!)).toBe("Reply run #5: prompt 2,345 chars, model sonnet (low), 3 turns, tokens: 15,000 re-read, 2,012 new in, 250 written.");
     const cx: EngineRun = { sessionId: null, finalText: "", exitCode: null, timedOut: false, aborted: false, isError: false };
     for (let i = 0; i < 2; i++) parseEvent("codex", JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1000, cached_input_tokens: 800, output_tokens: 50 } }), cx);
-    expect(cx.tokens).toEqual({ read: 1600, input: 400, written: 100 });
-    expect(cx.turns).toBeUndefined();
-    expect(runCostLine("Reply", "#5", 2345, "sonnet", "low", run)).toBe("Reply run #5: prompt 2,345 chars, model sonnet (low), 3 turns, tokens: 15,000 re-read, 2,012 new in, 250 written.");
-    expect(runCostLine("Work", "#5, #6", 40000, "", undefined, cx)).toBe("Work run #5, #6: prompt 40,000 chars, model default, ? turns, tokens: 1,600 re-read, 400 new in, 100 written.");
-    expect(runCostLine("Work", "#5", 1, "opus", "high", {})).toMatch(/tokens: not reported\.$/);
+    expect(runCostLine("Work", "#5, #6", 40000, "", undefined, cx.usage!)).toBe("Work run #5, #6: prompt 40,000 chars, model default, ? turns, tokens: 1,600 re-read, 400 new in, 100 written.");
+    expect(runCostLine("Work", "#5", 1, "opus", "high", noUsage())).toMatch(/tokens: not reported\.$/);
   });
 
   describe("a run end to end", () => {
@@ -1773,7 +1770,7 @@ process.stdin.on("end", () => {
       const runner = new Runner(ak as unknown as ConstructorParameters<typeof Runner>[0], parseRunnerConfig(`agent_id = "${AID}"\nengine = "claude"\nclaude_bin = "${fake}"\n[claude]\nmodel = "opus"`, "p"));
       runner["prepareWorkspace"] = () => ({ path: dir, clone: dir, branch: "ak/lee-claude/t100", base: "main", created: false });
       const tickets: string[] = [];
-      runner["projects"] = [{ project: { room_id: "room-1", repo: "ana/shop", ticket_prefix: "SH" }, ticketText: async (k: string) => (tickets.push(k), `${k} · the full ticket`) }] as never;
+      runner["projects"] = [{ project: { room_id: "room-1", repo: "ana/shop", ticket_prefix: "SH" }, ticketText: async (k: string) => (tickets.push(k), `${k} · the full ticket`), recordRunUsage: async () => undefined }] as never;
       const job = (m: Message, more: Message[] = []): Job => ({ run: { id: m.id, thread_root: 100 } as TaskRun, message: m, fromInstructor: false, more: more.map((x) => ({ run: { id: x.id, thread_root: 100 } as TaskRun, message: x })), notBefore: 0, queuedAt: 0 });
       const ran = () => JSON.parse(posts[posts.length - 1].body) as { args: string[]; prompt: string };
       return { runner, posts, runsIn, tickets, job, ran };

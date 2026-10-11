@@ -517,6 +517,52 @@ export async function eventsBetween(projectId: string, from: Date, to: Date): Pr
   }
 }
 
+/** Why a runner started its agent: to build a ticket, review one, reply in the room, or look at a worker's question. */
+export type RunKind = "build" | "review" | "reply" | "question";
+
+/** What one run used, as its tool reported it (schema 20). null: the tool didn't say. */
+export interface RunUsage {
+  id: number;
+  agent_id: string;
+  ticket_id: string | null;
+  kind: RunKind;
+  model: string | null;
+  input_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_write_tokens: number | null;
+  output_tokens: number | null;
+  turns: number | null;
+  seconds: number;
+  cost_usd: number | null;
+  created_at: string;
+}
+
+/**
+ * What every run in the project used between two times, oldest first, a page at a time. A database
+ * before schema 20 has no such table: that reads as no runs.
+ */
+export async function usageBetween(projectId: string, from: Date, to: Date): Promise<RunUsage[]> {
+  const out: RunUsage[] = [];
+  for (let after = 0; ; ) {
+    const r = await supabase
+      .from("run_usage")
+      .select("*")
+      .eq("project_id", projectId)
+      .gte("created_at", from.toISOString())
+      .lte("created_at", to.toISOString())
+      .gt("id", after)
+      .order("id")
+      .limit(EVENTS_PAGE);
+    const e = r.error as { message: string; code?: string } | null;
+    // Only a missing table reads as no runs; any other error, a permission error too, is shown (AK-93).
+    if (e && (e.code === "42P01" || e.code === "PGRST205")) return [];
+    const rows = check<RunUsage[]>(r);
+    if (!rows.length) return out;
+    out.push(...rows);
+    after = rows[rows.length - 1].id;
+  }
+}
+
 // ------------------------------------------------------------------ guide and decisions
 
 export async function guide(projectId: string): Promise<Guide | null> {

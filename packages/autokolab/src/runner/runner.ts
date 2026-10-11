@@ -2,14 +2,14 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type RanWith, type Ticket } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type RanWith, type RunKind, type RunUsageRow, type Ticket } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
 import type { Message, MessageKind, Room, RunState, TaskRun } from "../core/types.js";
 import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
-import { chooseModel, chooseReplyModel, claudeInvocation, codexInvocation, runEngine, type EngineRun, type ModelChoice, type PlanStep } from "./engines.js";
+import { chooseModel, chooseReplyModel, claudeInvocation, codexInvocation, noUsage, runEngine, type EngineRun, type ModelChoice, type PlanStep, type RunUsage } from "./engines.js";
 import { installHook } from "./githook.js";
 import { usageLimit, usageReport } from "./limit.js";
 import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, riskyFiles, samePrFacts, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
@@ -225,12 +225,13 @@ export function mentionedTickets(messages: Pick<Message, "body">[], prefix: stri
 }
 
 /** One log line per room run, so reply and work runs can be compared from the log (AK-91). */
-export function runCostLine(what: "Reply" | "Work", ids: string, promptChars: number, model: string, effort: string | undefined, run: Pick<EngineRun, "turns" | "tokens">): string {
-  const n = (x: number) => x.toLocaleString("en-US");
-  const tokens = run.tokens
-    ? `tokens: ${n(run.tokens.read)} re-read, ${n(run.tokens.input)} new in, ${n(run.tokens.written)} written`
-    : "tokens: not reported";
-  return `${what} run ${ids}: prompt ${n(promptChars)} chars, model ${model || "default"}${effort ? ` (${effort})` : ""}, ${run.turns ?? "?"} turns, ${tokens}.`;
+export function runCostLine(what: "Reply" | "Work", ids: string, promptChars: number, model: string, effort: string | undefined, u: RunUsage): string {
+  const n = (x: number | null) => (x === null ? "?" : x.toLocaleString("en-US"));
+  const fresh = u.inputTokens === null && u.cacheWriteTokens === null ? null : (u.inputTokens ?? 0) + (u.cacheWriteTokens ?? 0);
+  const tokens = u.cacheReadTokens === null && fresh === null && u.outputTokens === null
+    ? "tokens: not reported"
+    : `tokens: ${n(u.cacheReadTokens)} re-read, ${n(fresh)} new in, ${n(u.outputTokens)} written`;
+  return `${what} run ${ids}: prompt ${n(promptChars)} chars, model ${model || "default"}${effort ? ` (${effort})` : ""}, ${n(u.turns)} turns, ${tokens}.`;
 }
 
 /**
@@ -327,6 +328,23 @@ export function agentTurnsSinceHuman(thread: Pick<Message, "sender_id" | "body">
   return turns;
 }
 
+/** One run as a run_usage row: the tool's own figures, null where it gave none. Nothing is estimated. */
+export function runUsageRow(kind: RunKind, ticketId: string | null, result: Pick<EngineRun, "usage" | "model">, seconds: number): RunUsageRow {
+  const u = result.usage ?? noUsage();
+  return {
+    kind,
+    ticket_id: ticketId,
+    model: result.model ?? null,
+    input_tokens: u.inputTokens,
+    cache_read_tokens: u.cacheReadTokens,
+    cache_write_tokens: u.cacheWriteTokens,
+    output_tokens: u.outputTokens,
+    turns: u.turns,
+    seconds: Math.max(0, Math.round(seconds)),
+    cost_usd: u.costUsd,
+  };
+}
+
 interface TicketJob {
   project: ProjectView;
   ticket: Ticket;
@@ -405,6 +423,8 @@ export class Runner {
   private projectsLoadedAt = 0;
   private ticketChannels: RealtimeChannel[] = [];
   private isAgentRow = true;
+  /** The last try at recording what a run used failed; said once, quiet until one succeeds again. */
+  private runUsageFailing = false;
   private merging = false;
   private mergeCheckedAt = new Map<string, number>();
   private reviewQueue: ReviewJob[] = [];
@@ -1027,7 +1047,8 @@ export class Runner {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000);
     }
-    this.log(runCostLine(isReply ? "Reply" : "Work", ids, prompt.length, result.model ?? choice.model ?? "", choice.effort, result));
+    this.recordRun(this.projects.find((p) => this.projectRoom(p)?.id === room.id), "reply", null, result, startedAt);
+    this.log(runCostLine(isReply ? "Reply" : "Work", ids, prompt.length, result.model ?? choice.model ?? "", choice.effort, result.usage ?? noUsage()));
     if (isReply && result.sessionId) this.saveReplySession(run.thread_root, result.sessionId);
 
     const text = redactSecrets(result.finalText.trim()).slice(0, 12000);
@@ -1358,6 +1379,24 @@ export class Runner {
     this.saveTicketState(st);
   }
 
+  /**
+   * Record what a run used for the Results page (AK-92), failed and limit-stopped runs included.
+   * Never waits for the database and never fails the run: one before schema 20 just doesn't get it.
+   * Any other failure is logged once and tried again on the next run (AK-93).
+   */
+  private recordRun(p: ProjectView | undefined, kind: RunKind, ticketId: string | null, result: EngineRun | undefined, startedAt: number): void {
+    if (!p || !result || !this.isAgentRow) return;
+    void p.recordRunUsage(runUsageRow(kind, ticketId, result, (Date.now() - startedAt) / 1000)).then(
+      () => {
+        this.runUsageFailing = false;
+      },
+      (e) => {
+        if (!this.runUsageFailing) this.log(`Couldn't record what the ${kind} run used (trying again next run): ${(e as Error).message}`);
+        this.runUsageFailing = true;
+      },
+    );
+  }
+
   /** The next queued review, if reviews may run now. */
   private nextReview(): ReviewJob | null {
     if (!this.reviewsAllowed()) return null;
@@ -1577,6 +1616,7 @@ export class Runner {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000);
     }
+    this.recordRun(p, "build", t.id, result, startedAt);
 
     if (result.sessionId) {
       const s2 = this.ticketState();
@@ -1760,6 +1800,7 @@ export class Runner {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000);
     }
+    this.recordRun(p, "question", t.id, result, startedAt);
     if (await this.waitForUsage(result, "triage", job)) {
       const reset = this.ticketState();
       delete reset.triaged?.[t.id];
@@ -1845,6 +1886,7 @@ export class Runner {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000);
     }
+    this.recordRun(p, "review", t.id, result, startedAt);
     if (await this.waitForUsage(result, "review", job)) {
       this.rememberReview(t.id, prev);
       return;

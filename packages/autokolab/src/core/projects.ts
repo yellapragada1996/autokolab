@@ -67,6 +67,27 @@ export interface UsageReport {
   waiting_until: string | null;
 }
 
+/** Why the runner started its agent: to build a ticket, review one, reply in the room, or look at a worker's question. */
+export type RunKind = "build" | "review" | "reply" | "question";
+
+/**
+ * What one run used (schema 20), as the tool reported it: null where it didn't say, never an
+ * estimate. Numbers and the model's name only; no message or prompt text.
+ */
+export interface RunUsageRow {
+  kind: RunKind;
+  ticket_id: string | null;
+  model: string | null;
+  input_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_write_tokens: number | null;
+  output_tokens: number | null;
+  turns: number | null;
+  /** How long the run took, measured by the runner. */
+  seconds: number;
+  cost_usd: number | null;
+}
+
 /** The model and effort a run launched with; "" means the tool's own default (schema 11). */
 export interface RanWith {
   model: string;
@@ -295,6 +316,8 @@ export class ProjectView {
   private prFactsMissing = false;
   /** The database has no report_usage yet (before schema 19). */
   private usageMissing = false;
+  /** The database has no record_run_usage yet (before schema 20). */
+  private runUsageMissing = false;
 
   private constructor(
     readonly sb: SupabaseClient,
@@ -671,6 +694,36 @@ export class ProjectView {
     const e = r.error;
     if (e && !e.message.includes("AUTOKOLAB_") && (e.code === "PGRST202" || missingColumn(e) || /report_usage/.test(e.message))) {
       this.usageMissing = true;
+      return false;
+    }
+    check(r);
+    return true;
+  }
+
+  /**
+   * What one run used, through record_run_usage (schema 20). Returns false when the database
+   * doesn't have it yet; it isn't asked again until the next reload.
+   */
+  async recordRunUsage(u: RunUsageRow): Promise<boolean> {
+    if (this.runUsageMissing) return false;
+    const r = await this.sb.rpc("record_run_usage", {
+      p_project: this.project.id,
+      p_kind: u.kind,
+      p_seconds: u.seconds,
+      p_ticket: u.ticket_id,
+      p_model: u.model,
+      p_input_tokens: u.input_tokens,
+      p_cache_read_tokens: u.cache_read_tokens,
+      p_cache_write_tokens: u.cache_write_tokens,
+      p_output_tokens: u.output_tokens,
+      p_turns: u.turns,
+      p_cost_usd: u.cost_usd,
+    });
+    const e = r.error;
+    // Only a missing function or table switches recording off; anything else (a permission error
+    // too) is thrown, and the runner tries again next run (AK-93).
+    if (e && (e.code === "PGRST202" || e.code === "42883" || e.code === "42P01" || e.code === "PGRST205")) {
+      this.runUsageMissing = true;
       return false;
     }
     check(r);

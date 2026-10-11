@@ -19,6 +19,29 @@ export interface PlanStep {
   status: "todo" | "now" | "done";
 }
 
+/**
+ * What one run used, exactly as the tool reports it. null means the tool didn't say: nothing here
+ * is ever estimated or filled in.
+ */
+export interface RunUsage {
+  /** Tokens read fresh: not from the cache and not written to it. */
+  inputTokens: number | null;
+  /** Tokens read from the cache. */
+  cacheReadTokens: number | null;
+  /** Tokens written to the cache. */
+  cacheWriteTokens: number | null;
+  outputTokens: number | null;
+  turns: number | null;
+  /** The tool's own cost figure (Claude Code's API-price estimate); Codex gives none. */
+  costUsd: number | null;
+}
+
+export const noUsage = (): RunUsage => ({ inputTokens: null, cacheReadTokens: null, cacheWriteTokens: null, outputTokens: null, turns: null, costUsd: null });
+
+/** A whole, non-negative count, or null: anything else the tool printed isn't a number to trust. */
+const count = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : null);
+const plus = (a: number | null, b: number | null): number | null => (b === null ? a : (a ?? 0) + b);
+
 export interface EngineRun {
   /** The agent's latest to-do list (Codex's plan, Claude's TodoWrite), when it keeps one. */
   plan?: PlanStep[];
@@ -33,10 +56,8 @@ export interface EngineRun {
   costUsd?: number;
   /** The model the tool says it's running (Claude Code's init event); Codex doesn't say. */
   model?: string;
-  /** Model turns in the run, when the tool reports them (Claude Code). */
-  turns?: number;
-  /** Tokens, when the tool reports them: re-read from the cache, new input, and written. */
-  tokens?: { read: number; input: number; written: number };
+  /** What the run used (AK-92). runEngine always sets it; all nulls when the tool reported nothing. */
+  usage?: RunUsage;
 }
 
 export interface EngineInvocation {
@@ -187,16 +208,15 @@ export function parseEvent(engine: RunnerConfig["engine"], line: string, run: En
       run.isError = Boolean(ev.is_error) || (typeof ev.subtype === "string" && ev.subtype !== "success");
       if (!run.finalText && ev.subtype) run.finalText = `Run ended: ${ev.subtype}`;
       if (typeof ev.total_cost_usd === "number") run.costUsd = ev.total_cost_usd;
-      if (typeof ev.num_turns === "number") run.turns = ev.num_turns;
-      const u = ev.usage;
-      if (u && typeof u === "object") {
-        const num = (x: unknown) => (typeof x === "number" ? x : 0);
-        run.tokens = {
-          read: num(u.cache_read_input_tokens),
-          input: num(u.input_tokens) + num(u.cache_creation_input_tokens),
-          written: num(u.output_tokens),
-        };
-      }
+      const u = ev.usage && typeof ev.usage === "object" ? ev.usage : {};
+      run.usage = {
+        inputTokens: count(u.input_tokens),
+        cacheReadTokens: count(u.cache_read_input_tokens),
+        cacheWriteTokens: count(u.cache_creation_input_tokens),
+        outputTokens: count(u.output_tokens),
+        turns: count(ev.num_turns),
+        costUsd: typeof ev.total_cost_usd === "number" && Number.isFinite(ev.total_cost_usd) && ev.total_cost_usd >= 0 ? ev.total_cost_usd : null,
+      };
     }
     if (ev.type === "assistant" && Array.isArray(ev.message?.content)) {
       for (const c of ev.message.content) {
@@ -219,12 +239,18 @@ export function parseEvent(engine: RunnerConfig["engine"], line: string, run: En
     if (ev.type === "item.completed" && ev.item?.type === "agent_message" && typeof ev.item.text === "string") {
       run.finalText = ev.item.text;
     }
-    // Codex reports usage per turn; its input count includes the cached part.
+    // Codex reports tokens when a turn ends; its input_tokens counts the cached ones too. It says
+    // nothing about cache writes, turns or cost, so those stay null.
     if (ev.type === "turn.completed" && ev.usage && typeof ev.usage === "object") {
-      const num = (x: unknown) => (typeof x === "number" ? x : 0);
-      const t = run.tokens ?? { read: 0, input: 0, written: 0 };
-      const cached = num(ev.usage.cached_input_tokens);
-      run.tokens = { read: t.read + cached, input: t.input + Math.max(num(ev.usage.input_tokens) - cached, 0), written: t.written + num(ev.usage.output_tokens) };
+      const input = count(ev.usage.input_tokens);
+      const cached = count(ev.usage.cached_input_tokens);
+      const was = run.usage ?? noUsage();
+      run.usage = {
+        ...was,
+        inputTokens: plus(was.inputTokens, input === null ? null : Math.max(0, input - (cached ?? 0))),
+        cacheReadTokens: plus(was.cacheReadTokens, cached),
+        outputTokens: plus(was.outputTokens, count(ev.usage.output_tokens)),
+      };
     }
     if (ev.type === "turn.failed" || ev.type === "error") {
       run.isError = true;
@@ -249,7 +275,7 @@ export async function runEngine(opts: {
   onModel?: (model: string) => void;
 }): Promise<EngineRun> {
   const { cfg, inv, prompt } = opts;
-  const run: EngineRun = { sessionId: null, finalText: "", exitCode: null, timedOut: false, aborted: false, isError: false };
+  const run: EngineRun = { sessionId: null, finalText: "", exitCode: null, timedOut: false, aborted: false, isError: false, usage: noUsage() };
   const log = createWriteStream(opts.logFile, { flags: "a" });
   log.write(`# ${new Date().toISOString()} ${inv.bin} ${inv.args.join(" ")}\n# prompt:\n${prompt}\n# output:\n`);
 

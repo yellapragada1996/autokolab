@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { MERGE_OK_PREFIX, type Ticket, type TicketEvent } from "../lib/data";
+import { MERGE_OK_PREFIX, type RunKind, type RunUsage, type Ticket, type TicketEvent } from "../lib/data";
 import { BIRCH, CAPTAIN, FJORD, ME, decision, ticket, workspace } from "./fixtures";
-import { askKind, auditCsv, auditFileName, auditJson, auditRows, barsText, checkedText, duration, emptyText, headline, median, periodLine, periodOf, rangeOf, results, sentBackCaption } from "./results";
+import { CACHE_READ_WEIGHT, askKind, auditCsv, auditFileName, auditJson, auditRows, barsText, checkedText, dollars, duration, emptyText, headline, median, missingText, onTopText, percents, periodLine, periodOf, rangeOf, results, sentBackCaption, sharesText, tokens, usage, usageEmptyText, usageHeadline, weighted } from "./results";
 
 // Sunday 11 Oct 2026, 3 pm, in whatever time zone the tests run in: the week began Monday 5 Oct.
 const NOW = new Date(2026, 9, 11, 15, 0);
@@ -301,5 +301,150 @@ describe("the audit export", () => {
   it("names the files after the project and the dates", () => {
     expect(auditFileName("shop", range, "csv")).toBe("shop-audit-2026-10-05-to-2026-10-11.csv");
     expect(auditFileName("shop", rangeOf("4weeks", NOW), "json")).toBe("shop-audit-2026-09-14-to-2026-10-11.json");
+  });
+});
+
+describe("where the usage went", () => {
+  let runId = 0;
+  /** One run. `used` is its output tokens unless the four counts are given; null means its tool reported nothing. */
+  const ran = (kind: RunKind, agent: string, key: string | null, when: string, used: number | null | Partial<RunUsage>, cost: number | null = 0.5): RunUsage => ({
+    id: ++runId,
+    agent_id: agent,
+    ticket_id: key ? `t-${key}` : null,
+    kind,
+    model: used === null ? null : "claude-opus-5-5",
+    input_tokens: null,
+    cache_read_tokens: null,
+    cache_write_tokens: null,
+    output_tokens: typeof used === "number" ? used : null,
+    turns: used === null ? null : 12,
+    seconds: 600,
+    cost_usd: used === null ? null : cost,
+    created_at: when,
+    ...(used !== null && typeof used === "object" ? used : {}),
+  });
+
+  const ws = workspace([
+    merged("SH-1", local(10, 7), 60, { summary: "Shoppers can pay with Apple Pay." }),
+    merged("SH-2", local(10, 8), 60, { title: "Sort search by newest" }),
+    merged("SH-3", local(9, 20), 60, { title: "Remember the last search" }),
+  ]);
+  // This week: building 78,000, reviewing 9,000, agents talking 11,000, questions 2,000.
+  const week = [
+    ran("build", BIRCH, "SH-1", local(10, 6), { input_tokens: 1000, cache_read_tokens: 100_000, cache_write_tokens: 5000, output_tokens: 4000 }),
+    ran("build", FJORD, "SH-2", local(10, 7), 58_000),
+    ran("review", CAPTAIN, "SH-1", local(10, 7, 9), 9000),
+    ran("reply", CAPTAIN, null, local(10, 8), 6000),
+    ran("reply", BIRCH, null, local(10, 8, 13), 5000),
+    ran("question", CAPTAIN, "SH-2", local(10, 9), 2000),
+  ];
+
+  it("weights a token read from the cache at one tenth and the rest in full", () => {
+    expect(CACHE_READ_WEIGHT).toBe(0.1);
+    expect(weighted({ input_tokens: 1000, cache_read_tokens: 100_000, cache_write_tokens: 5000, output_tokens: 4000 })).toBe(20_000);
+    expect(weighted({ input_tokens: null, cache_read_tokens: 50, cache_write_tokens: null, output_tokens: null })).toBe(5);
+    // A tool that gives some counts and not others is counted for what it gave.
+    expect(weighted({ input_tokens: 315, cache_read_tokens: 24_448, cache_write_tokens: null, output_tokens: 122 })).toBeCloseTo(2881.8);
+    expect(weighted({ input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0, output_tokens: 0 })).toBe(0);
+  });
+
+  it("is never estimated: a run with no token counts has no usage", () => {
+    expect(weighted({ input_tokens: null, cache_read_tokens: null, cache_write_tokens: null, output_tokens: null })).toBeNull();
+    // Not even from how long it ran or what it cost.
+    expect(weighted(ran("build", BIRCH, "SH-1", local(10, 6), null))).toBeNull();
+  });
+
+  it("shares the usage by kind of run, with the run counts", () => {
+    const u = usage(ws, week, "week", NOW);
+    expect(u.total).toBe(100_000);
+    expect(u.kinds).toEqual([
+      { kind: "build", label: "Building", runs: 2, tokens: 78_000, percent: 78 },
+      { kind: "review", label: "Reviewing", runs: 1, tokens: 9000, percent: 9 },
+      { kind: "reply", label: "Agents talking", runs: 2, tokens: 11_000, percent: 11 },
+      { kind: "question", label: "Questions", runs: 1, tokens: 2000, percent: 2 },
+    ]);
+    expect(usageHeadline(u)).toBe("Building took 78% of the usage; reviewing 9%, agents talking 11%, questions 2%.");
+    expect(sharesText(u)).toBe("Usage by kind of run: Building: 78%, 2 runs; Reviewing: 9%, 1 run; Agents talking: 11%, 2 runs; Questions: 2%, 1 run.");
+    expect(usageEmptyText(u)).toBeNull();
+    expect(missingText(u)).toBeNull();
+  });
+
+  it("counts coordination as everything that isn't building, on top of building", () => {
+    const u = usage(ws, week, "week", NOW);
+    // 22,000 of reviewing, talking and questions over 78,000 of building.
+    expect(u.onTop).toBe(28);
+    expect(onTopText(u)).toBe("28% on top of building");
+    const noBuilding = usage(ws, week.filter((r) => r.kind !== "build"), "week", NOW);
+    expect(noBuilding.onTop).toBeNull();
+    expect(onTopText(noBuilding)).toBeNull();
+    expect(usageHeadline(noBuilding)).toBe("None of the usage went on building; reviewing 41%, agents talking 50%, questions 9%.");
+    expect(usageHeadline(usage(ws, week.filter((r) => r.kind === "build"), "week", NOW))).toBe("Building took 100% of the usage.");
+  });
+
+  it("gives the usage per merged ticket and names the three tickets it went on, without keys", () => {
+    const u = usage(ws, week, "week", NOW);
+    // SH-1 and SH-2 merged this week; SH-3 merged in September.
+    expect(u.mergedCount).toBe(2);
+    expect(u.perMerged).toBe(50_000);
+    expect(u.top.map((t) => [t.name, t.tokens])).toEqual([
+      ["Sort search by newest", 60_000],
+      ["Shoppers can pay with Apple Pay", 29_000],
+    ]);
+    const many = usage(ws, [...week, ran("build", BIRCH, "SH-3", local(10, 9), 70_000), ran("build", BIRCH, "SH-gone", local(10, 9), 99_000)], "week", NOW);
+    expect(many.top.map((t) => t.name)).toEqual(["Remember the last search", "Sort search by newest", "Shoppers can pay with Apple Pay"]);
+    expect(JSON.stringify(many.top.map((t) => t.name))).not.toMatch(/SH-\d/);
+    // Nothing merged: there's no average to give.
+    expect(usage(workspace([]), week, "week", NOW).perMerged).toBeNull();
+  });
+
+  it("shares it by agent, most usage first", () => {
+    expect(usage(ws, week, "week", NOW).agents).toEqual([
+      { id: FJORD, runs: 1, tokens: 58_000, percent: 58 },
+      { id: BIRCH, runs: 2, tokens: 25_000, percent: 25 },
+      { id: CAPTAIN, runs: 3, tokens: 17_000, percent: 17 },
+    ]);
+  });
+
+  it("says how many runs didn't report, and keeps them out of the shares", () => {
+    const u = usage(ws, [...week, ran("build", FJORD, "SH-2", local(10, 9), null), ran("reply", FJORD, null, local(10, 9), null)], "week", NOW);
+    expect(u.runs).toBe(8);
+    expect(u.missing).toBe(2);
+    expect(missingText(u)).toBe("2 of 8 runs didn't report usage.");
+    expect(u.total).toBe(100_000);
+    expect(u.kinds.map((k) => [k.kind, k.runs, k.percent])).toEqual([["build", 3, 78], ["review", 1, 9], ["reply", 3, 11], ["question", 1, 2]]);
+    expect(u.agents.find((a) => a.id === FJORD)).toEqual({ id: FJORD, runs: 3, tokens: 58_000, percent: 58 });
+  });
+
+  it("shows the engine's cost only when every run in the period gave one", () => {
+    expect(usage(ws, week, "week", NOW).costUsd).toBe(3);
+    expect(usage(ws, [...week, ran("review", CAPTAIN, "SH-2", local(10, 9), 100, null)], "week", NOW).costUsd).toBeNull();
+    expect(usage(ws, [...week, ran("build", FJORD, "SH-2", local(10, 9), null)], "week", NOW).costUsd).toBeNull();
+    expect(dollars(3)).toBe("$3.00");
+  });
+
+  it("counts only the chosen period", () => {
+    const older = ran("build", BIRCH, "SH-3", local(9, 20), 100_000);
+    expect(usage(ws, [...week, older], "week", NOW).total).toBe(100_000);
+    const four = usage(ws, [...week, older], "4weeks", NOW);
+    expect(four.total).toBe(200_000);
+    expect(four.kinds[0]).toMatchObject({ kind: "build", runs: 3, percent: 89 });
+    expect(four.mergedCount).toBe(3);
+  });
+
+  it("is one plain sentence when nothing was reported", () => {
+    expect(usageEmptyText(usage(ws, [], "week", NOW))).toBe("No runs have reported usage this week yet.");
+    expect(usageEmptyText(usage(ws, [], "4weeks", NOW))).toBe("No runs have reported usage in the last 4 weeks.");
+    const silent = usage(ws, [ran("build", FJORD, "SH-2", local(10, 9), null), ran("reply", FJORD, null, local(10, 9), null)], "week", NOW);
+    expect(usageEmptyText(silent)).toBe("None of the 2 runs this week reported usage.");
+    expect(missingText(silent)).toBeNull();
+    expect(silent.kinds.map((k) => k.percent)).toEqual([0, 0]);
+  });
+
+  it("writes whole percents that add up to 100, and short token counts", () => {
+    expect(percents([1, 1, 1])).toEqual([34, 33, 33]);
+    expect(percents([78_000, 9000, 11_000, 2000])).toEqual([78, 9, 11, 2]);
+    expect(percents([0, 0])).toEqual([0, 0]);
+    expect(percents([])).toEqual([]);
+    expect([940, 12_400, 50_000, 340_200, 999_600, 3_100_000].map(tokens)).toEqual(["940", "12.4k", "50k", "340k", "1M", "3.1M"]);
   });
 });
