@@ -105,6 +105,21 @@ export interface Ticket {
   review?: Review | null;
   /** Everyone who has been the assignee while it was being built (schema 17). Missing on older databases. */
   built_by?: string[] | null;
+  /** What GitHub last said about the PR, recorded by the lead's runner (schema 18). Missing on older databases. */
+  pr_facts?: PrFacts | null;
+}
+
+/** The lead's runner's snapshot of a PR, for "How do you know?" (AK-57). */
+export interface PrFacts {
+  /** The PR's head commit these facts are about. */
+  sha: string;
+  checks: { passed: number; total: number; state: "success" | "pending" | "failure" };
+  /** How many files the PR changes, and the ones that wait for a person's OK. */
+  files: { total: number; risky: string[] };
+  additions: number;
+  deletions: number;
+  /** Set by the database when it's recorded. */
+  checked_at?: string;
 }
 
 /** What a reviewer records when it approves a commit: the evidence behind "How do you know?". */
@@ -224,6 +239,8 @@ const rank = (p: Priority) => PRIORITIES.indexOf(p);
 export class ProjectView {
   private names = new Map<string, { name: string; type: "human" | "agent" }>();
   private agentInfo = new Map<string, AgentInfo>();
+  /** The database has no record_pr_facts yet (before schema 18). */
+  private prFactsMissing = false;
 
   private constructor(
     readonly sb: SupabaseClient,
@@ -625,6 +642,23 @@ export class ProjectView {
     if (review && missing(r.error)) r = await this.sb.rpc("approve_ticket", args);
     if (missing(r.error)) throw new AutoKolabError("This AutoKolab server can't record approvals yet (it needs schema 12).");
     return check<Ticket>(r);
+  }
+
+  /**
+   * For the lead: record what GitHub says about a ticket's PR, through record_pr_facts (schema 18).
+   * Returns false when the database doesn't have it yet; it isn't asked again until the next reload.
+   */
+  async recordPrFacts(ticketId: string, facts: PrFacts): Promise<boolean> {
+    if (this.prFactsMissing) return false;
+    const r = await this.sb.rpc("record_pr_facts", { p_ticket: ticketId, p_facts: facts });
+    const e = r.error;
+    // PGRST202: no such function. 42703: the function is there but not the column (a half-applied update).
+    if (e && !e.message.includes("AUTOKOLAB_") && (e.code === "PGRST202" || missingColumn(e) || /record_pr_facts|pr_facts/.test(e.message))) {
+      this.prFactsMissing = true;
+      return false;
+    }
+    check(r);
+    return true;
   }
 
   /** For the lead: tickets in Review with a PR and an approved commit, for the runner to merge. */

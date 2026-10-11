@@ -12,8 +12,8 @@ import { REVIEW_DIFF_LIMIT, buildPrompt, buildReviewPrompt, buildTicketPrompt, b
 import { needsRunner } from "../src/setup/connect.js";
 import { Runner, STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_UNDO, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
-import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_UNDO, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
+import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
@@ -926,6 +926,57 @@ describe("the lead's auto-merge (AK-30)", () => {
     const big = Array.from({ length: 100 }, (_, i) => ({ path: `src/f${i}.ts` }));
     expect(mergeDecision("auto_safe", pr({ files: big }), approved, "main")).toMatchObject({ action: "needs_ok", risky: ["100+ files, too many to check"] });
     expect(mergeDecision("auto_safe", pr({ files: big.slice(1) }), approved, "main").action).toBe("merge");
+  });
+
+  it("records the PR's checks and file counts for the website (AK-57)", () => {
+    expect(MERGE_FIELDS.split(",")).toEqual(expect.arrayContaining(["statusCheckRollup", "files", "changedFiles", "additions", "deletions"]));
+    const running = { name: "e2e", status: "IN_PROGRESS", conclusion: null };
+    const failing = { name: "lint", status: "COMPLETED", conclusion: "FAILURE" };
+    const facts = prFacts(pr({ headRefOid: SHA.toUpperCase(), statusCheckRollup: [ok(), ok("build"), running], ...risky, changedFiles: 2, additions: 62, deletions: 4 }));
+    expect(facts).toEqual({
+      sha: SHA,
+      checks: { passed: 2, total: 3, state: "pending" },
+      files: { total: 2, risky: ["supabase/tests/policies.sql"] },
+      additions: 62,
+      deletions: 4,
+    });
+    expect(prFacts(pr()).checks).toEqual({ passed: 1, total: 1, state: "success" });
+    expect(prFacts(pr({ statusCheckRollup: [ok(), running, failing] })).checks).toEqual({ passed: 1, total: 3, state: "failure" });
+    expect(prFacts(pr({ statusCheckRollup: null })).checks).toEqual({ passed: 0, total: 0, state: "pending" });
+    // Missing counts (an older gh) are zero; the file total is at least what gh listed.
+    expect(prFacts(pr())).toMatchObject({ files: { total: 1, risky: [] }, additions: 0, deletions: 0 });
+    // The database keeps at most 20 risky files.
+    const many = Array.from({ length: 30 }, (_, i) => ({ path: `supabase/m${i}.sql` }));
+    expect(prFacts(pr({ files: many })).files.risky).toHaveLength(20);
+  });
+  it("records the facts only when they changed, whenever they were recorded", () => {
+    const facts = prFacts(pr({ additions: 3, deletions: 1 }));
+    expect(samePrFacts(null, facts)).toBe(false);
+    expect(samePrFacts(undefined, facts)).toBe(false);
+    // The database returns its own key order and adds checked_at.
+    const stored = { checked_at: "2026-10-11T09:00:00Z", deletions: 1, additions: 3, files: { risky: [], total: 1 }, checks: { state: "success" as const, total: 1, passed: 1 }, sha: SHA };
+    expect(samePrFacts(stored, facts)).toBe(true);
+    expect(samePrFacts(stored, prFacts(pr({ additions: 4, deletions: 1 })))).toBe(false);
+    expect(samePrFacts(stored, prFacts(pr({ headRefOid: OTHER, additions: 3, deletions: 1 })))).toBe(false);
+    expect(samePrFacts(stored, prFacts(pr({ statusCheckRollup: [ok(), ok("x")], additions: 3, deletions: 1 })))).toBe(false);
+  });
+  it("keeps going when the database can't record the facts yet (before schema 18)", async () => {
+    const calls: string[] = [];
+    const view = (error: { message: string; code?: string } | null) =>
+      Object.assign(Object.create(ProjectView.prototype), {
+        prFactsMissing: false,
+        sb: { rpc: async (fn: string) => (calls.push(fn), { data: error ? null : {}, error }) },
+      }) as ProjectView;
+    const facts = prFacts(pr());
+    const old = view({ code: "PGRST202", message: "Could not find the function public.record_pr_facts(p_facts, p_ticket) in the schema cache" });
+    expect(await old.recordPrFacts("t1", facts)).toBe(false);
+    // It doesn't ask again until the project is reloaded.
+    expect(await old.recordPrFacts("t1", facts)).toBe(false);
+    expect(calls).toEqual(["record_pr_facts"]);
+    expect(await view({ code: "42703", message: 'column "pr_facts" of relation "tickets" does not exist' }).recordPrFacts("t1", facts)).toBe(false);
+    expect(await view(null).recordPrFacts("t1", facts)).toBe(true);
+    // A refusal from a database that has it is a real error.
+    await expect(view({ message: "AUTOKOLAB_FORBIDDEN: Only the project's lead records what GitHub says about a PR." }).recordPrFacts("t1", facts)).rejects.toThrow(/Only the project's lead/);
   });
 
   it("words the approval and the messages for the setting", () => {
