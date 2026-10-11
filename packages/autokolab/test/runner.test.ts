@@ -12,7 +12,7 @@ import { REVIEW_DIFF_LIMIT, buildPrompt, buildReviewPrompt, buildTicketPrompt, b
 import { needsRunner } from "../src/setup/connect.js";
 import { Runner, STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_UNDO, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
 import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
@@ -239,7 +239,7 @@ describe("prompt", () => {
     const lead = buildPrompt({ ...base, myRole: "lead", senderRole: "follower", followUp: false, fromInstructor: false });
     expect(lead).toMatch(/^You are Captain, the lead agent of the AutoKolab room "[^"]+".*You run as [^,]+, lee's agent\./);
     expect(lead).toMatch(/As Captain:\n- You run unattended too, while lee is away\. Decide and act on your own/);
-    expect(lead).toContain(`Before big work (${BIG_WORK}), post one kind=question to lee in the room and stop`);
+    expect(lead).toContain(`Before big work (${BIG_WORK}), ask lee first. ${LEAD_PLAN}`);
     expect(lead).toContain(`- ${LEAD_APPROVAL}`);
     const follower = buildPrompt({ ...base, followUp: false });
     expect(follower).not.toContain("As Captain:");
@@ -256,6 +256,14 @@ describe("prompt", () => {
     expect(LEAD_UNDO).toMatch(/Never revert a database migration.*Reply with the new ticket's key/);
     expect(LEAD_APPROVAL).toMatch(/approve it with ticket_approve.*Approve only the commit you actually reviewed: a new push needs a new approval/);
     expect(BIG_WORK).toMatch(/new epic or more than 3 tickets, migrations, dependencies, auth\/security\/CI\/infra changes, deleting a feature, or changing a decision/);
+  });
+  it("tells the lead to propose big work as a plan in the CON-23 format (AK-60)", () => {
+    expect(leadGuide("Shop", ["ana"])).toContain(LEAD_PLAN);
+    expect(PLAN_BLOCK).toBe("```autokolab-plan\ngoals: AK-60, AK-61\nasks: AK-62, AK-64\nnot: Password reset and account deletion are not in this plan.\n```");
+    expect(LEAD_PLAN).toContain(`with nothing after it:\n${PLAN_BLOCK}\n`);
+    expect(LEAD_PLAN).toMatch(/create the goal\(s\) \(epics\) and every ticket under them in Backlog, complete and assigned\. Then post ONE kind=question message/);
+    expect(LEAD_PLAN).toMatch(/"OK, start".*already moved the tickets to Ready: there is nothing to move/);
+    expect(LEAD_PLAN).toMatch(/edit the draft tickets, then post a new plan message with the same goals/);
   });
 });
 
