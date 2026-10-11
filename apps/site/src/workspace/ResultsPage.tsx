@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import * as data from "../lib/data";
-import type { TicketEvent } from "../lib/data";
+import type { RunUsage, TicketEvent } from "../lib/data";
 import { Button, Skeleton } from "../ui";
 import { Who } from "./bits";
-import { auditCsv, auditFileName, auditJson, auditRows, barsText, checkedText, duration, emptyText, headline, periodLine, periodOf, rangeOf, results, sentBackCaption, type Period, type Results as Numbers } from "./results";
+import { auditCsv, auditFileName, auditJson, auditRows, barsText, checkedText, dollars, duration, emptyText, headline, missingText, onTopText, periodLine, periodOf, rangeOf, results, runsText, sentBackCaption, sharesText, tokens, usage, usageEmptyText, usageHeadline, type Period, type Results as Numbers, type Usage } from "./results";
 import type { Workspace } from "./useWorkspace";
 
 // Results (S15): what the team got done in the period and how often it needed a person, counted from
@@ -20,6 +20,10 @@ const HOW = {
   time: "The middle value of the time from when work started on a ticket to when it was done, over the tickets merged in this period.",
   asked: "Each time a ticket's Needs you was set in this period: for an OK on a risky merge, a question, or a problem. Questions Captain asked in chat aren't counted.",
   sentBack: "Tickets that went from Review back to In progress, or were reopened after Done, in this period. Each ticket counts once.",
+  usage: "Counted in tokens, as each agent's tool reported them after every run: tokens read fresh, written to the cache and written as output count in full, and tokens read from the cache count as one tenth. Runs that reported nothing are left out of the shares, never estimated.",
+  onTop: "The usage of every run that wasn't building a ticket (reviewing, agents replying to each other in the room, and Captain looking at workers' questions), divided by the usage of the runs that were building.",
+  perMerged: "All the usage reported in this period, coordination included, divided by the tickets merged in it.",
+  cost: "The cost figure the agents' tools print after each run, added up. It is an estimate at API prices, not a bill; it shows only when every run in the period gave one.",
 };
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-xl)", padding: 20, minWidth: 0 };
@@ -57,6 +61,23 @@ export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment 
       live = false;
     };
   }, [ws.project.id, ws.demoEvents, now]);
+
+  // What the runs used, read apart from the history: if it can't be read, the rest of the page still shows.
+  const [runs, setRuns] = useState<RunUsage[] | null>(ws.demoUsage ?? (ws.demoEvents ? [] : null));
+  const [usageError, setUsageError] = useState("");
+  useEffect(() => {
+    if (ws.demoUsage || ws.demoEvents) return;
+    let live = true;
+    setRuns(null);
+    setUsageError("");
+    data
+      .usageBetween(ws.project.id, rangeOf("4weeks", now).from, now)
+      .then((rows) => live && setRuns(rows))
+      .catch((e: Error) => live && setUsageError(e.message));
+    return () => {
+      live = false;
+    };
+  }, [ws.project.id, ws.demoUsage, ws.demoEvents, now]);
 
   const choose = (p: Period) => {
     setPeriod(p);
@@ -112,7 +133,145 @@ export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment 
       </div>
 
       {r && r.merged.length > 0 && <Body ws={ws} r={r} />}
+      {usageError ? (
+        <p role="alert" style={{ fontSize: 14, color: "var(--danger)" }}>
+          Couldn't read what the runs used: {usageError}
+        </p>
+      ) : (
+        r && runs && <UsageSection ws={ws} u={usage(ws, runs, period, now)} />
+      )}
     </div>
+  );
+}
+
+/** Where the usage went (AK-92): building against reviewing, agents talking and questions, from what each run's tool reported. */
+function UsageSection({ ws, u }: { ws: Workspace; u: Usage }) {
+  const empty = usageEmptyText(u);
+  const missing = missingText(u);
+  const onTop = onTopText(u);
+  const row: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, fontSize: 14 };
+  const figure: CSSProperties = { fontFamily: "var(--font-mono)", color: "var(--text-secondary)", whiteSpace: "nowrap" };
+  return (
+    <section aria-labelledby="usage-heading" style={{ ...card, display: "flex", flexDirection: "column", gap: 20 }}>
+      <h3 id="usage-heading" style={heading}>
+        Where the usage went
+      </h3>
+      {empty ? (
+        <p style={{ fontSize: 14, color: "var(--muted)" }}>{empty}</p>
+      ) : (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <p style={{ fontSize: 18, lineHeight: 1.35, maxWidth: 820 }}>{usageHeadline(u)}</p>
+            {missing && <p style={{ fontSize: 13, color: "var(--muted)" }}>{missing}</p>}
+          </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "20px 32px" }}>
+            <div role="img" aria-label={sharesText(u)} style={{ display: "grid", gap: 14, flex: "2 1 320px", minWidth: 0, alignContent: "start" }}>
+              {u.kinds.map((k) => (
+                <div key={k.kind} aria-hidden="true" title={`${k.label}: ${tokens(k.tokens)} tokens over ${runsText(k.runs)}`} style={{ display: "grid", gap: 6 }}>
+                  <span style={row}>
+                    {k.label}
+                    <span style={figure}>
+                      {k.percent}% · {runsText(k.runs)}
+                    </span>
+                  </span>
+                  <span style={{ height: 6, borderRadius: 999, background: "var(--track)" }}>
+                    <span style={{ display: "block", height: "100%", width: `${k.percent}%`, borderRadius: 999, background: "var(--muted)" }} />
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <dl style={{ display: "grid", gap: 14, margin: 0, flex: "1 1 240px", minWidth: 0, alignContent: "start" }}>
+              {onTop && <Fact name="Coordination" value={onTop} how={HOW.onTop} />}
+              {u.perMerged !== null && <Fact name="Per merged ticket" value={`${tokens(u.perMerged)} tokens`} how={HOW.perMerged} />}
+              <Fact name="All usage" value={`${tokens(u.total)} tokens`} how={HOW.usage} />
+              {u.costUsd !== null && <Fact name="Cost, as the engine reports it" value={dollars(u.costUsd)} how={HOW.cost} />}
+            </dl>
+          </div>
+
+          {u.top.length > 0 && (
+            <div style={{ display: "grid", gap: 8 }}>
+              <h4 style={{ fontSize: 13, fontWeight: 500, color: "var(--muted)" }}>Most usage went on</h4>
+              <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
+                {u.top.map((t) => (
+                  <li key={t.ticket.id} style={row}>
+                    <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{t.name}</span>
+                    <span style={figure}>{tokens(t.tokens)}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          <UsageAgents ws={ws} u={u} />
+
+          <details style={{ fontSize: 13, color: "var(--muted)" }}>
+            <summary style={{ cursor: "pointer" }}>How usage is counted</summary>
+            <dl style={{ display: "grid", gap: 8, margin: "12px 0 0", lineHeight: 1.5, maxWidth: 720 }}>
+              {(
+                [
+                  ["Usage", HOW.usage],
+                  ["Coordination", HOW.onTop],
+                  ["Per merged ticket", HOW.perMerged],
+                  ["Cost", HOW.cost],
+                ] as const
+              ).map(([name, how]) => (
+                <div key={name}>
+                  <dt style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{name}</dt>
+                  <dd style={{ margin: 0 }}>{how}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+        </>
+      )}
+    </section>
+  );
+}
+
+function Fact({ name, value, how }: { name: string; value: string; how: string }) {
+  return (
+    <div title={how} style={{ display: "grid", gap: 2 }}>
+      <dt style={{ fontSize: 13, color: "var(--muted)" }}>{name}</dt>
+      <dd style={{ margin: 0, fontSize: 18, fontWeight: 500 }}>{value}</dd>
+    </div>
+  );
+}
+
+function UsageAgents({ ws, u }: { ws: Workspace; u: Usage }) {
+  const th: CSSProperties = { textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--muted)", padding: "8px 8px 8px 0", verticalAlign: "bottom" };
+  const td: CSSProperties = { fontSize: 14, padding: "10px 8px 10px 0", borderTop: "1px solid var(--line-soft)", verticalAlign: "middle" };
+  return (
+    <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+      <caption className="sr-only">Usage by agent</caption>
+      <thead>
+        <tr>
+          <th scope="col" style={{ ...th, width: "50%" }}>
+            Agent
+          </th>
+          <th scope="col" style={th}>
+            Runs
+          </th>
+          <th scope="col" style={th} title={HOW.usage}>
+            Share
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {u.agents.map((a) => (
+          <tr key={a.id}>
+            <th scope="row" style={{ ...td, fontWeight: 400, textAlign: "left", overflow: "hidden" }}>
+              <Who ws={ws} id={a.id} />
+            </th>
+            <td style={td}>{a.runs}</td>
+            <td style={td} title={`${tokens(a.tokens)} tokens`}>
+              {a.percent}%
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 

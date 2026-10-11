@@ -1,4 +1,4 @@
-import { MERGE_OK_PREFIX, statusLabel, type Status, type Ticket, type TicketEvent } from "../lib/data";
+import { MERGE_OK_PREFIX, statusLabel, type RunKind, type RunUsage, type Status, type Ticket, type TicketEvent } from "../lib/data";
 import { RUNNER_PROBLEM } from "./captain";
 import type { Workspace } from "./useWorkspace";
 
@@ -211,6 +211,166 @@ export function barsText(r: Results): string {
 }
 
 export const sentBackCaption = (r: Results) => `${r.sentBack.byReview} after review · ${r.sentBack.reopened} reopened after done`;
+
+// ------------------------------------------------------------------ where the usage went
+
+// Counted from what each run's tool reported (AK-92). The unit is tokens, with tokens read from the
+// cache at one tenth: close to what a subscription meters. A run whose tool reported no tokens at
+// all is counted as a run and left out of every share; nothing is estimated in its place.
+
+/** What a token read from the cache counts for, next to one read fresh or written. */
+export const CACHE_READ_WEIGHT = 0.1;
+
+const KINDS: RunKind[] = ["build", "review", "reply", "question"];
+/** As the row's name, and inside the headline sentence. */
+const KIND_WORDS: Record<RunKind, { label: string; inSentence: string }> = {
+  build: { label: "Building", inSentence: "building" },
+  review: { label: "Reviewing", inSentence: "reviewing" },
+  reply: { label: "Agents talking", inSentence: "agents talking" },
+  question: { label: "Questions", inSentence: "questions" },
+};
+
+const num = (v: number | null | undefined): number | null => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+
+/** One run's usage in weighted tokens, or null when its tool reported no tokens. */
+export function weighted(u: Pick<RunUsage, "input_tokens" | "cache_read_tokens" | "cache_write_tokens" | "output_tokens">): number | null {
+  const parts = [num(u.input_tokens), num(u.cache_write_tokens), num(u.output_tokens), num(u.cache_read_tokens)];
+  if (parts.every((p) => p === null)) return null;
+  const [fresh, written, output, cached] = parts.map((p) => p ?? 0);
+  return fresh + written + output + cached * CACHE_READ_WEIGHT;
+}
+
+export interface UsageShare {
+  runs: number;
+  tokens: number;
+  /** Whole percent of the period's usage; the rows of one list add up to 100. */
+  percent: number;
+}
+
+export interface Usage {
+  range: Range;
+  /** Every run recorded in the period, and how many of them reported no tokens. */
+  runs: number;
+  missing: number;
+  /** Weighted tokens over the runs that reported. */
+  total: number;
+  kinds: (UsageShare & { kind: RunKind; label: string })[];
+  /** Everything that isn't building, as a whole percent of building; null when no building reported. */
+  onTop: number | null;
+  /** The period's usage divided by the tickets merged in it; null when none merged. */
+  perMerged: number | null;
+  mergedCount: number;
+  /** The three tickets the most usage went on, most first. */
+  top: { ticket: Ticket; name: string; tokens: number }[];
+  agents: (UsageShare & { id: string })[];
+  /** The tools' own cost figure, only when every run in the period gave one. */
+  costUsd: number | null;
+}
+
+/** Whole percents that add up to 100 (largest remainders get the spare points); all zero when there's nothing. */
+export function percents(values: number[]): number[] {
+  const total = values.reduce((a, b) => a + b, 0);
+  if (total <= 0) return values.map(() => 0);
+  const exact = values.map((v) => (v / total) * 100);
+  const out = exact.map(Math.floor);
+  const spare = 100 - out.reduce((a, b) => a + b, 0);
+  exact
+    .map((v, i) => ({ i, rest: v - Math.floor(v) }))
+    .sort((a, b) => b.rest - a.rest || a.i - b.i)
+    .slice(0, spare)
+    .forEach(({ i }) => out[i]++);
+  return out;
+}
+
+/** A ticket in plain words: its one-line summary, else its title. Never its key. */
+const plainName = (t: Ticket) => (t.summary?.trim() || t.title).replace(/[.\s]+$/, "");
+
+/** Everything the "Where the usage went" section shows, counted from the period's runs. */
+export function usage(ws: Workspace, rows: RunUsage[], period: Period, now: Date): Usage {
+  const range = rangeOf(period, now);
+  const runs = rows.filter((u) => inRange(range, u.created_at));
+  const counted = runs.map((u) => ({ u, tokens: weighted(u) }));
+  const sum = (of: typeof counted) => of.reduce((n, c) => n + (c.tokens ?? 0), 0);
+  const total = sum(counted);
+
+  const byKind = KINDS.map((kind) => counted.filter((c) => c.u.kind === kind));
+  const kindPercents = percents(byKind.map(sum));
+  const kinds = KINDS.map((kind, i) => ({ kind, label: KIND_WORDS[kind].label, runs: byKind[i].length, tokens: sum(byKind[i]), percent: kindPercents[i] })).filter((k) => k.runs > 0);
+  const building = sum(byKind[0]);
+
+  const agentIds = [...new Set(runs.map((u) => u.agent_id))];
+  const byAgent = agentIds.map((id) => counted.filter((c) => c.u.agent_id === id));
+  const agentPercents = percents(byAgent.map(sum));
+  const agents = agentIds
+    .map((id, i) => ({ id, runs: byAgent[i].length, tokens: sum(byAgent[i]), percent: agentPercents[i] }))
+    .sort((a, b) => b.tokens - a.tokens || b.runs - a.runs || ws.nameOf(a.id).localeCompare(ws.nameOf(b.id)));
+
+  const perTicket = new Map<string, number>();
+  for (const c of counted) if (c.u.ticket_id && c.tokens !== null) perTicket.set(c.u.ticket_id, (perTicket.get(c.u.ticket_id) ?? 0) + c.tokens);
+  const top = [...perTicket]
+    .map(([id, tokens]) => ({ ticket: ws.byId.get(id), tokens }))
+    .filter((t): t is { ticket: Ticket; tokens: number } => !!t.ticket && t.tokens > 0)
+    .sort((a, b) => b.tokens - a.tokens || a.ticket.key.localeCompare(b.ticket.key))
+    .slice(0, 3)
+    .map((t) => ({ ...t, name: plainName(t.ticket) }));
+
+  const mergedCount = ws.tickets.filter((t) => t.type !== "epic" && t.status === "done" && !!t.pr_url && inRange(range, t.completed_at)).length;
+  const costs = runs.map((u) => num(u.cost_usd));
+
+  return {
+    range,
+    runs: runs.length,
+    missing: counted.filter((c) => c.tokens === null).length,
+    total,
+    kinds,
+    onTop: building > 0 ? Math.round(((total - building) / building) * 100) : null,
+    perMerged: mergedCount > 0 && total > 0 ? total / mergedCount : null,
+    mergedCount,
+    top,
+    agents,
+    costUsd: runs.length > 0 && costs.every((c) => c !== null) ? costs.reduce<number>((a, b) => a + (b ?? 0), 0) : null,
+  };
+}
+
+/** "Building took 78% of the usage; reviewing 9%, agents talking 11%, questions 2%." */
+export function usageHeadline(u: Usage): string {
+  const percent = (kind: RunKind) => u.kinds.find((k) => k.kind === kind)?.percent ?? 0;
+  const building = percent("build");
+  const rest = u.kinds.filter((k) => k.kind !== "build").map((k) => `${KIND_WORDS[k.kind].inSentence} ${k.percent}%`);
+  const first = building > 0 ? `Building took ${building}% of the usage` : "None of the usage went on building";
+  return `${first}${rest.length ? `; ${rest.join(", ")}` : ""}.`;
+}
+
+/** The empty state, or null when there's usage to show: one plain sentence. */
+export function usageEmptyText(u: Usage): string | null {
+  if (u.total > 0) return null;
+  const when = WHEN[u.range.period];
+  if (u.runs === 0) return u.range.period === "week" ? "No runs have reported usage this week yet." : "No runs have reported usage in the last 4 weeks.";
+  return `None of the ${plural(u.runs, "run")} ${when} reported usage.`;
+}
+
+/** "3 of 41 runs didn't report usage.", or null when they all did. */
+export const missingText = (u: Usage) => (u.missing > 0 && u.total > 0 ? `${u.missing} of ${plural(u.runs, "run")} didn't report usage.` : null);
+
+/** "28% on top of building" */
+export const onTopText = (u: Usage) => (u.onTop === null ? null : `${u.onTop}% on top of building`);
+
+/** "940", "12.4k", "3.1M": weighted tokens, short. */
+export function tokens(n: number): string {
+  if (n < 1000) return String(Math.round(n));
+  const short = (v: number) => (v >= 100 ? String(Math.round(v)) : v.toFixed(1).replace(/\.0$/, ""));
+  if (n < 999_500) return `${short(n / 1000)}k`;
+  if (n < 999_500_000) return `${short(n / 1_000_000)}M`;
+  return `${short(n / 1_000_000_000)}B`;
+}
+
+/** "$12.40" */
+export const dollars = (n: number) => `$${n.toFixed(2)}`;
+
+export const runsText = (n: number) => plural(n, "run");
+
+/** The share rows for people who can't see the bars: "Building: 78%, 14 runs; …" */
+export const sharesText = (u: Usage) => `Usage by kind of run: ${u.kinds.map((k) => `${k.label}: ${k.percent}%, ${plural(k.runs, "run")}`).join("; ")}.`;
 
 // ------------------------------------------------------------------ the audit export
 
