@@ -13,7 +13,7 @@ import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineR
 import { installHook } from "./githook.js";
 import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, riskyFiles, samePrFacts, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
-import { SHIP_FAILED_PREFIX, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
+import { SHIP_FAILED_PREFIX, fetchBranch, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
 import { checkoutCommit, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
@@ -1099,19 +1099,26 @@ export class Runner {
       const change: Parameters<ProjectView["update"]>[1] = {};
       if (o.question) change.needs_human = o.question;
       else if (o.status === "blocked") change.needs_human = "I'm blocked; see my last comment.";
-      // The agent says it's ready but there's no pull request: it couldn't reach GitHub from where
-      // it runs, so the runner delivers the work for it (AK-46).
-      if (!pr && !after.pr_url && o.status === "review") {
-        const shipped = this.deliver(t, worktree, repo, o.summary, text);
-        if ("pr" in shipped) pr = shipped.pr;
-        else if ("problem" in shipped) change.needs_human = shipped.problem;
-        else if (shipped.note) await p.comment(t.key, shipped.note).catch(() => undefined);
+      // The agent says it's ready. If it couldn't reach GitHub from where it runs, its work is still
+      // only here, so the runner delivers it: opening the pull request the first time (AK-46), and
+      // pushing to the same branch for follow-ups once there is one (AK-66). Nothing left: nothing done.
+      let deliveryFailed = false;
+      if (o.status === "review") {
+        const existing = pr || after.pr_url || undefined;
+        const shipped = this.deliver(t, worktree, repo, o.summary, text, existing);
+        if ("pr" in shipped) {
+          pr = shipped.pr;
+          if (existing && shipped.commit) await p.comment(t.key, `Pushed the follow-up work (${shipped.commit}) to ${shipped.pr}.`).catch(() => undefined);
+        } else if ("problem" in shipped) {
+          change.needs_human = shipped.problem;
+          deliveryFailed = true;
+        } else if (shipped.note) await p.comment(t.key, shipped.note).catch(() => undefined);
       }
       // An earlier delivery failed and there's a pull request now: the note is out of date.
       if ((pr || after.pr_url) && after.needs_human?.startsWith(SHIP_FAILED_PREFIX) && change.needs_human === undefined) change.needs_human = null;
       if (o.summary && o.summary !== after.summary) change.summary = o.summary;
       if (pr && !after.pr_url) change.pr_url = pr;
-      if (pr && after.status === "in_progress" && (!o.status || o.status === "review")) change.status = "review";
+      if (after.status === "in_progress" && movesToReview(o.status, !!pr, !!(pr || after.pr_url), deliveryFailed)) change.status = "review";
       if (Object.keys(change).length) await p.update(t.key, change).catch((e) => this.log(`Couldn't update ${t.key}: ${(e as Error).message}`));
       if (o.newTickets.length) {
         const open = (await p.tickets()).filter((x) => !["done", "canceled"].includes(x.status)).map((x) => x.title.toLowerCase());
@@ -1126,8 +1133,19 @@ export class Runner {
     this.log(`${t.key} ${outcome}.${result.costUsd !== undefined ? ` (estimated API cost $${result.costUsd.toFixed(2)})` : ""}`);
   }
 
-  /** Commits, pushes and opens the pull request for an agent that said it's done but couldn't. */
-  private deliver(t: Ticket, worktree: Worktree, repo: string, summary: string | undefined, message: string): { pr: string } | { problem: string } | { note: string | null } {
+  /**
+   * Commits and pushes what an agent said is done but couldn't deliver itself, and opens the pull
+   * request the first time. With `existingPr`, it's follow-up work pushed to that pull request's
+   * branch; an agent that pushed by itself leaves nothing to do here.
+   */
+  private deliver(
+    t: Ticket,
+    worktree: Worktree,
+    repo: string,
+    summary: string | undefined,
+    message: string,
+    existingPr?: string,
+  ): { pr: string; commit?: string } | { problem: string } | { note: string | null } {
     const { ak, cfg } = this;
     const where = `on ${ak.ownerName(ak.me)}'s machine`;
     // Git is pointed at the clone's own record of this worktree, never at the `.git` link inside
@@ -1136,27 +1154,49 @@ export class Runner {
     if (!gitDir) return { problem: shipNeedsHuman("commit", "not one of the runner's working copies", where) };
     const io = trustedIo(gitDir);
     let branch: string;
-    let facts: { dirty: boolean; ahead: number };
+    let facts: { dirty: boolean; ahead: number; behind: number };
+    // Follow-ups are measured against the branch as it is on GitHub now, so nothing there is overwritten.
+    let fetched: boolean | Error = true;
     try {
       branch = io.git(worktree.path, "branch", "--show-current") || worktree.branch;
-      facts = worktreeFacts(io, worktree.path, worktree.base);
+      if (existingPr) {
+        try {
+          fetched = fetchBranch(io, worktree.path, branch);
+        } catch (e) {
+          fetched = e as Error;
+        }
+      }
+      facts = worktreeFacts(io, worktree.path, worktree.base, existingPr ? branch : undefined);
     } catch (e) {
       return { problem: shipNeedsHuman("commit", (e as Error).message, where) };
     }
-    const plan = shipPlan({ declaredReview: true, hasPr: false, ...facts, branch, base: worktree.base, protectedBranches: cfg.limits.protected_branches });
+    const plan = shipPlan({ declaredReview: true, hasPr: !!existingPr, ...facts, branch, base: worktree.base, protectedBranches: cfg.limits.protected_branches });
+    if ("skip" in plan && plan.skip === "nothing") {
+      if (existingPr) return { note: null };
+      return { note: `I said ${t.key} was ready for review, but there's nothing to deliver: no changes and no new commits on ${branch}.` };
+    }
+    // There's work to push, but GitHub couldn't be asked what the branch holds: don't guess.
+    if (fetched instanceof Error) return { problem: shipNeedsHuman("push", fetched.message, where) };
+    if (fetched === false) return { problem: `${SHIP_FAILED_PREFIX} ${branch} is no longer on GitHub, so I didn't push the follow-up work. The pull request may have been closed.` };
     if ("skip" in plan) {
-      if (plan.skip === "nothing") return { note: `I said ${t.key} was ready for review, but there's nothing to deliver: no changes and no new commits on ${branch}.` };
+      if (plan.skip === "moved") return { problem: `${SHIP_FAILED_PREFIX} GitHub has ${facts.behind} commit${facts.behind === 1 ? "" : "s"} on ${branch} that this machine doesn't, so I didn't push the follow-up work over them. The two need putting together by hand.` };
       if (plan.skip === "protected") return { problem: `${SHIP_FAILED_PREFIX} the work is on ${branch}, which agents never push. It needs its own branch.` };
       return { note: null };
     }
-    const title = `${t.key}: ${t.title}`.slice(0, 200);
-    const r = ship(io, { path: worktree.path, repo, branch, base: worktree.base, title, body: shipBody(ak.me.name, t.key, summary, message), steps: plan.steps });
+    const title = `${t.key}: ${t.title}${existingPr ? " (follow-up)" : ""}`.slice(0, 200);
+    const r = ship(io, { path: worktree.path, repo, branch, base: worktree.base, title, body: shipBody(ak.me.name, t.key, summary, message), steps: plan.steps, pr: existingPr });
     if (!r.ok) {
       this.log(`${t.key}: couldn't ${r.step}: ${redactSecrets(r.error).slice(0, 300)}`);
       return { problem: shipNeedsHuman(r.step, redactSecrets(r.error), where) };
     }
-    this.log(`${t.key}: delivered for the agent (${r.did.join(", ")}): ${r.pr}`);
-    return { pr: r.pr };
+    let commit: string | undefined;
+    try {
+      commit = io.git(worktree.path, "rev-parse", "--short", "HEAD");
+    } catch {
+      commit = undefined;
+    }
+    this.log(`${t.key}: delivered for the agent (${r.did.join(", ")}): ${commit ?? ""} ${r.pr}`);
+    return { pr: r.pr, commit };
   }
 
   /** The lead looks at one worker's question: answers it on the ticket, or asks its person once. */

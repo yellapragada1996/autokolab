@@ -18,26 +18,42 @@ export type ShipStep = "commit" | "push" | "open_pr";
 export interface ShipFacts {
   /** The agent ended with `status: review`. */
   declaredReview: boolean;
-  /** The ticket, or the agent's message, already has a pull request. */
+  /**
+   * The ticket, or the agent's message, already has a pull request: this is follow-up work for it
+   * (AK-66), pushed to the same branch with no new pull request.
+   */
   hasPr: boolean;
   /** The worktree has changes that aren't committed. */
   dirty: boolean;
-  /** Commits on the branch that the default branch on GitHub doesn't have. */
+  /** Commits here that GitHub doesn't have: on the branch when it's there, else on the default branch. */
   ahead: number;
+  /** Commits on the branch on GitHub that the worktree doesn't have. */
+  behind?: number;
   branch: string;
   base: string;
   protectedBranches: string[];
 }
 
-export type ShipPlan = { steps: ShipStep[] } | { skip: "not_asked" | "has_pr" | "nothing" | "protected" };
+export type ShipPlan = { steps: ShipStep[] } | { skip: "not_asked" | "nothing" | "moved" | "protected" };
 
 /** What the runner does for the agent. It only acts when the agent said the work is ready. */
 export function shipPlan(f: ShipFacts): ShipPlan {
   if (!f.declaredReview) return { skip: "not_asked" };
-  if (f.hasPr) return { skip: "has_pr" };
   if (!f.dirty && f.ahead <= 0) return { skip: "nothing" };
+  // Someone else pushed to the branch: the work has to be put together by hand, never overwritten.
+  if ((f.behind ?? 0) > 0) return { skip: "moved" };
   if (f.branch === f.base || f.protectedBranches.includes(f.branch)) return { skip: "protected" };
-  return { steps: [...(f.dirty ? (["commit"] as const) : []), "push", "open_pr"] };
+  return { steps: [...(f.dirty ? (["commit"] as const) : []), "push", ...(f.hasPr ? [] : (["open_pr"] as const))] };
+}
+
+/**
+ * Whether a finished run moves its ticket to Review. `status: review` does once there's a pull
+ * request, whoever pushed, unless the runner's delivery failed. With no ending block, a pull request
+ * link in the agent's message does.
+ */
+export function movesToReview(status: string | undefined, prInMessage: boolean, hasPr: boolean, deliveryFailed: boolean): boolean {
+  if (status === "review") return hasPr && !deliveryFailed;
+  return !status && prInMessage;
 }
 
 /** Files that are never delivered on an agent's behalf: local secrets. Examples and templates are fine. */
@@ -110,17 +126,46 @@ export function trustedIo(gitDir: string): ShipIo {
   return { git: trustedGit(gitDir), gh };
 }
 
-/** What the worktree holds that GitHub's default branch doesn't. */
-export function worktreeFacts(io: ShipIo, path: string, base: string): { dirty: boolean; ahead: number } {
+/**
+ * Brings this machine's copy of the branch on GitHub up to date, so a branch that moved there is
+ * seen. False when GitHub has no such branch; throws when GitHub can't be asked.
+ */
+export function fetchBranch(io: ShipIo, path: string, branch: string): boolean {
+  try {
+    io.git(path, "fetch", "-q", "--no-tags", "origin", `+refs/heads/${branch}:refs/remotes/origin/${branch}`);
+    return true;
+  } catch (e) {
+    if (/couldn't find remote ref/i.test((e as Error).message)) return false;
+    throw e;
+  }
+}
+
+const hasRef = (io: ShipIo, path: string, ref: string) => {
+  try {
+    io.git(path, "rev-parse", "--verify", "-q", `${ref}^{commit}`);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * What the worktree holds that GitHub doesn't. With `branch`, and this machine knows that branch on
+ * GitHub, it's measured against it (follow-up work, AK-66), including what GitHub has that the
+ * worktree doesn't; otherwise against the default branch.
+ */
+export function worktreeFacts(io: ShipIo, path: string, base: string, branch?: string): { dirty: boolean; ahead: number; behind: number } {
   const dirty = io.git(path, "status", "--porcelain") !== "";
+  const count = (range: string) => Number(io.git(path, "rev-list", "--count", range)) || 0;
+  if (branch && hasRef(io, path, `origin/${branch}`)) return { dirty, ahead: count(`origin/${branch}..HEAD`), behind: count(`HEAD..origin/${branch}`) };
   let ahead = 0;
   try {
-    ahead = Number(io.git(path, "rev-list", "--count", `origin/${base}..HEAD`)) || 0;
+    ahead = count(`origin/${base}..HEAD`);
   } catch {
     // No such remote branch yet: whatever is here is new.
-    ahead = Number(io.git(path, "rev-list", "--count", "HEAD")) || 0;
+    ahead = count("HEAD");
   }
-  return { dirty, ahead };
+  return { dirty, ahead, behind: 0 };
 }
 
 export interface ShipJob {
@@ -132,6 +177,8 @@ export interface ShipJob {
   title: string;
   body: string;
   steps: ShipStep[];
+  /** The pull request the branch already has, for follow-up work (no `open_pr` step). */
+  pr?: string;
 }
 
 export type ShipResult = { ok: true; pr: string; did: ShipStep[] } | { ok: false; step: ShipStep; error: string };
@@ -139,18 +186,13 @@ export type ShipResult = { ok: true; pr: string; did: ShipStep[] } | { ok: false
 const shown = (paths: string[]) => `${paths.slice(0, 5).join(", ")}${paths.length > 5 ? ` and ${paths.length - 5} more` : ""}`;
 
 /**
- * Every file added or changed by any commit the push would send: the ones the default branch on
- * GitHub doesn't have (all of them, if that isn't known). Each commit is read on its own, because a
- * file added in one commit and deleted in the next is still in what gets pushed.
+ * Every file added or changed by any commit the push would send: the ones neither the default
+ * branch nor the branch itself on GitHub has (all of them, if neither is known). Each commit is read
+ * on its own, because a file added in one commit and deleted in the next is still in what gets pushed.
  */
-function pushedPaths(io: ShipIo, path: string, base: string): string[] {
-  const log = (range: string) => io.git(path, "log", "-z", "--format=", "--name-only", "-c", "--diff-filter=AMRC", range);
-  let out: string;
-  try {
-    out = log(`origin/${base}..HEAD`);
-  } catch {
-    out = log("HEAD");
-  }
+function pushedPaths(io: ShipIo, path: string, base: string, branch: string): string[] {
+  const known = [`origin/${base}`, `origin/${branch}`].filter((ref) => hasRef(io, path, ref));
+  const out = io.git(path, "log", "-z", "--format=", "--name-only", "-c", "--diff-filter=AMRC", "HEAD", ...(known.length ? ["--not", ...known] : []));
   return [...new Set(out.split(/[\0\n]/).filter(Boolean))];
 }
 
@@ -169,7 +211,7 @@ export function ship(io: ShipIo, job: ShipJob): ShipResult {
         if (io.git(job.path, "diff", "--cached", "--name-only")) io.git(job.path, "commit", "-q", "-m", job.title);
       } else if (step === "push") {
         // Commits the agent made itself get the same check as the ones made here.
-        const secret = pushedPaths(io, job.path, job.base).filter(looksPrivate);
+        const secret = pushedPaths(io, job.path, job.base, job.branch).filter(looksPrivate);
         if (secret.length) throw new Error(`These look like local secrets, so I didn't push anything: ${shown(secret)}. They're in the branch's commits; deleting the file isn't enough, the commits have to be redone without it.`);
         io.git(job.path, "push", "-q", "-u", "origin", `HEAD:refs/heads/${job.branch}`);
       } else {
@@ -188,6 +230,7 @@ export function ship(io: ShipIo, job: ShipJob): ShipResult {
       return { ok: false, step, error: (e as Error).message };
     }
   }
+  if (job.pr) return { ok: true, pr: job.pr, did };
   return { ok: false, step: "open_pr", error: "The plan had no pull request step." };
 }
 
