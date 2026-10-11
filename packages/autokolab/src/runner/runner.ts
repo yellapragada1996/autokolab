@@ -233,12 +233,19 @@ export function runOutcome(
   return { state: "done", report: text || `Done with #${ctx.messageId}.`, quiet };
 }
 
-/** The loop guard's count: messages in a thread since the last one from a person, leaving out runner notices. */
+/**
+ * The loop guard's count: agent turns in a thread since the last message from a person. Consecutive
+ * messages from the same agent are one turn (one merged run answers a burst); runner notices are
+ * left out and don't split a turn.
+ */
 export function agentTurnsSinceHuman(thread: Pick<Message, "sender_id" | "body">[], isHuman: (senderId: string) => boolean): number {
   let turns = 0;
+  let previous: string | null = null;
   for (let i = thread.length - 1; i >= 0; i--) {
     if (isHuman(thread[i].sender_id)) break;
-    if (!isRunnerNotice(thread[i].body)) turns++;
+    if (isRunnerNotice(thread[i].body)) continue;
+    if (thread[i].sender_id !== previous) turns++;
+    previous = thread[i].sender_id;
   }
   return turns;
 }
@@ -672,8 +679,9 @@ export class Runner {
   }
 
   /**
-   * The loop guard: agents talking only to each other stop after max_agent_turns messages, and the
-   * thread gets one notice saying a person can restart it. Anyone's reply resets the count.
+   * The loop guard: agents talking only to each other stop after max_agent_turns turns, and the
+   * thread gets one notice saying a person can restart it. A person's reply resets the count. It runs
+   * for each incoming message, but a burst from one agent is one turn, so a merged run counts once.
    */
   private async withinAgentTurns(m: Message): Promise<boolean> {
     const root = m.thread_id ?? m.id;
@@ -688,7 +696,7 @@ export class Runner {
     if (turns < this.cfg.limits.max_agent_turns) return true;
     const last = thread[thread.length - 1];
     if (!last || !isPauseNotice(last.body)) {
-      this.log(`Pausing thread #${root}: ${turns} agent messages since a person's.`);
+      this.log(`Pausing thread #${root}: ${turns} agent turns since a person's.`);
       await this.say(m.room_id, root, null, pauseNotice(turns));
     }
     return false;

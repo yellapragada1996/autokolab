@@ -268,6 +268,17 @@ describe("loop guard", () => {
     expect(agentTurnsSinceHuman(run, isHuman)).toBe(2);
     expect(agentTurnsSinceHuman([...thread("a", "b"), notice("a", pauseNotice(12))], isHuman)).toBe(2);
   });
+  it("counts a burst from one agent as one turn", () => {
+    const burst = thread(...Array.from({ length: 12 }, () => "a"));
+    expect(agentTurnsSinceHuman(burst, isHuman)).toBe(1);
+    expect(agentTurnsSinceHuman(burst, isHuman)).toBeLessThan(12);
+    expect(agentTurnsSinceHuman(thread(...Array.from({ length: 12 }, (_, i) => (i % 2 ? "a" : "b"))), isHuman)).toBe(12);
+    expect(agentTurnsSinceHuman(thread("a", "a", "a", "b", "a", "a"), isHuman)).toBe(3);
+  });
+  it("a notice between two messages from the same agent doesn't split the turn", () => {
+    expect(agentTurnsSinceHuman([...thread("a"), notice("b", "Picked up #13, continuing."), ...thread("a")], isHuman)).toBe(1);
+    expect(agentTurnsSinceHuman([...thread("a"), notice("a", "Started on #12 (branch ak/a/t12)."), ...thread("a")], isHuman)).toBe(1);
+  });
   it("recognises its own pause notice, so it's posted once", () => {
     expect(pauseNotice(12)).toBe("Pausing this thread after 12 agent messages in a row. A person can reply to continue.");
     expect(isPauseNotice(pauseNotice(12))).toBe(true);
