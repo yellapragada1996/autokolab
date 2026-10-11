@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
@@ -11,6 +11,7 @@ import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineRun, type ModelChoice, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
+import { usageLimit } from "./limit.js";
 import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, riskyFiles, samePrFacts, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
@@ -167,6 +168,18 @@ interface ReviewJob {
   sha: string;
 }
 
+interface LimitWait {
+  until: string;
+  noticedAt: string;
+  kind: "message" | "ticket" | "triage" | "review";
+  project?: string;
+  key?: string;
+  comments?: Comment[];
+  pr?: PrInfo;
+  sha?: string;
+  messageId?: number;
+}
+
 /**
  * Per agent, on this machine: the engine session for each ticket, the last comment handled, and
  * (for a lead) the question text on each worker's ticket it already triaged.
@@ -217,6 +230,7 @@ export class Runner {
   private reviewQueue: ReviewJob[] = [];
   private checkingReviews = false;
   private reviewCheckedAt = new Map<string, { at: number; updated: string }>();
+  private limitWait: LimitWait | null = null;
 
   constructor(
     private ak: AutoKolab,
@@ -247,6 +261,7 @@ export class Runner {
     const pruned = pruneWorktrees(ak.me.name);
     if (pruned) this.log(`Cleaned up ${pruned} old worktree(s).`);
 
+    this.limitWait = this.readLimitWait();
     await this.recoverInterruptedRuns();
     const since = new Date(Date.now() - cfg.catch_up_hours * 3600_000).toISOString();
     this.lastSeenId = await ak.firstMessageIdSince(since);
@@ -283,7 +298,7 @@ export class Runner {
     await this.loadProjects();
     if (this.projects.length) {
       this.log(`Projects: ${this.projects.map((p) => p.project.name).join(", ")}`);
-      await this.setStatus(ak.me.paused ? "paused" : "idle");
+      await this.setStatus(ak.me.paused ? "paused" : "idle", this.limitWait && !ak.me.paused ? this.waitNote() : null);
     }
     this.poll();
     void this.introduce().catch((e) => this.log(`Couldn't introduce myself yet: ${(e as Error).message}`));
@@ -313,6 +328,65 @@ export class Runner {
     return this.usedToday() >= this.cfg.limits.max_hours_per_day * 3600;
   }
 
+  private limitPath(): string {
+    return join(stateDir(), "usage", `${this.ak.me.id}-subscription.json`);
+  }
+
+  private readLimitWait(): LimitWait | null {
+    try {
+      const wait = JSON.parse(readFileSync(this.limitPath(), "utf8")) as LimitWait;
+      return Number.isFinite(Date.parse(wait.until)) && ["message", "ticket", "triage", "review"].includes(wait.kind) ? wait : null;
+    } catch { return null; }
+  }
+
+  private saveLimitWait(wait: LimitWait | null): void {
+    this.limitWait = wait;
+    if (wait) {
+      mkdirSync(join(stateDir(), "usage"), { recursive: true });
+      writeFileSync(this.limitPath(), JSON.stringify(wait));
+    } else rmSync(this.limitPath(), { force: true });
+  }
+
+  private waitNote(): string {
+    const wait = this.limitWait!;
+    return `Waiting for my usage limit to reset, about ${this.waitTime(wait)}`;
+  }
+
+  private waitTime(wait: LimitWait): string {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const time = new Intl.DateTimeFormat("en-US", { timeZone: zone, hour: "numeric", minute: "2-digit" }).format(new Date(wait.until));
+    return `${time.toLowerCase()} (${zone})`;
+  }
+
+  private async waitForUsage(run: EngineRun, kind: LimitWait["kind"], job?: TicketJob | TriageJob | ReviewJob, messageId?: number): Promise<{ notice: boolean; wait: LimitWait } | null> {
+    const limit = usageLimit(run);
+    if (!limit) return null;
+    const previous = this.limitWait;
+    const target = job?.ticket;
+    const wait: LimitWait = {
+      until: limit.until.toISOString(), noticedAt: previous?.noticedAt ?? new Date().toISOString(), kind,
+      ...(job ? { project: job.project.project.slug, key: target!.key } : {}),
+      ...(kind === "ticket" ? { comments: (job as TicketJob).comments } : {}),
+      ...(kind === "review" ? { pr: (job as ReviewJob).pr, sha: (job as ReviewJob).sha } : {}),
+      ...(messageId ? { messageId } : {}),
+    };
+    this.saveLimitWait(wait);
+    await this.setStatus(this.ak.me.paused ? "paused" : "idle", this.ak.me.paused ? null : this.waitNote(), target?.id ?? null);
+    await this.ak.heartbeat(this.stateNow()).catch(() => undefined);
+    // A renewed limit within an hour extends the wait without repeating the notice.
+    const notice = !previous || Date.now() - Date.parse(previous.noticedAt) >= 3600_000;
+    if (notice) {
+      wait.noticedAt = new Date().toISOString();
+      this.saveLimitWait(wait);
+      if (job) {
+        const message = `I've reached my ${this.cfg.engine === "claude" ? "Claude" : "Codex"} usage limit. I'll continue with ${target!.key} at about ${this.waitTime(wait)}.`;
+        await job.project.comment(target!.key, message).catch((e) => this.log(`Couldn't comment on ${target!.key}: ${(e as Error).message}`));
+      }
+    }
+    this.log(`Usage limit reached; waiting until ${wait.until}.`);
+    return { notice, wait };
+  }
+
   private limitNoticeDay = "";
   private async waitForTomorrow(job: Job): Promise<void> {
     if (this.limitNoticeDay !== today()) {
@@ -334,7 +408,7 @@ export class Runner {
     const marker = join(stateDir(), "introduced", this.ak.me.id);
     if (existsSync(marker)) return;
     const room = this.ak.rooms().find((r) => r.repo);
-    if (!room || this.held) return;
+    if (!room || this.held || this.limitWait) return;
     this.greeting = true;
     try {
       await this.sayHello(room, marker);
@@ -385,13 +459,19 @@ export class Runner {
   private async recoverInterruptedRuns(): Promise<void> {
     for (const r of (await this.ak.myRuns(200)).reverse()) {
       if (r.state === "running") {
+        if (this.limitWait?.kind === "message" && this.limitWait.messageId === r.message_id) {
+          const message = await this.ak.messageById(r.message_id);
+          if (message) this.queue.unshift({ run: r, message, fromInstructor: this.ak.canInstruct(message.sender_id, message.room_id) });
+          await this.ak.updateRun(r.id, { state: "queued", summary: "Waiting for usage limit to reset" });
+          continue;
+        }
         await this.ak.updateRun(r.id, { state: "failed", summary: "Runner stopped while this was running.", finished_at: now() });
         await this.say(r.room_id, r.thread_root, null, `Stopped: my runner restarted while working on #${r.message_id}. Send it again to retry.`);
       } else if (r.state === "queued") {
         const message = await this.ak.messageById(r.message_id);
         if (!message) continue;
         const fromInstructor = this.ak.canInstruct(message.sender_id, message.room_id);
-        if (staleTeammateMessage(message, fromInstructor, this.startedAt)) {
+        if (staleTeammateMessage(message, fromInstructor, this.startedAt) && this.limitWait?.messageId !== message.id) {
           await this.ak.updateRun(r.id, { state: "cancelled", summary: STALE_RUN_SUMMARY, finished_at: now() });
           this.log(`Dropped queued #${message.id}: ${STALE_RUN_SUMMARY.toLowerCase()}.`);
           continue;
@@ -482,7 +562,7 @@ export class Runner {
 
   private async onPauseChange(paused: boolean): Promise<void> {
     await this.ak.heartbeat(this.stateNow()).catch(() => undefined);
-    if (!this.current) await this.setStatus(paused ? "paused" : "idle");
+    if (!this.current) await this.setStatus(paused ? "paused" : "idle", !paused && this.limitWait ? this.waitNote() : null);
     if (paused && this.current) {
       this.log("Paused by owner: stopping the current task.");
       this.current.abort.abort();
@@ -510,11 +590,29 @@ export class Runner {
     if (this.busy || this.held) return;
     this.busy = true;
     try {
+      if (this.limitWait && Date.now() < Date.parse(this.limitWait.until)) return;
+      if (this.limitWait?.kind === "message" && !this.queue.length && Date.now() >= Date.parse(this.limitWait.until)) this.saveLimitWait(null);
+      if (this.limitWait && !this.ak.me.paused && !this.stopping && !this.overLimit() && this.limitWait.kind !== "message") {
+        const wait = this.limitWait;
+        const project = this.projects.find((p) => p.project.slug === wait.project);
+        if (project && wait.key) {
+          const ticket = await project.ticket(wait.key);
+          if (["done", "canceled"].includes(ticket.status) ||
+              (wait.kind === "review" && (ticket.status !== "review" || !!ticket.approved_sha)) ||
+              (wait.kind === "triage" && !ticket.needs_human)) {
+            this.saveLimitWait(null);
+            await this.setStatus("idle");
+          } else if (wait.kind === "ticket") await this.executeTicket({ project, ticket, comments: wait.comments ?? [] });
+          else if (wait.kind === "triage") await this.executeTriage({ project, ticket });
+          else if (wait.pr && wait.sha) await this.executeReview({ project, ticket, pr: wait.pr, sha: wait.sha });
+        }
+      }
       while (this.queue.length && !this.ak.me.paused && !this.stopping) {
         if (this.overLimit()) {
           await this.waitForTomorrow(this.queue[0]);
           break;
         }
+        if (this.limitWait && Date.now() < Date.parse(this.limitWait.until)) break;
         const job = this.queue.shift()!;
         await this.execute(job).catch(async (e) => {
           const msg = (e as Error).message;
@@ -524,7 +622,7 @@ export class Runner {
         });
       }
       // Then the board: workers' questions (for a lead), follow-ups on its tickets, the next Ready ticket.
-      while (!this.queue.length && !this.ak.me.paused && !this.stopping && !this.overLimit()) {
+      while (!this.queue.length && !this.ak.me.paused && !this.stopping && !this.overLimit() && !this.limitWait) {
         const q = await this.nextQuestion().catch((e) => {
           this.log(`Couldn't check workers' questions: ${(e as Error).message}`);
           return null;
@@ -550,6 +648,8 @@ export class Runner {
           await this.setStatus("blocked", `Couldn't start ${tj.ticket.key}`, tj.ticket.id);
         });
       }
+    } catch (e) {
+      this.log(`Couldn't resume after usage limit: ${(e as Error).message}`);
     } finally {
       this.busy = false;
     }
@@ -598,7 +698,7 @@ export class Runner {
     await ak.updateRun(run.id, { state: "running", branch: worktree.branch, started_at: now() });
     await ak.heartbeat("working").catch(() => undefined);
     this.log(`Working on #${m.id} in ${room.name} (${worktree.branch})${resume ? ", continuing session" : ""}.`);
-    const notice = startNotice(m.id, worktree.branch, Boolean(resume), job.fromInstructor);
+    const notice = this.limitWait?.kind === "message" ? null : startNotice(m.id, worktree.branch, Boolean(resume), job.fromInstructor);
     if (notice) await this.say(room.id, run.thread_root, sender.id, notice);
 
     let result;
@@ -611,6 +711,18 @@ export class Runner {
     }
 
     const text = redactSecrets(result.finalText.trim()).slice(0, 12000);
+    const limited = await this.waitForUsage(result, "message", undefined, m.id);
+    if (limited) {
+      await ak.updateRun(run.id, { state: "queued", session_id: result.sessionId, summary: "Waiting for usage limit to reset" });
+      this.queue.unshift(job);
+      if (limited.notice) await this.say(room.id, run.thread_root, sender.id,
+        `I've reached my ${cfg.engine === "claude" ? "Claude" : "Codex"} usage limit. I'll continue with #${m.id} at about ${this.waitTime(limited.wait)}.`);
+      return;
+    }
+    if (this.limitWait?.kind === "message") {
+      this.saveLimitWait(null);
+      await this.setStatus(ak.me.paused ? "paused" : "idle");
+    }
     const { state, report, quiet } = runOutcome(result, text, {
       messageId: m.id,
       stopReason: this.stopping ? "my runner was shut down" : `${ak.ownerName(ak.me)} paused me`,
@@ -744,7 +856,7 @@ export class Runner {
 
   /** Whether the lead's runner may start an automatic review now: the owner's switch, pause and the daily limit. */
   reviewsAllowed(): boolean {
-    return this.cfg.auto_review && !this.ak.me.paused && !this.stopping && !this.overLimit();
+    return this.cfg.auto_review && !this.ak.me.paused && !this.stopping && !this.overLimit() && !this.limitWait;
   }
 
   /**
@@ -1073,6 +1185,8 @@ export class Runner {
     }
 
     const raw = redactSecrets(result.finalText.trim()).slice(0, 12000);
+    if (await this.waitForUsage(result, "ticket", job)) return;
+    if (this.limitWait?.kind === "ticket") this.saveLimitWait(null);
     const o = parseOutcome(raw);
     const text = o.body;
     const after = await p.ticket(t.key);
@@ -1206,6 +1320,13 @@ export class Runner {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000);
     }
+    if (await this.waitForUsage(result, "triage", job)) {
+      const reset = this.ticketState();
+      delete reset.triaged?.[t.id];
+      this.saveTicketState(reset);
+      return;
+    }
+    if (this.limitWait?.kind === "triage") this.saveLimitWait(null);
     await this.setStatus(ak.me.paused ? "paused" : "idle");
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
     const said = redactSecrets(result.finalText.trim()).split("\n")[0].slice(0, 200);
@@ -1284,6 +1405,11 @@ export class Runner {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000);
     }
+    if (await this.waitForUsage(result, "review", job)) {
+      this.rememberReview(t.id, prev);
+      return;
+    }
+    if (this.limitWait?.kind === "review") this.saveLimitWait(null);
     await this.setStatus(ak.me.paused ? "paused" : "idle");
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
     if (result.aborted) {
