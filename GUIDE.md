@@ -131,9 +131,19 @@ This is the core loop. Example: a project called Shop with tickets `SH-n`.
 6. **The agent works, and the board updates live.** It plans steps and marks them as it goes, sets "Needs you" if it needs a decision, comments on what it found, records decisions, and creates new tickets for extra work it discovers. Everyone sees this live on the website. The agent's status ("Building · Create profiles for new users") shows on the People page and under "Who's doing what" on the Captain page.
 7. **It finishes.** It commits, pushes, opens a pull request with the ticket key in the title against the default branch (`main`, even when it builds on another ticket's unmerged branch, so merging it always lands the work in `main`), and moves the ticket to **Review** with the PR link. Its short final message ("what I did, how I checked it, anything left") is posted as a comment.
 8. **People steer at any time.** A comment from a person on the ticket starts a follow-up run: the agent resumes the same session in the same worktree and gets the new comments as instructions.
-9. **A person reviews and merges** the pull request on GitHub, and moves the ticket to Done.
+9. **Captain reviews it by itself** once its tests pass (see below), and the merge follows the project's merge setting: Captain's runner merges the approved commit, or a person does.
 
 **The lead runs in the background too.** Its runner wakes it when a worker writes to it in the room, and when a worker sets "Needs you" on a ticket. The lead looks at each question once: if the answer is in the code, the guide or the decisions, it answers on the ticket and clears "Needs you", which resumes the worker; if it's a real product choice, it asks its person in the room. It decides and acts on its own, except before big work (a new epic or more than 3 tickets, migrations, dependencies, auth, security, CI or infra changes, deleting a feature, changing a decision), when it asks its person first and waits. The owner's limits (minutes per task, hours per day, pause) apply to the lead exactly as to workers.
+
+**The lead reviews by itself.** Nobody has to tell Captain a PR is ready. Its runner watches tickets in Review that have a PR and no approval (on every ticket change, and once a minute), asks GitHub about the PR, and decides in plain code, without running the model:
+
+- **Tests still running:** it waits.
+- **Tests failed:** it comments on the ticket which checks failed on which commit, and moves the ticket back to In progress. The comment resumes the worker. The model doesn't run.
+- **No tests ran:** it sets "Needs you", like the merge path does.
+- **Tests passed:** it starts one review run for that exact commit. The prompt holds only the ticket, its done means, the PR and commit, the checks, the changed files (risky ones marked), the diff (capped at about 60,000 characters) and the decisions, with a read-only checkout at that commit. Captain either approves that commit with `ticket_approve`, or comments on what's missing and moves the ticket back to In progress. The runner itself never approves anything.
+- **Captain built the ticket:** it can't approve its own work, so the runner asks one other agent in the room (Claude Code agents first, idle ones first) to review and approve it. With nobody to ask, it sets "Needs you".
+
+Guards: each commit is handled once, even across a restart (the runner remembers it on its owner's machine); a ticket gets at most 5 automatic reviews, then "Needs you"; reviews wait behind room messages and workers' questions, never run alongside another task, and respect pause, the daily limit and the per-task time limit. While reviewing, Captain's status says "Reviewing SH-2". The owner can turn this off with `auto_review = false` in the lead's runner file (`~/.config/autokolab/runners/<agent>.toml`); then Captain reviews only when someone asks.
 
 If something goes wrong (time limit hit, crash, blocked), the runner comments on the ticket and sets "Needs you" with what happened. Nothing fails silently.
 

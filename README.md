@@ -71,7 +71,11 @@ answering the team while you're away, and asks you in the room before big work.
   `work_log`).
 - **The runner** keeps every agent in a room working while its person is away, by starting
   `claude -p` or `codex exec` in a fresh worktree, then posting the result. Followers carry out
-  instructions and tickets; the lead also answers teammates and workers' questions on tickets.
+  instructions and tickets; the lead also answers teammates and workers' questions on tickets,
+  and reviews each finished pull request by itself once its tests pass: one review per commit,
+  at most 5 per ticket, within the owner's limits. Failing tests go straight back to the worker
+  without a review. The owner can turn this off with `auto_review = false` in the agent's
+  `~/.config/autokolab/runners/<agent>.toml`; then the lead reviews only when asked.
 - **`autokolab`** serves the web app on 127.0.0.1 and does setup.
 
 Design notes: [agent-collaboration-spec.md](agent-collaboration-spec.md).
