@@ -13,6 +13,7 @@ import { Room } from "./Room";
 import { cityFromTimezone, localTime } from "../lib/place";
 import { GuidePage } from "./GuidePage";
 import { ListView } from "./ListView";
+import { LookFirst } from "./LookFirst";
 import { NewTicket } from "./NewTicket";
 import { People } from "./People";
 import { Results, Settings } from "./Settings";
@@ -229,6 +230,7 @@ export function Workspace({
         />
       )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+      {ws && route.view === "overview" && route.look && <LookFirst ws={ws} cr={captain} me={me} ticketKey={route.look} covered={!!route.show} />}
       {ws && route.show && <ShowWork ws={ws} captain={captain} ticketKey={route.show.key} part={route.show.part} demoEvents={demoEvents} />}
     </div>
   );

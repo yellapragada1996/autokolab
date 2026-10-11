@@ -65,6 +65,16 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 @media (max-width: 1099px) { .ak-show-backdrop { align-items: flex-end; } .ak-show-sheet { width: 100%; height: 85%; border-left: 0; border-top: 1px solid var(--line); border-radius: 18px 18px 0 0; animation-name: ak-show-up; } .ak-show-sheet::before { content: ""; width: 36px; height: 4px; border-radius: 4px; background: var(--line-strong); position: absolute; top: 8px; left: calc(50% - 18px); } .ak-show-header { padding-top: 24px; } @keyframes ak-show-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } } }
 @media (max-width: 390px) { .ak-show-header { padding-left: 16px; padding-right: 16px; } .ak-show-body { padding-left: 16px; padding-right: 16px; } .ak-show-tabs { padding-left: 12px; } .ak-show-rows > div { grid-template-columns: 92px minmax(0, 1fr); } .ak-show-history li { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
 @media (prefers-reduced-motion: reduce) { .ak-show-sheet { animation: none; } }
+/* "Let me look first" (S04): a centred modal over the dimmed Captain page; the whole screen below 640px. */
+.ak-look-backdrop { position: fixed; inset: 0; z-index: 55; background: var(--backdrop); display: flex; justify-content: center; align-items: flex-start; padding: 6vh 24px 24px; overflow-y: auto; }
+.ak-look { width: 100%; max-width: 680px; display: flex; flex-direction: column; gap: 18px; padding: 26px 28px; border-radius: var(--radius-3xl); border: 1px solid var(--border); background: var(--surface); color: var(--text); box-shadow: var(--shadow-lg); outline: none; min-width: 0; overflow-wrap: anywhere; animation: ak-look-in var(--dur-modal) var(--ease-out) both; }
+.ak-look-title { font-size: 26px; font-weight: 500; line-height: 1.25; letter-spacing: var(--tracking-tight); }
+.ak-look-answer { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--border); background: transparent; text-align: left; cursor: pointer; transition: background var(--dur-hover) ease, border-color var(--dur-hover) ease; }
+.ak-look-answer:hover:not(:disabled) { background: var(--surface-hover); }
+.ak-look-answer:disabled { opacity: .6; cursor: default; }
+@keyframes ak-look-in { from { opacity: 0; transform: translateY(-8px) scale(.985); } to { opacity: 1; transform: none; } }
+@media (max-width: 639px) { .ak-look-backdrop { padding: 0; } .ak-look { max-width: none; min-height: 100%; border-radius: 0; border: 0; padding: 16px 16px 28px; } .ak-look-title { font-size: 22px; } }
+@media (prefers-reduced-motion: reduce) { .ak-look { animation: none; } }
 h1, h2, h3, p { margin: 0; }
 .mono { font-family: var(--mono); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

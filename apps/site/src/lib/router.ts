@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 //   /p/<project>                     Captain
 //   /p/<project>/work                Work, by agent (?group=goal by goal, ?view=backlog|all)
 //   /p/<project>/work/<ticket key>   a ticket
+//   /p/<project>/look/<ticket key>   Captain, with "Let me look first" on a risky merge over it
 //   /p/<project>/room | people | decisions (?tab=guide) | settings | results | connect
 // The old paths (/overview, /board, /backlog, /list, /guide, /t/<key>) redirect to these.
 
@@ -15,7 +16,7 @@ export type Route =
   | { view: "home" }
   | { view: "new-project" }
   | { view: "join"; code: string }
-  | { view: ProjectView; project: string; show?: ShowRoute }
+  | { view: ProjectView; project: string; show?: ShowRoute; look?: string }
   | { view: "ticket"; project: string; key: string; show?: ShowRoute };
 
 const SIMPLE = ["room", "people", "connect", "settings", "results"] as const;
@@ -33,6 +34,7 @@ export function parse(path: string, search = ""): Route {
   const project = parts[1];
   const v = parts[2];
   if (!v) return { view: "overview", project, ...sheet };
+  if (v === "look") return { view: "overview", project, ...(parts[3] ? { look: parts[3].toUpperCase() } : {}), ...sheet };
   if (v === "work") {
     if (parts[3]) return { view: "ticket", project, key: parts[3].toUpperCase(), ...sheet };
     const view = q.get("view");
@@ -74,6 +76,37 @@ export function closeShow(): void {
   requestAnimationFrame(() => opener?.isConnected && opener.focus());
 }
 
+/**
+ * "Let me look first" (S04): its address, or Captain's when key is null. Keeps the query (the
+ * preview, for one) but not a Show-the-work sheet.
+ */
+export function lookHref(project: string, key: string | null): string {
+  const url = new URL(location.href);
+  url.searchParams.delete("show");
+  url.searchParams.delete("part");
+  return href({ view: "overview", project, ...(key ? { look: key.toUpperCase() } : {}) }) + url.search;
+}
+
+let lookOpener: HTMLElement | null = null;
+export function openLook(project: string, key: string): void {
+  lookOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  go(lookHref(project, key), false, false);
+}
+
+/**
+ * Back to Captain, with focus on what opened the step ("Let me look first") when it's still there,
+ * else on the element with the fallback id (the card, after it turned green).
+ */
+export function closeLook(project: string, fallbackId?: string): void {
+  go(lookHref(project, null), false, false);
+  const opener = lookOpener;
+  lookOpener = null;
+  requestAnimationFrame(() => {
+    const el = opener?.isConnected ? opener : fallbackId ? document.getElementById(fallbackId) : null;
+    el?.focus();
+  });
+}
+
 export function href(r: Route): string {
   if (r.view === "home") return "/";
   if (r.view === "new-project") return "/new";
@@ -81,7 +114,7 @@ export function href(r: Route): string {
   const base = `/p/${r.project}`;
   switch (r.view) {
     case "overview":
-      return base;
+      return r.look ? `${base}/look/${r.look}` : base;
     case "ticket":
       return `${base}/work/${r.key}`;
     case "board":
