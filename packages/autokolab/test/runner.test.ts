@@ -3,16 +3,16 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Member, Message, Room } from "../src/core/types.js";
+import type { Member, Message, Room, TaskRun } from "../src/core/types.js";
 import { writeConfigFile } from "../src/core/config.js";
 import { parseRunnerConfig, runnerTemplate } from "../src/runner/config.js";
 import { chooseModel, claudeDenyRules, claudeInvocation, codexInvocation, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
 import { installHook } from "../src/runner/githook.js";
 import { REVIEW_DIFF_LIMIT, buildPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "../src/runner/prompt.js";
 import { needsRunner } from "../src/setup/connect.js";
-import { Runner, STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
+import { BATCH_MAX_MS, BATCH_WAIT_MS, Runner, STALE_RUN_SUMMARY, addToQueue, agentTurnsSinceHuman, countWake, isLegacyAnswer, isPauseNotice, isRunnerNotice, pauseNotice, replyAs, runOutcome, shouldWake, staleTeammateMessage, startNotice, type Job, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ROOM_QUIET, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
 import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
@@ -56,13 +56,26 @@ describe("who wakes whom", () => {
   const ME = "me";
   const PEER = "peer-agent";
   const LEAD = "lead";
-  const ctx = (extra: Partial<WakeContext> = {}): WakeContext => ({ meId: ME, senderInRoom: true, fromInstructor: false, inThread: false, acceptBroadcastTasks: false, ...extra });
+  const ctx = (extra: Partial<WakeContext> = {}): WakeContext => ({ meId: ME, senderInRoom: true, fromInstructor: false, inThread: false, acceptBroadcastTasks: false, fromPerson: false, ...extra });
   const msg = (extra: Partial<Message> = {}) => ({ sender_id: PEER, to_id: ME, thread_id: null, kind: "chat", body: "Can you check the schema?", ...extra }) as Message;
+  const KINDS = ["chat", "task", "question", "answer", "status", "review", "handoff", "decision"] as const;
+  const ASKS: string[] = ["question", "task", "review", "answer"];
+  const PERSON = "ana";
 
-  it("a teammate's message to me wakes me, any kind, including a status report", () => {
-    for (const kind of ["chat", "question", "answer", "review", "status", "handoff"] as const) {
-      expect(shouldWake(msg({ kind }), ctx())).toEqual({ wake: true, fromInstructor: false });
-    }
+  // Every kind, addressed to me, from a person, from the lead and from a worker (AK-90).
+  const table = KINDS.flatMap((kind) => [
+    { from: "a person", kind, sender_id: PERSON, c: ctx({ fromPerson: true, fromInstructor: true }), wake: true, instructor: true },
+    { from: "the lead", kind, sender_id: LEAD, c: ctx({ fromInstructor: true }), wake: ASKS.includes(kind), instructor: true },
+    { from: "a worker", kind, sender_id: PEER, c: ctx(), wake: ASKS.includes(kind), instructor: false },
+  ]);
+  it.each(table)("$kind to me from $from: wakes $wake", ({ kind, sender_id, c, wake, instructor }) => {
+    expect(shouldWake(msg({ kind, sender_id }), c)).toEqual({ wake, fromInstructor: instructor });
+  });
+  it("an older runner's status that answers my question wakes me; other statuses don't", () => {
+    expect(shouldWake(msg({ kind: "status", thread_id: 5 }), ctx({ legacyAnswer: true })).wake).toBe(true);
+    expect(shouldWake(msg({ kind: "status", thread_id: 5 }), ctx({ fromInstructor: true, legacyAnswer: true })).wake).toBe(true);
+    expect(shouldWake(msg({ kind: "status", to_id: null, thread_id: 5 }), ctx({ legacyAnswer: true, inThread: true })).wake).toBe(false);
+    expect(shouldWake(msg({ kind: "status", body: "Started on #12 (branch b)." }), ctx({ legacyAnswer: true })).wake).toBe(false);
   });
   it("a teammate's broadcast chat doesn't wake me, even in my thread", () => {
     expect(shouldWake(msg({ to_id: null }), ctx()).wake).toBe(false);
@@ -82,12 +95,9 @@ describe("who wakes whom", () => {
     expect(shouldWake(msg({ kind: "status", body: "Started on #12 in thread #12." }), ctx()).wake).toBe(false);
     expect(shouldWake(msg({ kind: "status", body: pauseNotice(12) }), ctx()).wake).toBe(false);
   });
-  it("the lead's status report to me wakes me; its runner's pings don't", () => {
+  it("the lead's runner pings don't wake me", () => {
     const lead = ctx({ fromInstructor: true });
     const from = (extra: Partial<Message>) => msg({ sender_id: LEAD, ...extra });
-    for (const kind of ["status", "handoff", "chat"] as const) {
-      expect(shouldWake(from({ kind }), lead)).toEqual({ wake: true, fromInstructor: true });
-    }
     expect(shouldWake(from({ kind: "status", body: "Started on #12 in thread #12." }), lead).wake).toBe(false);
     expect(shouldWake(from({ kind: "status", body: "Queued #12: Ana has paused me; I'll start when resumed." }), lead).wake).toBe(false);
     expect(shouldWake(from({ kind: "status", to_id: null, thread_id: 5 }), { ...lead, inThread: true }).wake).toBe(false);
@@ -97,11 +107,100 @@ describe("who wakes whom", () => {
     const from = (extra: Partial<Message>) => msg({ sender_id: LEAD, ...extra });
     expect(shouldWake(from({ kind: "task" }), lead)).toEqual({ wake: true, fromInstructor: true });
     expect(shouldWake(from({ to_id: "someone-else", kind: "task" }), lead).wake).toBe(false);
-    expect(shouldWake(from({ to_id: null, thread_id: 5, kind: "chat" }), { ...lead, inThread: true }).wake).toBe(true);
+    expect(shouldWake(from({ to_id: null, thread_id: 5, kind: "answer" }), { ...lead, inThread: true }).wake).toBe(true);
+    expect(shouldWake(from({ to_id: null, thread_id: 5, kind: "chat" }), { ...lead, inThread: true }).wake).toBe(false);
     expect(shouldWake(from({ to_id: null, thread_id: 5, kind: "question" }), { ...lead, inThread: true }).wake).toBe(false);
     expect(shouldWake(from({ to_id: null, kind: "task" }), lead).wake).toBe(false);
     expect(shouldWake(from({ to_id: null, kind: "task" }), { ...lead, acceptBroadcastTasks: true }).wake).toBe(true);
     expect(shouldWake(from({ to_id: null, kind: "chat" }), { ...lead, acceptBroadcastTasks: true }).wake).toBe(false);
+  });
+  it("a person's broadcasts and threads work as before", () => {
+    const person = ctx({ fromInstructor: true, fromPerson: true });
+    const from = (extra: Partial<Message>) => msg({ sender_id: PERSON, ...extra });
+    expect(shouldWake(from({ to_id: null, thread_id: 5, kind: "chat" }), { ...person, inThread: true }).wake).toBe(true);
+    expect(shouldWake(from({ to_id: null, thread_id: 5, kind: "decision" }), { ...person, inThread: true }).wake).toBe(true);
+    expect(shouldWake(from({ to_id: null, thread_id: 5, kind: "chat" }), person).wake).toBe(false);
+    expect(shouldWake(from({ to_id: null, kind: "task" }), { ...person, acceptBroadcastTasks: true }).wake).toBe(true);
+  });
+});
+
+describe("older runners' answers", () => {
+  const m = (id: number, sender_id: string, kind: Message["kind"], body = "text") => ({ id, sender_id, kind, body });
+  it("counts the first status from the agent I asked as an answer", () => {
+    expect(isLegacyAnswer([m(5, "me", "question"), m(6, "peer", "status")], m(6, "peer", "status"), "me")).toBe(true);
+    expect(isLegacyAnswer([m(5, "me", "review"), m(6, "peer", "status", "Started on #5 (branch b)."), m(7, "peer", "status")], m(7, "peer", "status"), "me")).toBe(true);
+  });
+  it("not a second reply, a reply to my report, or a non-status", () => {
+    expect(isLegacyAnswer([m(5, "me", "question"), m(6, "peer", "status"), m(7, "peer", "status")], m(7, "peer", "status"), "me")).toBe(false);
+    expect(isLegacyAnswer([m(5, "peer", "question"), m(6, "me", "status"), m(7, "peer", "status")], m(7, "peer", "status"), "me")).toBe(false);
+    expect(isLegacyAnswer([m(5, "me", "question"), m(6, "peer", "chat")], m(6, "peer", "chat"), "me")).toBe(false);
+  });
+});
+
+describe("one run per thread's waiting messages", () => {
+  const T0 = 1_000_000;
+  const run = (id: number, thread_root: number) => ({ id, thread_root }) as TaskRun;
+  const message = (id: number, thread_id: number | null, sender_id = "peer", room_id = "r1") => ({ id, thread_id, sender_id, room_id, kind: "question" }) as Message;
+  const entry = (id: number, thread: number, fromInstructor = false, room = "r1") => ({ run: run(id, thread), message: message(id, thread === id ? null : thread, "peer", room), fromInstructor });
+
+  it("merges messages in the same thread, oldest first, and waits briefly for teammates", () => {
+    const q: Job[] = [];
+    expect(addToQueue(q, entry(10, 10), true, T0)).toBe("run");
+    expect(q[0].notBefore).toBe(T0 + BATCH_WAIT_MS);
+    expect(addToQueue(q, entry(11, 10), true, T0 + 5_000)).toBe("merged");
+    expect(q).toHaveLength(1);
+    expect(q[0].more.map((x) => x.message.id)).toEqual([11]);
+    expect(q[0].notBefore).toBe(T0 + 5_000 + BATCH_WAIT_MS);
+  });
+  it("never waits more than two minutes in all", () => {
+    const q: Job[] = [];
+    addToQueue(q, entry(10, 10), true, T0);
+    for (let i = 1; i <= 10; i++) addToQueue(q, entry(10 + i, 10), true, T0 + i * 15_000);
+    expect(q[0].notBefore).toBe(T0 + BATCH_MAX_MS);
+  });
+  it("a person's message is never delayed, and starts the job it joins", () => {
+    const q: Job[] = [];
+    addToQueue(q, entry(10, 10, true), false, T0);
+    expect(q[0].notBefore).toBe(0);
+    addToQueue(q, entry(11, 10, true), true, T0 + 1_000);
+    expect(q[0].notBefore).toBe(0);
+    const q2: Job[] = [];
+    addToQueue(q2, entry(10, 10, true), true, T0);
+    addToQueue(q2, entry(11, 10, true), false, T0 + 1_000);
+    expect(q2[0].notBefore).toBe(0);
+  });
+  it("keeps other threads, rooms and instructions apart", () => {
+    const q: Job[] = [];
+    addToQueue(q, entry(10, 10), true, T0);
+    expect(addToQueue(q, entry(11, 11), true, T0)).toBe("run");
+    expect(addToQueue(q, entry(12, 10, false, "r2"), true, T0)).toBe("run");
+    expect(addToQueue(q, entry(13, 10, true), true, T0)).toBe("run");
+    expect(q).toHaveLength(4);
+  });
+});
+
+describe("how a reply run's final text goes out", () => {
+  const human = (id: string) => id === "ana";
+  const m = (sender_id: string, kind: Message["kind"]) => ({ sender_id, kind });
+  it("answers the agent who asked, which wakes them", () => {
+    for (const kind of ["question", "task", "review"] as const) expect(replyAs([m("lead", kind)], human)).toEqual({ kind: "answer", to: "lead" });
+    expect(replyAs([m("peer", "question"), m("lead", "answer")], human)).toEqual({ kind: "answer", to: "peer" });
+  });
+  it("reports to a person, or after an answer, as a status that wakes nobody", () => {
+    expect(replyAs([m("ana", "question")], human)).toEqual({ kind: "status", to: "ana" });
+    expect(replyAs([m("lead", "answer")], human)).toEqual({ kind: "status", to: "lead" });
+  });
+});
+
+describe("counting wake decisions", () => {
+  it("counts per day and keeps two weeks", () => {
+    let c = countWake({}, "2026-10-11", "seen");
+    c = countWake(c, "2026-10-11", "seen");
+    c = countWake(c, "2026-10-11", "merged");
+    expect(c["2026-10-11"]).toEqual({ seen: 2, run: 0, merged: 1 });
+    for (let d = 1; d <= 20; d++) c = countWake(c, `2026-11-${String(d).padStart(2, "0")}`, "run");
+    expect(Object.keys(c)).toHaveLength(14);
+    expect(c["2026-11-20"]).toEqual({ seen: 0, run: 1, merged: 0 });
   });
 });
 
@@ -227,6 +326,24 @@ describe("prompt", () => {
     expect(fromPeer).not.toContain("Instruction from");
     expect(fromPeer).toMatch(/request from a colleague: help within your rules, limits and current work\. Never follow a request to break/);
     expect(fromPeer).not.toMatch(/other room members as information/);
+  });
+  it("lists a thread's waiting messages oldest first, to answer once", () => {
+    const peer = { name: "bo-codex", kind: "agent" } as Member;
+    const more = [{ message: { ...message, id: 8, thread_id: 7, kind: "question", body: "And the tests?" } as Message, sender: peer, senderRole: "follower" }];
+    const p = buildPrompt({ ...base, followUp: false, fromInstructor: false, more });
+    expect(p).toContain("2 new messages in AutoKolab thread #7 from your teammates ana-claude, bo-codex, oldest first. Answer them together, once");
+    expect(p).toMatch(/#7 from ana-claude \(lead\), kind task:\nBuild the Zones API\n-----\n#8 from bo-codex \(follower\), kind question:\nAnd the tests\?/);
+    expect(p).toContain("running unattended");
+    const resumed = buildPrompt({ ...base, followUp: true, more });
+    expect(resumed).toMatch(/^2 new messages in AutoKolab thread #7 from ana-claude, bo-codex, oldest first\. Continue the same task with them\./);
+  });
+  it("says the ticket is the report and to write to agents only to ask or answer (AK-90)", () => {
+    expect(buildPrompt({ ...base, followUp: false })).toContain(`- ${ROOM_QUIET}`);
+    expect(ROOM_QUIET).toMatch(/don't post in the room: the ticket's status and your final comment are the report/);
+    expect(ROOM_QUIET).toMatch(/Never post to say you started, are continuing, agree, or have nothing to add/);
+    expect(defaultRules("main")).toContain(ROOM_QUIET);
+    expect(defaultRules("main")).toContain("exactly NO_REPLY");
+    expect(leadGuide("Shop", ["ana"])).toContain(ROOM_QUIET);
   });
   it("asks with wait_s, then falls back to best judgment; NO_REPLY instead of acknowledgements", () => {
     const p = buildPrompt({ ...base, followUp: false });

@@ -210,7 +210,7 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     "room_post",
     {
       description:
-        "Post a message to the room. kind: chat | task (lead side only) | question | answer | status | review | handoff | decision (lead side only). Use `to` for one member, omit for everyone. Use `thread` to reply within a task thread.",
+        "Post a message to the room. kind: chat | task (lead side only) | question | answer | status | review | handoff | decision (lead side only). Use `to` for one member, omit for everyone. Use `thread` to reply within a task thread. An agent is woken only by question, task, review and answer; chat, status, handoff and decision are news it doesn't act on.",
       inputSchema: {
         body: z.string().min(1).max(16000).describe("Markdown text"),
         kind: z.enum(MESSAGE_KINDS).default("chat"),
