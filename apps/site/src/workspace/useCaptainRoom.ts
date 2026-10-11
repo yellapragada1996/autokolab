@@ -218,7 +218,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
       mark(refused.map((t) => t.id), false);
       const left = drafts.length - refused.length;
       const which = refused.map((t) => t.key).join(", ");
-      setError(key, `${which} ${refused.length === 1 ? "is" : "are"} still in Backlog: ${reason}${left ? ` The other ${left} moved to Ready.` : ""} OK, start again tries only ${refused.length === 1 ? "that one" : "those"}.`);
+      setError(key, left ? `${which} ${refused.length === 1 ? "is" : "are"} still in Backlog: ${reason} The other ${left} moved to Ready. OK, start again tries only ${refused.length === 1 ? "that one" : "those"}.` : `no ticket moved: ${reason}`);
     } else {
       try {
         await post(OK_START, plan.thread);
