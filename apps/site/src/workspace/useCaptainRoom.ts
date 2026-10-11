@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addComment, allowMerge, lastCaughtUp, markCaughtUp, updateTicket, type Agent, type Project, type Ticket } from "../lib/data";
 import { postToRoom, roomFor, roomMessages, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
-import { catchUp, conversation, needsYou, OK_START, plans as plansOf, type CatchUp, type Need, type Plan, type Turn } from "./captain";
+import { catchUp, conversation, needsYou, NO_ANSWER_NEEDED, OK_START, plans as plansOf, type Answer, type CatchUp, type Need, type Plan, type Turn } from "./captain";
 import { agentDot, agentOnline } from "./People";
 import type { Workspace } from "./useWorkspace";
 
@@ -19,9 +19,21 @@ export interface DemoRoom {
   delayMs?: number;
   /** Refuse every answer and post, so the preview can show what a refused one looks like. */
   refuse?: boolean;
+  /** Open with the composer replying to this question of Captain's (a message id), to see reply mode. */
+  replyTo?: number;
 }
 
 const REFUSED = "the preview is set to refuse answers (?refuse).";
+
+/** Where the composer's next message goes while it's in reply mode (AK-69). */
+export type ReplyTarget = { kind: "captain"; need: Need } | { kind: "no"; need: Need } | { kind: "plan"; plan: Plan };
+
+/** Something the person answered on this visit, shown as a quiet line under its message. */
+export interface Answered {
+  need: Need;
+  answer: Answer;
+  at: string;
+}
 
 export interface CaptainRoom {
   /** undefined while loading; null when your sign-in isn't in the project's room. */
@@ -32,8 +44,10 @@ export interface CaptainRoom {
   needs: Need[];
   /** Captain's plans, with the tickets moved on this visit already counted as Ready. */
   plans: Plan[];
-  /** Risky merges OK'd on this visit: their cards stay, in green. */
+  /** Risky merges OK'd on this visit: they stay, with a green line. */
   okd: Need[];
+  /** Everything answered on this visit (sent or still sending): its message stays, with a quiet line. */
+  answered: Answered[];
   /** A plain message per card (by need key), or "composer", when the server refused. */
   errors: Map<string, string>;
   loadError: string;
@@ -47,15 +61,27 @@ export interface CaptainRoom {
   /** Work out the catch-up once per visit, the first time the Captain page shows. */
   startCatchUp: () => void;
   send: (text: string, thread?: number | null, errorKey?: string) => Promise<boolean>;
-  okMerge: (need: Need) => Promise<void>;
-  answerTicket: (need: Need, text: string) => Promise<void>;
-  answerCaptain: (need: Need, text: string) => Promise<void>;
-  clearNeed: (need: Need) => Promise<void>;
+  okMerge: (need: Need) => Promise<boolean>;
+  answerTicket: (need: Need, text: string) => Promise<boolean>;
+  answerCaptain: (need: Need, text: string) => Promise<boolean>;
+  /** "No" on a risky merge: "No on <KEY>: <why>" goes to Captain. */
+  sayNo: (need: Need, text: string) => Promise<boolean>;
+  /** "Not needed any more" on one of Captain's questions: "No answer needed." in its thread closes it. */
+  closeQuestion: (need: Need) => Promise<boolean>;
+  clearNeed: (need: Need) => Promise<boolean>;
   /** OK, start: the plan's Backlog tickets go to Ready, then "OK, start" goes to Captain in the plan's thread. */
   startPlan: (plan: Plan) => Promise<void>;
   /** Change something: the person's words go to Captain in the plan's thread. No ticket changes. */
   changePlan: (plan: Plan, text: string) => Promise<boolean>;
+  /** The composer's reply mode: what its next message answers, or null for a new message. */
+  replyTo: ReplyTarget | null;
+  setReplyTo: (target: ReplyTarget | null) => void;
+  /** Send the composer's text to where reply mode points; reply mode ends unless it was refused. */
+  sendReply: (text: string) => Promise<boolean>;
 }
+
+/** Where a reply's refusal is kept in `errors`: the key of what it answers. */
+export const replyKey = (r: ReplyTarget) => (r.kind === "plan" ? planKey(r.plan) : r.need.key);
 
 /** Where a plan card's refusal is kept in `errors`; the same key as its need. */
 export const planKey = (plan: Plan) => `plan:${plan.turnId}`;
@@ -70,7 +96,8 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   const [loaded, setLoaded] = useState<RoomMessage[]>([]);
   const [pending, setPending] = useState<RoomMessage[]>([]);
   const [loadError, setLoadError] = useState("");
-  const [settled, setSettled] = useState<Map<string, { since: string; need: Need; ok: boolean }>>(new Map());
+  const [settled, setSettled] = useState<Map<string, { since: string; need: Need; ok: boolean; answer: Answer; at: string }>>(new Map());
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [errors, setErrors] = useState<Map<string, string>>(new Map());
   const [cu, setCu] = useState<{ c: CatchUp; at: string } | null>(null);
   const [cuReady, setCuReady] = useState(false);
@@ -100,6 +127,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     setLoaded([]);
     setPending([]);
     setSettled(new Map());
+    setReplyTo(null);
     setErrors(new Map());
     setMoved(new Set());
     setCu(null);
@@ -117,7 +145,17 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   const raw = useMemo(() => (planWs ? needsYou(planWs, turns) : []), [planWs, turns]);
   // An answer hides the card it answered, not a newer question on the same ticket.
   const needs = useMemo(() => raw.filter((n) => settled.get(n.key)?.since !== n.since), [raw, settled]);
-  const okd = useMemo(() => [...settled.values()].filter((s) => s.ok && s.need.kind === "risky_merge").map((s) => s.need), [settled]);
+  const okd = useMemo(() => [...settled.values()].filter((s) => s.ok && s.answer === "yes").map((s) => s.need), [settled]);
+  // A newer question on the same ticket is its own need; the old answer stays with the old message.
+  const answered = useMemo(() => [...settled.values()].filter((s) => !needs.some((n) => n.key === s.need.key)).map(({ need, answer, at }) => ({ need, answer, at })), [settled, needs]);
+
+  const demoReply = useRef(false);
+  useEffect(() => {
+    const need = demo?.replyTo && !demoReply.current ? needs.find((n) => n.key === `ask:${demo.replyTo}`) : undefined;
+    if (!need) return;
+    demoReply.current = true;
+    setReplyTo({ kind: "captain", need });
+  }, [demo, needs]);
 
   const captain = ws?.agentOf(captainId);
   const member: RoomMember | undefined = room?.members.find((m) => m.id === captainId);
@@ -132,14 +170,16 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
       return next;
     });
 
-  /** Hide the card now, run the answer, and bring the card back with the reason if it fails. */
-  const settle = async (need: Need, run: () => Promise<void>) => {
+  /** Show the answer now, run it, and bring the actions back with the reason if it fails. */
+  const settle = async (need: Need, answer: Answer, run: () => Promise<void>) => {
+    const at = new Date().toISOString();
     setError(need.key, null);
-    setSettled((m) => new Map(m).set(need.key, { since: need.since, need, ok: false }));
+    setSettled((m) => new Map(m).set(need.key, { since: need.since, need, ok: false, answer, at }));
     try {
       await run();
-      setSettled((m) => new Map(m).set(need.key, { since: need.since, need, ok: true }));
+      setSettled((m) => new Map(m).set(need.key, { since: need.since, need, ok: true, answer, at }));
       if (!demo) await ws?.reload();
+      return true;
     } catch (e) {
       setSettled((m) => {
         const next = new Map(m);
@@ -147,6 +187,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
         return next;
       });
       setError(need.key, (e as Error).message || "The server refused it.");
+      return false;
     }
   };
 
@@ -246,6 +287,21 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
       .catch(() => setCuReady(true));
   };
 
+  const threadOf = (need: Need) => turns.find((t) => t.id === need.turnId)?.thread ?? need.turnId;
+  const answerCaptain = (need: Need, text: string) => settle(need, "answered", () => post(text, threadOf(need)));
+  const sayNo = (need: Need, text: string) => settle(need, "no", () => post(`No on ${need.ticket?.key ?? "it"}: ${text}`, null));
+  const changePlan = (plan: Plan, text: string) => send(text, plan.thread, planKey(plan));
+
+  const sendReply = async (text: string) => {
+    const r = replyTo;
+    if (!r) return send(text);
+    // Leave reply mode at once, as the composer clears; go back into it if the answer is refused.
+    setReplyTo(null);
+    const ok = r.kind === "plan" ? await changePlan(r.plan, text) : r.kind === "no" ? await sayNo(r.need, text) : await answerCaptain(r.need, text);
+    if (!ok) setReplyTo((now) => now ?? r);
+    return ok;
+  };
+
   return {
     room,
     messages,
@@ -253,6 +309,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     plans,
     needs,
     okd,
+    answered,
     errors,
     loadError,
     captain,
@@ -262,21 +319,24 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     catchUpReady: cuReady,
     startCatchUp,
     send,
-    okMerge: (need) => settle(need, real(() => allowMerge(need.ticket!.id))),
+    okMerge: (need) => settle(need, "yes", real(() => allowMerge(need.ticket!.id))),
     answerTicket: (need, text) =>
       settle(
         need,
+        "answered",
         real(async () => {
           await addComment(need.ticket!.id, profileId, text);
           await updateTicket(need.ticket!.id, { needs_human: null });
         }),
       ),
-    answerCaptain: (need, text) => {
-      const thread = turns.find((t) => t.id === need.turnId)?.thread ?? need.turnId;
-      return settle(need, () => post(text, thread));
-    },
-    clearNeed: (need) => settle(need, real(() => updateTicket(need.ticket!.id, { needs_human: null }))),
+    answerCaptain,
+    sayNo,
+    closeQuestion: (need) => settle(need, "closed", () => post(NO_ANSWER_NEEDED, threadOf(need))),
+    clearNeed: (need) => settle(need, "dismissed", real(() => updateTicket(need.ticket!.id, { needs_human: null }))),
     startPlan,
-    changePlan: (plan, text) => send(text, plan.thread, planKey(plan)),
+    changePlan,
+    replyTo,
+    setReplyTo,
+    sendReply,
   };
 }
