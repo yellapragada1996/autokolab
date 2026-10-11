@@ -1,31 +1,47 @@
-import type { CSSProperties, ReactNode } from "react";
-import { go, href, onNav, openShow, showHref, type Route } from "../lib/router";
-import { SegmentedProgress, type Segment } from "../ui";
-import { ago } from "./bits";
-import { briefing, goalName, ownerOf, today, withoutPlan, type Need, type Segment as GoalSegment } from "./captain";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { go, href, onNav, openShow, type Route } from "../lib/router";
+import { Button } from "../ui";
+import type { CatchUpItem } from "./captain";
+import { overview, sinceItems, sinceLine, STATE_WORD, updatedText, youLine, type AgentRow, type Feature, type State, type Tone } from "./glance";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
 
-// Overview (DEC-24): for looking, not talking. What's going on, what needs you, who's doing what,
-// how the goals stand and what happened today. Every sentence comes from captain.ts; this file only
-// draws. Each block is hidden when it has nothing to show.
+// Overview (DEC-24, AK-75): for looking, not talking. What state the work is in, what each agent is
+// doing, what needs you, what's new, and the features in Now · Next · Done. Every sentence comes
+// from glance.ts; this file only draws. No ticket key is shown: keys are hover text at most.
 
-const SEGMENT: Record<GoalSegment, Segment> = { done: "done", needs_you: "needs", building: "active", todo: "todo" };
-/** Shipped lines shown before "and n more". */
-const SHIPPED_MAX = 8;
+const STATE_COLOR: Record<State, string> = { working: "var(--blue)", waiting: "var(--amber)", paused: "var(--coral)", idle: "var(--text-dim)" };
+const TONE_COLOR: Record<Tone, string> = { live: "var(--blue)", needs: "var(--amber)", problem: "var(--coral)", quiet: "var(--text-dim)", done: "var(--green)" };
+/** Finished features shown before "n earlier features". */
+const DONE_SHOWN = 3;
+/** Next is short at this many features or fewer: "After these, nothing is planned." */
+const NEXT_SHORT = 2;
 
 export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr: CaptainRoom }) {
-  if (!ws) return <Skeleton />;
+  const [now, setNow] = useState(() => new Date());
+  const [loadedAt, setLoadedAt] = useState(() => Date.now());
+  useEffect(() => setLoadedAt(Date.now()), [ws]);
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  // The same catch-up as the Captain page, counted from the same last visit, worked out once per visit.
+  const { startCatchUp } = cr;
+  const roomReady = cr.room !== undefined && !!ws;
+  useEffect(() => {
+    if (roomReady) startCatchUp();
+  }, [roomReady, startCatchUp]);
+
+  const look = useMemo(() => (ws ? overview(ws, cr.needs, cr.plans, now) : null), [ws, cr.needs, cr.plans, now]);
+  if (!ws || !look) return <Skeleton />;
   const slug = ws.project.slug;
-  const b = briefing(ws, cr.needs);
-  const day = today(ws);
-  const empty = ws.tickets.length === 0;
-  const board: Route = { view: "board", project: slug };
   const captain: Route = { view: "captain", project: slug };
+  const you = youLine(ws, cr.needs, cr.plans, now);
+  const since = sinceLine(ws, cr.catchUp?.c ?? null);
 
   return (
     <div style={column}>
-      {empty ? (
+      {ws.tickets.length === 0 ? (
         <p style={{ fontSize: 17, lineHeight: 1.5, color: "var(--text-body)" }}>
           Nothing is being worked on yet.{" "}
           <a href={href(captain)} onClick={onNav(captain)}>
@@ -33,186 +49,185 @@ export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr:
           </a>
         </p>
       ) : (
-        <section aria-label="Where we are" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <p className="ak-headline" style={{ fontWeight: 500, letterSpacing: "var(--tracking-tight)", lineHeight: 1.3 }}>
-            {b.work} <span style={{ color: b.needs.tone === "amber" ? "var(--amber)" : "var(--green)" }}>{b.needs.text}</span>
-          </p>
-          {b.next && <p style={{ fontSize: 15, color: "var(--text-muted)" }}>{b.next}</p>}
+        <section aria-label="Where we are" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontSize: 13, color: "var(--text-dim)" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "3px 10px", borderRadius: 999, border: "1px solid var(--border-strong)", color: "var(--text)", fontWeight: 500 }}>
+              <Dot color={STATE_COLOR[look.state]} />
+              {STATE_WORD[look.state]}
+            </span>
+            <span>Live · {updatedText(loadedAt, now)}</span>
+          </div>
+          <p style={{ fontSize: "clamp(22px, 2.4vw + 12px, 26px)", fontWeight: 500, letterSpacing: "var(--tracking-tight)", lineHeight: 1.3, color: "var(--text)" }}>{look.headline}</p>
         </section>
       )}
 
-      {cr.needs.length > 0 && (
-        <Block title="Needs you">
+      {look.rows.length > 0 && (
+        <section aria-label="What each agent is doing">
           <ul style={list}>
-            {cr.needs.map((n) => (
-              <li key={n.key}>
-                <NeedRow need={n} slug={slug} />
+            {look.rows.map((r) => (
+              <li key={r.agentId}>
+                <AgentLine row={r} />
               </li>
             ))}
           </ul>
-        </Block>
+        </section>
       )}
 
-      {b.agents.length > 0 && (
-        <Block title="Who's doing what">
-          <ul style={list}>
-            {b.agents.map((a) => {
-              const to: Route = { view: "ticket", project: slug, key: a.ticket.key };
-              return (
-                <li key={a.agentId}>
-                  <a href={href(to)} onClick={onNav(to)} title={ownerOf(ws, a.agentId) ?? undefined} className="ak-row" style={{ ...row, gridTemplateColumns: "minmax(52px, auto) minmax(0, 1fr) auto" }}>
-                    <span style={{ color: "var(--text-muted)", ...ellipsis }}>{a.name}</span>
-                    <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{a.doing}</span>
-                    <span style={{ fontSize: 13, whiteSpace: "nowrap", color: a.needsYou ? "var(--amber)" : "var(--text-dim)" }}>{a.needsYou ? "needs you" : (a.step ?? "")}</span>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        </Block>
+      {you && (
+        <section aria-label="Needs you" style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", padding: "12px 14px", borderRadius: 12, border: "1px solid var(--amber-border)" }}>
+          <Dot color="var(--amber)" />
+          <span style={{ flex: "1 1 240px", minWidth: 0, fontSize: 14, color: "var(--text-body)" }}>{you.text}</span>
+          <Button
+            size="sm"
+            className="ak-tap"
+            style={{ background: "var(--amber)", color: "var(--amber-ink)", border: 0 }}
+            onClick={() => go(`${href(captain)}#need-${you.oldest.key}`, false, false)}
+          >
+            Answer
+          </Button>
+        </section>
       )}
 
-      {b.goals.length > 0 && (
-        <Block title="Goals">
-          <ul style={list}>
-            {b.goals.map((g) => {
-              const to: Route = g.id ? { view: "ticket", project: slug, key: ws.byId.get(g.id)?.key ?? "" } : { view: "backlog", project: slug };
-              const name = goalName(g.title);
-              return (
-                <li key={g.id ?? "other"}>
-                  <a href={href(to)} onClick={onNav(to)} title={g.title} className="ak-row" style={{ ...row, alignItems: "center", gridTemplateColumns: "minmax(0, 180px) minmax(60px, 1fr) auto" }}>
-                    <span style={ellipsis}>{name}</span>
-                    <SegmentedProgress segments={g.segments.map((s) => SEGMENT[s])} label={`${name}: ${g.done} of ${g.total} done`} />
-                    <span style={{ fontSize: 13, color: "var(--text-dim)", whiteSpace: "nowrap" }}>
-                      {g.done} of {g.total}
-                    </span>
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
-        </Block>
-      )}
+      {since && cr.catchUp && <SinceYouLooked line={since} items={sinceItems(ws, cr.catchUp.c)} />}
 
-      {(day.shipped.length > 0 || day.inReview.length > 0 || day.decided.length > 0) && (
-        <Block title="Today">
-          {day.shipped.length > 0 && (
-            <Group label="Shipped">
-              {day.shipped.slice(0, SHIPPED_MAX).map((t) => (
-                <li key={t.id}>
-                  <a
-                    href={showHref(t.key)}
-                    onClick={(e) => {
-                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-                      e.preventDefault();
-                      openShow(t.key);
-                    }}
-                    title="Show the work"
-                    className="ak-row"
-                    style={{ ...row, gridTemplateColumns: "auto minmax(0, 1fr) auto" }}
-                  >
-                    <Dot color="var(--green)" />
-                    <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{t.summary?.trim() || t.title}</span>
-                    <span className="mono" style={key}>
-                      {t.key}
-                    </span>
-                  </a>
-                </li>
-              ))}
-              {day.shipped.length > SHIPPED_MAX && (
-                <li style={{ padding: "4px 0" }}>
-                  <a href={href(board)} onClick={onNav(board)} style={{ fontSize: 14, textDecoration: "none" }}>
-                    and {day.shipped.length - SHIPPED_MAX} more
-                  </a>
-                </li>
-              )}
-            </Group>
-          )}
-          {day.inReview.length > 0 && (
-            <Group label="In review">
-              {day.inReview.map((t) => {
-                const to: Route = { view: "ticket", project: slug, key: t.key };
-                return (
-                  <li key={t.id}>
-                    <a href={href(to)} onClick={onNav(to)} className="ak-row" style={{ ...row, gridTemplateColumns: "auto minmax(0, 1fr) auto" }}>
-                      <span className="mono" style={key}>
-                        {t.key}
-                      </span>
-                      <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{t.title}</span>
-                      {t.assignee_id && <span style={{ fontSize: 13, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{ws.nameOf(t.assignee_id)}</span>}
-                    </a>
-                  </li>
-                );
-              })}
-            </Group>
-          )}
-          {day.decided.length > 0 && (
-            <Group label="Decided">
-              {day.decided.map((d) => {
-                const to: Route = { view: "decisions", project: slug };
-                return (
-                  <li key={d.id}>
-                    <a href={href(to)} onClick={onNav(to)} className="ak-row" style={{ ...row, gridTemplateColumns: "auto minmax(0, 1fr)" }}>
-                      <span className="mono" style={key}>
-                        {d.key}
-                      </span>
-                      <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{d.title}</span>
-                    </a>
-                  </li>
-                );
-              })}
-            </Group>
-          )}
-        </Block>
+      {ws.tickets.length > 0 && (
+        <section aria-label="Features" className="ak-features">
+          <FeatureColumn title="Now" empty="Nothing is being built right now.">
+            {look.features.now.map((f) => (
+              <FeatureCard key={f.id} f={f} />
+            ))}
+          </FeatureColumn>
+          <FeatureColumn title="Next" empty="Nothing is planned." after={look.features.next.length > 0 && look.features.next.length <= NEXT_SHORT ? "After these, nothing is planned." : null}>
+            {look.features.next.map((f) => (
+              <FeatureCard key={f.id} f={f} />
+            ))}
+          </FeatureColumn>
+          <DoneColumn features={look.features.done} />
+        </section>
       )}
 
       <SetupChecklist ws={ws} me={me} />
-
-      <nav aria-label="Next" style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 14, paddingTop: 4 }}>
-        <a href={href(board)} onClick={onNav(board)} style={{ textDecoration: "none" }}>
-          Open the board
-        </a>
-        <a href={href(captain)} onClick={onNav(captain)} style={{ textDecoration: "none" }}>
-          Talk to Captain
-        </a>
-      </nav>
     </div>
   );
 }
 
-// ------------------------------------------------------------------ needs you
+// ------------------------------------------------------------------ agents
 
-/** One compact row: what it is, the ticket, how long it has waited. Opens the item on the Captain page. */
-function NeedRow({ need, slug }: { need: Need; slug: string }) {
-  const t = need.ticket;
-  const to = `${href({ view: "captain", project: slug })}#need-${need.key}`;
+function AgentLine({ row }: { row: AgentRow }) {
+  const color = row.kind === "stopped" ? "var(--coral)" : row.kind === "waiting" ? "var(--amber)" : "var(--blue)";
   return (
-    <a
-      href={to}
-      onClick={(e) => {
-        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
-        e.preventDefault();
-        go(to, false, false);
-      }}
-      className="ak-row"
-      style={{ ...row, gridTemplateColumns: "auto auto minmax(0, 1fr) auto" }}
-    >
-      <Dot color="var(--amber)" />
-      <span style={{ whiteSpace: "nowrap" }}>{need.action}</span>
-      <span style={{ minWidth: 0, color: "var(--text-muted)", ...ellipsis }}>
-        {t ? (
-          <>
-            <span className="mono" style={{ fontSize: 12 }}>
-              {t.key}
-            </span>{" "}
-            {t.title}
-          </>
-        ) : (
-          withoutPlan(need.question).split("\n")[0]
-        )}
+    <button type="button" onClick={() => openShow(row.key)} title="Show the work" className="ak-row" style={{ ...rowButton, display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", columnGap: 10 }}>
+      <Dot color={color} style={{ marginTop: 7 }} />
+      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+        <span style={{ fontSize: 15, color: "var(--text-body)", overflowWrap: "anywhere" }}>
+          <strong style={{ fontWeight: 600, color: "var(--text)" }}>{row.name}</strong> {row.doing}
+        </span>
+        <span style={{ fontSize: 12, color: "var(--text-dim)", overflowWrap: "anywhere" }}>{row.detail}</span>
       </span>
-      <span style={{ fontSize: 13, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{ago(need.since)}</span>
-    </a>
+    </button>
+  );
+}
+
+// ------------------------------------------------------------------ since you last looked
+
+const ITEM_COLOR: Record<CatchUpItem["type"], string> = { shipped: "var(--green)", decided: "var(--text-dim)", problem: "var(--coral)" };
+
+function SinceYouLooked({ line, items }: { line: string; items: CatchUpItem[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section aria-label="Since you last looked" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <p style={{ fontSize: 14, color: "var(--text-body)" }}>
+        {line}{" "}
+        <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={linkButton}>
+          {open ? "Hide" : "Show what happened"}
+        </button>
+      </p>
+      {open && (
+        <ul style={{ ...list, gap: 4 }}>
+          {items.map((i, n) => (
+            <li key={n} style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", columnGap: 10, fontSize: 13, color: "var(--text-muted)" }}>
+              <Dot color={ITEM_COLOR[i.type]} style={{ marginTop: 6 }} />
+              <span style={{ overflowWrap: "anywhere" }}>{i.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ------------------------------------------------------------------ features
+
+function FeatureColumn({ title, empty, after, children }: { title: string; empty: string; after?: string | null; children: ReactNode[] }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+      <h2 style={{ fontSize: 13, fontWeight: 500, color: "var(--text-dim)" }}>{title}</h2>
+      {children.length ? children : <p style={{ fontSize: 13, color: "var(--text-dim)" }}>{empty}</p>}
+      {after && <p style={{ fontSize: 13, color: "var(--text-dim)" }}>{after}</p>}
+    </div>
+  );
+}
+
+function DoneColumn({ features }: { features: Feature[] }) {
+  const [all, setAll] = useState(false);
+  const earlier = features.length - DONE_SHOWN;
+  const shown = all ? features : features.slice(0, DONE_SHOWN);
+  return (
+    <FeatureColumn title="Done" empty="Nothing finished yet.">
+      {[
+        ...shown.map((f) => <FeatureCard key={f.id} f={f} />),
+        ...(earlier > 0
+          ? [
+              <button key="earlier" type="button" aria-expanded={all} onClick={() => setAll((a) => !a)} style={{ ...linkButton, alignSelf: "flex-start" }}>
+                {all ? "Show fewer" : `${earlier} earlier ${earlier === 1 ? "feature" : "features"}`}
+              </button>,
+            ]
+          : []),
+      ]}
+    </FeatureColumn>
+  );
+}
+
+function FeatureCard({ f }: { f: Feature }) {
+  const [open, setOpen] = useState(false);
+  const color = TONE_COLOR[f.tone];
+  const share = f.total ? f.done / f.total : 0;
+  return (
+    <div style={{ borderRadius: 12, border: "1px solid var(--border-subtle)", background: "var(--surface)", minWidth: 0 }}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="ak-row" style={{ ...rowButton, width: "100%", margin: 0, padding: "12px 14px", borderRadius: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+        <span style={{ fontSize: 15, fontWeight: 500, color: "var(--text)", overflowWrap: "anywhere" }}>{f.name}</span>
+        {f.outcome && <span style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.45, overflowWrap: "anywhere" }}>{f.outcome}</span>}
+        {f.column === "now" && (
+          <span role="img" aria-label={f.count} title={f.count} style={{ display: "block", width: "100%", height: 4, borderRadius: 2, background: "var(--surface-raised)", overflow: "hidden", marginTop: 2 }}>
+            <span style={{ display: "block", height: "100%", width: `${Math.max(4, Math.round(share * 100))}%`, background: color }} />
+          </span>
+        )}
+        <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: f.tone === "quiet" ? "var(--text-dim)" : f.tone === "done" ? "var(--text-muted)" : color }}>
+          {f.column === "done" && (
+            <span aria-hidden="true" style={{ color: "var(--green)", fontWeight: 700 }}>
+              ✓
+            </span>
+          )}
+          {f.status}
+        </span>
+      </button>
+      {open && (
+        <ul aria-label={`Parts of ${f.name}`} style={{ ...list, padding: "0 6px 8px", borderTop: "1px solid var(--border-subtle)" }}>
+          {f.parts.length === 0 && <li style={{ padding: "8px", fontSize: 13, color: "var(--text-dim)" }}>No parts planned yet.</li>}
+          {f.parts.map((p) => (
+            <li key={p.key}>
+              <button type="button" onClick={() => openShow(p.key)} title={`${p.key} · Show the work`} className="ak-row" style={{ ...rowButton, width: "100%", margin: 0, padding: "8px", display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ fontSize: 13, color: "var(--text-body)", overflowWrap: "anywhere" }}>{p.line}</span>
+                <span style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                  <span style={{ color: p.tone === "quiet" ? "var(--text-dim)" : TONE_COLOR[p.tone] }}>{p.state}</span>
+                  {p.who && ` · ${p.who}`}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -260,40 +275,25 @@ function SetupChecklist({ ws, me }: { ws: Workspace; me: string }) {
 
 // ------------------------------------------------------------------ pieces
 
-function Block({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section aria-label={title} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <h2 style={{ fontSize: 13, fontWeight: 500, color: "var(--text-dim)" }}>{title}</h2>
-      {children}
-    </section>
-  );
-}
+const Dot = ({ color, style }: { color: string; style?: CSSProperties }) => <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", background: color, flex: "none", ...style }} />;
 
-function Group({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <h3 style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)", paddingTop: 4 }}>{label}</h3>
-      <ul style={list}>{children}</ul>
-    </div>
-  );
-}
-
-const Dot = ({ color }: { color: string }) => <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", background: color, flex: "none", alignSelf: "center" }} />;
-
-/** Grey lines where the page will be, while the workspace loads. */
+/** Grey shapes where the page will be, while the workspace loads. */
 function Skeleton() {
   const line = (width: string, height = 14): CSSProperties => ({ width, height, borderRadius: 6, background: "var(--surface-raised)" });
   return (
     <div role="status" aria-label="Loading" style={column}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <span style={line("90px", 22)} />
         <span style={line("80%", 26)} />
-        <span style={line("55%")} />
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <span style={line("30%", 12)} />
-        <span style={line("100%")} />
-        <span style={line("92%")} />
         <span style={line("70%")} />
+        <span style={line("55%")} />
+      </div>
+      <div className="ak-features">
+        {[0, 1, 2].map((i) => (
+          <span key={i} style={{ ...line("100%", 96), borderRadius: 12 }} />
+        ))}
       </div>
     </div>
   );
@@ -301,8 +301,7 @@ function Skeleton() {
 
 // ------------------------------------------------------------------ styles
 
-const column: CSSProperties = { width: "100%", maxWidth: 780, margin: "0 auto", display: "flex", flexDirection: "column", gap: 28 };
+const column: CSSProperties = { width: "100%", maxWidth: 880, margin: "0 auto", display: "flex", flexDirection: "column", gap: 28 };
 const list: CSSProperties = { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 2 };
-const row: CSSProperties = { display: "grid", alignItems: "baseline", gap: 12, padding: "8px 10px", margin: "0 -10px", borderRadius: "var(--radius-md)", fontSize: 14, color: "var(--text-body)", textDecoration: "none", minWidth: 0 };
-const ellipsis: CSSProperties = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
-const key: CSSProperties = { fontSize: 12, color: "var(--text-dim)", whiteSpace: "nowrap" };
+const rowButton: CSSProperties = { width: "calc(100% + 20px)", textAlign: "left", background: "transparent", border: 0, cursor: "pointer", padding: "8px 10px", margin: "0 -10px", borderRadius: "var(--radius-md)", color: "inherit", font: "inherit", minWidth: 0, alignItems: "start" };
+const linkButton: CSSProperties = { background: "transparent", border: 0, padding: 0, cursor: "pointer", color: "var(--blue-text)", font: "inherit", fontSize: 13 };

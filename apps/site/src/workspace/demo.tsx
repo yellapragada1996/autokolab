@@ -19,8 +19,14 @@ const BUILDER = "00000000-0000-0000-0000-0000000000c1";
 const REVIEWER = "00000000-0000-0000-0000-0000000000c2";
 const LEAD = "00000000-0000-0000-0000-0000000000c3";
 const SPARE = "00000000-0000-0000-0000-0000000000c4";
-// ?preview=workspace&idle shows the stopped headline by idling the only working agent.
-const demoIdle = new URLSearchParams(location.search).has("idle");
+// ?preview=workspace&state=waiting|paused|idle shows Overview's other states (AK-75); working is the default.
+// waiting: nobody runs and things need Ana. paused: nothing needs Ana and a stopped agent resumes by
+// itself. idle: everything started is finished.
+const demoState = new URLSearchParams(location.search).get("state");
+const nobodyRuns = demoState === "waiting" || demoState === "paused" || demoState === "idle";
+const nothingNeeded = demoState === "paused" || demoState === "idle";
+// When lee-claude's usage limit resets, in its own time zone, as its runner writes it.
+const resetsAt = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Stockholm", hour: "numeric", minute: "2-digit" }).format(new Date(now + 95 * 60_000)).toLowerCase();
 // ?preview=workspace&empty shows a project with no tickets yet (Overview's empty state).
 const demoEmpty = new URLSearchParams(location.search).has("empty");
 
@@ -60,9 +66,10 @@ function ticket(n: number, t: Partial<Ticket> & Pick<Ticket, "title" | "status">
 }
 
 const allTickets: Ticket[] = [
-  ticket(1, { title: "Sign-in: Google and email, remembered for 30 days", status: "in_progress", type: "epic", priority: "high", description: "Everything about getting people signed in." }),
+  ticket(1, { title: "Sign-in: Google and email, remembered for 30 days", summary: "People can sign in with Google or email and stay signed in for 30 days.", status: "in_progress", type: "epic", priority: "high", description: "Everything about getting people signed in." }),
   ticket(2, {
     title: "Add Google sign-in",
+    summary: "adding Google sign-in beside the email form",
     status: "in_progress",
     type: "feature",
     priority: "high",
@@ -77,14 +84,14 @@ const allTickets: Ticket[] = [
     review: { summary: "Google sign-in is being added beside email sign-in.", line: { file: "src/auth/google.ts", code: "+  const profile = await createProfile(account);\n+  return startSession(profile);", plain: "A new Google account gets a profile before its session starts." }, less_sure: "The callback has not been tested against a live Google account yet." },
     pr_url: "https://github.com/ana/shop/pull/42",
   }),
-  ticket(3, { title: "Remember me for 30 days", status: "ready", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", priority: "medium", labels: ["auth"] }),
-  ticket(4, { title: "Pick the session store", status: "in_progress", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", needs_human: "Redis or Postgres for sessions? Postgres is simpler, Redis is faster.", priority: "high" }),
-  ticket(11, { title: "Checkout", status: "in_progress", type: "epic", priority: "high", description: "Paying should take under a minute." }),
-  ticket(12, { title: "Pay with Apple Pay", status: "in_progress", type: "feature", priority: "medium", parent_id: "t11", assignee_id: REVIEWER, assignee_type: "agent", started_at: iso(25), needs_human: "I stopped: hit the 60-minute limit. Where it got to: the Apple Pay button shows; paying isn't wired yet.", updated_at: iso(8) }),
-  ticket(13, { title: "Search", status: "in_progress", type: "epic", description: "Find any product in two keystrokes." }),
+  ticket(3, { title: "Remember me for 30 days", status: "ready", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", priority: "medium", labels: ["auth"], needs_human: "I couldn't start: the session table from SH-4 isn't merged yet." }),
+  ticket(4, { title: "Pick the session store", summary: "choosing where sign-ins are kept", status: "in_progress", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", needs_human: "Redis or Postgres for sessions? Postgres is simpler, Redis is faster.", priority: "high" }),
+  ticket(11, { title: "Checkout", summary: "Paying takes under a minute, with a card or Apple Pay.", status: "in_progress", type: "epic", priority: "high", description: "Paying should take under a minute." }),
+  ticket(12, { title: "Pay with Apple Pay", summary: "adding Apple Pay to the checkout", status: "in_progress", type: "feature", priority: "medium", parent_id: "t11", assignee_id: SPARE, assignee_type: "agent", started_at: iso(25), updated_at: iso(8) }),
+  ticket(13, { title: "Search", summary: "Shoppers find any product in two keystrokes.", status: "in_progress", type: "epic", description: "Find any product in two keystrokes." }),
   ticket(14, { title: "Filter search by price", status: "done", summary: "Shoppers can narrow search results to a price range", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/40", started_at: iso(150), completed_at: iso(40), approved_sha: sha(14), approved_by: LEAD, approved_at: iso(48), pr_facts: passing(14) }),
   ticket(16, { title: "Store saved baskets in the database", status: "done", summary: "Saved baskets now remain available after sign-out", type: "feature", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/39", merge_ok_at: iso(70), merge_ok_by: ANA, started_at: iso(265), completed_at: iso(60), approved_sha: sha(16), approved_by: LEAD, approved_at: iso(95), pr_facts: passing(16) }),
-  ticket(15, { title: "Order history", status: "backlog", type: "epic", description: "Shoppers can see what they bought." }),
+  ticket(15, { title: "Order history", summary: "Shoppers can see everything they bought.", status: "backlog", type: "epic", description: "Shoppers can see what they bought." }),
   ticket(5, { title: "Checkout shows the wrong tax for Ontario", status: "review", type: "bug", priority: "urgent", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/41", labels: ["checkout"], summary: "Checkout charges the right tax for Ontario again", approved_sha: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912", approved_by: LEAD, approved_at: iso(5), pr_facts: { sha: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912", checks: { passed: 31, total: 48, state: "pending" }, files: { total: 2, risky: [] }, additions: 9, deletions: 3, checked_at: iso(4) } }),
   ticket(10, {
     title: "Store sessions in Postgres",
@@ -114,11 +121,11 @@ const allTickets: Ticket[] = [
   ticket(7, { title: "Upgrade to React 19", status: "backlog", type: "chore", assignee_id: LEE, assignee_type: "human" }),
   ticket(8, { title: "Product search", status: "done", summary: "Shoppers can search products by name from any page", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(300) }),
   // Captain's plan (AK-60): two goals whose tickets are drafts in Backlog until Ana says "OK, start".
-  ticket(30, { title: "Wishlists", status: "backlog", type: "epic", description: "Shoppers can save things for later." }),
+  ticket(30, { title: "Wishlists", summary: "Shoppers can save things to buy later.", status: "backlog", type: "epic", description: "Shoppers can save things for later." }),
   ticket(31, { title: "Heart button on products", status: "backlog", type: "feature", parent_id: "t30", assignee_id: BUILDER, assignee_type: "agent" }),
   ticket(32, { title: "Store wishlists in the database", status: "backlog", type: "feature", parent_id: "t30", assignee_id: REVIEWER, assignee_type: "agent" }),
   ticket(33, { title: "Wishlist page", status: "backlog", type: "feature", parent_id: "t30", assignee_id: BUILDER, assignee_type: "agent" }),
-  ticket(40, { title: "Gift cards", status: "backlog", type: "epic", description: "Shoppers can buy and redeem gift cards." }),
+  ticket(40, { title: "Gift cards", summary: "Shoppers can buy gift cards and pay with them.", status: "backlog", type: "epic", description: "Shoppers can buy and redeem gift cards." }),
   ticket(41, { title: "Charge for a gift card", status: "backlog", type: "feature", parent_id: "t40", assignee_id: REVIEWER, assignee_type: "agent" }),
   ticket(42, { title: "Redeem a gift card at checkout", status: "backlog", type: "feature", parent_id: "t40", assignee_id: BUILDER, assignee_type: "agent" }),
   ticket(9, { title: "Write the Project Guide", status: "done", summary: "Agents now read one guide with the concept and rules before they start", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(900) }),
@@ -224,9 +231,9 @@ history.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
 
 const agents: Agent[] = [
   { id: LEAD, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "ana-claude", status: "idle", status_note: "Planned the Sign-in goal", current_ticket_id: null, last_seen_at: iso(3), model: "opus", effort: "high", model_set_by: ANA, model_set_at: iso(60), effective_model: "claude-opus-5-5", effective_effort: "high", effective_at: iso(20) },
-  { id: BUILDER, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "builder", status: demoIdle ? "idle" : "building", status_note: demoIdle ? "Stopped working on Google sign-in" : "Creating profiles for new users", current_ticket_id: demoIdle ? null : "t2", last_seen_at: iso(1), model: "sonnet", effort: "medium", model_set_by: LEAD, model_set_at: iso(30), effective_model: "haiku", effective_effort: "medium", effective_at: iso(1) },
-  { id: REVIEWER, owner_profile_id: LEE, owner_label: "lee", vendor: "codex", display_name: "lee-codex", status: "waiting_human", status_note: "Asked about the session store", current_ticket_id: "t4", last_seen_at: iso(2), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "gpt-5.5-codex", effective_effort: null, effective_at: iso(120) },
-  { id: SPARE, owner_profile_id: LEE, owner_label: "lee", vendor: "claude", display_name: "lee-claude", status: "offline", status_note: null, current_ticket_id: null, last_seen_at: iso(60 * 24 * 3), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: null, effective_effort: null, effective_at: null },
+  { id: BUILDER, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "builder", status: nobodyRuns ? "idle" : "building", status_note: nobodyRuns ? null : "Creating profiles for new users", current_ticket_id: nobodyRuns ? null : "t2", last_seen_at: iso(1), model: "sonnet", effort: "medium", model_set_by: LEAD, model_set_at: iso(30), effective_model: "haiku", effective_effort: "medium", effective_at: iso(1) },
+  { id: REVIEWER, owner_profile_id: LEE, owner_label: "lee", vendor: "codex", display_name: "lee-codex", status: nothingNeeded ? "idle" : "waiting_human", status_note: "Asked about the session store", current_ticket_id: "t4", last_seen_at: iso(2), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "gpt-5.5-codex", effective_effort: null, effective_at: iso(120) },
+  { id: SPARE, owner_profile_id: LEE, owner_label: "lee", vendor: "claude", display_name: "lee-claude", status: "idle", status_note: `Waiting for my usage limit to reset, about ${resetsAt} (Europe/Stockholm)`, current_ticket_id: "t12", last_seen_at: iso(2), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: null, effective_effort: null, effective_at: null },
 ];
 
 const members: Member[] = [
@@ -298,11 +305,20 @@ const demoRoom: DemoRoom = {
 };
 
 demoRoom.room.me = demoRoom.room.members[0];
+// With nothing needing Ana, Captain's questions and plans to her are already answered.
+if (nothingNeeded) demoRoom.messages = demoRoom.messages.filter((m) => !(m.kind === "question" && m.to_id === ANA));
+
+/** A ticket as the chosen ?state= has it: nothing waits on Ana from paused on; everything started is done when idle. */
+function forState(t: Ticket): Ticket {
+  const out = nothingNeeded && t.needs_human ? { ...t, needs_human: null } : t;
+  if (demoState === "idle" && out.type !== "epic" && (out.status === "in_progress" || out.status === "review")) return { ...out, status: "done", completed_at: iso(30) };
+  return out;
+}
 
 export default function DemoWorkspace() {
   const route = useRoute();
   const ws = useMemo<WS>(() => {
-    const tickets = demoEmpty ? [] : allTickets;
+    const tickets = demoEmpty ? [] : allTickets.map(forState);
     const decisions = demoEmpty ? [] : allDecisions;
     const byId = new Map(tickets.map((t) => [t.id, t]));
     // The plan's tickets wait on the database change and the charge, so the plan page reorders them.
@@ -312,6 +328,8 @@ export default function DemoWorkspace() {
       { ticket_id: "t33", blocked_by: "t32" },
       { ticket_id: "t33", blocked_by: "t31" },
       { ticket_id: "t42", blocked_by: "t41" },
+      // Order history starts after Apple Pay, so Overview says "starts after Checkout".
+      { ticket_id: "t6", blocked_by: "t12" },
     ];
     const profiles = new Map<string, Profile>([
       [ANA, profile],

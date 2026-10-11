@@ -58,7 +58,7 @@ export interface CaptainRoom {
   catchUp: { c: CatchUp; at: string } | null;
   /** The catch-up has been worked out (whether or not there is one): the conversation is complete. */
   catchUpReady: boolean;
-  /** Work out the catch-up once per visit, the first time the Captain page shows. */
+  /** Work out the catch-up once per visit, the first time the Captain page or Overview shows; both show the same one. */
   startCatchUp: () => void;
   send: (text: string, thread?: number | null, errorKey?: string) => Promise<boolean>;
   okMerge: (need: Need) => Promise<boolean>;

@@ -111,6 +111,9 @@ h1, h2, h3, p { margin: 0; }
    message a needs-you row on Overview points at. */
 .ak-headline { font-size: 26px; }
 .ak-indent { margin-left: 40px; }
+/* Overview (AK-75): Now · Next · Done side by side, stacked below 900px. */
+.ak-features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
+@media (max-width: 899px) { .ak-features { grid-template-columns: minmax(0, 1fr); } }
 /* Captain's words are plain 15px text, with no space left under the last paragraph (Markdown sets 14px inline). */
 .ak-said p, .ak-said li { font-size: 15px !important; color: var(--text-body) !important; }
 .ak-said > div > :last-child { margin-bottom: 0 !important; }

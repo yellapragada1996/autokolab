@@ -41,7 +41,7 @@ interface NavItem {
 
 const NAV_MAIN: NavItem[] = [
   { id: "captain", label: "Captain", icon: Icon.captain, sub: "Your point of contact for this project", under: ["captain", "plan"] },
-  { id: "overview", label: "Overview", icon: Icon.home, sub: "What's going on, what needs you and what happened today", key: "O", under: ["overview"] },
+  { id: "overview", label: "Overview", icon: Icon.home, sub: "Who is working on what, and which features are being built, next and done", key: "O", under: ["overview"] },
   { id: "board", label: "Work", icon: Icon.board, sub: "Who is doing what. Agents pick up what's in Ready; drag cards between columns and lanes.", key: "W", under: ["board", "goals", "backlog", "list", "ticket"] },
   { id: "room", label: "Room", icon: Icon.chat, sub: "Where people and agents talk, live. @name to talk to someone.", key: "R", under: ["room"] },
   { id: "people", label: "People", icon: Icon.people, sub: "Who works here and what each agent is doing", key: "P", under: ["people", "connect"] },
