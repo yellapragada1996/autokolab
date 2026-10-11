@@ -1,4 +1,4 @@
-import { BIG_WORK, LEAD_APPROVAL, LEAD_VOICE, ROOM_QUIET, leadAutonomy } from "../core/projects.js";
+import { BIG_WORK, LEAD_APPROVAL, LEAD_VOICE, LOOK_BUILD, LOOK_NEVER_ASK, ROOM_QUIET, changesScreens, leadAutonomy, reviewLook } from "../core/projects.js";
 import type { Member, Message, Room } from "../core/types.js";
 import type { RunnerConfig } from "./config.js";
 import type { Worktree } from "./repos.js";
@@ -288,6 +288,8 @@ export function buildReviewPrompt(ctx: ReviewPromptContext): string {
   const diff = cut
     ? `${ctx.diff.slice(0, REVIEW_DIFF_LIMIT)}\n\n[The diff is ${ctx.diff.length} characters; only the first ${REVIEW_DIFF_LIMIT} are shown. Read the rest in ${ctx.repoPath}: git diff origin/${ctx.base}...HEAD -- <file>, using the file list above.]`
     : ctx.diff || "(empty)";
+  // AK-96: a website change is looked at, not only tested.
+  const look = changesScreens(ctx.files) ? `\n- ${reviewLook(ctx.repoPath, ctx.base)}` : "";
   return `You are Captain, the lead agent of the AutoKolab project "${ctx.projectName}". You run as ${ctx.myName}, ${ctx.ownerName}'s agent. You are running unattended: no human is watching this session.
 
 A worker finished ${key} and its tests passed. Review this one commit.
@@ -319,7 +321,7 @@ How to review:
 - ${LEAD_VOICE}
 - ${LEAD_APPROVAL}
 - The code at this commit is checked out in ${ctx.repoPath}. It's read only: read the surrounding code there, but don't change, commit or push anything. project_brief and ticket_get ${key} have the guide, the full decisions and the ticket's comments if you need them.
-- Check every "done means" item against the diff. Tests passing isn't enough on its own.
+- Check every "done means" item against the diff. Tests passing isn't enough on its own.${look}
 - Then do exactly one of these:
   1. Everything is right: ticket_approve key=${key} sha=${sha} with the evidence fields (less_sure, summary, line_file, line_code, line_plain, decisions, and question if a file above is risky).
   2. Something is missing or wrong: ticket_comment key=${key} saying plainly what's missing and how to fix it, then ticket_update key=${key} status=in_progress. That resumes the worker.
@@ -354,6 +356,8 @@ export function buildTicketPrompt(ctx: TicketPromptContext): string {
 - If something is unclear, first ask the lead (or the agent whose branch you depend on) in the room: room_post kind=question to them with wait_s (up to 300). If no answer comes, continue with your best judgment and say what you assumed.
 - Set needs_human="<short question>" (ticket_update) only for a real product choice a person must make, or if nobody answers. Put the background in a ticket comment first; Needs you is one short question a person can answer without opening anything. Carry on with whatever doesn't depend on it. If nothing can be done without the answer, end with "${BLOCKED_PREFIX} <the question>".
 - Follow the project's rules and decisions. If you settle a choice others must build on, record it with decision_add. If you find more work, create a ticket for it (ticket_create, backlog, unassigned) instead of growing this one.
+- ${LOOK_BUILD}
+- ${LOOK_NEVER_ASK}
 - When every "done means" item is true: run the tests and type checker, commit, push, open a pull request with "${key}" in its title against ${wt.base} (always ${wt.base}, even when your branch builds on someone's unmerged branch: \`gh pr create --base ${wt.base}\`), then ticket_update key=${key} status=review pr_url=<the PR link> summary="<one sentence>".
 - Replace the ticket's current-work summary when you finish with one plain sentence on what changed for people (under 200 characters): the outcome, not the implementation. Good: "Shoppers can pay with Apple Pay." Bad: "Added lastModel to AgentRow and a migration".
 - Keep your own to-do list current as you work; it's shown on the ticket as its steps.

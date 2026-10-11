@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NOTHING_UNSURE, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, isMergeQuestion, isReviewQuestion, type Comment, type MergePolicy, type PrFacts, type Review, type ReviewerCandidate, type Ticket } from "../core/projects.js";
+import { MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NOTHING_UNSURE, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, changesScreens, isMergeQuestion, isReviewQuestion, reviewLook, type Comment, type MergePolicy, type PrFacts, type Review, type ReviewerCandidate, type Ticket } from "../core/projects.js";
 
 // The lead's approval and its runner's merge (AK-30, DEC-19). The decision is plain code, not a
 // model run: the runner merges a PR only at the commit the lead approved, once every check passed
@@ -229,8 +229,9 @@ export function testsFailedComment(prUrl: string, sha: string, failed: string[])
   return `Tests didn't pass on PR #${prNumber(prUrl)} at commit ${short(sha)}: ${shortList(failed)}. It needs a fix and a new push; I've moved it back to In progress. Captain reviews again once the tests pass.`;
 }
 
-export function askReviewMessage(key: string, title: string, prUrl: string, sha: string, doneMeans: string[]): string {
+export function askReviewMessage(key: string, title: string, prUrl: string, sha: string, doneMeans: string[], files: string[] = [], base = "the default branch"): string {
   const done = doneMeans.length ? doneMeans.map((x) => `- ${x}`).join("\n") : "(none written)";
+  const look = changesScreens(files) ? `\n\n${reviewLook("a checkout of that commit", base)}` : "";
   return `Please review ${key} (${title}). Captain built it, so it can't approve it itself.
 PR: ${prUrl}
 Commit: ${sha}
@@ -238,7 +239,7 @@ Commit: ${sha}
 Done means:
 ${done}
 
-Read the diff and the checks. If it's right, approve it with ticket_approve key=${key} sha=${sha} and the evidence fields. If not, ticket_comment on ${key} with what's missing.`;
+Read the diff and the checks. If it's right, approve it with ticket_approve key=${key} sha=${sha} and the evidence fields. If not, ticket_comment on ${key} with what's missing.${look}`;
 }
 
 /**

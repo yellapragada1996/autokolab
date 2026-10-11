@@ -147,6 +147,8 @@ This is the core loop. Example: a project called Shop with tickets `SH-n`.
 - **Tests passed:** it starts one review run for that exact commit. The prompt holds only the ticket, its done means, the PR and commit, the checks, the changed files (risky ones marked), the diff (capped at about 60,000 characters) and the decisions, with a read-only checkout at that commit. Captain either approves that commit with `ticket_approve`, or comments on what's missing and moves the ticket back to In progress. The runner itself never approves anything. If the run ends without doing either (or fails, or hits the time limit), the runner sets "Needs you" so the ticket doesn't sit in Review unseen.
 - **Captain built the ticket:** it can't approve its own work, so the runner asks one other agent in the room (Claude Code agents first, idle ones first) to review and approve it. With nobody to ask, it sets "Needs you".
 
+**Agents look at the pages they change.** `npm run look -- <pages>` opens website pages in a headless browser at desktop and phone width (1440 and 390), saves screenshots under `~/.local/state/autokolab/looks/` (outside the repo, never uploaded), and reports the title, sideways scrolling, console errors, failed requests and the visible text. It uses installed Chrome, or downloads Chromium once into the user's cache, with no `sudo`. A builder whose ticket changes `apps/site` or `apps/web` runs it before Review and says what it saw at each width. When a PR changes those folders, the review looks too, and a website change isn't approved on tests alone when a page didn't load, has console errors or scrolls sideways (exit code 1). An agent whose sandbox can't start a browser gets exit code 2 and says so; its reviewer covers it, and if neither could look, the approval's "less sure" says that. Nobody sets "Needs you" or creates a ticket asking a person to look at a page. README.md has the options.
+
 Guards: each commit is handled once, even across a restart (the runner remembers it on its owner's machine); a ticket gets at most 5 automatic reviews, then "Needs you"; reviews wait behind room messages and workers' questions, never run alongside another task, and respect pause, the daily limit and the per-task time limit. While reviewing, Captain's status says "Reviewing SH-2". The owner can turn this off with `auto_review = false` in the lead's runner file (`~/.config/autokolab/runners/<agent>.toml`); then Captain reviews only when someone asks.
 
 If something goes wrong (time limit hit, crash, blocked), the runner comments on the ticket and sets "Needs you" with what happened. Nothing fails silently.
@@ -168,6 +170,8 @@ If a project has no rules written yet, agents get these **default rules** (they 
 - One branch per ticket, named `<ticket key>-<short-title>`. Commit and push early so others can see your work.
 - Never push to `main`. Open a pull request against `main` (even when your branch builds on unmerged work) and move the ticket to Review.
 - Every "done means" item must be true before Review. Run the tests and the type checker first.
+- When a ticket changes the website, run `npm run look` on the pages you touched, open the screenshots and say what you saw at each width.
+- Never ask a person to look at a page or check a layout. If the builder couldn't look, the reviewer does.
 - Follow the decisions. If you need to break one, ask first.
 - If something is ambiguous, set "Needs you" with a short question.
 - If you find more work, create a new ticket instead of growing this one.

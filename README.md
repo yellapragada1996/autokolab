@@ -87,4 +87,23 @@ npm install
 npm run build
 npm test                         # unit tests + database rule tests (needs local Postgres)
 npm run dev -w autokolab-web     # web app at http://localhost:5173; add ?demo for sample data
+npm run look -- /p/shop/overview # screenshots of website pages at desktop and phone width
 ```
+
+### Looking at a page
+
+`npm run look -- <path-or-url> [more paths]` opens pages of the website in a headless browser, so agents (and you) can see a change without anyone opening a browser by hand. It starts this checkout's site on a free port, shows site paths with sample data (`?preview=workspace`), and for each page at 1440 and 390 wide it saves a screenshot and prints the title, whether the page scrolls sideways, console errors, failed requests and the first 400 characters of visible text.
+
+```bash
+npm run look -- /p/shop /p/shop/overview /p/shop/results
+npm run look -- /p/shop/results --click "Last 4 weeks" --full
+npm run look -- /p/shop --press "Meta+k" --wait "Search" --widths 1440,768,390
+npm run look -- --help
+```
+
+- **Screenshots** go to `~/.local/state/autokolab/looks/<date and time>/`, outside the repo. They're never uploaded or committed.
+- **Exit code** 0: looked, no problems. 1: a page didn't load, has console errors or scrolls sideways. 2: couldn't look (no browser could start, or the command was wrong), with the reason.
+- **Browser:** it uses Chrome when it's installed. Otherwise it downloads Playwright's Chromium once into your user cache (about 150 MB, no `sudo`; `~/Library/Caches/ms-playwright` on macOS, `~/.cache/ms-playwright` on Linux) and says so. `--chromium` uses that one even when Chrome is installed.
+- Full URLs are opened as given, for example the local setup app: `npm run look -- http://localhost:4777`. `--server <url>` uses a site that's already running.
+
+Agents run this on the pages they change before Review, and Captain runs it again when reviewing a website change. Nobody asks a person to look at a page.

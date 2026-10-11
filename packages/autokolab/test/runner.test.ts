@@ -12,7 +12,7 @@ import { NO_REPLY, REVIEW_DIFF_LIMIT, buildPrompt, buildReplyPrompt, buildReview
 import { needsRunner } from "../src/setup/connect.js";
 import { BATCH_MAX_MS, BATCH_WAIT_MS, REPLY_RESUME_MS, Runner, STALE_RUN_SUMMARY, addToQueue, agentTurnsSinceHuman, countWake, isLegacyAnswer, isPauseNotice, isReplyJob, isRunnerNotice, mentionedTickets, pauseNotice, recentReplySession, rememberReplySession, replyAs, replyThread, runCostLine, runOutcome, shouldWake, staleTeammateMessage, startNotice, workSession, type Job, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ROOM_QUIET, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, LOOK_BUILD, LOOK_NEVER_ASK, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ROOM_QUIET, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
 import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
@@ -479,6 +479,17 @@ describe("tickets", () => {
     expect(p).toContain("BLOCKED: <the question>");
     expect(p).toContain("background in a ticket comment first; Needs you is one short question a person can answer without opening anything");
     expect(defaultRules("main")).toContain("background in a ticket comment, then set \"Needs you\" to one short question a person can answer without opening anything");
+  });
+  it("tells builders to look at the pages they change, and nobody to ask a person to (AK-96)", () => {
+    const p = buildTicketPrompt({ myName: "builder", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg: cfgFor(), worktree: wt, followUp: false, newComments: null });
+    expect(LOOK_BUILD).toContain("npm run look -- <the pages you touched>");
+    expect(LOOK_BUILD).toContain("Exit code 2 means the browser couldn't start: say plainly that you couldn't look and why");
+    expect(LOOK_NEVER_ASK).toContain("asking a person to look at a page or check a layout");
+    for (const text of [p, defaultRules("main")]) {
+      expect(text).toContain(LOOK_BUILD);
+      expect(text).toContain(LOOK_NEVER_ASK);
+    }
+    expect(leadGuide("Shop", ["ana"])).toContain(LOOK_NEVER_ASK);
   });
   it("continues a ticket with comments, naming who wrote them", () => {
     const p = buildTicketPrompt({ myName: "builder", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg: cfgFor(), worktree: wt, followUp: true, newComments: "ana (person): use the blue button" });
@@ -1288,6 +1299,13 @@ describe("Captain reviews by itself (AK-59)", () => {
       expect(m).toContain(`PR: ${URL}\nCommit: ${SHA}`);
       expect(m).toContain("- Toggle works\n- Tests pass");
       expect(m).toContain(`ticket_approve key=SH-9 sha=${SHA}`);
+      expect(m).not.toContain("npm run look");
+    });
+    it("asks the reviewer to look when the PR changes the website (AK-96)", () => {
+      const m = askReviewMessage("SH-9", "Dark mode", URL, SHA, [], ["apps/site/src/App.tsx"], "main");
+      expect(m).toContain("npm run look -- <the pages the change affects>");
+      expect(m).toContain("unless main has the same problem");
+      expect(m).toContain(LOOK_NEVER_ASK);
     });
   });
 
@@ -1336,6 +1354,17 @@ describe("Captain reviews by itself (AK-59)", () => {
       expect(p).toContain(`The diff is ${big.length} characters; only the first ${REVIEW_DIFF_LIMIT} are shown. Read the rest in /w/review: git diff origin/main...HEAD -- <file>`);
       expect(p.length).toBeLessThan(REVIEW_DIFF_LIMIT + 6000);
       expect(buildReviewPrompt(base)).not.toContain("only the first");
+    });
+    it("looks at the pages when the PR changes the website, and only then (AK-96)", () => {
+      expect(buildReviewPrompt(base)).not.toContain("npm run look");
+      for (const f of ["apps/site/src/workspace/Overview.tsx", "apps/web/src/main.tsx"]) {
+        const p = buildReviewPrompt({ ...base, files: [...base.files, f] });
+        expect(p).toContain("In /w/review, run `npm install` if node_modules is missing");
+        expect(p).toContain("`npm run look -- <the pages the change affects>`");
+        expect(p).toContain("isn't approved on tests alone");
+        expect(p).toContain("record in less_sure what you looked at, or that you couldn't and why");
+        expect(p).toContain(LOOK_NEVER_ASK);
+      }
     });
   });
 
