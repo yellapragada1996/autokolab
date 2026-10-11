@@ -53,6 +53,20 @@ export function outcomeOf(epic: Ticket): string | null {
   return first && first.length <= 160 && !/[\n#*`>|]/.test(first) && !/^[-+]\s/.test(first) ? first : null;
 }
 
+/**
+ * Text written by a runner or an agent with ticket keys swapped for the tickets' titles in quotes:
+ * "SH-3 needs the table from SH-4" → "“Remember me” needs the table from “Pick the store”". Unknown keys stay.
+ */
+export function withoutKeys(ws: Workspace, text: string): string {
+  return text.replace(/\b[A-Z][A-Z0-9]*-\d+\b/g, (k) => {
+    const t = ws.byKey.get(k);
+    return t ? named(t.title) : k;
+  });
+}
+
+/** The catch-up's lines as Overview shows them, with no ticket keys. */
+export const sinceItems = (ws: Workspace, c: CatchUp) => catchUpItems(c).map((i) => ({ ...i, text: withoutKeys(ws, i.text) }));
+
 /** Whose name to show: Captain for the project's lead agent. */
 export const whoName = (ws: Workspace, id: string) => (id === ws.project.lead_agent_id ? "Captain" : ws.nameOf(id));
 
@@ -179,7 +193,7 @@ export function agentRows(ws: Workspace, now: Date): AgentRow[] {
       kind = "stopped";
       doing = `stopped while ${plainPhrase(ws, t)}`;
       const back = a.status === "paused" ? null : resumeAt(a.status_note, now);
-      if (t.needs_human && RUNNER_PROBLEM.test(t.needs_human)) extra.push(stopReason(t.needs_human));
+      if (t.needs_human && RUNNER_PROBLEM.test(t.needs_human)) extra.push(withoutKeys(ws, stopReason(t.needs_human)));
       else if (a.status === "paused") extra.push("paused by its owner");
       else if (/usage limit/i.test(a.status_note ?? "")) extra.push("usage limit");
       if (back) extra.push(`resumes ${aboutTime(back)} by itself`);
@@ -295,7 +309,7 @@ export function overview(ws: Workspace, needs: Need[], plans: Plan[], now: Date)
               : t.status === "ready"
                 ? ["Up next", "quiet"]
                 : ["Planned", "quiet"];
-    return { line: partLine(t), state, tone, who, key: t.key };
+    return { line: withoutKeys(ws, partLine(t)), state, tone, who, key: t.key };
   };
 
   const featureOf = (epic: Ticket | null, parts: Ticket[]): Feature => {
@@ -322,7 +336,7 @@ export function overview(ws: Workspace, needs: Need[], plans: Plan[], now: Date)
       const reviewer = agents.find((r) => r.running && r.ticket && sorted.includes(r.ticket) && r.ticket.assignee_id !== r.agent.id);
       if (reviewer && !on.includes(whoName(ws, reviewer.agent.id))) on.push(whoName(ws, reviewer.agent.id));
       const back = building.map((t) => resumes.get(t.id)).filter((x): x is Date => !!x).sort((a, b) => a.getTime() - b.getTime())[0];
-      if (waits) [status, tone] = [`${word} · waiting for your answer`, "needs"];
+      if (waits) [status, tone] = [`${word} · ${on.length ? `${listed(on)} on it · ` : ""}waiting for your answer`, "needs"];
       else if (on.length) [status, tone] = [`${word} · ${listed(on)} on it`, "live"];
       else if (stopped) [status, tone] = [`${word} · ${back ? `paused until ${aboutTime(back)}` : "stopped"}`, "problem"];
       else [status, tone] = [word, "quiet"];
@@ -377,7 +391,7 @@ export function overview(ws: Workspace, needs: Need[], plans: Plan[], now: Date)
         ? `The team is building ${listed(names)}.`
         : `The team is building ${names.slice(0, 2).join(", ")} and ${plural(names.length - 2, "more feature")}.`;
   } else if (state === "waiting") {
-    const held = heldUp(ws, needs);
+    const held = heldUp(ws, needs, plans);
     headline = held.length === 0 ? "Captain is waiting for your answer." : held.length === 1 ? `${held[0]} can't move until you answer.` : `${plural(held.length, "feature")} can't move until you answer.`;
   } else if (state === "paused") {
     const stoppedOn = features.now.filter((f) => f.stopped).map((f) => (f.id === "fixes" ? "fixes and upkeep" : f.name));
@@ -408,7 +422,7 @@ function afterFeature(ws: Workspace, epic: Ticket | null, parts: Ticket[]): stri
 }
 
 /** The features what needs the person holds up, by name, in the order they started waiting. */
-export function heldUp(ws: Workspace, needs: Need[], plans: Plan[] = []): string[] {
+export function heldUp(ws: Workspace, needs: Need[], plans: Plan[]): string[] {
   const names: string[] = [];
   const add = (n: string | null) => {
     if (n && !names.includes(n)) names.push(n);

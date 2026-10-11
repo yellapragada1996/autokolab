@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { go, href, onNav, openShow, type Route } from "../lib/router";
 import { Button } from "../ui";
-import { catchUpItems, type CatchUpItem } from "./captain";
-import { overview, sinceLine, STATE_WORD, updatedText, youLine, type AgentRow, type Feature, type State, type Tone } from "./overview";
+import type { CatchUpItem } from "./captain";
+import { overview, sinceItems, sinceLine, STATE_WORD, updatedText, youLine, type AgentRow, type Feature, type State, type Tone } from "./overview";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
 
@@ -88,7 +88,7 @@ export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr:
         </section>
       )}
 
-      {since && cr.catchUp && <SinceYouLooked line={since} items={catchUpItems(cr.catchUp.c)} />}
+      {since && cr.catchUp && <SinceYouLooked line={since} items={sinceItems(ws, cr.catchUp.c)} />}
 
       {ws.tickets.length > 0 && (
         <section aria-label="Features" className="ak-features">

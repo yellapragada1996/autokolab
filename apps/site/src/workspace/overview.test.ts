@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MERGE_OK_PREFIX, type Ticket } from "../lib/data";
 import { needsYou, type CatchUp } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, ticket, workspace } from "./fixtures";
-import { agentRows, finishedWhen, isPhrase, outcomeOf, overview, partLine, plainPhrase, progressWord, resumeAt, sinceLine, stopReason, youLine } from "./overview";
+import { agentRows, finishedWhen, isPhrase, outcomeOf, overview, partLine, plainPhrase, progressWord, resumeAt, sinceItems, sinceLine, stopReason, withoutKeys, youLine } from "./overview";
 import type { Workspace } from "./useWorkspace";
 
 const NOW = new Date(at("12:00"));
@@ -239,6 +239,15 @@ describe("the You line and since you last looked", () => {
     expect(sinceLine(ws, c)).toBe("Since you last looked, 2 h ago: Search was finished, Google sign-in moved forward, 1 decision was recorded, 1 problem came up.");
     expect(sinceLine(ws, { awayMs: 3600_000, shipped: [], decided: [], problems: [] })).toBeNull();
     expect(sinceLine(ws, null)).toBeNull();
+  });
+});
+
+describe("no ticket keys", () => {
+  it("swaps keys in written text for the tickets' titles", () => {
+    const ws = workspace([ticket({ key: "SH-3", title: "Remember me" }), ticket({ key: "SH-4", title: "Pick the store" })]);
+    expect(withoutKeys(ws, "SH-3 needs the table from SH-4, not SH-99")).toBe("“Remember me” needs the table from “Pick the store”, not SH-99");
+    const c: CatchUp = { awayMs: 3600_000, shipped: [], decided: [], problems: [{ text: "Fjord couldn't continue: SH-3 waits", at: at("10:00") }] };
+    expect(sinceItems(ws, c).map((i) => i.text)).toEqual(["Fjord couldn't continue: “Remember me” waits"]);
   });
 });
 
