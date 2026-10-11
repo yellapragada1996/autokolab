@@ -1,6 +1,6 @@
 import { MERGE_OK_PREFIX, waitsForMergeOk, type Ticket } from "../lib/data";
 import { isBookkeeping, problemOf, type RoomMessage } from "../lib/room";
-import { epicOf, goals as storyGoals, headline, plural } from "./story";
+import { agentDot, epicOf, goals as storyGoals, headline, plural } from "./story";
 import type { Workspace } from "./useWorkspace";
 
 // Captain home (DEC-22, autokolab-ux-handoff/screens/S01-captain-home.md): everything the screen
@@ -168,9 +168,9 @@ export const named = (title: string) => `“${title.trim()}”`;
 const be = (n: number) => (n === 1 ? "is" : "are");
 
 function workClause(ws: Workspace): string {
-  const b = headline(ws).building;
-  if (!b) return "Everyone is idle.";
-  if (!b.workers) return `${plural(b.tickets, "ticket")} ${be(b.tickets)} in progress.`;
+  const h = headline(ws);
+  const b = h.building;
+  if (!b) return h.stopped ? `Nobody is working; ${plural(h.stopped, "ticket")} ${be(h.stopped)} stopped.` : "Everyone is idle.";
   const who = b.agentsOnly ? plural(b.workers, "agent") : plural(b.workers, "teammate");
   if (b.epics.length === 1) return `${who} ${be(b.workers)} building ${b.epics[0].title}.`;
   if (b.epics.length > 1) return `${who} ${be(b.workers)} working on ${b.epics.length} goals.`;
@@ -184,14 +184,16 @@ function agentRows(ws: Workspace): AgentRow[] {
     .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
   for (const t of moving) {
     if (rows.has(t.assignee_id!)) continue;
+    const agent = ws.agentOf(t.assignee_id)!;
+    const working = agentDot(agent) === "working";
     const steps = ws.steps.get(t.id) ?? [];
     const now = steps.findIndex((s) => s.status === "now");
     const done = steps.filter((s) => s.status === "done").length;
     rows.set(t.assignee_id!, {
       agentId: t.assignee_id!,
       name: ws.nameOf(t.assignee_id),
-      doing: now >= 0 ? lowerFirst(steps[now].label) : `working on ${named(t.title)}`,
-      step: steps.length ? `${now >= 0 ? now + 1 : Math.min(done + 1, steps.length)} of ${steps.length}` : null,
+      doing: working ? (now >= 0 ? lowerFirst(steps[now].label) : `working on ${named(t.title)}`) : `stopped on ${named(t.title)}`,
+      step: working && steps.length ? `${now >= 0 ? now + 1 : Math.min(done + 1, steps.length)} of ${steps.length}` : null,
       needsYou: !!t.needs_human,
       ticket: t,
     });

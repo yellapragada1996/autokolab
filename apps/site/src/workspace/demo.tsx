@@ -19,6 +19,8 @@ const BUILDER = "00000000-0000-0000-0000-0000000000c1";
 const REVIEWER = "00000000-0000-0000-0000-0000000000c2";
 const LEAD = "00000000-0000-0000-0000-0000000000c3";
 const SPARE = "00000000-0000-0000-0000-0000000000c4";
+// ?preview=workspace&idle shows the stopped headline by idling the only working agent.
+const demoIdle = new URLSearchParams(location.search).has("idle");
 
 const project: Project = { id: "demo", name: "Shop", slug: "shop", repo: "ana/shop", default_branch: "main", ticket_prefix: "SH", owner_id: ANA, lead_agent_id: LEAD, room_id: "room", created_at: iso(9000), merge_policy: "auto_safe" };
 
@@ -137,7 +139,7 @@ const demoEvents = new Map<string, TicketEvent[]>([["t2", [
 
 const agents: Agent[] = [
   { id: LEAD, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "ana-claude", status: "idle", status_note: "Planned the Sign-in goal", current_ticket_id: null, last_seen_at: iso(3), model: "opus", effort: "high", model_set_by: ANA, model_set_at: iso(60), effective_model: "claude-opus-5-5", effective_effort: "high", effective_at: iso(20) },
-  { id: BUILDER, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "builder", status: "building", status_note: "Creating profiles for new users", current_ticket_id: "t2", last_seen_at: iso(1), model: "sonnet", effort: "medium", model_set_by: LEAD, model_set_at: iso(30), effective_model: "haiku", effective_effort: "medium", effective_at: iso(1) },
+  { id: BUILDER, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "builder", status: demoIdle ? "idle" : "building", status_note: demoIdle ? "Stopped working on Google sign-in" : "Creating profiles for new users", current_ticket_id: demoIdle ? null : "t2", last_seen_at: iso(1), model: "sonnet", effort: "medium", model_set_by: LEAD, model_set_at: iso(30), effective_model: "haiku", effective_effort: "medium", effective_at: iso(1) },
   { id: REVIEWER, owner_profile_id: LEE, owner_label: "lee", vendor: "codex", display_name: "lee-codex", status: "waiting_human", status_note: "Asked about the session store", current_ticket_id: "t4", last_seen_at: iso(2), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "gpt-5.5-codex", effective_effort: null, effective_at: iso(120) },
   { id: SPARE, owner_profile_id: LEE, owner_label: "lee", vendor: "claude", display_name: "lee-claude", status: "offline", status_note: null, current_ticket_id: null, last_seen_at: iso(60 * 24 * 3), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: null, effective_effort: null, effective_at: null },
 ];
