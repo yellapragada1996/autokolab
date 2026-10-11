@@ -56,7 +56,7 @@ function ticket(n: number, t: Partial<Ticket> & Pick<Ticket, "title" | "status">
 }
 
 const allTickets: Ticket[] = [
-  ticket(1, { title: "Sign-in", status: "in_progress", type: "epic", priority: "high", description: "Everything about getting people signed in." }),
+  ticket(1, { title: "Sign-in: Google and email, remembered for 30 days", status: "in_progress", type: "epic", priority: "high", description: "Everything about getting people signed in." }),
   ticket(2, {
     title: "Add Google sign-in",
     status: "in_progress",

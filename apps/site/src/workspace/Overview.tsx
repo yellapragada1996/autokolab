@@ -2,7 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { go, href, onNav, openShow, showHref, type Route } from "../lib/router";
 import { SegmentedProgress, type Segment } from "../ui";
 import { ago } from "./bits";
-import { briefing, goalName, ownerOf, today, type Need, type Segment as GoalSegment } from "./captain";
+import { briefing, goalName, ownerOf, today, withoutPlan, type Need, type Segment as GoalSegment } from "./captain";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
 
@@ -120,7 +120,7 @@ export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr:
                 </li>
               ))}
               {day.shipped.length > SHIPPED_MAX && (
-                <li style={{ padding: "4px 10px" }}>
+                <li style={{ padding: "4px 0" }}>
                   <a href={href(board)} onClick={onNav(board)} style={{ fontSize: 14, textDecoration: "none" }}>
                     and {day.shipped.length - SHIPPED_MAX} more
                   </a>
@@ -200,13 +200,15 @@ function NeedRow({ need, slug }: { need: Need; slug: string }) {
       <Dot color="var(--amber)" />
       <span style={{ whiteSpace: "nowrap" }}>{need.action}</span>
       <span style={{ minWidth: 0, color: "var(--text-muted)", ...ellipsis }}>
-        {t && (
+        {t ? (
           <>
             <span className="mono" style={{ fontSize: 12 }}>
               {t.key}
             </span>{" "}
             {t.title}
           </>
+        ) : (
+          withoutPlan(need.question).split("\n")[0]
         )}
       </span>
       <span style={{ fontSize: 13, color: "var(--text-dim)", whiteSpace: "nowrap" }}>{ago(need.since)}</span>
@@ -270,7 +272,7 @@ function Block({ title, children }: { title: string; children: ReactNode }) {
 function Group({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <h3 style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)", padding: "4px 10px 0" }}>{label}</h3>
+      <h3 style={{ fontSize: 12, fontWeight: 500, color: "var(--text-muted)", paddingTop: 4 }}>{label}</h3>
       <ul style={list}>{children}</ul>
     </div>
   );
