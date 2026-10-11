@@ -594,17 +594,51 @@ export class Runner {
       if (this.limitWait?.kind === "message" && !this.queue.length && Date.now() >= Date.parse(this.limitWait.until)) this.saveLimitWait(null);
       if (this.limitWait && !this.ak.me.paused && !this.stopping && !this.overLimit() && this.limitWait.kind !== "message") {
         const wait = this.limitWait;
+        await this.loadProjects(true);
         const project = this.projects.find((p) => p.project.slug === wait.project);
-        if (project && wait.key) {
-          const ticket = await project.ticket(wait.key);
-          if (["done", "canceled"].includes(ticket.status) ||
-              (wait.kind === "review" && (ticket.status !== "review" || !!ticket.approved_sha)) ||
-              (wait.kind === "triage" && !ticket.needs_human)) {
+        if (!project || !wait.key) {
+          this.log(`Dropping usage-limit retry for ${wait.key ?? "a ticket"}: the project is no longer available.`);
+          this.saveLimitWait(null);
+          await this.setStatus("idle");
+        } else {
+          let ticket: Ticket | null = null;
+          try {
+            ticket = await project.ticket(wait.key);
+          } catch (e) {
+            if (!/^No ticket /.test((e as Error).message)) throw e; // A read failure can be retried.
+            this.log(`Dropping usage-limit retry for ${wait.key}: the ticket no longer exists.`);
             this.saveLimitWait(null);
             await this.setStatus("idle");
-          } else if (wait.kind === "ticket") await this.executeTicket({ project, ticket, comments: wait.comments ?? [] });
-          else if (wait.kind === "triage") await this.executeTriage({ project, ticket });
-          else if (wait.pr && wait.sha) await this.executeReview({ project, ticket, pr: wait.pr, sha: wait.sha });
+          }
+          if (ticket) {
+            if (["done", "canceled"].includes(ticket.status) ||
+                (wait.kind === "ticket" && ticket.assignee_id !== this.ak.me.id) ||
+                (wait.kind === "review" && (ticket.status !== "review" || !!ticket.approved_sha)) ||
+                (wait.kind === "triage" && !ticket.needs_human)) {
+              this.log(`Dropping usage-limit retry for ${wait.key}: the ticket no longer needs this run.`);
+              this.saveLimitWait(null);
+              await this.setStatus("idle");
+            } else {
+              try {
+                if (wait.kind === "ticket") await this.executeTicket({ project, ticket, comments: wait.comments ?? [] });
+                else if (wait.kind === "triage") await this.executeTriage({ project, ticket });
+                else if (wait.pr && wait.sha) await this.executeReview({ project, ticket, pr: wait.pr, sha: wait.sha });
+                else this.saveLimitWait(null);
+                if (this.limitWait === wait) {
+                  this.saveLimitWait(null); // The resume no longer had work to do.
+                  await this.setStatus("idle");
+                }
+              } catch (e) {
+                const msg = (e as Error).message;
+                this.saveLimitWait(null);
+                this.log(`${wait.key} couldn't resume after the usage limit: ${msg}`);
+                if (wait.kind === "ticket") {
+                  await project.update(wait.key, { needs_human: `I couldn't start: ${msg}`.slice(0, 1000) }).catch(() => undefined);
+                  await this.setStatus("blocked", `Couldn't start ${wait.key}`, ticket.id);
+                } else await this.setStatus("idle");
+              }
+            }
+          }
         }
       }
       while (this.queue.length && !this.ak.me.paused && !this.stopping) {
@@ -740,9 +774,9 @@ export class Runner {
 
   // ------------------------------------------------------------ project board
 
-  private async loadProjects(): Promise<void> {
+  private async loadProjects(strict = false): Promise<void> {
     this.projectsLoadedAt = Date.now();
-    const views = await ProjectView.all(this.ak.sb, this.ak.me.id).catch(() => [] as ProjectView[]);
+    const views = strict ? await ProjectView.all(this.ak.sb, this.ak.me.id) : await ProjectView.all(this.ak.sb, this.ak.me.id).catch(() => [] as ProjectView[]);
     const known = new Set(this.projects.map((p) => p.project.id));
     const changed = views.length !== this.projects.length || views.some((v) => !known.has(v.project.id));
     this.projects = views;

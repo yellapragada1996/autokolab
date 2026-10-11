@@ -10,6 +10,11 @@ describe("subscription usage limit", () => {
       .toBe("2026-10-11T03:40:00.000Z");
   });
 
+  it("reads an on-the-hour reset without minutes", () => {
+    expect(usageLimit(failed("You've hit your session limit · resets 5am (Europe/Stockholm)"), now)?.until.toISOString())
+      .toBe("2026-10-11T03:00:00.000Z");
+  });
+
   it("recognises usage and weekly wording and falls back when the clock is unreadable", () => {
     for (const kind of ["usage", "weekly"]) {
       expect(usageLimit(failed(`You've hit your ${kind} limit · resets soon`), now)?.until.toISOString())

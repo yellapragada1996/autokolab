@@ -6,10 +6,10 @@ export function usageLimit(run: Pick<EngineRun, "isError" | "aborted" | "timedOu
   const text = run.finalText;
   if (!/(?:you(?:'|’)ve hit your|you have hit your) (?:session|usage|weekly) limit/i.test(text)) return null;
   const fallback = new Date(now.getTime() + 30 * 60_000);
-  const match = text.match(/resets?\s+(\d{1,2}):(\d{2})\s*(am|pm)\s*\(([^)]+)\)/i);
+  const match = text.match(/resets?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*\(([^)]+)\)/i);
   if (!match) return { until: fallback };
   const hour = Number(match[1]) % 12 + (match[3].toLowerCase() === "pm" ? 12 : 0);
-  const minute = Number(match[2]);
+  const minute = Number(match[2] ?? "0");
   if (Number(match[1]) < 1 || Number(match[1]) > 12 || minute > 59) return { until: fallback };
   let formatter: Intl.DateTimeFormat;
   try {
