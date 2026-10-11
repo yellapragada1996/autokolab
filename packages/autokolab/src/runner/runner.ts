@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, ProjectView, isMergeQuestion, untriaged, type AgentStatus, type Comment, type RanWith, type Ticket } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type RanWith, type Ticket } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -11,16 +11,17 @@ import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineRun, type ModelChoice, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
-import { ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, plainGhError, prNumber, readyToMergeMessage, type MergeDecision, type PrInfo } from "./merge.js";
-import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
+import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, riskyFiles, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
+import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
-import { currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
+import { checkoutCommit, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
 // teammate asks it something, starts the agent headless in that thread's own worktree. It also
 // works the project board: tickets assigned to it in Ready, and comments on its open tickets. A
-// project's lead also answers workers' questions on their tickets ("Needs you"). One task at a time
-// per agent: room messages first, then the lead's triage, then its own tickets.
+// project's lead also answers workers' questions on their tickets ("Needs you") and reviews workers'
+// PRs once their tests pass. One task at a time per agent: room messages first, then the lead's
+// triage, then its reviews, then its own tickets.
 
 /** Kinds addressed to everyone that continue work in a thread this agent is already on. */
 const THREAD_KINDS: MessageKind[] = ["task", "chat", "answer", "review", "decision"];
@@ -158,6 +159,14 @@ interface TriageJob {
   ticket: Ticket;
 }
 
+/** A worker's PR whose tests passed, for the project's lead to review at its head commit (AK-59). */
+interface ReviewJob {
+  project: ProjectView;
+  ticket: Ticket;
+  pr: PrInfo;
+  sha: string;
+}
+
 /**
  * Per agent, on this machine: the engine session for each ticket, the last comment handled, and
  * (for a lead) the question text on each worker's ticket it already triaged.
@@ -172,6 +181,8 @@ interface TicketState {
    * retry until the ticket changes.
    */
   merges?: Record<string, { sig: string; failedAt?: string }>;
+  /** For a lead: the last commit of each ticket waiting for review that it handled, and how (AK-59). */
+  reviews?: Record<string, ReviewRecord>;
 }
 
 const PROJECTS_RELOAD_MS = 5 * 60_000;
@@ -203,6 +214,9 @@ export class Runner {
   private isAgentRow = true;
   private merging = false;
   private mergeCheckedAt = new Map<string, number>();
+  private reviewQueue: ReviewJob[] = [];
+  private checkingReviews = false;
+  private reviewCheckedAt = new Map<string, { at: number; updated: string }>();
 
   constructor(
     private ak: AutoKolab,
@@ -254,7 +268,12 @@ export class Runner {
     this.timers.push(setInterval(() => this.poll(), POLL_MS));
     // Merging approved PRs is plain code, not a model run, so it has its own timer and goes on
     // while a task is running.
-    this.timers.push(setInterval(() => void this.checkMerges(), MERGE_CHECK_MS));
+    this.timers.push(
+      setInterval(() => {
+        void this.checkMerges();
+        void this.checkReviews();
+      }, MERGE_CHECK_MS),
+    );
     this.timers.push(
       setInterval(() => {
         void ak.heartbeat(this.stateNow()).catch((e) => this.log(`Heartbeat failed: ${e.message}`));
@@ -514,6 +533,11 @@ export class Runner {
           await this.executeTriage(q).catch((e) => this.log(`Couldn't look at ${q.ticket.key}'s question: ${(e as Error).message}`));
           continue;
         }
+        const rj = this.nextReview();
+        if (rj) {
+          await this.executeReview(rj).catch((e) => this.log(`Couldn't review ${rj.ticket.key}: ${(e as Error).message}`));
+          continue;
+        }
         const tj = await this.nextTicket().catch((e) => {
           this.log(`Couldn't check the board: ${(e as Error).message}`);
           return null;
@@ -612,7 +636,13 @@ export class Runner {
     this.projects = views;
     if (!changed) return;
     for (const ch of this.ticketChannels) void this.ak.sb.removeChannel(ch);
-    this.ticketChannels = views.map((v) => v.onChange(() => void this.work()));
+    // A ticket moving to Review is noticed here, without anyone saying so in the room (AK-59).
+    this.ticketChannels = views.map((v) =>
+      v.onChange(() => {
+        void this.checkReviews();
+        void this.work();
+      }),
+    );
     // First run on this machine: comments from before don't start work.
     const st = this.ticketState();
     for (const v of views) {
@@ -712,6 +742,119 @@ export class Runner {
     }
   }
 
+  /** Whether the lead's runner may start an automatic review now: the owner's switch, pause and the daily limit. */
+  reviewsAllowed(): boolean {
+    return this.cfg.auto_review && !this.ak.me.paused && !this.stopping && !this.overLimit();
+  }
+
+  /**
+   * For a lead: look at workers' PRs in Review with no approval (AK-59). Plain code: failing tests
+   * go back to the worker, Captain's own tickets go to another agent, and only a passing commit
+   * that hasn't been handled queues a review run. Each ticket is looked at once a minute at most,
+   * or straight away when it changes.
+   */
+  private async checkReviews(): Promise<void> {
+    if (this.checkingReviews || !this.reviewsAllowed()) return;
+    this.checkingReviews = true;
+    try {
+      if (Date.now() - this.projectsLoadedAt > PROJECTS_RELOAD_MS) await this.loadProjects();
+      for (const p of this.projects.filter((x) => x.iAmLead)) {
+        for (const t of await p.waitingForReview()) {
+          const seen = this.reviewCheckedAt.get(t.id);
+          if (seen && seen.updated === t.updated_at && Date.now() - seen.at < MERGE_CHECK_MS) continue;
+          if (this.reviewQueue.some((j) => j.ticket.id === t.id)) continue;
+          this.reviewCheckedAt.set(t.id, { at: Date.now(), updated: t.updated_at });
+          let pr: PrInfo;
+          try {
+            pr = ghPrView<PrInfo>(t.pr_url!);
+          } catch (e) {
+            this.log(`${t.key} review: couldn't check the PR: ${plainGhError((e as Error).message, `on ${this.ak.ownerName(this.ak.me)}'s machine`)}`);
+            continue;
+          }
+          await this.checkReview(p, t, pr).catch((e) => this.log(`${t.key} review: ${(e as Error).message}`));
+        }
+      }
+    } catch (e) {
+      this.log(`Couldn't check PRs waiting for review: ${(e as Error).message}`);
+    } finally {
+      this.checkingReviews = false;
+    }
+    if (this.reviewQueue.length) void this.work();
+  }
+
+  /** One ticket waiting for review: see reviewDecision. Everything but `review` is done here, without the model. */
+  private async checkReview(p: ProjectView, t: Ticket, pr: PrInfo): Promise<void> {
+    const rec = this.ticketState().reviews?.[t.id];
+    const d = reviewDecision(t, pr, this.ak.me.id, rec);
+    const ask = async (q: string) => {
+      if (t.needs_human !== q) await p.update(t.key, { needs_human: q });
+    };
+    if (d.noChecksSince !== undefined) {
+      // No checks on this commit yet. That's never "handled": it's looked at again until checks
+      // show up, and "No automatic tests ran" is said once, after the grace time.
+      const asked = rec?.noChecks?.sha === d.sha && !!rec.noChecks.asked;
+      const tell = d.action === "no_checks" && !asked;
+      if (rec?.noChecks?.sha !== d.sha || tell) {
+        this.rememberReview(t.id, { sha: rec?.sha ?? "", action: rec?.action ?? "wait", reviews: rec?.reviews ?? 0, noChecks: { sha: d.sha, since: d.noChecksSince, asked: asked || tell } });
+      }
+      if (tell) {
+        this.log(`${t.key} review: no_checks · ${d.why}.`);
+        await ask(NO_CHECKS_QUESTION);
+      }
+      return;
+    }
+    // Checks showed up: "No automatic tests ran" isn't true any more.
+    if (rec?.noChecks) this.rememberReview(t.id, { sha: rec.sha, action: rec.action, reviews: rec.reviews });
+    if (t.needs_human === NO_CHECKS_QUESTION && (pr.statusCheckRollup ?? []).length) {
+      await p.update(t.key, { needs_human: null });
+      t = { ...t, needs_human: null };
+    }
+    if (d.action === "wait") return;
+    this.log(`${t.key} review: ${d.action} · ${d.why}.`);
+    if (d.action === "review") {
+      this.reviewQueue.push({ project: p, ticket: t, pr, sha: d.sha });
+      return;
+    }
+    // Handled once per commit, whatever happens below.
+    this.rememberReview(t.id, { sha: d.sha, action: d.action, reviews: rec?.reviews ?? 0 });
+    const url = t.pr_url!;
+    if (d.action === "limit") return ask(REVIEW_LIMIT_QUESTION);
+    if (d.action === "tests_failed") {
+      await p.comment(t.key, testsFailedComment(url, d.sha, d.failed ?? []));
+      const stale = isMergeQuestion(t.needs_human) || isReviewQuestion(t.needs_human);
+      await p.update(t.key, { status: "in_progress", ...(stale ? { needs_human: null } : {}) });
+      return;
+    }
+    // ask_worker: Captain built it, so someone else has to approve it.
+    await p.loadNames().catch(() => undefined);
+    const reviewer = pickReviewer(p.agents(), t, this.ak.me.id);
+    const room = this.projectRoom(p);
+    if (!reviewer || !room) return ask(LEAD_BUILT_QUESTION);
+    const n = Number(prNumber(url));
+    await this.ak.room(room).post({ kind: "review", to: reviewer.id, body: askReviewMessage(t.key, t.title, url, d.sha, t.done_means), refs: { ...(n ? { pr: n } : {}), commit: d.sha } });
+    this.log(`${t.key} review: asked ${reviewer.name} to review ${d.sha.slice(0, 7)}.`);
+  }
+
+  /** Set or (with undefined) forget what the runner did about a ticket waiting for review. */
+  private rememberReview(ticketId: string, rec: ReviewRecord | undefined): void {
+    const st = this.ticketState();
+    const reviews = { ...(st.reviews ?? {}) };
+    if (rec) reviews[ticketId] = rec;
+    else delete reviews[ticketId];
+    st.reviews = reviews;
+    this.saveTicketState(st);
+  }
+
+  /** The next queued review, if reviews may run now. */
+  private nextReview(): ReviewJob | null {
+    if (!this.reviewsAllowed()) return null;
+    return this.reviewQueue.shift() ?? null;
+  }
+
+  private projectRoom(p: ProjectView): Room | undefined {
+    return p.project.room_id ? this.ak.roomById(p.project.room_id) : this.ak.rooms().find((r) => r.repo === p.project.repo);
+  }
+
   private async checkMerge(p: ProjectView, t: Ticket): Promise<void> {
     const rec = this.ticketState().merges?.[t.id];
     if (rec?.failedAt && rec.failedAt === t.updated_at) return; // a failed merge waits for the ticket to change
@@ -744,7 +887,7 @@ export class Runner {
       return;
     }
     if (d.action === "ask") {
-      const room = p.project.room_id ? this.ak.roomById(p.project.room_id) : this.ak.rooms().find((r) => r.repo === p.project.repo);
+      const room = this.projectRoom(p);
       const person = this.ak.mine().find((m) => m.kind === "human");
       if (!room) throw new Error("the project has no room to tell my person in");
       await this.ak.room(room).post({ kind: "status", to: person?.id ?? null, body: readyToMergeMessage(url, t.key) });
@@ -1050,6 +1193,105 @@ export class Runner {
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
     const said = redactSecrets(result.finalText.trim()).split("\n")[0].slice(0, 200);
     this.log(`${t.key} question: ${result.aborted ? "stopped" : result.timedOut ? "hit the time limit" : result.isError ? "failed" : said || "done"}.`);
+  }
+
+  /**
+   * The lead reviews one commit of a worker's PR (AK-59): a focused prompt and a read-only checkout
+   * at that commit. Only the model's ticket_approve approves; the runner never does.
+   */
+  private async executeReview(job: ReviewJob): Promise<void> {
+    const { ak, cfg } = this;
+    const { project: p, sha, pr } = job;
+    // The ticket may have moved on while this waited in the queue.
+    const t = await p.ticket(job.ticket.key);
+    if (t.status !== "review" || t.approved_sha || t.pr_url !== job.ticket.pr_url) return;
+    // Handled once, whatever happens below, so a failing run can't loop; it counts toward the cap.
+    const prev = this.ticketState().reviews?.[t.id];
+    if (prev?.sha === sha) return;
+    this.rememberReview(t.id, { sha, action: "review", reviews: (prev?.reviews ?? 0) + 1 });
+
+    const repo = p.project.repo;
+    if (!repo) return;
+    const url = t.pr_url!;
+    const where = `on ${ak.ownerName(ak.me)}'s machine`;
+    const clone = ensureClone(repo);
+    if (!this.hooked.has(repo)) {
+      installHook(clone, cfg.limits.protected_branches);
+      this.hooked.add(repo);
+    }
+    // Its own worktree at exactly this commit, never its person's checkout.
+    const worktree = ensureTicketWorktree(ak.me.name, repo, "review", `ak/${ak.me.name}/review`);
+    checkoutCommit(worktree, sha, prNumber(url));
+    let diff: string;
+    try {
+      diff = ghPrDiff(url);
+    } catch (e) {
+      diff = `(gh couldn't get the diff: ${plainGhError((e as Error).message, where)} Read it in the checkout instead.)`;
+    }
+    const word = { success: "passed", pending: "running", failure: "failed" } as const;
+    const prompt = buildReviewPrompt({
+      myName: ak.me.name,
+      ownerName: ak.ownerName(ak.me),
+      projectName: p.project.name,
+      key: t.key,
+      title: t.title,
+      description: t.description,
+      doneMeans: t.done_means,
+      prUrl: url,
+      sha,
+      checks: (pr.statusCheckRollup ?? []).map((c: PrCheck) => `${c.name ?? c.context ?? "a check"}: ${word[checkResult(c)]}`),
+      files: (pr.files ?? []).map((f) => f.path),
+      risky: riskyFiles(pr),
+      diff: redactSecrets(diff),
+      decisions: (await p.decisions()).filter((d) => !d.superseded_by).map((d) => `${d.key}: ${d.title}`),
+      repoPath: worktree.path,
+      base: p.project.default_branch || worktree.base,
+    });
+    const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
+    const choice = await this.modelChoice();
+    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, null, choice) : codexInvocation(cfg, mcp, null, worktree.path, choice);
+    const logFile = join(this.logDir, `${p.project.slug}-${t.key}-review-${Date.now()}.log`);
+
+    // The newest comment before the run: a comment from Captain after it means it sent the ticket back.
+    const lastCommentId = (await p.comments(t.id)).reduce((n, c) => Math.max(n, c.id), 0);
+    const abort = new AbortController();
+    this.current = { what: `the review of ${t.key}`, abort };
+    await ak.heartbeat("working").catch(() => undefined);
+    await this.setStatus("planning", `Reviewing ${t.key}`, t.id);
+    this.log(`Reviewing ${t.key} at ${sha.slice(0, 7)} in ${p.project.name}.`);
+    let result: EngineRun;
+    const startedAt = Date.now();
+    try {
+      result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
+    } finally {
+      this.current = null;
+      this.addUsage((Date.now() - startedAt) / 1000);
+    }
+    await this.setStatus(ak.me.paused ? "paused" : "idle");
+    await ak.heartbeat(this.stateNow()).catch(() => undefined);
+    if (result.aborted) {
+      // Paused or shut down: that wasn't a review, so it runs again later and doesn't count.
+      this.rememberReview(t.id, prev);
+    } else if (result.timedOut || result.isError) {
+      const why = result.timedOut ? `it hit the ${cfg.limits.max_minutes}-minute limit` : "the run failed";
+      const after = await p.ticket(t.key).catch(() => t);
+      if (!after.needs_human && !after.approved_sha) {
+        await p.update(t.key, { needs_human: `${REVIEW_FAILED_PREFIX}: ${why}. Can you look, or check the log on ${ak.ownerName(ak.me)}'s computer?` }).catch(() => undefined);
+      }
+    } else {
+      // It finished but neither approved nor sent it back: say so, or the ticket sits in Review unseen.
+      try {
+        const after = await p.ticket(t.key);
+        if (reviewEndedUndecided(after, url, await p.comments(t.id), ak.me.id, lastCommentId)) {
+          this.log(`${t.key} review: ended without a decision; asking a person.`);
+          await p.update(t.key, { needs_human: REVIEW_UNDECIDED_QUESTION });
+        }
+      } catch (e) {
+        this.log(`${t.key} review: couldn't check how it ended: ${(e as Error).message}`);
+      }
+    }
+    const said = redactSecrets(result.finalText.trim()).split("\n")[0].slice(0, 200);
+    this.log(`${t.key} review: ${result.aborted ? "stopped" : result.timedOut ? "hit the time limit" : result.isError ? "failed" : said || "done"}.`);
   }
 
   private async say(roomId: string, thread: number, to: string | null, body: string): Promise<void> {

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NOTHING_UNSURE, NO_CHECKS_QUESTION, isMergeQuestion, type MergePolicy, type Review, type Ticket } from "../core/projects.js";
+import { MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NOTHING_UNSURE, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, isMergeQuestion, isReviewQuestion, type Comment, type MergePolicy, type Review, type ReviewerCandidate, type Ticket } from "../core/projects.js";
 
 // The lead's approval and its runner's merge (AK-30, DEC-19). The decision is plain code, not a
 // model run: the runner merges a PR only at the commit the lead approved, once every check passed
@@ -83,6 +83,125 @@ export function riskyFiles(pr: Pick<PrInfo, "files">): string[] {
   const files = (pr.files ?? []).map((f) => f.path);
   // gh lists at most 100 files, so a bigger PR can't be shown to be safe.
   return [...files.filter(isRiskyPath), ...(files.length >= GH_FILE_LIMIT ? [`${GH_FILE_LIMIT}+ files, too many to check`] : [])];
+}
+
+// ------------------------------------------------------------------ automatic reviews (AK-59)
+
+export type ReviewAction = "wait" | "tests_failed" | "review" | "ask_worker" | "no_checks" | "limit";
+
+export interface ReviewDecision {
+  action: ReviewAction;
+  /** One line for the runner log. */
+  why: string;
+  /** The PR's head commit the decision is about. */
+  sha: string;
+  /** For tests_failed: the checks that didn't pass. */
+  failed?: string[];
+  /** The PR has no checks yet: when the runner first saw this commit without any (ms), for the record. */
+  noChecksSince?: number;
+}
+
+/** What the lead's runner last did about a ticket waiting for review, kept across restarts. */
+export interface ReviewRecord {
+  /** The head commit last handled ("" for none yet). no_checks never counts as handled. */
+  sha: string;
+  action: ReviewAction;
+  /** Automatic review runs started for this ticket, over all its commits. */
+  reviews: number;
+  /** A commit seen with no checks: since when (ms), and whether "No automatic tests ran" was set for it. */
+  noChecks?: { sha: string; since: number; asked?: boolean };
+}
+
+/** How long a commit may have no checks before the runner says so: GitHub takes a while to register them. */
+export const NO_CHECKS_GRACE_MS = 5 * 60_000;
+
+/** The lead built it: it's the assignee, or one of the past builders (schema 17; missing means just the assignee). */
+export function leadBuilt(ticket: Pick<Ticket, "assignee_id" | "built_by">, leadId: string): boolean {
+  return ticket.assignee_id === leadId || (ticket.built_by ?? []).includes(leadId);
+}
+
+/**
+ * What the lead's runner does about a ticket in Review with a PR and no approval, given the PR as
+ * GitHub sees it and what it already did for this ticket. Plain code: the model only runs for
+ * `review`, once per commit, and at most MAX_AUTO_REVIEWS times per ticket.
+ */
+export function reviewDecision(
+  ticket: Pick<Ticket, "assignee_id" | "built_by" | "needs_human">,
+  pr: PrInfo,
+  leadId: string,
+  handled: Pick<ReviewRecord, "sha" | "reviews" | "noChecks"> | null | undefined,
+  now = Date.now(),
+  maxReviews = MAX_AUTO_REVIEWS,
+): ReviewDecision {
+  const sha = pr.headRefOid.toLowerCase();
+  const d = (action: ReviewAction, why: string, failed?: string[]): ReviewDecision => ({ action, why, sha, ...(failed ? { failed } : {}) });
+  if (pr.state !== "OPEN") return d("wait", `the PR is ${pr.state.toLowerCase()}`);
+  if (handled?.sha.toLowerCase() === sha) return d("wait", `${short(sha)} was already handled`);
+  // Someone is already waiting on a person here; a review now would talk over them.
+  if (ticket.needs_human && !isMergeQuestion(ticket.needs_human) && !isReviewQuestion(ticket.needs_human)) return d("wait", "it has a question for a person");
+  const checks = pr.statusCheckRollup ?? [];
+  if (!checks.length) {
+    // A PR opened seconds ago has no checks yet either, so give GitHub time before saying so.
+    const since = handled?.noChecks?.sha.toLowerCase() === sha ? handled.noChecks.since : now;
+    if (now - since < NO_CHECKS_GRACE_MS) return { ...d("wait", "no checks yet; giving GitHub time to start them"), noChecksSince: since };
+    return { ...d("no_checks", `no checks ran in ${Math.round((now - since) / 60_000)} minutes`), noChecksSince: since };
+  }
+  const name = (c: PrCheck) => c.name ?? c.context ?? "a check";
+  const failed = checks.filter((c) => checkResult(c) === "failure").map(name);
+  if (failed.length) return d("tests_failed", `${shortList(failed)} didn't pass`, failed);
+  const pending = checks.filter((c) => checkResult(c) === "pending");
+  if (pending.length) return d("wait", `${shortList(pending.map(name))} still running`);
+  if (leadBuilt(ticket, leadId)) return d("ask_worker", "the lead built it, so it can't approve it");
+  if ((handled?.reviews ?? 0) >= maxReviews) return d("limit", `already reviewed ${maxReviews} times`);
+  return d("review", `tests passed at ${short(sha)}`);
+}
+
+export const REVIEW_UNDECIDED_QUESTION = `${REVIEW_FAILED_PREFIX}: the review ended without a decision. Can you look?`;
+
+/**
+ * After a review run that finished normally: did it leave the ticket with no decision? That's when
+ * it's still in Review at the same PR, unapproved, with no "Needs you" and no comment from the lead
+ * after `lastCommentId` (the newest comment before the run). Then nobody would be told otherwise.
+ */
+export function reviewEndedUndecided(
+  after: Pick<Ticket, "status" | "pr_url" | "approved_sha" | "needs_human">,
+  prUrl: string,
+  comments: Pick<Comment, "id" | "author_id">[],
+  leadId: string,
+  lastCommentId: number,
+): boolean {
+  if (after.status !== "review" || after.pr_url !== prUrl || after.approved_sha || after.needs_human) return false;
+  return !comments.some((c) => c.id > lastCommentId && c.author_id === leadId);
+}
+
+/**
+ * Who to ask to review a ticket the lead built: an agent that didn't build it. The database lets
+ * another agent approve only a ticket the lead is the assignee of, so otherwise nobody. Claude Code
+ * agents first (an agent reporting through the ending block can't call ticket_approve, and the
+ * runner can't tell which Codex agents do), then idle, then online ones.
+ */
+export function pickReviewer(agents: ReviewerCandidate[], ticket: Pick<Ticket, "assignee_id" | "built_by">, leadId: string): ReviewerCandidate | null {
+  if (ticket.assignee_id !== leadId) return null;
+  const builders = new Set([ticket.assignee_id, ...(ticket.built_by ?? [])]);
+  const score = (a: ReviewerCandidate) => (a.vendor === "claude" ? 4 : 0) + (a.online && a.status === "idle" ? 2 : 0) + (a.online ? 1 : 0);
+  const eligible = agents.filter((a) => a.id !== leadId && !builders.has(a.id) && a.status !== "paused");
+  return eligible.sort((a, b) => score(b) - score(a))[0] ?? null;
+}
+
+export function testsFailedComment(prUrl: string, sha: string, failed: string[]): string {
+  return `Tests didn't pass on PR #${prNumber(prUrl)} at commit ${short(sha)}: ${shortList(failed)}. It needs a fix and a new push; I've moved it back to In progress. Captain reviews again once the tests pass.`;
+}
+
+export function askReviewMessage(key: string, title: string, prUrl: string, sha: string, doneMeans: string[]): string {
+  const done = doneMeans.length ? doneMeans.map((x) => `- ${x}`).join("\n") : "(none written)";
+  return `Please review ${key} (${title}). Captain built it, so it can't approve it itself.
+PR: ${prUrl}
+Commit: ${sha}
+
+Done means:
+${done}
+
+Read the diff and the checks. If it's right, approve it with ticket_approve key=${key} sha=${sha} and the evidence fields. If not, ticket_comment on ${key} with what's missing.`;
 }
 
 /**
@@ -231,8 +350,8 @@ export function plainGhError(stderr: string, where: string): string {
 
 const GH_ENV = { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" };
 
-export function gh(args: string[]): { ok: boolean; out: string; err: string } {
-  const r = spawnSync("gh", args, { encoding: "utf8", env: GH_ENV, timeout: 60_000, stdio: ["ignore", "pipe", "pipe"] });
+export function gh(args: string[], maxBuffer = 1024 * 1024): { ok: boolean; out: string; err: string } {
+  const r = spawnSync("gh", args, { encoding: "utf8", env: GH_ENV, timeout: 60_000, maxBuffer, stdio: ["ignore", "pipe", "pipe"] });
   if (r.error) return { ok: false, out: "", err: `gh: ${r.error.message}` };
   return { ok: r.status === 0, out: r.stdout ?? "", err: r.stderr ?? "" };
 }
@@ -242,6 +361,13 @@ export function ghPrView<T = PrInfo>(url: string, fields = MERGE_FIELDS): T {
   const r = gh(["pr", "view", url, "--json", fields]);
   if (!r.ok) throw new Error(r.err || "gh pr view failed");
   return JSON.parse(r.out) as T;
+}
+
+/** `gh pr diff <url>`: the PR's whole diff. Throws gh's error as is. */
+export function ghPrDiff(url: string): string {
+  const r = gh(["pr", "diff", url], 64 * 1024 * 1024);
+  if (!r.ok) throw new Error(r.err || "gh pr diff failed");
+  return r.out;
 }
 
 /** A merge commit, only if the PR's head is still the approved commit. */

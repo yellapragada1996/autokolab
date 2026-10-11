@@ -26,6 +26,11 @@ const RunnerConfigSchema = z.object({
   catch_up_hours: z.number().min(0).max(168).default(24),
   /** Use this file's model and effort even when they're set on AutoKolab (DEC-18: the owner keeps the last word). */
   model_locked: z.boolean().default(false),
+  /**
+   * For a project's lead: review a worker's PR on its own once its tests pass (AK-59). Off, the
+   * lead reviews only when someone asks it to.
+   */
+  auto_review: z.boolean().default(true),
 
   limits: z
     .object({
@@ -127,6 +132,7 @@ export function runnerTemplate(agentId: string, engine: "claude" | "codex"): str
 agent_id = "${agentId}"
 engine = "${engine}"
 # model_locked = true             # always use the model and effort in this file, whatever AutoKolab says
+auto_review = true                # as the project's lead: review each finished PR once its tests pass (false: only when asked)
 
 [limits]
 max_minutes = 60               # per instruction; the run is stopped after this
