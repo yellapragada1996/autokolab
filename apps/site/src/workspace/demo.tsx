@@ -21,6 +21,8 @@ const LEAD = "00000000-0000-0000-0000-0000000000c3";
 const SPARE = "00000000-0000-0000-0000-0000000000c4";
 // ?preview=workspace&idle shows the stopped headline by idling the only working agent.
 const demoIdle = new URLSearchParams(location.search).has("idle");
+// ?preview=workspace&empty shows a project with no tickets yet (Overview's empty state).
+const demoEmpty = new URLSearchParams(location.search).has("empty");
 
 const project: Project = { id: "demo", name: "Shop", slug: "shop", repo: "ana/shop", default_branch: "main", ticket_prefix: "SH", owner_id: ANA, lead_agent_id: LEAD, room_id: "room", created_at: iso(9000), merge_policy: "auto_safe" };
 
@@ -53,7 +55,7 @@ function ticket(n: number, t: Partial<Ticket> & Pick<Ticket, "title" | "status">
   };
 }
 
-const tickets: Ticket[] = [
+const allTickets: Ticket[] = [
   ticket(1, { title: "Sign-in", status: "in_progress", type: "epic", priority: "high", description: "Everything about getting people signed in." }),
   ticket(2, {
     title: "Add Google sign-in",
@@ -161,7 +163,8 @@ const members: Member[] = [
   { actor_id: SPARE, actor_type: "agent", role: "member" },
 ];
 
-const decisions: Decision[] = [
+const allDecisions: Decision[] = [
+  { id: "d3", number: 3, key: "DEC-3", kind: "decision", title: "Sessions live in Postgres, not Redis", body: "Keeps us on one database (DEC-1).", ticket_id: "t4", created_by: ANA, created_at: iso(15), superseded_by: null },
   { id: "d2", number: 2, key: "CON-2", kind: "contract", title: "Session cookie is httpOnly, 30 days", body: "`sid` cookie, `SameSite=Lax`.", ticket_id: "t3", created_by: ANA, created_at: iso(400), superseded_by: null },
   { id: "d1", number: 1, key: "DEC-1", kind: "decision", title: "Postgres for everything until it hurts", body: "One database is easier to run. Revisit when we pass 1k requests/s.", ticket_id: null, created_by: LEE, created_at: iso(3000), superseded_by: null },
 ];
@@ -220,9 +223,11 @@ demoRoom.room.me = demoRoom.room.members[0];
 export default function DemoWorkspace() {
   const route = useRoute();
   const ws = useMemo<WS>(() => {
+    const tickets = demoEmpty ? [] : allTickets;
+    const decisions = demoEmpty ? [] : allDecisions;
     const byId = new Map(tickets.map((t) => [t.id, t]));
     // The plan's tickets wait on the database change and the charge, so the plan page reorders them.
-    const links = [
+    const links = demoEmpty ? [] : [
       { ticket_id: "t3", blocked_by: "t4" },
       { ticket_id: "t31", blocked_by: "t32" },
       { ticket_id: "t33", blocked_by: "t32" },
@@ -253,6 +258,6 @@ export default function DemoWorkspace() {
     };
   }, []);
   const previewRoute = parse("/p/shop", location.search);
-  const r = route.view === "home" || route.view === "new-project" || route.view === "join" ? ({ view: "overview", project: "shop", show: "show" in previewRoute ? previewRoute.show : undefined } as const) : route;
+  const r = route.view === "home" || route.view === "new-project" || route.view === "join" ? ({ view: "captain", project: "shop", show: "show" in previewRoute ? previewRoute.show : undefined } as const) : route;
   return <Workspace project={project} projects={[project]} route={r} profile={profile} demo={ws} demoRoom={demoRoom} demoEvents={demoEvents} onSignOut={() => undefined} onEditProfile={() => undefined} />;
 }

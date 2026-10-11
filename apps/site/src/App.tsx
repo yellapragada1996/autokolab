@@ -117,7 +117,7 @@ function Projects({ profile, onSignOut, onEditProfile }: { profile: Profile; onS
       /* private mode */
     }
     const p = projects.find((x) => x.slug === last) ?? projects[projects.length - 1];
-    go({ view: "overview", project: p.slug }, true);
+    go({ view: "captain", project: p.slug }, true);
   }, [projects, route]);
 
   if (err) {

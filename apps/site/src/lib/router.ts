@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 
 // Tiny path router (02-information-architecture.md). Vercel serves index.html for every path.
 //   /p/<project>                     Captain
+//   /p/<project>/overview            Overview: the state, what needs you, who's doing what, today (DEC-24)
 //   /p/<project>/work                Work, by agent (?group=goal by goal, ?view=backlog|all)
 //   /p/<project>/work/<ticket key>   a ticket
 //   /p/<project>/look/<ticket key>   Captain, with "Let me look first" on a risky merge over it
 //   /p/<project>/plans/<message id>  a plan Captain proposed (S08), read-only
 //   /p/<project>/room | people | decisions (?tab=guide) | settings | results | connect
-// The old paths (/overview, /board, /backlog, /list, /guide, /t/<key>) redirect to these.
+// The old paths (/board, /backlog, /list, /guide, /t/<key>) redirect to these.
 
-export type ProjectView = "overview" | "room" | "board" | "goals" | "backlog" | "list" | "guide" | "decisions" | "people" | "connect" | "settings" | "results";
+export type ProjectView = "captain" | "overview" | "room" | "board" | "goals" | "backlog" | "list" | "guide" | "decisions" | "people" | "connect" | "settings" | "results";
 export type ShowPart = "summary" | "change" | "history";
 export type ShowRoute = { key: string; part: ShowPart };
 
@@ -22,8 +23,8 @@ export type Route =
   /** `plan` is the plan message's id; NaN for an address that isn't a number (the page says it's unknown). */
   | { view: "plan"; project: string; plan: number; show?: ShowRoute };
 
-const SIMPLE = ["room", "people", "connect", "settings", "results"] as const;
-const OLD = ["overview", "board", "backlog", "list", "guide", "t"];
+const SIMPLE = ["overview", "room", "people", "connect", "settings", "results"] as const;
+const OLD = ["board", "backlog", "list", "guide", "t"];
 
 export function parse(path: string, search = ""): Route {
   const parts = path.split("/").filter(Boolean);
@@ -36,8 +37,8 @@ export function parse(path: string, search = ""): Route {
   if (parts[0] !== "p" || !parts[1]) return { view: "home" };
   const project = parts[1];
   const v = parts[2];
-  if (!v) return { view: "overview", project, ...sheet };
-  if (v === "look") return { view: "overview", project, ...(parts[3] ? { look: parts[3].toUpperCase() } : {}), ...sheet };
+  if (!v) return { view: "captain", project, ...sheet };
+  if (v === "look") return { view: "captain", project, ...(parts[3] ? { look: parts[3].toUpperCase() } : {}), ...sheet };
   if (v === "plans" && parts[3]) return { view: "plan", project, plan: /^\d+$/.test(parts[3]) ? Number(parts[3]) : NaN, ...sheet };
   if (v === "work") {
     if (parts[3]) return { view: "ticket", project, key: parts[3].toUpperCase(), ...sheet };
@@ -51,7 +52,7 @@ export function parse(path: string, search = ""): Route {
   // Old paths.
   if (v === "t" && parts[3]) return { view: "ticket", project, key: parts[3].toUpperCase(), ...sheet };
   if (["board", "backlog", "list", "guide"].includes(v)) return { view: v as "board", project, ...sheet };
-  return { view: "overview", project, ...sheet };
+  return { view: "captain", project, ...sheet };
 }
 
 /** Add the sheet to the current address without disturbing page filters or the preview. */
@@ -88,7 +89,7 @@ export function lookHref(project: string, key: string | null): string {
   const url = new URL(location.href);
   url.searchParams.delete("show");
   url.searchParams.delete("part");
-  return href({ view: "overview", project, ...(key ? { look: key.toUpperCase() } : {}) }) + url.search;
+  return href({ view: "captain", project, ...(key ? { look: key.toUpperCase() } : {}) }) + url.search;
 }
 
 let lookOpener: HTMLElement | null = null;
@@ -117,7 +118,7 @@ export function href(r: Route): string {
   if (r.view === "join") return `/j/${r.code}`;
   const base = `/p/${r.project}`;
   switch (r.view) {
-    case "overview":
+    case "captain":
       return r.look ? `${base}/look/${r.look}` : base;
     case "ticket":
       return `${base}/work/${r.key}`;
