@@ -107,10 +107,13 @@ h1, h2, h3, p { margin: 0; }
   .ak-nav nav a { white-space: nowrap; }
   .ak-nav .ak-hide, .ak-nav [role="separator"] { display: none !important; }
 }
-/* Captain home (S01): the briefing headline, cards and lines indented under Captain's avatar, and the
-   1 s outline pulse on the card the amber clause points at. */
+/* Captain (S01, AK-69): lines indented under Captain's avatar, and the 1 s outline pulse on the
+   message a needs-you row on Overview points at. */
 .ak-headline { font-size: 26px; }
 .ak-indent { margin-left: 40px; }
+/* Captain's words are plain 15px text, with no space left under the last paragraph (Markdown sets 14px inline). */
+.ak-said p, .ak-said li { font-size: 15px !important; color: var(--text-body) !important; }
+.ak-said > div > :last-child { margin-bottom: 0 !important; }
 @keyframes ak-outline-pulse { from { outline-color: var(--amber); } to { outline-color: transparent; } }
 .ak-pulse { outline: 2px solid transparent; outline-offset: 3px; animation: ak-outline-pulse 1s ease-out; }
 @media (prefers-reduced-motion: reduce) { .ak-pulse { animation: none; outline-color: var(--amber); } }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MERGE_OK_PREFIX } from "../lib/data";
-import { awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, goalName, lowerFirst, mergeChip, mergeQuestion, needsYou, newerPlan, openQuestions, ownerOf, parsePlan, planAsks, planOrder, planRequest, plans, planTitle, riskyPart, timeline, today, waitsFor, withoutPlan } from "./captain";
+import { answeredLine, awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, goalName, lowerFirst, mergeChip, mergeQuestion, NO_ANSWER_NEEDED, needsYou, needText, newerPlan, openQuestions, ownerOf, parsePlan, planAsks, planLine, planOrder, planRequest, plans, planTitle, problemText, replyPreview, riskyPart, shortened, timeline, today, waitsFor, withoutPlan } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, message, ticket, workspace } from "./fixtures";
 
 describe("the conversation with Captain", () => {
@@ -385,6 +385,82 @@ describe("decision cards", () => {
   });
 });
 
+describe("Captain's messages (AK-69)", () => {
+  const ws = workspace([]);
+  const nameOf = (id: string | null) => ws.nameOf(id);
+
+  it("says each kind of need in one or two short sentences", () => {
+    const merge = ticket({ key: "SH-2", title: "Sessions column", status: "review", needs_human: `${MERGE_OK_PREFIX} db/004_sessions.sql` });
+    const asked = ticket({ key: "SH-3", status: "in_progress", assignee_id: BIRCH, needs_human: "Redis or Postgres for sessions?" });
+    const stopped = ticket({ key: "SH-4", status: "in_progress", assignee_id: BIRCH, needs_human: "I stopped: hit the 60-minute limit. Where it got to: the button shows." });
+    const blocked = ticket({ key: "SH-5", status: "in_progress", needs_human: "I'm blocked on the missing table." });
+    const couldnt = ticket({ key: "SH-6", status: "review", needs_human: "Couldn't merge: the tests failed." });
+    const q = message(CAPTAIN, ME, "Ship today or tomorrow?", { kind: "question" });
+    const needs = needsYou(workspace([merge, asked, stopped, blocked, couldnt]), conversation([q], ME, CAPTAIN));
+    const text = (key: string) => needText(needs.find((n) => n.ticket?.key === key)!, nameOf);
+    expect(text("SH-2")).toBe("SH-2 is ready and needs your OK. OK to merge “Sessions column”?");
+    expect(text("SH-3")).toBe("Birch has a question on SH-3: Redis or Postgres for sessions?");
+    expect(text("SH-4")).toBe("Birch stopped: hit the 60-minute limit on SH-4.");
+    expect(text("SH-5")).toBe("The agent is blocked on the missing table on SH-5.");
+    expect(text("SH-6")).toBe("Couldn't merge: the tests failed on SH-6.");
+    expect(needText(needs.find((n) => n.kind === "captain_question")!, nameOf)).toBe("Ship today or tomorrow?");
+    expect(problemText("couldn't continue: session limit (resets 11:20pm Stockholm)")).toBe("I couldn't continue: session limit (resets 11:20pm Stockholm).");
+  });
+
+  it("replaces the actions with one quiet line once answered", () => {
+    const t = new Date(2026, 9, 10, 9, 20).toISOString();
+    expect(answeredLine("yes", t)).toMatch(/^You said yes · 0?9:20( am)?$/);
+    expect(answeredLine("no", t)).toMatch(/^You said no · /);
+    expect(answeredLine("answered", t)).toMatch(/^You answered · /);
+    expect(answeredLine("closed", t)).toMatch(/^No answer needed · /);
+    expect(answeredLine("dismissed", t)).toBe("Dismissed");
+  });
+
+  it("closes one of Captain's questions with “No answer needed.” in its thread", () => {
+    const q = message(CAPTAIN, ME, "Still want dark mode?", { kind: "question" });
+    const close = message(ME, CAPTAIN, NO_ANSWER_NEEDED, { thread_id: q.id });
+    expect(openQuestions(conversation([q, close], ME, CAPTAIN))).toEqual([]);
+    expect(needsYou(workspace([]), conversation([q, close], ME, CAPTAIN))).toEqual([]);
+  });
+
+  it("leaves short messages whole", () => {
+    expect(shortened("Short and sweet.")).toBeNull();
+    expect(shortened("One\nTwo\n\nThree\nFour")).toBeNull();
+  });
+
+  it("cuts a long message between words, with an ellipsis", () => {
+    const long = "word ".repeat(80).trim();
+    const head = shortened(long)!;
+    expect(head.length).toBeLessThanOrEqual(281);
+    expect(head.endsWith("word…")).toBe(true);
+    const words = "Postgres keeps everything in one database which is simpler to run and back up ".repeat(5).trim();
+    const cut = shortened(words)!;
+    expect(cut.endsWith("…")).toBe(true);
+    // Every word before the ellipsis is whole.
+    expect(words.startsWith(cut.slice(0, -1))).toBe(true);
+    expect(words[cut.length - 1]).toBe(" ");
+  });
+
+  it("stops after four lines", () => {
+    expect(shortened("1\n2\n3\n4\n5\n6")).toBe("1\n2\n3\n4");
+  });
+
+  it("never cuts inside a code block", () => {
+    const code = "```\nline one\nline two\nline three\n```";
+    expect(shortened(`Here's what changed.\n${code}\nAnd more after it.`)).toBe("Here's what changed.");
+    expect(shortened(`A.\n\`\`\`\nx\n\`\`\`\n${"tail ".repeat(80)}`)).toBe("A.\n```\nx\n```");
+    // A long block that is the very first thing is shown whole rather than cut.
+    const first = `\`\`\`\n${"x".repeat(400)}\n\`\`\`\nAfter.`;
+    expect(shortened(first)).toBe(`\`\`\`\n${"x".repeat(400)}\n\`\`\``);
+  });
+
+  it("previews the message being replied to in its first few words", () => {
+    expect(replyPreview("@ana that's a product choice: Postgres keeps us on one database (DEC-1). OK?")).toBe("that's a product choice: Postgres keeps…");
+    expect(replyPreview("Two goals.\n\n```autokolab-plan\ngoals: SH-1\n```")).toBe("Two goals.");
+    expect(replyPreview("See **[SH-2](https://x/SH-2)** now")).toBe("See SH-2 now");
+  });
+});
+
 describe("plans (CON-23)", () => {
   const block = "```autokolab-plan\ngoals: SH-10, SH-20\nasks: SH-12\nnot: Password reset is not in this plan.\n```";
   const body = `Two goals, three tickets. I'll ask you once.\n\n${block}`;
@@ -432,6 +508,9 @@ describe("plans (CON-23)", () => {
     expect(planAsks({ ...p, asks: p.tickets.slice(0, 2) })).toBe("You'll be asked 2 times");
     expect(planTitle({ ...p, goals: p.goals.slice(0, 1), tickets: p.tickets.slice(0, 1) })).toBe("Plan · Google sign-in, 1 ticket");
     expect(planAsks({ ...p, asks: [] })).toBeNull();
+    expect(planLine(p)).toBe("2 goals, 3 tickets. You'll be asked once.");
+    expect(planLine({ ...p, asks: p.tickets.slice(0, 2) })).toBe("2 goals, 3 tickets. You'll be asked 2 times.");
+    expect(planLine({ ...p, goals: p.goals.slice(0, 1), tickets: p.tickets.slice(0, 1), asks: [] })).toBe("1 goal, 1 ticket.");
     // Unknown goals are dropped; a plan with none left is an ordinary message.
     const unknown = message(CAPTAIN, ME, "Plan\n```autokolab-plan\ngoals: SH-99\n```", { created_at: at("09:10") });
     expect(plans(ws, conversation([unknown], ME, CAPTAIN))).toEqual([]);

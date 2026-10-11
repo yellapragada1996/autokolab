@@ -194,6 +194,8 @@ const demoRoom: DemoRoom = {
     { id: 4, room_id: "room", thread_id: 3, sender_id: LEAD, to_id: ANA, kind: "status", body: "Started on #3 (branch sh-1-plan-sign-in).", refs: {}, created_at: iso(58) },
     { id: 5, room_id: "room", thread_id: 3, sender_id: LEAD, to_id: ANA, kind: "status", body: "Picked up #3, continuing.", refs: {}, created_at: iso(56) },
     { id: 6, room_id: "room", thread_id: 3, sender_id: LEAD, to_id: ANA, kind: "answer", body: "Planned the **Sign-in** goal: SH-2 (Google sign-in) for builder, SH-3 and SH-4 for lee-codex. SH-3 waits on SH-4.", refs: {}, created_at: iso(55) },
+    // A long Captain message, to see "Show more".
+    { id: 6.5, room_id: "room", thread_id: 3, sender_id: LEAD, to_id: ANA, kind: "answer", body: "Here's how sign-in will work once this goal is done. Shoppers see a Google button above the email form on /login. The first time someone signs in with Google we make them a profile from their Google name and picture, so there's nothing to fill in. If they say no on Google's consent screen they land back on /login with a friendly line, not an error page.\n\nSessions last 30 days and survive a restart, because they move into Postgres (SH-4). That's the one change I'll ask you about before it merges, since everyone signed in gets signed out once.\n\n```\nGoogle → /auth/google/callback → profile → session (30 days)\n```\n\nNothing else changes for people who use email today.", refs: {}, created_at: iso(54) },
     { id: 7, room_id: "room", thread_id: null, sender_id: BUILDER, to_id: null, kind: "status", body: "Started on #2 (branch sh-2-add-google-sign-in).", refs: {}, created_at: iso(50) },
     { id: 8, room_id: "room", thread_id: null, sender_id: REVIEWER, to_id: null, kind: "status", body: "Queued #2: lee has paused me; I'll start when resumed.", refs: {}, created_at: iso(49) },
     { id: 9, room_id: "room", thread_id: null, sender_id: LEAD, to_id: BUILDER, kind: "status", body: "Model change: ana-claude moved builder to opus, high effort: SH-2 touches sign-in. Applies from your next run.", refs: {}, created_at: iso(48) },
@@ -216,6 +218,8 @@ const demoRoom: DemoRoom = {
   delayMs: 800,
   // ?preview=workspace&refuse: every answer is refused, to see the message it leaves.
   refuse: new URLSearchParams(location.search).has("refuse"),
+  // ?preview=workspace&reply: opens with the composer replying to Captain's question.
+  replyTo: new URLSearchParams(location.search).has("reply") ? 12 : undefined,
 };
 
 demoRoom.room.me = demoRoom.room.members[0];

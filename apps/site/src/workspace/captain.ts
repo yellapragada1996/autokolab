@@ -631,6 +631,127 @@ export function mergeChip(ws: Workspace, t: Ticket): string | null {
   return `Reviewed by ${who(t.approved_by)}, built by ${who(t.assignee_id)}`;
 }
 
+// ------------------------------------------------------------------ messages (AK-69, DEC-24)
+
+/** "I stopped: hit the 60-minute limit. Where it got to: …" → "lee-codex stopped: hit the 60-minute limit". */
+function stoppedLine(text: string, name: string): string {
+  const first = text.trim().split(/(?<=[.!?])\s+/)[0].replace(/[.!?]+$/, "");
+  return first.replace(/^I'm\b/, `${name} is`).replace(/^I\b/, name);
+}
+
+/**
+ * What Captain says for something that needs the person, as one or two short sentences. The
+ * actions go under it. A question Captain asked itself is just its message; a plan's line is planLine.
+ */
+export function needText(need: Need, nameOf: (id: string | null) => string): string {
+  const t = need.ticket;
+  const key = t?.key ?? "it";
+  switch (need.kind) {
+    case "risky_merge":
+      return `${key} is ready and needs your OK. ${mergeQuestion(need)}`;
+    case "ticket_question":
+      return `${t?.assignee_id ? nameOf(t.assignee_id) : "Someone"} has a question on ${key}: ${need.question.trim()}`;
+    case "problem":
+      return `${stoppedLine(need.question, t?.assignee_id ? nameOf(t.assignee_id) : "The agent")} on ${key}.`;
+    default:
+      return need.question.trim();
+  }
+}
+
+/** A run that went wrong, in Captain's words: "couldn't continue: session limit" → "I couldn't continue: session limit." */
+export const problemText = (problem: string) => `I ${problem.trim().replace(/[.\s]+$/, "")}.`;
+
+/** The plain line under a plan: "2 goals, 6 tickets. You'll be asked 2 times." */
+export function planLine(p: Plan): string {
+  const asks = planAsks(p);
+  return `${plural(p.goals.length, "goal")}, ${plural(p.tickets.length, "ticket")}.${asks ? ` ${asks}.` : ""}`;
+}
+
+export type Answer = "yes" | "no" | "answered" | "closed" | "dismissed";
+
+/** The quiet line that replaces a message's actions once the person has answered it. */
+export function answeredLine(answer: Answer, at: string): string {
+  switch (answer) {
+    case "yes":
+      return `You said yes · ${clock(at)}`;
+    case "no":
+      return `You said no · ${clock(at)}`;
+    case "answered":
+      return `You answered · ${clock(at)}`;
+    case "closed":
+      return `No answer needed · ${clock(at)}`;
+    case "dismissed":
+      return "Dismissed";
+  }
+}
+
+/** What "Not needed any more" posts in a question's thread; any reply there closes it (openQuestions). */
+export const NO_ANSWER_NEEDED = "No answer needed.";
+
+/** Captain messages longer than this, in characters or non-blank lines, are shortened (Show more). */
+export const SHORT_CHARS = 280;
+export const SHORT_LINES = 4;
+
+/**
+ * The beginning of a long Captain message, or null when it's short enough to show whole. Cuts only
+ * between words and never inside a code block (a block is shown whole or not at all, unless it's
+ * the very first thing). The beginning ends with "…" when it stops mid-line.
+ */
+export function shortened(text: string, maxChars = SHORT_CHARS, maxLines = SHORT_LINES): string | null {
+  const body = text.trim();
+  const lines = body.split("\n");
+  const counted = lines.filter((l) => l.trim()).length;
+  if (body.length <= maxChars && counted <= maxLines) return null;
+  const out: string[] = [];
+  let chars = 0;
+  let shown = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*```/.test(line)) {
+      let end = i + 1;
+      while (end < lines.length && !/^\s*```/.test(lines[end])) end++;
+      const block = lines.slice(i, end + 1);
+      const size = block.join("\n").length;
+      if (out.length && (chars + size > maxChars || shown + block.length > maxLines)) break;
+      out.push(...block);
+      chars += size + 1;
+      shown += block.length;
+      i = end;
+      continue;
+    }
+    if (!line.trim()) {
+      out.push(line);
+      continue;
+    }
+    if (shown >= maxLines) break;
+    if (chars + line.length > maxChars) {
+      const room = maxChars - chars;
+      const cut = line.slice(0, room + 1).lastIndexOf(" ");
+      if (cut > 0) out.push(`${line.slice(0, cut).replace(/[\s,;:.-]+$/, "")}…`);
+      else if (!out.some((l) => l.trim())) out.push(`${line.slice(0, Math.max(room, 1))}…`);
+      break;
+    }
+    out.push(line);
+    chars += line.length + 1;
+    shown++;
+  }
+  const head = out.join("\n").trim();
+  return head && head !== body ? head : null;
+}
+
+/** "Replying to: Postgres keeps us on one…": the first few words of the message being answered. */
+export function replyPreview(text: string, words = 6): string {
+  const plain = withoutPlan(text)
+    .replace(/```[\s\S]*?(```|$)/g, " ")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`>#]/g, "")
+    .replace(/^@\S+\s+/, "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return plain.length > words ? `${plain.slice(0, words).join(" ")}…` : plain.join(" ");
+}
+
 // ------------------------------------------------------------------ look first (S04)
 
 /**
