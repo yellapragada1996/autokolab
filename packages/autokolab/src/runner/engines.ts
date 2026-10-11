@@ -33,6 +33,10 @@ export interface EngineRun {
   costUsd?: number;
   /** The model the tool says it's running (Claude Code's init event); Codex doesn't say. */
   model?: string;
+  /** Model turns in the run, when the tool reports them (Claude Code). */
+  turns?: number;
+  /** Tokens, when the tool reports them: re-read from the cache, new input, and written. */
+  tokens?: { read: number; input: number; written: number };
 }
 
 export interface EngineInvocation {
@@ -84,6 +88,16 @@ export function chooseModel(cfg: RunnerConfig, fromDb: { model: string | null; e
   const db = cfg.model_locked ? null : fromDb;
   const effort = db?.effort && (EFFORTS as readonly string[]).includes(db.effort) ? (db.effort as Effort) : toml.effort ?? DEFAULT_EFFORT;
   return { model: db?.model || toml.model, effort };
+}
+
+/**
+ * A reply to a teammate (AK-91) runs on the toml's reply_model and reply_effort, each falling back
+ * to the run's usual choice. With model_locked the owner's usual model and effort win here too.
+ */
+export function chooseReplyModel(cfg: RunnerConfig, usual: ModelChoice): ModelChoice {
+  if (cfg.model_locked) return usual;
+  const toml = cfg.engine === "claude" ? cfg.claude : cfg.codex;
+  return { model: toml.reply_model || usual.model, effort: toml.reply_effort ?? usual.effort };
 }
 
 export function claudeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, choice: ModelChoice = chooseModel(cfg, null)): EngineInvocation {
@@ -173,6 +187,16 @@ export function parseEvent(engine: RunnerConfig["engine"], line: string, run: En
       run.isError = Boolean(ev.is_error) || (typeof ev.subtype === "string" && ev.subtype !== "success");
       if (!run.finalText && ev.subtype) run.finalText = `Run ended: ${ev.subtype}`;
       if (typeof ev.total_cost_usd === "number") run.costUsd = ev.total_cost_usd;
+      if (typeof ev.num_turns === "number") run.turns = ev.num_turns;
+      const u = ev.usage;
+      if (u && typeof u === "object") {
+        const num = (x: unknown) => (typeof x === "number" ? x : 0);
+        run.tokens = {
+          read: num(u.cache_read_input_tokens),
+          input: num(u.input_tokens) + num(u.cache_creation_input_tokens),
+          written: num(u.output_tokens),
+        };
+      }
     }
     if (ev.type === "assistant" && Array.isArray(ev.message?.content)) {
       for (const c of ev.message.content) {
@@ -194,6 +218,13 @@ export function parseEvent(engine: RunnerConfig["engine"], line: string, run: En
     if (ev.msg?.type === "session_configured" && ev.msg.session_id) run.sessionId = ev.msg.session_id;
     if (ev.type === "item.completed" && ev.item?.type === "agent_message" && typeof ev.item.text === "string") {
       run.finalText = ev.item.text;
+    }
+    // Codex reports usage per turn; its input count includes the cached part.
+    if (ev.type === "turn.completed" && ev.usage && typeof ev.usage === "object") {
+      const num = (x: unknown) => (typeof x === "number" ? x : 0);
+      const t = run.tokens ?? { read: 0, input: 0, written: 0 };
+      const cached = num(ev.usage.cached_input_tokens);
+      run.tokens = { read: t.read + cached, input: t.input + Math.max(num(ev.usage.input_tokens) - cached, 0), written: t.written + num(ev.usage.output_tokens) };
     }
     if (ev.type === "turn.failed" || ev.type === "error") {
       run.isError = true;

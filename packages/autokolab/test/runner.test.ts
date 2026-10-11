@@ -6,11 +6,11 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { Member, Message, Room, TaskRun } from "../src/core/types.js";
 import { writeConfigFile } from "../src/core/config.js";
 import { parseRunnerConfig, runnerTemplate } from "../src/runner/config.js";
-import { chooseModel, claudeDenyRules, claudeInvocation, codexInvocation, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
+import { chooseModel, chooseReplyModel, claudeDenyRules, claudeInvocation, codexInvocation, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
 import { installHook } from "../src/runner/githook.js";
-import { REVIEW_DIFF_LIMIT, buildPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "../src/runner/prompt.js";
+import { NO_REPLY, REVIEW_DIFF_LIMIT, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyPromptContext } from "../src/runner/prompt.js";
 import { needsRunner } from "../src/setup/connect.js";
-import { BATCH_MAX_MS, BATCH_WAIT_MS, Runner, STALE_RUN_SUMMARY, addToQueue, agentTurnsSinceHuman, countWake, isLegacyAnswer, isPauseNotice, isRunnerNotice, pauseNotice, replyAs, runOutcome, shouldWake, staleTeammateMessage, startNotice, type Job, type WakeContext } from "../src/runner/runner.js";
+import { BATCH_MAX_MS, BATCH_WAIT_MS, REPLY_RESUME_MS, Runner, STALE_RUN_SUMMARY, addToQueue, agentTurnsSinceHuman, countWake, isLegacyAnswer, isPauseNotice, isReplyJob, isRunnerNotice, mentionedTickets, pauseNotice, recentReplySession, rememberReplySession, replyAs, replyThread, runCostLine, runOutcome, shouldWake, staleTeammateMessage, startNotice, workSession, type Job, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
 import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ROOM_QUIET, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
 import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
@@ -1564,6 +1564,269 @@ describe("Captain reviews by itself (AK-59)", () => {
       rmSync(join(root, "state", "autokolab", "usage"), { recursive: true, force: true });
       expect(tired.runner.reviewsAllowed()).toBe(true);
       expect(tired.runner["nextReview"]()).not.toBeNull();
+    });
+  });
+});
+
+describe("quick replies to teammate agents (AK-91)", () => {
+  const PERSON = "p-1";
+  const isHuman = (id: string) => id === PERSON;
+  const msg = (id: number, sender: string, kind: Message["kind"], body = "", extra: Partial<Message> = {}) =>
+    ({ id, room_id: "room-1", thread_id: id === 100 ? null : 100, sender_id: sender, to_id: null, kind, body, refs: {}, created_at: "2026-10-11T10:00:00Z", ...extra }) as Message;
+
+  it("a job of other agents' questions, answers and chat is a reply; a person, a task or a review request is work", () => {
+    expect(isReplyJob([msg(1, "a", "question")], isHuman)).toBe(true);
+    expect(isReplyJob([msg(1, "a", "question"), msg(2, "b", "answer"), msg(3, "a", "chat")], isHuman)).toBe(true);
+    expect(isReplyJob([msg(1, PERSON, "question")], isHuman)).toBe(false);
+    expect(isReplyJob([msg(1, PERSON, "chat")], isHuman)).toBe(false);
+    expect(isReplyJob([msg(1, "a", "task")], isHuman)).toBe(false);
+    expect(isReplyJob([msg(1, "a", "review")], isHuman)).toBe(false);
+    expect(isReplyJob([msg(1, "a", "status")], isHuman)).toBe(false);
+    // One piece of work in the batch makes the whole job work.
+    expect(isReplyJob([msg(1, "a", "question"), msg(2, PERSON, "chat")], isHuman)).toBe(false);
+    expect(isReplyJob([msg(1, "a", "question"), msg(2, "a", "task")], isHuman)).toBe(false);
+    expect(isReplyJob([], isHuman)).toBe(false);
+  });
+
+  it("the thread is its root and the last 10 messages, without runner notices, and always the new ones", () => {
+    const thread = [msg(100, "a", "question", "root"), ...Array.from({ length: 15 }, (_, i) => msg(101 + i, i % 2 ? "a" : "b", "answer", `m${i}`))];
+    thread.splice(5, 0, msg(150, "b", "status", "Picked up #103, continuing."));
+    const r = replyThread(thread, 100, [115]);
+    expect(r.root?.id).toBe(100);
+    expect(r.recent.map((m) => m.id)).toEqual([106, 107, 108, 109, 110, 111, 112, 113, 114, 115]);
+    expect(r.skipped).toBe(5);
+    // A burst of 12 new messages is all shown.
+    expect(replyThread(thread, 100, [104]).recent[0].id).toBe(104);
+    expect(replyThread([msg(100, "a", "question")], 100, [100])).toEqual({ root: msg(100, "a", "question"), recent: [], skipped: 0 });
+  });
+
+  it("takes up to 3 mentioned tickets, the newest mentions first, for this project's prefix only", () => {
+    const ms = [msg(1, "a", "chat", "AK-1 and AK-2"), msg(2, "a", "chat", "see AK-3, BK-9 and AK-30x"), msg(3, "a", "chat", "AK-4 again AK-4, then AK-3")];
+    expect(mentionedTickets(ms, "AK")).toEqual(["AK-4", "AK-3", "AK-1"]);
+    expect(mentionedTickets(ms, "AK", 5)).toEqual(["AK-4", "AK-3", "AK-1", "AK-2"]);
+    expect(mentionedTickets(ms, "BK")).toEqual(["BK-9"]);
+    expect(mentionedTickets([msg(1, "a", "chat", "nothing")], "AK")).toEqual([]);
+  });
+
+  const ctx = (extra: Partial<ReplyPromptContext> = {}): ReplyPromptContext => ({
+    myName: "a-very-long-agent-name-claude",
+    ownerName: "a-very-long-owner-name",
+    isLead: false,
+    roomName: "a-very-long-room-name-for-the-project",
+    repo: "some-organisation-name/some-repository-name",
+    thread: 123456,
+    root: null,
+    recent: [],
+    skipped: 0,
+    tickets: [],
+    denyPaths: [".env.prod", ".env.production"],
+    worktreePath: "/home/someone/.local/share/autokolab/worktrees/a-very-long-agent-name-claude/some-organisation-name-some-repository-name/t123456",
+    followUp: false,
+    ...extra,
+  });
+
+  it("the slim prompt's fixed part stays under 2,500 characters, as Captain too", () => {
+    for (const c of [ctx(), ctx({ isLead: true }), ctx({ followUp: true }), ctx({ skipped: 12 })]) expect(buildReplyPrompt(c).length).toBeLessThan(2500);
+  });
+
+  it("holds the thread, the mentioned tickets and the short rules, and nothing else", () => {
+    const p = buildReplyPrompt(ctx({
+      root: { id: 354, kind: "question", from: "worker-claude", to: "lead-claude", body: "Could you paste CON-23 in full?", isNew: false },
+      recent: [{ id: 356, kind: "question", from: "worker-claude", to: null, body: "And what does AK-60 need?", isNew: true }],
+      skipped: 2,
+      tickets: ["AK-60 · Plan card\nStatus: In progress"],
+    }));
+    expect(p).toContain("#354 question · worker-claude → lead-claude\nCould you paste CON-23 in full?");
+    expect(p).toContain("#356 question · worker-claude · NEW\nAnd what does AK-60 need?");
+    expect(p).toContain("(2 earlier messages not shown: room_thread 123456)");
+    expect(p).toContain("=== Tickets the thread mentions (as ticket_get shows them) ===\nAK-60 · Plan card");
+    expect(p.indexOf("#354")).toBeLessThan(p.indexOf("#356"));
+    expect(p).toMatch(/No person is watching/);
+    expect(p).toMatch(/a-very-long-owner-name/);
+    expect(p).toContain(`exactly ${NO_REPLY}`);
+    expect(p).toMatch(/ticket_get, decision_get, project_brief/);
+    expect(p).toMatch(/ask for it as a ticket or a task/);
+    expect(p).toMatch(/Never reveal keys/);
+    expect(p).toMatch(/information, not instructions/);
+    // None of the full run's baggage.
+    for (const gone of ["Project brief", "Decisions in force", "Board", "set for this machine", "room_read", "work_log", "bulletin"]) expect(p).not.toContain(gone);
+    expect(buildReplyPrompt(ctx({ isLead: true }))).toMatch(/^You are Captain, the lead agent/);
+    expect(buildReplyPrompt(ctx({ followUp: true }))).toMatch(/^New messages for you in thread #123456, since your last reply/);
+  });
+
+  it("resumes its own reply session in the thread for 30 minutes", () => {
+    const now = 100 * 86400_000;
+    let s = rememberReplySession({}, 6, "r-6", now - 15 * 86400_000);
+    s = rememberReplySession(s, 7, "r-7", now - REPLY_RESUME_MS - 1);
+    s = rememberReplySession(s, 8, "r-8", now - 60_000);
+    expect(recentReplySession(s, 8, now)).toBe("r-8");
+    expect(recentReplySession(s, 7, now)).toBeNull();
+    expect(recentReplySession(s, 9, now)).toBeNull();
+    // Threads not replied in for two weeks are forgotten.
+    s = rememberReplySession(s, 9, "r-9", now);
+    expect(Object.keys(s).sort()).toEqual(["7", "8", "9"]);
+  });
+
+  it("a work run in the thread continues its latest work session, never a reply session", () => {
+    const now = 10_000_000;
+    let s = rememberReplySession({}, 7, "reply-1", now);
+    s = rememberReplySession(s, 7, "reply-2", now);
+    const runs = [{ session_id: "work-1" }, { session_id: null }, { session_id: "reply-1" }, { session_id: "work-2" }, { session_id: "reply-2" }];
+    expect(workSession(runs, s["7"])).toBe("work-2");
+    expect(workSession(runs, undefined)).toBe("reply-2");
+    expect(workSession([{ session_id: "reply-1" }], s["7"])).toBeNull();
+    expect(workSession([], s["7"])).toBeNull();
+  });
+
+  it("uses reply_model and reply_effort: sonnet and low for Claude Code, the usual model and low for Codex", () => {
+    const usual = { model: "opus", effort: "high" as const };
+    expect(chooseReplyModel(cfgFor(), usual)).toEqual({ model: "sonnet", effort: "low" });
+    expect(chooseReplyModel(cfgFor(`[claude]\nreply_model = "haiku"\nreply_effort = "medium"`), usual)).toEqual({ model: "haiku", effort: "medium" });
+    expect(chooseReplyModel(cfgFor(`[claude]\nreply_model = ""`), usual)).toEqual({ model: "opus", effort: "low" });
+    const codex = parseRunnerConfig(`agent_id = "${AID}"\nengine = "codex"`, "x");
+    expect(chooseReplyModel(codex, { model: "gpt-5-codex", effort: "high" })).toEqual({ model: "gpt-5-codex", effort: "low" });
+    expect(chooseReplyModel(codex, {})).toEqual({ model: undefined, effort: "low" });
+    expect(codexInvocation(codex, mcp, null, "/w", chooseReplyModel(codex, {})).args).toContain('model_reasoning_effort="low"');
+    // The owner locked the model: theirs wins for replies too.
+    const locked = cfgFor(`model_locked = true\n[claude]\nmodel = "opus"\neffort = "high"`);
+    expect(chooseReplyModel(locked, chooseModel(locked, null))).toEqual({ model: "opus", effort: "high" });
+  });
+
+  it("the settings template documents reply_model and reply_effort for both engines", () => {
+    for (const engine of ["claude", "codex"] as const) {
+      const t = runnerTemplate(AID, engine);
+      expect(t).toMatch(/^# reply_model = /m);
+      expect(t).toMatch(/^# reply_effort = "low"/m);
+      const on = parseRunnerConfig(t.replace(/^# reply_/gm, "reply_"), "x");
+      expect(on.claude.reply_effort).toBe("low");
+      expect(on.codex.reply_effort).toBe("low");
+    }
+    expect(() => cfgFor(`[claude]\nreply_effort = "ultra"`)).toThrow(/reply_effort/);
+  });
+
+  it("reads turns and tokens from both engines, and logs them per run", () => {
+    const run: EngineRun = { sessionId: null, finalText: "", exitCode: null, timedOut: false, aborted: false, isError: false };
+    parseEvent("claude", JSON.stringify({ type: "result", subtype: "success", result: "ok", num_turns: 3, usage: { input_tokens: 12, cache_creation_input_tokens: 2000, cache_read_input_tokens: 15000, output_tokens: 250 } }), run);
+    expect(run).toMatchObject({ turns: 3, tokens: { read: 15000, input: 2012, written: 250 } });
+    const cx: EngineRun = { sessionId: null, finalText: "", exitCode: null, timedOut: false, aborted: false, isError: false };
+    for (let i = 0; i < 2; i++) parseEvent("codex", JSON.stringify({ type: "turn.completed", usage: { input_tokens: 1000, cached_input_tokens: 800, output_tokens: 50 } }), cx);
+    expect(cx.tokens).toEqual({ read: 1600, input: 400, written: 100 });
+    expect(cx.turns).toBeUndefined();
+    expect(runCostLine("Reply", "#5", 2345, "sonnet", "low", run)).toBe("Reply run #5: prompt 2,345 chars, model sonnet (low), 3 turns, tokens: 15,000 re-read, 2,012 new in, 250 written.");
+    expect(runCostLine("Work", "#5, #6", 40000, "", undefined, cx)).toBe("Work run #5, #6: prompt 40,000 chars, model default, ? turns, tokens: 1,600 re-read, 400 new in, 100 written.");
+    expect(runCostLine("Work", "#5", 1, "opus", "high", {})).toMatch(/tokens: not reported\.$/);
+  });
+
+  describe("a run end to end", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ak-reply-"));
+    const oldState = process.env.XDG_STATE_HOME;
+    beforeAll(() => {
+      process.env.XDG_STATE_HOME = join(dir, "state");
+    });
+    afterAll(() => {
+      if (oldState === undefined) delete process.env.XDG_STATE_HOME;
+      else process.env.XDG_STATE_HOME = oldState;
+    });
+    // Reports the arguments it was started with and its prompt.
+    const fake = join(dir, "fake-claude.mjs");
+    writeFileSync(
+      fake,
+      `#!/usr/bin/env node
+let input = "";
+process.stdin.on("data", (d) => (input += d));
+process.stdin.on("end", () => {
+  const sid = "s-" + Math.random().toString(36).slice(2, 8);
+  console.log(JSON.stringify({ type: "system", subtype: "init", session_id: sid }));
+  console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: sid, num_turns: 1,
+    result: JSON.stringify({ args: process.argv.slice(2), prompt: input }) }));
+});
+`,
+      { mode: 0o755 },
+    );
+    const ME = "me-1";
+    const LEAD = "lead-1";
+    const setup = (thread: Message[]) => {
+      const room = { id: "room-1", name: "shop", repo: "ana/shop" };
+      const members: Record<string, { id: string; name: string; kind: string; owner_id: string }> = {
+        [ME]: { id: ME, name: "lee-claude", kind: "agent", owner_id: "o-lee" },
+        [LEAD]: { id: LEAD, name: "ana-claude", kind: "agent", owner_id: "o-ana" },
+        [PERSON]: { id: PERSON, name: "ana", kind: "human", owner_id: PERSON },
+      };
+      const posts: { kind: string; body: string; to: string | null }[] = [];
+      const runsIn = vi.fn(async () => [{ session_id: "long-work-session" }]);
+      const ak = {
+        me: { ...members[ME], paused: false },
+        sb: { from: () => { throw new Error("offline"); } },
+        roomById: () => room,
+        memberFresh: async (id: string) => members[id],
+        membership: (_r: string, id = ME) => ({ role: id === LEAD ? "lead" : "follower" }),
+        membersOf: () => [],
+        isHuman: (id: string) => members[id]?.kind === "human",
+        nameOf: (id: string) => members[id]?.name ?? id,
+        ownerName: () => "lee",
+        runsIn,
+        threadMessages: async () => thread,
+        updateRun: async () => undefined,
+        heartbeat: async () => ({}),
+        room: () => ({ post: async (m: { kind: string; body: string; to: string | null }) => void posts.push(m) }),
+      };
+      const runner = new Runner(ak as unknown as ConstructorParameters<typeof Runner>[0], parseRunnerConfig(`agent_id = "${AID}"\nengine = "claude"\nclaude_bin = "${fake}"\n[claude]\nmodel = "opus"`, "p"));
+      runner["prepareWorkspace"] = () => ({ path: dir, clone: dir, branch: "ak/lee-claude/t100", base: "main", created: false });
+      const tickets: string[] = [];
+      runner["projects"] = [{ project: { room_id: "room-1", repo: "ana/shop", ticket_prefix: "SH" }, ticketText: async (k: string) => (tickets.push(k), `${k} · the full ticket`) }] as never;
+      const job = (m: Message, more: Message[] = []): Job => ({ run: { id: m.id, thread_root: 100 } as TaskRun, message: m, fromInstructor: false, more: more.map((x) => ({ run: { id: x.id, thread_root: 100 } as TaskRun, message: x })), notBefore: 0, queuedAt: 0 });
+      const ran = () => JSON.parse(posts[posts.length - 1].body) as { args: string[]; prompt: string };
+      return { runner, posts, runsIn, tickets, job, ran };
+    };
+    const arg = (args: string[], flag: string) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : null);
+
+    it("a teammate's question gets the slim prompt on sonnet, never the thread's work session, then resumes its own reply", async () => {
+      const root = msg(100, PERSON, "task", "Build SH-4");
+      const q = msg(101, LEAD, "question", "Is SH-7 done? It blocks SH-4.", { to_id: ME });
+      const s = setup([root, q]);
+      await s.runner["execute"](s.job(q));
+      const first = s.ran();
+      expect(s.runsIn).not.toHaveBeenCalled();
+      expect(arg(first.args, "--resume")).toBeNull();
+      expect(arg(first.args, "--model")).toBe("sonnet");
+      expect(arg(first.args, "--effort")).toBe("low");
+      expect(first.prompt).toMatch(/^You are lee-claude, lee's AI agent/);
+      expect(first.prompt).toContain("#100 task · ana\nBuild SH-4");
+      expect(first.prompt).toContain("#101 question · ana-claude → lee-claude · NEW");
+      expect(first.prompt).toContain("SH-7 · the full ticket");
+      expect(s.tickets).toEqual(["SH-7", "SH-4"]);
+      expect(first.prompt).not.toContain("Rules lee set for this machine");
+      expect(s.posts[0]).toMatchObject({ kind: "answer", to: LEAD });
+
+      // A second question in the same thread soon after: the same reply session, only the new message.
+      const q2 = msg(102, LEAD, "question", "And SH-8?", { to_id: ME });
+      await s.runner["execute"](s.job(q2));
+      const second = s.ran();
+      expect(arg(second.args, "--resume")).toMatch(/^s-/);
+      expect(second.prompt).toMatch(/^New messages for you in thread #100/);
+      expect(second.prompt).toContain("#102 question · ana-claude → lee-claude · NEW");
+      expect(second.prompt).not.toContain("Build SH-4");
+      expect(s.runsIn).not.toHaveBeenCalled();
+
+      // Then a person asks for work in the thread: the work session continues, not the reply's.
+      const replySession = arg(second.args, "--resume")!;
+      s.runsIn.mockResolvedValue([{ session_id: "long-work-session" }, { session_id: replySession }]);
+      await s.runner["execute"](s.job(msg(103, PERSON, "chat", "Go ahead with SH-8", { to_id: ME })));
+      expect(arg(s.ran().args, "--resume")).toBe("long-work-session");
+      expect(arg(s.ran().args, "--model")).toBe("opus");
+    });
+
+    it("a person's message and a review request keep the full prompt, model and session", async () => {
+      for (const m of [msg(201, PERSON, "chat", "Please add SH-9", { to_id: ME }), msg(202, LEAD, "review", "Please review SH-9", { to_id: ME })]) {
+        const s = setup([m]);
+        await s.runner["execute"](s.job(m));
+        const r = s.ran();
+        expect(s.runsIn).toHaveBeenCalledWith(100);
+        expect(arg(r.args, "--resume")).toBe("long-work-session");
+        expect(arg(r.args, "--model")).toBe("opus");
+        expect(arg(r.args, "--effort")).toBe("medium");
+        expect(r.prompt).toContain("Rules lee set for this machine");
+      }
     });
   });
 });

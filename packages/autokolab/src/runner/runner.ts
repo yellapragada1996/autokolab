@@ -9,11 +9,11 @@ import { redactSecrets } from "../core/secrets.js";
 import type { Message, MessageKind, Room, RunState, TaskRun } from "../core/types.js";
 import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
-import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineRun, type ModelChoice, type PlanStep } from "./engines.js";
+import { chooseModel, chooseReplyModel, claudeInvocation, codexInvocation, runEngine, type EngineRun, type ModelChoice, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
 import { usageLimit, usageReport } from "./limit.js";
 import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, riskyFiles, samePrFacts, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
-import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
+import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyMessage } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, fetchBranch, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
 import { checkoutCommit, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
 
@@ -154,6 +154,83 @@ export function shouldWake(m: Pick<Message, "sender_id" | "to_id" | "thread_id" 
   }
   if (m.thread_id && TEAMMATE_THREAD_KINDS.includes(m.kind) && ctx.inThread) return { wake: true, fromInstructor: false };
   return no;
+}
+
+/** A teammate agent's message of these kinds only needs a reply, not work (AK-91). */
+export const REPLY_KINDS: MessageKind[] = ["question", "answer", "chat"];
+
+/**
+ * A job is a reply when every message in it is another agent's question, answer or chat: it runs
+ * with the slim reply prompt on the reply model. A person's message, a task and a review request are
+ * work, and keep the full prompt and session.
+ */
+export function isReplyJob(messages: Pick<Message, "sender_id" | "kind">[], isHuman: (id: string) => boolean): boolean {
+  return messages.length > 0 && messages.every((m) => !isHuman(m.sender_id) && REPLY_KINDS.includes(m.kind));
+}
+
+/** A reply run resumes this agent's own reply session in the same thread when it's younger than this. */
+export const REPLY_RESUME_MS = 30 * 60_000;
+
+/** Reply sessions are remembered this long, so work runs in the thread don't resume them. */
+const REPLY_KEEP_MS = 14 * 86400_000;
+
+/** Per thread root: this agent's last reply session there, when it ended (ms), and its earlier ones. */
+export type ReplySessions = Record<string, { session: string; at: number; earlier?: string[] }>;
+
+/** The reply session to resume in this thread, if this agent replied there recently. */
+export function recentReplySession(sessions: ReplySessions, threadRoot: number, now: number): string | null {
+  const s = sessions[String(threadRoot)];
+  return s && now - s.at < REPLY_RESUME_MS ? s.session : null;
+}
+
+/** Remember a finished reply run's session, dropping threads not replied in for two weeks. */
+export function rememberReplySession(sessions: ReplySessions, threadRoot: number, session: string, now: number): ReplySessions {
+  const kept = Object.entries(sessions).filter(([, s]) => now - s.at < REPLY_KEEP_MS);
+  const old = sessions[String(threadRoot)];
+  const earlier = old && old.session !== session ? [...(old.earlier ?? []), old.session].slice(-20) : old?.earlier;
+  return { ...Object.fromEntries(kept), [String(threadRoot)]: { session, at: now, ...(earlier?.length ? { earlier } : {}) } };
+}
+
+/** The session a work run in the thread continues: the latest one that wasn't a reply. */
+export function workSession(runs: Pick<TaskRun, "session_id">[], replies: ReplySessions[string] | undefined): string | null {
+  const skip = new Set([...(replies ? [replies.session] : []), ...(replies?.earlier ?? [])]);
+  for (let i = runs.length - 1; i >= 0; i--) {
+    const s = runs[i].session_id;
+    if (s && !skip.has(s)) return s;
+  }
+  return null;
+}
+
+/** For a reply: the thread's root and its last `last` messages (and at least the new ones), runner notices left out. */
+export function replyThread<T extends Pick<Message, "id" | "body">>(thread: T[], rootId: number, newIds: number[], last = 10): { root: T | null; recent: T[]; skipped: number } {
+  const root = thread.find((m) => m.id === rootId) ?? null;
+  const rest = thread.filter((m) => m.id !== rootId && !isRunnerNotice(m.body));
+  const firstNew = rest.findIndex((m) => newIds.includes(m.id));
+  const keep = Math.max(last, firstNew < 0 ? 0 : rest.length - firstNew);
+  const recent = rest.slice(-keep);
+  return { root, recent, skipped: rest.length - recent.length };
+}
+
+/** Ticket keys the messages mention, newest message first, at most `max`. */
+export function mentionedTickets(messages: Pick<Message, "body">[], prefix: string, max = 3): string[] {
+  const re = new RegExp(`\\b${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}-\\d+\\b`, "g");
+  const keys: string[] = [];
+  for (let i = messages.length - 1; i >= 0 && keys.length < max; i--) {
+    for (const k of messages[i].body.match(re) ?? []) {
+      if (!keys.includes(k)) keys.push(k);
+      if (keys.length >= max) break;
+    }
+  }
+  return keys;
+}
+
+/** One log line per room run, so reply and work runs can be compared from the log (AK-91). */
+export function runCostLine(what: "Reply" | "Work", ids: string, promptChars: number, model: string, effort: string | undefined, run: Pick<EngineRun, "turns" | "tokens">): string {
+  const n = (x: number) => x.toLocaleString("en-US");
+  const tokens = run.tokens
+    ? `tokens: ${n(run.tokens.read)} re-read, ${n(run.tokens.input)} new in, ${n(run.tokens.written)} written`
+    : "tokens: not reported";
+  return `${what} run ${ids}: prompt ${n(promptChars)} chars, model ${model || "default"}${effort ? ` (${effort})` : ""}, ${run.turns ?? "?"} turns, ${tokens}.`;
 }
 
 /**
@@ -894,30 +971,42 @@ export class Runner {
     const room = ak.roomById(m.room_id)!;
     const sender = (await ak.memberFresh(m.sender_id))!;
     const worktree = this.prepareWorkspace(m, run.thread_root);
-    const resume = await ak.lastSession(run.thread_root);
-    const instructors = ak.membersOf(room.id).filter((x) => x.can_instruct).map((x) => x.name);
-    const more = [];
-    for (const x of job.more) {
-      const from = (await ak.memberFresh(x.message.sender_id)) ?? sender;
-      more.push({ message: x.message, sender: from, senderRole: ak.membership(room.id, from.id)?.role ?? "member" });
+    // Another agent's question, answer or chat gets a quick reply run: a slim prompt, its own short
+    // session (never a long work session), and the reply model (AK-91).
+    const isReply = isReplyJob([m, ...job.more.map((x) => x.message)], (id) => ak.isHuman(id));
+    let resume: string | null;
+    let prompt: string;
+    let choice: ModelChoice;
+    if (isReply) {
+      resume = recentReplySession(this.replySessions(), run.thread_root, Date.now());
+      prompt = await this.replyPrompt(job, room, worktree, Boolean(resume));
+      choice = chooseReplyModel(cfg, await this.modelChoice());
+    } else {
+      resume = workSession(await ak.runsIn(run.thread_root), this.replySessions()[String(run.thread_root)]);
+      const instructors = ak.membersOf(room.id).filter((x) => x.can_instruct).map((x) => x.name);
+      const more = [];
+      for (const x of job.more) {
+        const from = (await ak.memberFresh(x.message.sender_id)) ?? sender;
+        more.push({ message: x.message, sender: from, senderRole: ak.membership(room.id, from.id)?.role ?? "member" });
+      }
+      prompt = buildPrompt({
+        me: ak.me,
+        ownerName: ak.ownerName(ak.me),
+        myRole: ak.membership(room.id)?.role ?? "follower",
+        room,
+        sender,
+        senderRole: ak.membership(room.id, sender.id)?.role ?? "member",
+        message: m,
+        instructors,
+        cfg,
+        worktree,
+        followUp: Boolean(resume),
+        fromInstructor: job.fromInstructor,
+        more,
+      });
+      choice = await this.modelChoice();
     }
-    const prompt = buildPrompt({
-      me: ak.me,
-      ownerName: ak.ownerName(ak.me),
-      myRole: ak.membership(room.id)?.role ?? "follower",
-      room,
-      sender,
-      senderRole: ak.membership(room.id, sender.id)?.role ?? "member",
-      message: m,
-      instructors,
-      cfg,
-      worktree,
-      followUp: Boolean(resume),
-      fromInstructor: job.fromInstructor,
-      more,
-    });
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, room.name) };
-    const choice = await this.modelChoice();
     const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, resume, choice) : codexInvocation(cfg, mcp, resume, worktree.path, choice);
     const logFile = join(this.logDir, `${room.name}-run${run.id}-msg${m.id}.log`);
     const ids = [m, ...job.more.map((x) => x.message)].map((x) => `#${x.id}`).join(", ");
@@ -926,7 +1015,7 @@ export class Runner {
     this.current = { what: ids, abort };
     await this.updateRuns(job, { state: "running", branch: worktree.branch, started_at: now() });
     await ak.heartbeat("working").catch(() => undefined);
-    this.log(`Working on ${ids} in ${room.name} (${worktree.branch})${resume ? ", continuing session" : ""}.`);
+    this.log(`Working on ${ids} in ${room.name} (${worktree.branch})${isReply ? " as a reply" : ""}${resume ? ", continuing session" : ""}.`);
     const notice = this.limitWait?.kind === "message" ? null : startNotice(m.id, worktree.branch, Boolean(resume), job.fromInstructor);
     if (notice) await this.say(room.id, run.thread_root, sender.id, notice);
 
@@ -938,6 +1027,8 @@ export class Runner {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000);
     }
+    this.log(runCostLine(isReply ? "Reply" : "Work", ids, prompt.length, result.model ?? choice.model ?? "", choice.effort, result));
+    if (isReply && result.sessionId) this.saveReplySession(run.thread_root, result.sessionId);
 
     const text = redactSecrets(result.finalText.trim()).slice(0, 12000);
     const limited = await this.waitForUsage(result, "message", undefined, m.id);
@@ -967,6 +1058,77 @@ export class Runner {
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
     // Cost is an API-price estimate (not a bill on a Claude subscription); keep it out of the room.
     this.log(`${ids} ${state}.${result.costUsd !== undefined ? ` (estimated API cost $${result.costUsd.toFixed(2)})` : ""}`);
+  }
+
+  /**
+   * The slim reply prompt: the thread's root and latest messages, and the tickets they mention, all
+   * fetched here so the model doesn't have to. A resumed reply session only gets the new messages.
+   */
+  private async replyPrompt(job: Job, room: Room, worktree: Worktree, followUp: boolean): Promise<string> {
+    const { ak } = this;
+    const root = job.run.thread_root;
+    const newIds = [job.message.id, ...job.more.map((x) => x.message.id)];
+    let thread: Message[] = [];
+    try {
+      thread = await ak.threadMessages(room.id, root);
+    } catch (e) {
+      this.log(`Couldn't read thread #${root}: ${(e as Error).message}`);
+    }
+    // Whatever the read missed, the messages this run answers are always in.
+    for (const x of [job.message, ...job.more.map((y) => y.message)]) if (!thread.some((y) => y.id === x.id)) thread.push(x);
+    thread.sort((a, b) => a.id - b.id);
+    const picked = followUp
+      ? { root: null, recent: thread.filter((x) => newIds.includes(x.id)), skipped: 0 }
+      : replyThread(thread, root, newIds);
+    const shown = [...(picked.root ? [picked.root] : []), ...picked.recent];
+    const project = this.projects.find((p) => p.project.room_id === room.id) ?? this.projects.find((p) => room.repo && p.project.repo === room.repo);
+    const tickets: string[] = [];
+    if (project) {
+      for (const key of mentionedTickets(shown, project.project.ticket_prefix)) {
+        try {
+          tickets.push(await project.ticketText(key));
+        } catch (e) {
+          this.log(`Couldn't read ${key} for a reply: ${(e as Error).message}`);
+        }
+      }
+    }
+    const view = (x: Message): ReplyMessage => ({ id: x.id, kind: x.kind, from: ak.nameOf(x.sender_id), to: x.to_id ? ak.nameOf(x.to_id) : null, body: x.body, isNew: newIds.includes(x.id) });
+    return buildReplyPrompt({
+      myName: ak.me.name,
+      ownerName: ak.ownerName(ak.me),
+      isLead: ak.membership(room.id)?.role === "lead",
+      roomName: room.name,
+      repo: room.repo ?? null,
+      thread: root,
+      root: picked.root ? view(picked.root) : null,
+      recent: picked.recent.map(view),
+      skipped: picked.skipped,
+      tickets,
+      denyPaths: this.cfg.limits.deny_paths,
+      worktreePath: worktree.path,
+      followUp,
+    });
+  }
+
+  private replySessionsPath(): string {
+    return join(stateDir(), "replies", `${this.ak.me.id}.json`);
+  }
+
+  private replySessions(): ReplySessions {
+    try {
+      return JSON.parse(readFileSync(this.replySessionsPath(), "utf8")) as ReplySessions;
+    } catch {
+      return {};
+    }
+  }
+
+  private saveReplySession(threadRoot: number, session: string): void {
+    try {
+      mkdirSync(join(stateDir(), "replies"), { recursive: true });
+      writeFileSync(this.replySessionsPath(), JSON.stringify(rememberReplySession(this.replySessions(), threadRoot, session, Date.now()), null, 2));
+    } catch (e) {
+      this.log(`Couldn't save my reply session: ${(e as Error).message}`);
+    }
   }
 
   /** A job's runs: the first message's, and those of the messages answered with it. */
