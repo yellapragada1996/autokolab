@@ -11,7 +11,7 @@ import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineRun, type ModelChoice, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
-import { usageLimit } from "./limit.js";
+import { usageLimit, usageReport } from "./limit.js";
 import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, riskyFiles, samePrFacts, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, fetchBranch, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
@@ -293,12 +293,14 @@ export class Runner {
       setInterval(() => {
         void ak.heartbeat(this.stateNow()).catch((e) => this.log(`Heartbeat failed: ${e.message}`));
         void this.touchAgent();
+        void this.reportUsage();
       }, HEARTBEAT_MS),
     );
     await this.loadProjects();
     if (this.projects.length) {
       this.log(`Projects: ${this.projects.map((p) => p.project.name).join(", ")}`);
       await this.setStatus(ak.me.paused ? "paused" : "idle", this.limitWait && !ak.me.paused ? this.waitNote() : null);
+      await this.reportUsage();
     }
     this.poll();
     void this.introduce().catch((e) => this.log(`Couldn't introduce myself yet: ${(e as Error).message}`));
@@ -322,6 +324,24 @@ export class Runner {
   private addUsage(seconds: number): void {
     mkdirSync(join(stateDir(), "usage"), { recursive: true });
     writeFileSync(this.usagePath(), JSON.stringify({ date: today(), seconds: this.usedToday() + seconds }));
+    void this.reportUsage();
+  }
+
+  /**
+   * Tell the team how much of today is used and when a limit wait ends (AK-76), only when it
+   * changed. Never stops anything: a database before schema 19 just doesn't get it.
+   */
+  private usageSent = "";
+  private async reportUsage(): Promise<void> {
+    if (!this.isAgentRow || !this.projects.length) return;
+    const report = usageReport(this.usedToday(), this.cfg.limits.max_hours_per_day, this.limitWait?.until ?? null);
+    const sent = JSON.stringify(report);
+    if (sent === this.usageSent) return;
+    try {
+      if (await this.projects[0].reportUsage(report)) this.usageSent = sent;
+    } catch (e) {
+      this.log(`Couldn't report my usage: ${(e as Error).message}`);
+    }
   }
 
   private overLimit(): boolean {
@@ -345,6 +365,7 @@ export class Runner {
       mkdirSync(join(stateDir(), "usage"), { recursive: true });
       writeFileSync(this.limitPath(), JSON.stringify(wait));
     } else rmSync(this.limitPath(), { force: true });
+    void this.reportUsage();
   }
 
   private waitNote(): string {

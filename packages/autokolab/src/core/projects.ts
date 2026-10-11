@@ -58,6 +58,15 @@ export interface AgentModel {
   effective_at?: string | null;
 }
 
+/** What a runner reports about its day (schema 19): seconds used, the owner's limit, the local day, and when a limit wait ends. */
+export interface UsageReport {
+  used_s: number;
+  limit_s: number;
+  /** The local day on the agent's machine, "2026-10-11". */
+  day: string;
+  waiting_until: string | null;
+}
+
 /** The model and effort a run launched with; "" means the tool's own default (schema 11). */
 export interface RanWith {
   model: string;
@@ -280,6 +289,8 @@ export class ProjectView {
   private agentInfo = new Map<string, AgentInfo>();
   /** The database has no record_pr_facts yet (before schema 18). */
   private prFactsMissing = false;
+  /** The database has no report_usage yet (before schema 19). */
+  private usageMissing = false;
 
   private constructor(
     readonly sb: SupabaseClient,
@@ -644,6 +655,22 @@ export class ProjectView {
     // A database before schema 11 has no p_model: still report the status.
     if (res.error && ran && /p_model|function/i.test(res.error.message)) return this.status(status, note, ticketId);
     check(res);
+  }
+
+  /**
+   * How much of its day this agent has used, through report_usage (schema 19). Returns false when
+   * the database doesn't have it yet; it isn't asked again until the next reload.
+   */
+  async reportUsage(u: UsageReport): Promise<boolean> {
+    if (this.usageMissing) return false;
+    const r = await this.sb.rpc("report_usage", { p_used_s: u.used_s, p_limit_s: u.limit_s, p_day: u.day, p_waiting_until: u.waiting_until });
+    const e = r.error;
+    if (e && !e.message.includes("AUTOKOLAB_") && (e.code === "PGRST202" || missingColumn(e) || /report_usage/.test(e.message))) {
+      this.usageMissing = true;
+      return false;
+    }
+    check(r);
+    return true;
   }
 
   // ------------------------------------------------------------------ for the runner

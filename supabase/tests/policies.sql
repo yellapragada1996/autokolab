@@ -525,6 +525,34 @@ set role anon;
 select pg_temp.expect_error($q$select public.agent_status('idle', null, null, 'opus', 'max')$q$, 'permission denied');
 reset role;
 
+-- ------------------------------------------------ time used today (schema 19)
+reset role;
+select pg_temp.expect((select used_today_s is null and daily_limit_s is null and usage_day is null and waiting_until is null from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'usage starts unset');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+select pg_temp.expect((select used_today_s = 4200 and daily_limit_s = 10800 and usage_day = date '2026-10-11' and waiting_until is null
+  from public.report_usage(4200, 10800, '2026-10-11')), 'the agent reports its own usage');
+select pg_temp.expect((select waiting_until = timestamptz '2026-10-12 03:40:00+00'
+  from public.report_usage(4200, 10800, '2026-10-11', '2026-10-12 03:40:00+00')), 'the agent reports when it expects to be back');
+select pg_temp.expect((select waiting_until is null and used_today_s = 86400
+  from public.report_usage(999999, 10800, '2026-10-11')), 'the wait clears and a day is the most it can report');
+select pg_temp.expect_error($q$update public.agents set used_today_s = 0 where id = '00000000-0000-0000-0000-0000000000e2'$q$, 'permission denied');
+select pg_temp.expect_error($q$update public.agents set waiting_until = null where id = '00000000-0000-0000-0000-0000000000e2'$q$, 'permission denied');
+-- only the agent itself: its owner can't write it, and a person isn't an agent
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect_error($q$update public.agents set used_today_s = 0, daily_limit_s = 0, usage_day = null, waiting_until = null where id = '00000000-0000-0000-0000-0000000000e2'$q$, 'permission denied');
+select pg_temp.expect_error($q$select public.report_usage(0, 10800, '2026-10-11')$q$, 'AUTOKOLAB_NOT_AGENT');
+-- another agent's report changes only its own row
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select pg_temp.expect((select used_today_s = 60 from public.report_usage(60, 3600, '2026-10-11')), 'the lead reports its own usage');
+select pg_temp.expect((select used_today_s = 86400 and daily_limit_s = 10800 from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'the lead''s report changed only its own row');
+-- everyone who can see the agent can read it
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e4';
+select pg_temp.expect((select daily_limit_s = 10800 from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'a teammate reads the usage');
+set role anon;
+select pg_temp.expect_error($q$select public.report_usage(0, 10800, '2026-10-11')$q$, 'permission denied');
+reset role;
+
 -- ------------------------------------------------ merge setting and approvals (schema 12)
 reset role;
 -- Modelz (f1): Octo (b1) owns it, Mona (b2) is a person member, e1 leads, e2 and e4 are workers.

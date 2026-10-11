@@ -1,4 +1,23 @@
+import type { UsageReport } from "../core/projects.js";
 import type { EngineRun } from "./engines.js";
+
+/**
+ * What the runner reports about its day (AK-76): time used, the owner's daily limit, the local day
+ * they belong to, and when it expects to work again. That is the end of a subscription-limit wait
+ * still ahead, else five past the next local midnight once the daily limit is used up, else null.
+ */
+export function usageReport(usedSeconds: number, maxHoursPerDay: number, waitUntil: string | null, now = new Date()): UsageReport {
+  const limit = Math.min(86_400, Math.max(0, Math.round(maxHoursPerDay * 3600)));
+  const used = Math.min(86_400, Math.max(0, Math.round(usedSeconds)));
+  const two = (n: number) => String(n).padStart(2, "0");
+  const waiting =
+    waitUntil && Date.parse(waitUntil) > now.getTime()
+      ? new Date(waitUntil).toISOString()
+      : used >= limit
+        ? new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 5).toISOString()
+        : null;
+  return { used_s: used, limit_s: limit, day: `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`, waiting_until: waiting };
+}
 
 /** Subscription limits are engine errors, never words quoted in a successful reply. */
 export function usageLimit(run: Pick<EngineRun, "isError" | "aborted" | "timedOut" | "finalText">, now = new Date()): { until: Date } | null {
