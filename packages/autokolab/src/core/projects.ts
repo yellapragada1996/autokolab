@@ -103,6 +103,8 @@ export interface Ticket {
   summary?: string | null;
   /** What the reviewer recorded with its approval (schema 16). */
   review?: Review | null;
+  /** Everyone who has been the assignee while it was being built (schema 17). Missing on older databases. */
+  built_by?: string[] | null;
 }
 
 /** What a reviewer records when it approves a commit: the evidence behind "How do you know?". */
@@ -631,6 +633,23 @@ export class ProjectView {
     return (await this.tickets()).filter((t) => t.status === "review" && t.pr_url && t.approved_sha);
   }
 
+  /** For the lead: tickets in Review with a PR and no approval yet, for the runner to start a review (AK-59). */
+  async waitingForReview(): Promise<Ticket[]> {
+    if (!this.iAmLead) return [];
+    return (await this.tickets()).filter((t) => t.status === "review" && t.pr_url && !t.approved_sha && t.type !== "epic");
+  }
+
+  /** The project's agents with what their runners last said, for picking a reviewer. */
+  agents(): ReviewerCandidate[] {
+    return [...this.agentInfo.entries()].map(([id, a]) => ({
+      id,
+      name: this.nameOf(id),
+      vendor: a.vendor,
+      status: a.status,
+      online: !!a.last_seen_at && Date.now() - Date.parse(a.last_seen_at) < 5 * 60_000 && a.status !== "offline",
+    }));
+  }
+
   /** For the lead: workers' tickets in this project with a question for a person. Empty for anyone else. */
   async openQuestions(): Promise<Ticket[]> {
     if (!this.iAmLead) return [];
@@ -785,6 +804,7 @@ export function questionsForLead(tickets: Ticket[], leadId: string): Ticket[] {
       t.needs_human &&
       t.needs_human !== AGENT_LOOP_QUESTION &&
       !isMergeQuestion(t.needs_human) &&
+      !isReviewQuestion(t.needs_human) &&
       t.assignee_id !== leadId &&
       !["done", "canceled"].includes(t.status) &&
       t.type !== "epic",
@@ -796,6 +816,25 @@ export const NO_CHECKS_QUESTION = "No automatic tests ran on this PR.";
 export const MERGE_OK_PREFIX = "Ready to merge — needs your OK:";
 export const MERGE_FAILED_PREFIX = "Couldn't merge";
 export const MERGE_GH_PREFIX = "Can't check the PR";
+
+/** What the lead's runner puts in "Needs you" while starting reviews (AK-59). Also for a person, not the lead. */
+export const MAX_AUTO_REVIEWS = 5;
+export const REVIEW_LIMIT_QUESTION = `I've reviewed this ${MAX_AUTO_REVIEWS} times and it still isn't right. Can you look?`;
+export const LEAD_BUILT_QUESTION = "Captain built this, so a person or another agent has to approve it.";
+export const REVIEW_FAILED_PREFIX = "Captain couldn't finish reviewing this";
+
+export function isReviewQuestion(text: string | null | undefined): boolean {
+  return !!text && (text === REVIEW_LIMIT_QUESTION || text === LEAD_BUILT_QUESTION || text.startsWith(REVIEW_FAILED_PREFIX));
+}
+
+/** An agent in the project, as the lead's runner sees it when asking someone to review. */
+export interface ReviewerCandidate {
+  id: string;
+  name: string;
+  vendor: string;
+  status: AgentStatus;
+  online: boolean;
+}
 
 export function isMergeQuestion(text: string | null | undefined): boolean {
   return !!text && (text === NO_CHECKS_QUESTION || [MERGE_OK_PREFIX, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX].some((p) => text.startsWith(p)));

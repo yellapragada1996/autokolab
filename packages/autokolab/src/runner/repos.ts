@@ -197,6 +197,33 @@ export function attachWorktree(clone: string, path: string, branch: string, agen
   return { clone, path, branch, base, created: true };
 }
 
+/**
+ * Put one of the runner's worktrees at exactly `sha` (a PR's head), detached, with nothing else in
+ * it: for reading only, like the lead's review checkout (AK-59). GitHub serves a PR's commits under
+ * refs/pull/<n>/head, so this works for PRs from forks too.
+ */
+export function checkoutCommit(wt: Pick<Worktree, "clone" | "path">, sha: string, pr?: string): void {
+  const g = worktreeGit(wt.clone, wt.path);
+  const has = () => {
+    try {
+      g("cat-file", "-e", `${sha}^{commit}`);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (!has() && pr) {
+    try {
+      g("fetch", "--quiet", "origin", `refs/pull/${pr}/head`);
+    } catch {
+      /* try the commit itself below */
+    }
+  }
+  if (!has()) g("fetch", "--quiet", "origin", sha);
+  g("switch", "--quiet", "--detach", "--discard-changes", sha);
+  g("clean", "-fdq");
+}
+
 /** The latest commit in a worktree: its id and first line. */
 export function headCommit(clone: string, path: string): { sha: string; subject: string } | null {
   try {
