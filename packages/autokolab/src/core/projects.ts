@@ -218,12 +218,17 @@ export const LEAD_APPROVAL =
 
 export const LEAD_UNDO = "When a person asks to undo a merged ticket, create one new ticket for a worker to revert that pull request's merge commit with git revert on a new branch. Its PR must target the default branch and go through the normal tests, review, approval and merge. Never revert a database migration; tell the person why it needs a manual plan instead. Reply with the new ticket's key.";
 
+/** What Captain writes so people can recognise goals and see current work. */
+export const LEAD_WORK_SUMMARIES = `A goal is one feature a person using the product would recognise and notice when finished. If nobody could notice it being done, it is not a goal. Name it in two to four plain words, with no colon or subtitle: "Google sign-in", not "Auth: OAuth callback and sessions". Give it a summary: one present-tense sentence about what people can do when it is done, such as "People can sign in with their Google account." Keep each goal small enough to finish in days, about three to ten tickets; split bigger work into several goals. Fixes and upkeep that belong to no feature need no goal.
+Every ticket gets a summary when created: a plain phrase finishing "<agent> is …". Start with a lowercase -ing verb; use no ticket keys, file names or jargon; keep it to 120 characters. Examples: "adding Apple Pay to the checkout" and "making a profile page for people who sign in for the first time". Keep the title, description and done means written for the agent as usual.`;
+
 /** What the lead does. Shown to the lead in project_brief. */
 export function leadGuide(project: string, people: string[]): string {
   const who = people.length ? `${people.join(" and ")} ${people.length === 1 ? "talks" : "talk"}` : "The people on this project talk";
   return `You are Captain, the lead agent of ${project}. ${who} to you, and you turn what they want into tickets the worker agents can do without asking anything. Workers only see the ticket, never your conversation, so the ticket is the whole brief. People see you as Captain and see epics as goals; the tools and data still say lead and epic.
 1. Understand first: read the code involved, the guide and the decisions. Ask your person only about real product choices.
 2. Split the work into tickets of a few hours each, one clear outcome per ticket. For a goal that needs several tickets, create an epic (a goal) first and put the tickets under it.
+${LEAD_WORK_SUMMARIES}
 3. Write every ticket like this:
    - Title: the outcome, as an instruction ("Add Google sign-in to /login").
    - Description, with these headings: **Context** (why, for whom), **What to do** (the behaviour and the approach to take), **Where** (files, modules, APIs and existing code to follow), **Not in scope**, **Notes** (decisions, gotchas, how to test).
@@ -249,6 +254,7 @@ export function defaultRules(defaultBranch: string): string {
     "- Follow the decisions. If you need to break one, ask first.",
     '- If something is ambiguous, first put the background in a ticket comment, then set "Needs you" to one short question a person can answer without opening anything.',
     "- If you find more work, create a new ticket instead of growing this one.",
+    "- When you finish, replace the ticket's summary with one plain sentence on what changed for people, such as \"Shoppers can pay with Apple Pay.\"",
     "- Never put keys, tokens or passwords in tickets, comments or code.",
   ].join("\n");
 }
@@ -433,6 +439,7 @@ export class ProjectView {
   async create(input: {
     title: string;
     description?: string;
+    summary?: string;
     type?: TicketType;
     priority?: Priority;
     status?: Status;
@@ -442,10 +449,10 @@ export class ProjectView {
     done_means?: string[];
     blocked_by?: string[];
   }): Promise<Ticket> {
-    this.noSecrets(input.title, input.description, ...(input.done_means ?? []));
+    this.noSecrets(input.title, input.description, input.summary, ...(input.done_means ?? []));
     this.checkBrief({ ...input, assignee_id: input.assignee ? this.resolveActor(input.assignee) : null });
     const parent = input.epic ? (await this.ticket(input.epic)).id : null;
-    const t = check<Ticket>(
+    let t = check<Ticket>(
       await this.sb.rpc("create_ticket", {
         p_project: this.project.id,
         p_title: input.title,
@@ -459,6 +466,13 @@ export class ProjectView {
         p_done_means: input.done_means ?? [],
       }),
     );
+    // create_ticket predates summary and has no summary argument. Schema 14 grants this update.
+    if (input.summary !== undefined) {
+      const summary = input.summary.trim().slice(0, 200) || null;
+      const r = await this.sb.from("tickets").update({ summary }).eq("id", t.id).select("*").single();
+      if (!r.error) t = r.data as Ticket;
+      else if (!missingColumn(r.error)) t = check<Ticket>(r);
+    }
     for (const b of input.blocked_by ?? []) await this.addBlocker(t.key, b);
     return t;
   }

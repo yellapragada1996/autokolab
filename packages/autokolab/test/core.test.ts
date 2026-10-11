@@ -2,12 +2,32 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { formatMember } from "../src/core/format.js";
-import { EFFORTS, MODEL_CHANGE_PREFIX, leadGuide, modelChangeMessage, modelText, nextModel, shortModel } from "../src/core/projects.js";
+import { EFFORTS, MODEL_CHANGE_PREFIX, ProjectView, leadGuide, modelChangeMessage, modelText, nextModel, shortModel } from "../src/core/projects.js";
 import type { Member } from "../src/core/types.js";
 import { AGENT_MODEL_INPUT } from "../src/mcp/server.js";
 import { isRunnerNotice } from "../src/runner/runner.js";
 import { looksLikeSecret, redactSecrets } from "../src/core/secrets.js";
 import { formatToken, memberEmail, parseToken } from "../src/core/token.js";
+
+describe("creating tickets", () => {
+  it("stores the plain summary after create_ticket returns the new key", async () => {
+    const updates: Array<{ id: string; summary: string | null }> = [];
+    const row = { id: "ticket-id", key: "SH-2", title: "Add Apple Pay", status: "backlog" };
+    const sb = {
+      rpc: async () => ({ data: row, error: null }),
+      from: () => ({ update: (patch: { summary: string | null }) => ({
+        eq: (_column: string, id: string) => ({ select: () => ({ single: async () => {
+          updates.push({ id, summary: patch.summary });
+          return { data: { ...row, summary: patch.summary }, error: null };
+        } }) }),
+      }) }),
+    };
+    const view = Object.assign(Object.create(ProjectView.prototype), { sb, meId: "lead", project: { id: "shop" } }) as ProjectView;
+    const created = await view.create({ title: "Add Apple Pay", summary: "  adding Apple Pay to the checkout  " });
+    expect(updates).toEqual([{ id: "ticket-id", summary: "adding Apple Pay to the checkout" }]);
+    expect(created.summary).toBe("adding Apple Pay to the checkout");
+  });
+});
 
 describe("tokens", () => {
   const id = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";

@@ -12,7 +12,7 @@ import { REVIEW_DIFF_LIMIT, buildPrompt, buildReviewPrompt, buildTicketPrompt, b
 import { needsRunner } from "../src/setup/connect.js";
 import { Runner, STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
 import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
@@ -255,6 +255,12 @@ describe("prompt", () => {
     expect(g).toContain(LEAD_APPROVAL);
     expect(g).toContain(LEAD_UNDO);
     expect(g).toContain(LEAD_VOICE);
+    expect(g).toContain(LEAD_WORK_SUMMARIES);
+    expect(g).toMatch(/goal is one feature a person using the product would recognise and notice when finished/);
+    expect(g).toMatch(/two to four plain words, with no colon or subtitle/);
+    expect(g).toMatch(/one present-tense sentence about what people can do/);
+    expect(g).toMatch(/about three to ten tickets/);
+    expect(g).toMatch(/Every ticket gets a summary when created.*lowercase -ing verb.*no ticket keys, file names or jargon/);
     expect(LEAD_UNDO).toMatch(/git revert.*new branch.*default branch.*normal tests, review, approval and merge/);
     expect(LEAD_UNDO).toMatch(/Never revert a database migration.*Reply with the new ticket's key/);
     expect(LEAD_APPROVAL).toMatch(/approve it with ticket_approve.*Approve only the commit you actually reviewed: a new push needs a new approval/);
@@ -329,6 +335,8 @@ describe("tickets", () => {
     expect(p).toContain("SH-2 · Add Google sign-in");
     expect(p).toContain("Never commit to, push to or merge into: main");
     expect(p).toContain("ticket_update key=SH-2 status=review");
+    expect(p).toContain("Replace the ticket's current-work summary when you finish");
+    expect(defaultRules("main")).toContain("replace the ticket's summary with one plain sentence on what changed for people");
   });
   it("tells the agent to open the PR against the default branch, even when stacked (AK-36)", () => {
     const p = buildTicketPrompt({ myName: "b", ownerName: "ana", projectName: "Shop", key: "SH-2", brief: "", ticket: "", cfg: cfgFor(), worktree: { ...wt, base: "trunk" }, followUp: false, newComments: null });
