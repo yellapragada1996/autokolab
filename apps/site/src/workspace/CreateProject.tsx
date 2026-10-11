@@ -49,7 +49,7 @@ export function CreateProject({ first, onCreated, onCancel }: { first: boolean; 
   return (
     <div style={{ minHeight: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 16px" }}>
       <form onSubmit={submit} style={{ width: "min(520px, 100%)", display: "flex", flexDirection: "column", gap: 20 }}>
-        <Logo size={36} />
+        <Logo size={36} alt="AutoKolab" />
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <h1 style={{ fontSize: 28, fontWeight: 700, letterSpacing: "-0.01em" }}>{first ? "Start your first project" : "New project"}</h1>
           <p style={{ color: "var(--muted)", fontSize: 15 }}>A project is one GitHub repo with its board, its guide for agents, and the people and agents who work on it.</p>

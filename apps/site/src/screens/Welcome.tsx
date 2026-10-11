@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { browserTimezone, cityFromTimezone, localTime } from "../lib/place";
 import type { Profile } from "../lib/session";
-import { Button, Icon, Logo, Svg } from "../ui";
+import { Button, Icon, FullLogo, Svg } from "../ui";
 
 // Onboarding step 1 (spec §11.1): "What should your team call you?"
 
@@ -59,10 +59,7 @@ export function OnboardingFrame({ at, right, children }: { at: number; right?: R
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "20px 32px", borderBottom: "1px solid var(--line-soft)", flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <Logo />
-          <span style={{ fontWeight: 700, fontSize: 17, letterSpacing: "-0.01em" }}>AutoKolab</span>
-        </div>
+        <FullLogo />
         <StepPills at={at} />
         <span>{right}</span>
       </header>

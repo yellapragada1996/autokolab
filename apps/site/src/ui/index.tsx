@@ -159,15 +159,24 @@ export function Svg({ children, size = 18, width = 1.8 }: { children: ReactNode;
   );
 }
 
-export function Logo({ size = 28 }: { size?: number }) {
+/**
+ * The croc mark (brand/svg/autokolab-croc-square.svg, served unchanged). It sits on a light tile
+ * because its outline is a very dark green that disappears on the app's dark background.
+ * `alt` is empty when the name is written next to it.
+ */
+export function Logo({ size = 28, alt = "" }: { size?: number; alt?: string }) {
   return (
     <span style={{ width: size, height: size, borderRadius: 8, background: "var(--text)", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-      <svg width={size * 0.57} height={size * 0.57} viewBox="0 0 24 24" fill="none" stroke="var(--bg)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="7" cy="12" r="3" />
-        <circle cx="17" cy="7" r="3" />
-        <circle cx="17" cy="17" r="3" />
-        <path d="M10 11l4-2.5M10 13l4 2.5" />
-      </svg>
+      <img src="/brand/autokolab-croc.svg" alt={alt} width={size - 4} height={size - 4} style={{ display: "block" }} />
+    </span>
+  );
+}
+
+/** The full logo, croc and wordmark, on a light panel so its dark outline shows on dark pages. */
+export function FullLogo({ height = 44 }: { height?: number }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", padding: `${Math.round(height / 4)}px ${Math.round(height / 2.5)}px`, borderRadius: 12, background: "var(--text)", flex: "none", alignSelf: "flex-start" }}>
+      <img src="/brand/autokolab-logo.svg" alt="AutoKolab" height={height} style={{ display: "block", height, width: "auto" }} />
     </span>
   );
 }

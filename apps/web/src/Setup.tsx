@@ -95,10 +95,10 @@ export function Setup({ initial, onFinished }: { initial: SetupState; onFinished
 export function Wordmark() {
   return (
     <span className="wordmark">
-      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="1" y="1" width="22" height="22" rx="3" fill="currentColor" />
-        <path d="M7 17l5-10 5 10M9.2 13h5.6" stroke="var(--bg)" strokeWidth="2" fill="none" />
-      </svg>
+      {/* The croc on a white tile: its dark outline needs a light ground in dark mode. */}
+      <span style={{ width: 24, height: 24, borderRadius: 6, background: "#fff", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
+        <img src="/brand/autokolab-croc.svg" alt="" width={20} height={20} style={{ display: "block" }} />
+      </span>
       AUTOKOLAB
     </span>
   );
