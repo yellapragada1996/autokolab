@@ -83,6 +83,13 @@ export interface Agent {
   effective_effort?: Effort | null;
   /** When its runner last reported; null means it never has (its machine runs an older AutoKolab). */
   effective_at?: string | null;
+  /** Seconds worked on usage_day and the owner's daily limit, reported by its runner (schema 19; absent before it). */
+  used_today_s?: number | null;
+  daily_limit_s?: number | null;
+  /** The local day on the agent's machine the seconds belong to, "2026-10-11". */
+  usage_day?: string | null;
+  /** When it expects to work again while it waits out a limit; null otherwise. */
+  waiting_until?: string | null;
 }
 
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;

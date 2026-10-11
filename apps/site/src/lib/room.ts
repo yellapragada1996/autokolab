@@ -13,6 +13,8 @@ export interface RoomMember {
   runner_state: string;
   paused: boolean;
   last_seen_at: string | null;
+  /** A person's website sign-in, when the room loaded it. */
+  profile_id?: string | null;
   role: "lead" | "follower" | "human" | "observer";
   can_instruct: boolean;
 }

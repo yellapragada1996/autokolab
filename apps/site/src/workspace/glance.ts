@@ -1,6 +1,7 @@
-import { MERGE_OK_PREFIX, type Agent, type Ticket } from "../lib/data";
+import { MERGE_OK_PREFIX, type Agent, type Ticket, type TicketEvent } from "../lib/data";
+import { localTime } from "../lib/place";
 import { awayText, catchUpItems, clock, goalName, named, RUNNER_PROBLEM, type CatchUp, type Need, type Plan } from "./captain";
-import { agentDot, epicOf, plural } from "./story";
+import { agentDot, agentOnline, epicOf, plural } from "./story";
 import type { Workspace } from "./useWorkspace";
 
 // Overview (AK-75): what an owner wants to know, at the level of features, never tickets. A feature
@@ -12,6 +13,9 @@ import type { Workspace } from "./useWorkspace";
 export type State = "working" | "waiting" | "paused" | "idle";
 
 export const STATE_WORD: Record<State, string> = { working: "Working", waiting: "Waiting on you", paused: "Paused", idle: "Idle" };
+
+/** A person counts as online if they were seen within the last five minutes, like an agent. */
+const ONLINE_MS = 5 * 60_000;
 
 /** The name of the card for work that belongs to no feature. */
 export const FIXES = "Fixes and upkeep";
@@ -485,6 +489,209 @@ export function sinceLine(ws: Workspace, c: CatchUp | null): string | null {
   ].filter((p): p is string => !!p);
   if (!parts.length) return null;
   return `Since you last looked, ${awayText(c.awayMs)} ago: ${parts.join(", ")}.`;
+}
+
+// ------------------------------------------------------------------ team
+
+export type TeamState = "working" | "reviewing" | "waiting" | "free" | "idle" | "stopped" | "limit" | "offline";
+
+export interface Usage {
+  /** "1 h 10 of 3 h today" */
+  text: string;
+  /** 0 to 1, for the bar. */
+  share: number;
+}
+
+export interface TeamAgent {
+  id: string;
+  name: string;
+  state: TeamState;
+  /** "working", "free · idle 40 min", "limit reached · back about 5:40 am". */
+  label: string;
+  tone: Tone;
+  /** Null unless its runner reported usage for today on its own machine. */
+  usage: Usage | null;
+  /** Whose agent it is and its model, for hover text. */
+  hover: string;
+}
+
+export interface TeamPerson {
+  id: string;
+  name: string;
+  online: boolean;
+  /** "online · 9:41 AM"; just "away" when their time zone isn't known. */
+  label: string;
+}
+
+export interface Team {
+  agents: TeamAgent[];
+  people: TeamPerson[];
+}
+
+/** "1 h 10", "3 h", "40 min": a length of work time. */
+export function workTime(seconds: number): string {
+  const min = Math.round(seconds / 60);
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return h ? (m ? `${h} h ${m}` : `${h} h`) : `${m} min`;
+}
+
+/** The calendar day in a time zone, "2026-10-11"; the browser's own zone when none is given or it's unknown. */
+export function dayIn(tz: string | null | undefined, now: Date): string {
+  const local = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  if (!tz) return local;
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+    const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+    return `${get("year")}-${get("month")}-${get("day")}`;
+  } catch {
+    return local;
+  }
+}
+
+/** Time used today, only when the runner's report is for today where the agent runs (its owner's time zone). */
+export function usageOf(ws: Workspace, a: Agent, now: Date): Usage | null {
+  if (a.used_today_s == null || !a.daily_limit_s || !a.usage_day) return null;
+  const tz = a.owner_profile_id ? ws.people.profiles.get(a.owner_profile_id)?.timezone : null;
+  if (a.usage_day !== dayIn(tz, now)) return null;
+  return { text: `${workTime(a.used_today_s)} of ${workTime(a.daily_limit_s)} today`, share: Math.min(1, a.used_today_s / a.daily_limit_s) };
+}
+
+/** When an agent waiting out a limit expects to be back: what its runner reported, else what its note says. */
+function backAt(a: Agent, now: Date): Date | null {
+  if (a.waiting_until) return Date.parse(a.waiting_until) > now.getTime() ? new Date(a.waiting_until) : null;
+  return /usage limit/i.test(a.status_note ?? "") ? resumeAt(a.status_note, now) : null;
+}
+
+const queuedFor = (ws: Workspace, id: string) => ws.tickets.filter((t) => isWork(t) && t.assignee_id === id && (t.status === "ready" || t.status === "in_progress"));
+
+/** An agent's state in a word, before any wording: shared by the Team block and Worth watching. */
+function teamState(ws: Workspace, a: Agent, now: Date): TeamState {
+  if (!agentOnline(a, now)) return "offline";
+  if (a.status === "paused" || a.status === "blocked") return "stopped";
+  if (agentDot(a, now) === "working") {
+    const t = agentTicket(ws, a);
+    return t && t.status === "review" && t.assignee_id !== a.id ? "reviewing" : "working";
+  }
+  if (backAt(a, now)) return "limit";
+  if (a.status === "waiting_human") return "waiting";
+  return queuedFor(ws, a.id).length ? "idle" : "free";
+}
+
+const TEAM_TONE: Record<TeamState, Tone> = { working: "live", reviewing: "live", waiting: "needs", free: "quiet", idle: "quiet", stopped: "problem", limit: "problem", offline: "quiet" };
+
+/**
+ * Who is free, who is stopped and how much of today each agent has used, then each person.
+ * `seen` is when each person was last seen (by profile id), from the room; `me` is looking right now.
+ */
+export function team(ws: Workspace, now: Date, seen: Map<string, string | null> = new Map(), me?: string): Team {
+  const lead = ws.project.lead_agent_id;
+  const agents = [...ws.people.agents.values()]
+    .sort((a, b) => Number(b.id === lead) - Number(a.id === lead))
+    .map((a): TeamAgent => {
+      const state = teamState(ws, a, now);
+      let label: string = state;
+      if (state === "limit") label = `limit reached · back ${aboutTime(backAt(a, now)!)}`;
+      else if (state === "waiting") label = "waiting on you";
+      else if (state === "offline") label = a.last_seen_at ? `offline · ${awayText(now.getTime() - Date.parse(a.last_seen_at))}` : "not connected yet";
+      else if (state === "free" || state === "idle") {
+        // Since its last run started or a ticket of its own last moved, whichever is later.
+        const since = Math.max(0, ...[a.effective_at, ...ws.tickets.filter((t) => isWork(t) && t.assignee_id === a.id && t.status !== "backlog").map((t) => t.updated_at)].map((x) => (x ? Date.parse(x) : 0)));
+        const held = now.getTime() - since;
+        if (since && held >= 60_000) label = state === "free" ? `free · idle ${awayText(held)}` : `idle · ${awayText(held)}`;
+      }
+      const owner = a.owner_profile_id ? ws.nameOf(a.owner_profile_id) : a.owner_label;
+      const hover = [owner ? `${owner}'s agent` : "shared agent", a.effective_model ?? a.model ?? "model set on its machine"].join(" · ");
+      return { id: a.id, name: whoName(ws, a.id), state, label, tone: TEAM_TONE[state], usage: usageOf(ws, a, now), hover };
+    });
+  const people = ws.people.members
+    .filter((m) => m.actor_type === "human")
+    .map((m): TeamPerson => {
+      const p = ws.people.profiles.get(m.actor_id);
+      const last = seen.get(m.actor_id);
+      const online = m.actor_id === me || (!!last && now.getTime() - Date.parse(last) < ONLINE_MS);
+      const word = online ? "online" : "away";
+      return { id: m.actor_id, name: p?.name ?? "Someone", online, label: p?.timezone ? `${word} · ${localTime(p.timezone, now)}` : word };
+    });
+  return { agents, people };
+}
+
+// ------------------------------------------------------------------ worth watching
+
+/** A finished change has waited too long for review after this. */
+const REVIEW_WAIT_MS = 20 * 60_000;
+/** A machine with work assigned is worth a look when unseen for this long. */
+const UNSEEN_MS = 24 * 3600_000;
+/** Send-backs are counted over the last 7 days. */
+export const WEEK_MS = 7 * 24 * 3600_000;
+/** This many parts waiting on one agent, while another is free, is a pile. */
+const PILE = 2;
+
+export interface WatchItem {
+  text: string;
+  /** Coral for something going wrong; quiet for something to keep an eye on. */
+  tone: "problem" | "quiet";
+  /** The ticket whose Show-the-work sheet it opens, else People; neither for the empty queue. */
+  key?: string;
+  people?: boolean;
+}
+
+const times = (n: number) => (n === 2 ? "twice" : `${n} times`);
+
+/**
+ * What is quietly going wrong, most serious first, in plain sentences with no ticket keys.
+ * `events` are the project's recent events; send-backs are counted from the last 7 days of them.
+ */
+export function watch(ws: Workspace, events: TicketEvent[], now: Date): WatchItem[] {
+  const open = ws.tickets.filter((t) => isWork(t) && isOpen(t));
+  const subject = (t: Ticket) => withoutKeys(ws, named(t.title));
+  const out: WatchItem[] = [];
+
+  for (const t of open) {
+    if ((t.status === "review" || t.status === "in_progress") && t.pr_facts?.checks?.state === "failure") out.push({ text: `Tests are failing on ${subject(t)}.`, tone: "problem", key: t.key });
+  }
+
+  const sentBack = new Map<string, number>();
+  const inReviewSince = new Map<string, string>();
+  for (const e of events) {
+    if (e.kind !== "status" || now.getTime() - Date.parse(e.created_at) > WEEK_MS) continue;
+    if (e.data.from === "review" && e.data.to === "in_progress") sentBack.set(e.ticket_id, (sentBack.get(e.ticket_id) ?? 0) + 1);
+    if (e.data.to === "review" && (inReviewSince.get(e.ticket_id) ?? "") < e.created_at) inReviewSince.set(e.ticket_id, e.created_at);
+  }
+  for (const t of open) {
+    const n = sentBack.get(t.id) ?? 0;
+    if (n >= 2) out.push({ text: `${subject(t)} was sent back by review ${times(n)}.`, tone: "problem", key: t.key });
+  }
+
+  const agents = [...ws.people.agents.values()];
+  for (const a of agents) {
+    const unseen = a.last_seen_at ? now.getTime() - Date.parse(a.last_seen_at) : Infinity;
+    if (unseen <= UNSEEN_MS || !queuedFor(ws, a.id).length) continue;
+    const name = whoName(ws, a.id);
+    out.push({ text: a.last_seen_at ? `${name} has work assigned, but its computer hasn't been seen for ${awayText(unseen)}.` : `${name} has work assigned, but its computer has never connected.`, tone: "problem", people: true });
+  }
+
+  const reviewing = new Set(agentsAt(ws, now).filter((r) => r.running && r.ticket).map((r) => r.ticket!.id));
+  for (const t of open) {
+    // Approved work waits for its tests or a person's OK, not for a review.
+    if (t.status !== "review" || t.approved_sha || reviewing.has(t.id)) continue;
+    const waited = now.getTime() - Date.parse(inReviewSince.get(t.id) ?? t.updated_at);
+    if (waited > REVIEW_WAIT_MS) out.push({ text: `${subject(t)} has waited ${awayText(waited)} for review.`, tone: "quiet", key: t.key });
+  }
+
+  const states = new Map(agents.map((a) => [a.id, teamState(ws, a, now)]));
+  const free = agents.find((a) => a.id !== ws.project.lead_agent_id && states.get(a.id) === "free");
+  if (free) {
+    for (const a of agents) {
+      const waiting = ws.tickets.filter((t) => isWork(t) && t.status === "ready" && t.assignee_id === a.id).length;
+      if (a.id !== free.id && waiting >= PILE) out.push({ text: `${plural(waiting, "part")} are waiting for ${whoName(ws, a.id)} while ${whoName(ws, free.id)} is free.`, tone: "quiet", people: true });
+    }
+  }
+
+  const building = [...activeTickets(ws, now)].some((id) => ws.byId.get(id)?.status === "in_progress");
+  if (building && !ws.tickets.some((t) => isWork(t) && t.status === "ready")) out.push({ text: "Nothing is queued after the current work.", tone: "quiet" });
+
+  return out;
 }
 
 /** "just now", "2 min ago": how long since the data last loaded. */
