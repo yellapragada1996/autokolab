@@ -221,7 +221,14 @@ export default function DemoWorkspace() {
   const route = useRoute();
   const ws = useMemo<WS>(() => {
     const byId = new Map(tickets.map((t) => [t.id, t]));
-    const links = [{ ticket_id: "t3", blocked_by: "t4" }];
+    // The plan's tickets wait on the database change and the charge, so the plan page reorders them.
+    const links = [
+      { ticket_id: "t3", blocked_by: "t4" },
+      { ticket_id: "t31", blocked_by: "t32" },
+      { ticket_id: "t33", blocked_by: "t32" },
+      { ticket_id: "t33", blocked_by: "t31" },
+      { ticket_id: "t42", blocked_by: "t41" },
+    ];
     const profiles = new Map<string, Profile>([
       [ANA, profile],
       [LEE, { ...profile, id: LEE, github_login: "lee", name: "Lee", city: "Stockholm", timezone: "Europe/Stockholm" }],

@@ -296,7 +296,7 @@ function DayDivider({ label }: { label: string }) {
   );
 }
 
-function CaptainMessage({ at, children }: { at: string | null; children: ReactNode }) {
+export function CaptainMessage({ at, children }: { at: string | null; children: ReactNode }) {
   return (
     <div style={{ display: "flex", gap: 12, minWidth: 0 }}>
       <AgentAvatar name="Captain" size={28} />
@@ -333,7 +333,7 @@ function RowView({ ws, row }: { ws: Workspace; row: Row }) {
   );
 }
 
-function YouMessage({ turn, ws }: { turn: Turn; ws: Workspace }) {
+export function YouMessage({ turn, ws }: { turn: Turn; ws: Workspace }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
       <span style={{ fontSize: 12, color: "var(--text-dim)" }}>You · {clock(turn.at)}</span>
@@ -583,6 +583,7 @@ function PlanCard({ ws, cr, plan, need, pulse }: { ws: Workspace; cr: CaptainRoo
   const err = cr.errors.get(planKey(plan));
   const pending = plan.status === "pending";
   const slug = ws.project.slug;
+  const page: Route = { view: "plan", project: slug, plan: plan.turnId };
 
   const start = async () => {
     setBusy(true);
@@ -612,8 +613,10 @@ function PlanCard({ ws, cr, plan, need, pulse }: { ws: Workspace; cr: CaptainRoo
       {plan.text && <Markdown text={withTicketLinks(plan.text, ws)} />}
       <div id={need ? `need-${need.key}` : undefined} tabIndex={need ? -1 : undefined} role="region" aria-labelledby={titleId} className={pulse ? "ak-pulse" : undefined} style={look}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <h3 id={titleId} style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.4, color: pending ? "var(--text)" : "var(--text-secondary)", overflowWrap: "anywhere" }}>
-            {title}
+          <h3 id={titleId} style={{ fontSize: 17, fontWeight: 600, lineHeight: 1.4, overflowWrap: "anywhere" }}>
+            <a href={href(page)} onClick={onNav(page)} title="Open the plan" style={{ color: pending ? "var(--text)" : "var(--text-secondary)", textDecoration: "none" }}>
+              {title}
+            </a>
           </h3>
           {state}
         </div>
@@ -659,7 +662,7 @@ function PlanCard({ ws, cr, plan, need, pulse }: { ws: Workspace; cr: CaptainRoo
   );
 }
 
-function ReplyBox({ label, placeholder, value, onChange, busy, action, onSend }: { label: string; placeholder: string; value: string; onChange: (v: string) => void; busy: boolean; action: string; onSend: () => void | Promise<void> }) {
+export function ReplyBox({ label, placeholder, value, onChange, busy, action, onSend }: { label: string; placeholder: string; value: string; onChange: (v: string) => void; busy: boolean; action: string; onSend: () => void | Promise<void> }) {
   return (
     <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
       <textarea
@@ -751,4 +754,4 @@ const ellipsis: CSSProperties = { minWidth: 0, overflow: "hidden", textOverflow:
 const textButton: CSSProperties = { border: 0, padding: 0, background: "none", color: "var(--blue-text)", fontSize: 14, cursor: "pointer" };
 const cardBox: CSSProperties = { display: "flex", flexDirection: "column", gap: 14, padding: 18, borderRadius: "var(--radius-xl)", background: "var(--amber-bg)", border: "1px solid var(--amber-border)", minWidth: 0 };
 /** The card's primary button: amber and 44px tall, with the usual disabled look while it can't be pressed. */
-const amberButton = (disabled: boolean): CSSProperties => ({ height: 44, padding: "0 18px", borderRadius: 11, fontSize: 15, fontWeight: 600, ...(disabled ? {} : { background: "var(--amber)", color: "var(--amber-ink)" }) });
+export const amberButton = (disabled: boolean): CSSProperties => ({ height: 44, padding: "0 18px", borderRadius: 11, fontSize: 15, fontWeight: 600, ...(disabled ? {} : { background: "var(--amber)", color: "var(--amber-ink)" }) });

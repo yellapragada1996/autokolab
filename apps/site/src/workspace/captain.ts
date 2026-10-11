@@ -201,6 +201,41 @@ export function planAsks(p: Plan): string | null {
   return n ? `You'll be asked ${n === 1 ? "once" : `${n} times`}` : null;
 }
 
+/** The newer plan that replaced this one: the first later plan sharing one of its goals. */
+export function newerPlan(all: Plan[], p: Plan): Plan | null {
+  const ids = new Set(p.goals.map((g) => g.goal.id));
+  return all.find((later) => later.turnId > p.turnId && later.goals.some((g) => ids.has(g.goal.id))) ?? null;
+}
+
+/** The person's message a plan answers: the root of its thread, when they wrote it. */
+export const planRequest = (p: Plan, turns: Turn[]): Turn | null => turns.find((t) => t.id === p.thread && t.kind === "you") ?? null;
+
+/**
+ * Tickets in an order that respects blockers: a ticket comes after every ticket in the list it waits
+ * for; ties go by board order. A loop of blockers can't be ordered, so what's left goes last in board order.
+ */
+export function planOrder(ws: Workspace, tickets: Ticket[]): Ticket[] {
+  const inList = new Set(tickets.map((t) => t.id));
+  const byBoard = [...tickets].sort((a, b) => a.sort_order - b.sort_order);
+  const waits = new Map(tickets.map((t) => [t.id, ws.blockersOf(t.id).filter((b) => inList.has(b.id) && b.id !== t.id).map((b) => b.id)]));
+  const out: Ticket[] = [];
+  const placed = new Set<string>();
+  while (out.length < byBoard.length) {
+    const next = byBoard.find((t) => !placed.has(t.id) && waits.get(t.id)!.every((id) => placed.has(id))) ?? byBoard.find((t) => !placed.has(t.id))!;
+    out.push(next);
+    placed.add(next.id);
+  }
+  return out;
+}
+
+/** "after “Store wishlists”" and "after “A” and “B”": what a ticket still waits for, or null when nothing. */
+export function waitsFor(ws: Workspace, t: Ticket): string | null {
+  const open = ws.blockersOf(t.id).filter((b) => b.id !== t.id && b.status !== "done" && b.status !== "canceled");
+  if (!open.length) return null;
+  const names = open.map((b) => named(b.title));
+  return `after ${names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`}`;
+}
+
 // ------------------------------------------------------------------ needs you
 
 export type NeedKind = "risky_merge" | "ticket_question" | "captain_question" | "plan" | "problem";

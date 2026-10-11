@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 //   /p/<project>/work                Work, by agent (?group=goal by goal, ?view=backlog|all)
 //   /p/<project>/work/<ticket key>   a ticket
 //   /p/<project>/look/<ticket key>   Captain, with "Let me look first" on a risky merge over it
+//   /p/<project>/plans/<message id>  a plan Captain proposed (S08), read-only
 //   /p/<project>/room | people | decisions (?tab=guide) | settings | results | connect
 // The old paths (/overview, /board, /backlog, /list, /guide, /t/<key>) redirect to these.
 
@@ -17,7 +18,9 @@ export type Route =
   | { view: "new-project" }
   | { view: "join"; code: string }
   | { view: ProjectView; project: string; show?: ShowRoute; look?: string }
-  | { view: "ticket"; project: string; key: string; show?: ShowRoute };
+  | { view: "ticket"; project: string; key: string; show?: ShowRoute }
+  /** `plan` is the plan message's id; NaN for an address that isn't a number (the page says it's unknown). */
+  | { view: "plan"; project: string; plan: number; show?: ShowRoute };
 
 const SIMPLE = ["room", "people", "connect", "settings", "results"] as const;
 const OLD = ["overview", "board", "backlog", "list", "guide", "t"];
@@ -35,6 +38,7 @@ export function parse(path: string, search = ""): Route {
   const v = parts[2];
   if (!v) return { view: "overview", project, ...sheet };
   if (v === "look") return { view: "overview", project, ...(parts[3] ? { look: parts[3].toUpperCase() } : {}), ...sheet };
+  if (v === "plans" && parts[3]) return { view: "plan", project, plan: /^\d+$/.test(parts[3]) ? Number(parts[3]) : NaN, ...sheet };
   if (v === "work") {
     if (parts[3]) return { view: "ticket", project, key: parts[3].toUpperCase(), ...sheet };
     const view = q.get("view");
@@ -117,6 +121,8 @@ export function href(r: Route): string {
       return r.look ? `${base}/look/${r.look}` : base;
     case "ticket":
       return `${base}/work/${r.key}`;
+    case "plan":
+      return `${base}/plans/${r.plan}`;
     case "board":
       return `${base}/work`;
     case "goals":

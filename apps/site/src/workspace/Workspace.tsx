@@ -16,6 +16,7 @@ import { ListView } from "./ListView";
 import { LookFirst } from "./LookFirst";
 import { NewTicket } from "./NewTicket";
 import { People } from "./People";
+import { PlanPage } from "./PlanPage";
 import { Results, Settings } from "./Settings";
 import { plural } from "./story";
 import { TicketPage } from "./TicketPage";
@@ -34,11 +35,11 @@ interface NavItem {
   /** "G then W": shown in the item's tooltip and ⌘K, never printed on the item. */
   key?: string;
   /** The views that live under this item. */
-  under: (ProjectView | "ticket")[];
+  under: (ProjectView | "ticket" | "plan")[];
 }
 
 const NAV_MAIN: NavItem[] = [
-  { id: "overview", label: "Captain", icon: Icon.captain, sub: "Your point of contact for this project", under: ["overview"] },
+  { id: "overview", label: "Captain", icon: Icon.captain, sub: "Your point of contact for this project", under: ["overview", "plan"] },
   { id: "board", label: "Work", icon: Icon.board, sub: "Who is doing what. Agents pick up what's in Ready; drag cards between columns and lanes.", key: "W", under: ["board", "goals", "backlog", "list", "ticket"] },
   { id: "room", label: "Room", icon: Icon.chat, sub: "Where people and agents talk, live. @name to talk to someone.", key: "R", under: ["room"] },
   { id: "people", label: "People", icon: Icon.people, sub: "Who works here and what each agent is doing", key: "P", under: ["people", "connect"] },
@@ -149,7 +150,7 @@ export function Workspace({
 
   const section = NAV.find((n) => n.under.includes(route.view));
   const title =
-    route.view === "ticket"
+    route.view === "ticket" || route.view === "plan"
       ? null
       : route.view === "connect"
         ? { label: "Connect your agents", sub: "Bring your Claude Code and Codex into this project with one terminal line" }
@@ -192,6 +193,8 @@ export function Workspace({
             <p style={{ color: "var(--faint)" }}>Loading {project.name}…</p>
           ) : route.view === "ticket" ? (
             <TicketPage ws={ws} me={me} ticketKey={route.key} />
+          ) : route.view === "plan" ? (
+            <PlanPage ws={ws} cr={captain} planId={route.plan} />
           ) : route.view === "connect" ? (
             <ConnectAgents ws={ws} me={me} />
           ) : route.view === "room" ? (
