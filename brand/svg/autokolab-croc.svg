@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="7.50 23.50 224.25 227.00" role="img"><title>AutoKolab croc</title><g stroke="#14231A" stroke-width="7" stroke-linejoin="round" stroke-linecap="round">
+<circle cx="50" cy="104" r="7" fill="#5DC46A"/>
+<circle cx="38" cy="128" r="8" fill="#5DC46A"/>
+<circle cx="30" cy="152" r="8" fill="#5DC46A"/>
+<circle cx="26" cy="178" r="8" fill="#5DC46A"/>
+<circle cx="25" cy="204" r="8" fill="#5DC46A"/>
+<circle cx="203" cy="99" r="9" fill="#5DC46A"/>
+<path d="M96 78 L196 96 C214 99 224 108 222 120 C222 134 216 146 204 150 L124 160 C110 162 104 174 104 188 C104 206 108 222 116 236 Q74 246 30 236 C26 200 30 160 40 130 C46 100 66 80 96 78 Z" fill="#5DC46A"/>
+<path d="M106 194 C106 210 109 224 114 237 L98 239 C93 224 92 208 94 194 Z" fill="#FFFFFF" fill-opacity="0.3" stroke="none"/>
+<circle cx="62" cy="112" r="6" fill="#14231A" fill-opacity="0.15" stroke="none"/>
+<circle cx="52" cy="134" r="4.5" fill="#14231A" fill-opacity="0.15" stroke="none"/>
+<circle cx="72" cy="134" r="3.5" fill="#14231A" fill-opacity="0.15" stroke="none"/>
+<circle cx="56" cy="164" r="5" fill="#14231A" fill-opacity="0.15" stroke="none"/>
+<ellipse cx="110" cy="152" rx="8" ry="5" fill="#FF8FA3" fill-opacity="0.85" stroke="none"/>
+<ellipse cx="206" cy="97" rx="3.5" ry="2.5" fill="#14231A" stroke="none"/>
+<path d="M214 130 L122 140 Q108 141 104 132" fill="none" stroke-width="6"/>
+<path d="M193 132.2 L207 130.7 L200 144 Z" fill="#FFFFFF" stroke-width="4"/>
+<path d="M169 134.7 L183 133.2 L176 146.5 Z" fill="#FFFFFF" stroke-width="4"/>
+<path d="M145 137.2 L159 135.7 L152 149 Z" fill="#FFFFFF" stroke-width="4"/>
+<path d="M181 133.4 L195 131.9 L188 121.5 Z" fill="#FFFFFF" stroke-width="4"/>
+<path d="M157 135.9 L171 134.4 L164 124 Z" fill="#FFFFFF" stroke-width="4"/>
+<path d="M133 138.4 L147 136.9 L140 126.5 Z" fill="#FFFFFF" stroke-width="4"/>
+<circle cx="82" cy="62" r="25" fill="#FFFFFF"/>
+<circle cx="124" cy="58" r="25" fill="#FFFFFF"/>
+<circle cx="91" cy="64" r="10" fill="#14231A" stroke="none"/>
+<circle cx="134" cy="56" r="10" fill="#14231A" stroke="none"/>
+<circle cx="94" cy="60" r="3" fill="#FFFFFF" stroke="none"/>
+<circle cx="137" cy="52" r="3" fill="#FFFFFF" stroke="none"/>
+</g></svg>
