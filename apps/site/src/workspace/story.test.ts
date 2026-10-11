@@ -11,6 +11,7 @@ describe("the headline", () => {
     const now = new Date(2026, 9, 10, 12, 0);
     const today = new Date(2026, 9, 10, 9, 0).toISOString();
     const yesterday = new Date(2026, 9, 9, 23, 0).toISOString();
+    const justNow = new Date(2026, 9, 10, 11, 59).toISOString();
     const ws = workspace([
       goal,
       ticket({ key: "SH-2", parent_id: goal.id, status: "in_progress", assignee_id: BIRCH }),
@@ -20,8 +21,8 @@ describe("the headline", () => {
       ticket({ key: "SH-6", status: "review", needs_human: `${MERGE_OK_PREFIX} sql` }),
       ticket({ key: "SH-7", status: "canceled", needs_human: "old" }),
     ]);
-    Object.assign(ws.agentOf(BIRCH)!, { status: "building", last_seen_at: at("11:59") });
-    Object.assign(ws.agentOf(FJORD)!, { status: "planning", last_seen_at: at("11:59") });
+    Object.assign(ws.agentOf(BIRCH)!, { status: "building", last_seen_at: justNow });
+    Object.assign(ws.agentOf(FJORD)!, { status: "planning", last_seen_at: justNow });
     const h = headline(ws, now);
     expect(h.building).toMatchObject({ workers: 2, agentsOnly: true, tickets: 2 });
     expect(h.building!.epics.map((e) => e.key)).toEqual(["SH-1"]);
