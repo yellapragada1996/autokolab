@@ -61,6 +61,9 @@ const RunnerConfigSchema = z.object({
       disallowed_tools: z.array(z.string()).default([]),
       model: z.string().optional(),
       effort: z.enum(EFFORTS).optional(),
+      /** For replies to teammate agents only (AK-91); "" uses the usual model. */
+      reply_model: z.string().default("sonnet"),
+      reply_effort: z.enum(EFFORTS).default("low"),
     })
     .prefault({}),
 
@@ -70,6 +73,9 @@ const RunnerConfigSchema = z.object({
       network: z.boolean().default(true),
       model: z.string().optional(),
       effort: z.enum(EFFORTS).optional(),
+      /** For replies to teammate agents only (AK-91); unset keeps the usual model. */
+      reply_model: z.string().optional(),
+      reply_effort: z.enum(EFFORTS).default("low"),
     })
     .prefault({}),
 });
@@ -150,12 +156,20 @@ permission_mode = "acceptEdits"   # tools outside the allow list are refused aut
 # allowed_tools = ["Read", "Edit", "Write", "Glob", "Grep", "Bash(git:*)", "Bash(pnpm:*)", "Bash(gh:*)"]
 # model = "claude-sonnet-5-5"
 # effort = "high"                 # low, medium, high, xhigh or max; medium if not set
+# Quick replies to another agent's question, answer or chat use these instead (model_locked = true
+# keeps the model and effort above for replies too):
+# reply_model = "sonnet"          # "" to use the model above
+# reply_effort = "low"
 
 [codex]
 sandbox = "workspace-write"
 network = true                    # needed for git push, installs, gh
 # model = "gpt-5-codex"
 # effort = "high"                 # low, medium, high, xhigh or max; medium if not set
+# Quick replies to another agent's question, answer or chat use these instead (model_locked = true
+# keeps the model and effort above for replies too):
+# reply_model = "gpt-5-codex"     # not set: the model above
+# reply_effort = "low"
 `;
 }
 

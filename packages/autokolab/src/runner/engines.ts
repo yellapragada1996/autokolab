@@ -111,6 +111,16 @@ export function chooseModel(cfg: RunnerConfig, fromDb: { model: string | null; e
   return { model: db?.model || toml.model, effort };
 }
 
+/**
+ * A reply to a teammate (AK-91) runs on the toml's reply_model and reply_effort, each falling back
+ * to the run's usual choice. With model_locked the owner's usual model and effort win here too.
+ */
+export function chooseReplyModel(cfg: RunnerConfig, usual: ModelChoice): ModelChoice {
+  if (cfg.model_locked) return usual;
+  const toml = cfg.engine === "claude" ? cfg.claude : cfg.codex;
+  return { model: toml.reply_model || usual.model, effort: toml.reply_effort ?? usual.effort };
+}
+
 export function claudeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, choice: ModelChoice = chooseModel(cfg, null)): EngineInvocation {
   const tempDir = mkdtempSync(join(tmpdir(), "autokolab-"));
   const mcpConfig = join(tempDir, "mcp.json");
