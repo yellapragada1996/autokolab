@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MERGE_OK_PREFIX } from "../lib/data";
-import { awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, lowerFirst, mergeChip, mergeQuestion, needsYou, openQuestions, ownerOf, riskyPart, timeline } from "./captain";
+import { awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, lowerFirst, mergeChip, mergeQuestion, needsYou, openQuestions, ownerOf, parsePlan, planAsks, plans, planTitle, riskyPart, timeline, withoutPlan } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, message, ticket, workspace } from "./fixtures";
 
 describe("the conversation with Captain", () => {
@@ -292,5 +292,92 @@ describe("decision cards", () => {
     const ws = workspace([]);
     expect(ownerOf(ws, BIRCH)).toBe("Raghav's agent");
     expect(ownerOf(ws, "nobody")).toBeNull();
+  });
+});
+
+describe("plans (CON-23)", () => {
+  const block = "```autokolab-plan\ngoals: SH-10, SH-20\nasks: SH-12\nnot: Password reset is not in this plan.\n```";
+  const body = `Two goals, three tickets. I'll ask you once.\n\n${block}`;
+
+  it("reads the block at the end of a message and hides it", () => {
+    expect(parsePlan(body)).toEqual({ goals: ["SH-10", "SH-20"], asks: ["SH-12"], not: "Password reset is not in this plan.", text: "Two goals, three tickets. I'll ask you once." });
+  });
+
+  it("is tolerant of spacing, case and a trailing newline", () => {
+    const loose = "Plan below.\n``` Autokolab-Plan \n  GOALS :sh-10 ,sh-20,\n Asks:  \n NOT : Nothing else.  \n```\n";
+    expect(parsePlan(loose)).toEqual({ goals: ["SH-10", "SH-20"], asks: [], not: "Nothing else.", text: "Plan below." });
+  });
+
+  it("is an ordinary message without a block or a valid goal, and still hides a broken block", () => {
+    expect(parsePlan("Just a message.")).toBeNull();
+    expect(parsePlan("```js\ngoals: SH-1\n```")).toBeNull();
+    const empty = "Here's the plan.\n```autokolab-plan\ngoals: soon\n```";
+    expect(parsePlan(empty)).toBeNull();
+    expect(withoutPlan(empty)).toBe("Here's the plan.");
+    expect(withoutPlan("Here's the plan.\n```autokolab-plan\ngoals: SH-1")).toBe("Here's the plan.");
+    expect(withoutPlan("No block here.")).toBe("No block here.");
+  });
+
+  const goalA = ticket({ key: "SH-10", type: "epic", title: "Google sign-in", status: "backlog" });
+  const goalB = ticket({ key: "SH-20", type: "epic", title: "Profiles", status: "backlog" });
+  const kids = (status: "backlog" | "ready") => [
+    ticket({ key: "SH-11", parent_id: goalA.id, status }),
+    ticket({ key: "SH-12", parent_id: goalA.id, status }),
+    ticket({ key: "SH-21", parent_id: goalB.id, status }),
+    ticket({ key: "SH-22", parent_id: goalB.id, status: "canceled" }),
+  ];
+  const planMsg = message(CAPTAIN, ME, body, { kind: "question", created_at: at("09:00") });
+
+  it("resolves goals and tickets from the board and is pending until the person answers", () => {
+    const ws = workspace([goalA, goalB, ...kids("backlog")]);
+    const [p] = plans(ws, conversation([planMsg], ME, CAPTAIN));
+    expect(p.status).toBe("pending");
+    expect(p.goals.map((g) => [g.goal.key, g.tickets.map((t) => t.key)])).toEqual([
+      ["SH-10", ["SH-11", "SH-12"]],
+      ["SH-20", ["SH-21"]],
+    ]);
+    expect(p.asks.map((t) => t.key)).toEqual(["SH-12"]);
+    expect(planTitle(p)).toBe("Plan · 2 goals, 3 tickets");
+    expect(planAsks(p)).toBe("You'll be asked once");
+    expect(planAsks({ ...p, asks: p.tickets.slice(0, 2) })).toBe("You'll be asked 2 times");
+    expect(planTitle({ ...p, goals: p.goals.slice(0, 1), tickets: p.tickets.slice(0, 1) })).toBe("Plan · Google sign-in, 1 ticket");
+    expect(planAsks({ ...p, asks: [] })).toBeNull();
+    // Unknown goals are dropped; a plan with none left is an ordinary message.
+    const unknown = message(CAPTAIN, ME, "Plan\n```autokolab-plan\ngoals: SH-99\n```", { created_at: at("09:10") });
+    expect(plans(ws, conversation([unknown], ME, CAPTAIN))).toEqual([]);
+  });
+
+  it("is started when none of its tickets is in Backlog, saying when the person said OK", () => {
+    const ok = message(ME, CAPTAIN, "OK, start", { thread_id: planMsg.id, created_at: at("09:18") });
+    const started = workspace([goalA, goalB, ...kids("ready")]);
+    expect(plans(started, conversation([planMsg, ok], ME, CAPTAIN))[0]).toMatchObject({ status: "started", okAt: at("09:18"), byYou: true });
+    // Moved on the board, or by someone else: started, but not by you.
+    expect(plans(started, conversation([planMsg], ME, CAPTAIN))[0]).toMatchObject({ status: "started", okAt: null, byYou: false });
+    // "OK, start" said but a ticket is still a draft (one was refused): still pending, so it can be retried.
+    expect(plans(workspace([goalA, goalB, ...kids("backlog")]), conversation([planMsg, ok], ME, CAPTAIN))[0].status).toBe("pending");
+  });
+
+  it("is changes-asked when the person replied with anything else, and replaced by a newer plan for the same goals", () => {
+    const ws = workspace([goalA, goalB, ...kids("backlog")]);
+    const change = message(ME, CAPTAIN, "Leave out profiles for now.", { thread_id: planMsg.id, created_at: at("09:20") });
+    expect(plans(ws, conversation([planMsg, change], ME, CAPTAIN))[0]).toMatchObject({ status: "changes_asked", changedAt: at("09:20") });
+    const newer = message(CAPTAIN, ME, "Updated.\n```autokolab-plan\ngoals: SH-10\n```", { kind: "question", created_at: at("09:30") });
+    expect(plans(ws, conversation([planMsg, change, newer], ME, CAPTAIN)).map((p) => p.status)).toEqual(["replaced", "pending"]);
+  });
+
+  it("counts a pending plan in needs you once, as a plan and not a question", () => {
+    const ws = workspace([goalA, goalB, ...kids("backlog")]);
+    const turns = conversation([planMsg], ME, CAPTAIN);
+    const needs = needsYou(ws, turns);
+    expect(needs).toHaveLength(1);
+    expect(needs[0]).toMatchObject({ kind: "plan", action: "OK a plan", turnId: planMsg.id, question: "Plan · 2 goals, 3 tickets" });
+    expect(timeline(folded(turns), needs).map((e) => e.kind === "card" && e.need.kind)).toEqual(["plan"]);
+    // Started, changes-asked and replaced plans don't count.
+    expect(needsYou(workspace([goalA, goalB, ...kids("ready")]), turns)).toEqual([]);
+    const change = message(ME, CAPTAIN, "Smaller, please.", { thread_id: planMsg.id, created_at: at("09:20") });
+    expect(needsYou(ws, conversation([planMsg, change], ME, CAPTAIN))).toEqual([]);
+    // A question whose block is broken is an ordinary question, shown without the block.
+    const broken = message(CAPTAIN, ME, "Go ahead?\n```autokolab-plan\nnope\n```", { kind: "question", created_at: at("10:00") });
+    expect(needsYou(ws, conversation([broken], ME, CAPTAIN))[0]).toMatchObject({ kind: "captain_question", question: "Go ahead?" });
   });
 });

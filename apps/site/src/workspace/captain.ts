@@ -66,9 +66,144 @@ export function openQuestions(turns: Turn[]): Turn[] {
   return turns.filter((q) => q.kind === "question" && !turns.some((t) => t.kind === "you" && t.thread === q.thread && t.id > q.id));
 }
 
+// ------------------------------------------------------------------ plans (CON-23)
+
+/** What a plan message's ```autokolab-plan block says. `text` is the message without the block. */
+export interface PlanBlock {
+  goals: string[];
+  asks: string[];
+  not: string | null;
+  text: string;
+}
+
+const PLAN_FENCE = /```[ \t]*autokolab-plan\b/gi;
+const TICKET_KEY = /^[A-Z][A-Z0-9]*-\d+$/;
+
+/** Where the last ```autokolab-plan block starts and ends (to the end of the message when it isn't closed). */
+function planBlockAt(body: string): { start: number; end: number; inner: string } | null {
+  const opens = [...body.matchAll(PLAN_FENCE)];
+  const open = opens[opens.length - 1];
+  if (!open) return null;
+  const from = open.index! + open[0].length;
+  const close = body.indexOf("```", from);
+  const end = close < 0 ? body.length : close + 3;
+  return { start: open.index!, end, inner: body.slice(from, close < 0 ? body.length : close) };
+}
+
+/** A message without its plan block, even a broken one: a person never sees the raw block. */
+export function withoutPlan(body: string): string {
+  const b = planBlockAt(body);
+  return b ? `${body.slice(0, b.start).trimEnd()}\n\n${body.slice(b.end).trim()}`.trim() : body;
+}
+
+const keys = (value: string | undefined) => [...new Set((value ?? "").split(/[\s,]+/).map((k) => k.trim().toUpperCase()).filter((k) => TICKET_KEY.test(k)))];
+
+/**
+ * The plan in a Captain message (CON-23): the ```autokolab-plan block, one `name: value` line per
+ * field. Tolerant of spacing, case and a trailing newline. Null when there's no block or it names no
+ * valid goal key: then it's an ordinary message (show it with withoutPlan).
+ */
+export function parsePlan(body: string): PlanBlock | null {
+  const b = planBlockAt(body);
+  if (!b) return null;
+  const fields = new Map<string, string>();
+  for (const line of b.inner.split(/\r?\n/)) {
+    const m = /^\s*([a-z]+)\s*:(.*)$/i.exec(line);
+    if (m && !fields.has(m[1].toLowerCase())) fields.set(m[1].toLowerCase(), m[2].trim());
+  }
+  const goals = keys(fields.get("goals"));
+  if (!goals.length) return null;
+  return { goals, asks: keys(fields.get("asks")), not: fields.get("not") || null, text: withoutPlan(body) };
+}
+
+export type PlanStatus = "pending" | "started" | "changes_asked" | "replaced";
+
+export interface PlanGoal {
+  goal: Ticket;
+  tickets: Ticket[];
+}
+
+/** A plan Captain proposed, resolved against the board. Its status comes from the record, never from the block. */
+export interface Plan {
+  turnId: number;
+  thread: number;
+  at: string;
+  /** The message without the block. */
+  text: string;
+  goals: PlanGoal[];
+  tickets: Ticket[];
+  /** The plan's tickets Captain expects to ask about. */
+  asks: Ticket[];
+  not: string | null;
+  status: PlanStatus;
+  /** When the person said "OK, start" in the plan's thread. */
+  okAt: string | null;
+  /** The person said "OK, start" themselves (not someone else, or a move on the board). */
+  byYou: boolean;
+  /** When the person last asked for changes. */
+  changedAt: string | null;
+}
+
+export const OK_START = "OK, start";
+const isOkStart = (body: string) => /^ok,?\s*start\.?$/i.test(body.trim());
+
+/** Every plan in the conversation, oldest first: one per Captain message whose block names a known goal. */
+export function plans(ws: Workspace, turns: Turn[]): Plan[] {
+  const found: Plan[] = [];
+  for (const turn of turns) {
+    if (turn.kind !== "captain" && turn.kind !== "question") continue;
+    const block = parsePlan(turn.body);
+    if (!block) continue;
+    const goals = block.goals
+      .map((k) => ws.byKey.get(k))
+      .filter((g): g is Ticket => !!g && g.type === "epic")
+      .map((goal) => ({
+        goal,
+        tickets: ws.tickets.filter((t) => t.type !== "epic" && t.status !== "canceled" && epicOf(ws, t)?.id === goal.id).sort((a, b) => a.sort_order - b.sort_order),
+      }));
+    if (!goals.length) continue;
+    const tickets = goals.flatMap((g) => g.tickets);
+    const replies = turns.filter((t) => t.kind === "you" && t.thread === turn.thread && t.id > turn.id);
+    const ok = replies.find((t) => isOkStart(t.body));
+    const changes = replies.filter((t) => !isOkStart(t.body));
+    const drafts = tickets.some((t) => t.status === "backlog");
+    found.push({
+      turnId: turn.id,
+      thread: turn.thread,
+      at: turn.at,
+      text: block.text,
+      goals,
+      tickets,
+      asks: block.asks.map((k) => tickets.find((t) => t.key === k)).filter((t): t is Ticket => !!t),
+      not: block.not,
+      status: tickets.length && !drafts ? "started" : changes.length && drafts ? "changes_asked" : "pending",
+      okAt: ok?.at ?? null,
+      byYou: !!ok,
+      changedAt: changes[changes.length - 1]?.at ?? null,
+    });
+  }
+  for (const p of found) {
+    const ids = new Set(p.goals.map((g) => g.goal.id));
+    if (found.some((later) => later.turnId > p.turnId && later.goals.some((g) => ids.has(g.goal.id)))) p.status = "replaced";
+  }
+  return found;
+}
+
+/** "Plan · 2 goals, 6 tickets", or "Plan · Google sign-in, 6 tickets" for one goal. */
+export function planTitle(p: Plan): string {
+  const size = plural(p.tickets.length, "ticket");
+  return p.goals.length === 1 ? `Plan · ${p.goals[0].goal.title}, ${size}` : `Plan · ${plural(p.goals.length, "goal")}, ${size}`;
+}
+
+/** "You'll be asked 2 times", or null when Captain expects to ask nothing. */
+export function planAsks(p: Plan): string | null {
+  const n = p.asks.length;
+  return n ? `You'll be asked ${n === 1 ? "once" : `${n} times`}` : null;
+}
+
 // ------------------------------------------------------------------ needs you
 
-export type NeedKind = "risky_merge" | "ticket_question" | "captain_question" | "problem";
+export type NeedKind = "risky_merge" | "ticket_question" | "captain_question" | "plan" | "problem";
 
 /** One thing that needs a person. Amber on screen means exactly this list, and nothing else. */
 export interface Need {
@@ -87,6 +222,7 @@ const ACTION: Record<NeedKind, string> = {
   risky_merge: "OK a risky merge",
   ticket_question: "Answer a question",
   captain_question: "Answer a question",
+  plan: "OK a plan",
   problem: "Look at a problem",
 };
 
@@ -109,8 +245,15 @@ export function needsYou(ws: Workspace, turns: Turn[]): Need[] {
       out.push({ key: `ticket:${t.id}`, kind, action: ACTION[kind], question: t.needs_human, ticket: t, turnId: null, since: t.updated_at });
     }
   }
+  const ps = plans(ws, turns);
+  for (const p of ps) {
+    if (p.status === "pending") out.push({ key: `plan:${p.turnId}`, kind: "plan", action: ACTION.plan, question: planTitle(p), ticket: null, turnId: p.turnId, since: p.at });
+  }
+  // A plan is its own card, never also a question.
+  const planned = new Set(ps.map((p) => p.turnId));
   for (const q of openQuestions(turns)) {
-    out.push({ key: `ask:${q.id}`, kind: "captain_question", action: ACTION.captain_question, question: q.body, ticket: null, turnId: q.id, since: q.at });
+    if (planned.has(q.id)) continue;
+    out.push({ key: `ask:${q.id}`, kind: "captain_question", action: ACTION.captain_question, question: withoutPlan(q.body), ticket: null, turnId: q.id, since: q.at });
   }
   return out.sort((a, b) => Date.parse(a.since) - Date.parse(b.since));
 }
@@ -217,6 +360,7 @@ const WAITING: Record<NeedKind, (title: string) => string> = {
   risky_merge: (t) => `${t} is waiting on your OK`,
   ticket_question: (t) => `${t} is waiting on your answer`,
   captain_question: () => "my question is waiting on your answer",
+  plan: () => "my plan is waiting on your OK",
   problem: (t) => `${t} needs a look`,
 };
 
@@ -351,11 +495,13 @@ const rowAt = (r: Row) => (r.kind === "fold" ? r.turns[0].at : r.at);
  */
 export function timeline(rows: Row[], cards: Need[], catchUpAt?: string | null): Entry[] {
   const asked = new Map(cards.filter((n) => n.turnId !== null).map((n) => [n.turnId, n]));
+  // Captain's questions and plans become their cards; either can be any message Captain wrote.
+  const asks = (r: Row) => r.kind === "question" || r.kind === "captain";
   const out: Entry[] = rows.map((r) => {
-    const need = r.kind === "question" ? asked.get(r.id) : undefined;
+    const need = asks(r) ? asked.get(r.id) : undefined;
     return need ? { kind: "card", key: need.key, at: rowAt(r), need } : { kind: "row", key: `${r.kind}:${r.id}`, at: rowAt(r), row: r };
   });
-  const loose = cards.filter((n) => n.turnId === null || !rows.some((r) => r.kind === "question" && r.id === n.turnId)).sort((a, b) => Date.parse(a.since) - Date.parse(b.since));
+  const loose = cards.filter((n) => n.turnId === null || !rows.some((r) => asks(r) && r.id === n.turnId)).sort((a, b) => Date.parse(a.since) - Date.parse(b.since));
   const slot = (entry: Entry) => {
     const i = out.findIndex((e) => Date.parse(e.at) > Date.parse(entry.at));
     if (i < 0) out.push(entry);
@@ -389,6 +535,7 @@ export const NEED_WHAT: Record<NeedKind, string> = {
   risky_merge: "a risky merge on",
   ticket_question: "a question on",
   captain_question: "my question",
+  plan: "my plan",
   problem: "a problem on",
 };
 
