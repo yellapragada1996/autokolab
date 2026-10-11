@@ -716,7 +716,9 @@ export class ProjectView {
       p_cost_usd: u.cost_usd,
     });
     const e = r.error;
-    if (e && !e.message.includes("AUTOKOLAB_") && (e.code === "PGRST202" || e.code === "42P01" || e.code === "42883" || /record_run_usage|run_usage/.test(e.message))) {
+    // Only a missing function or table switches recording off; anything else (a permission error
+    // too) is thrown, and the runner tries again next run (AK-93).
+    if (e && (e.code === "PGRST202" || e.code === "42883" || e.code === "42P01" || e.code === "PGRST205")) {
       this.runUsageMissing = true;
       return false;
     }

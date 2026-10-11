@@ -554,7 +554,8 @@ export async function usageBetween(projectId: string, from: Date, to: Date): Pro
       .order("id")
       .limit(EVENTS_PAGE);
     const e = r.error as { message: string; code?: string } | null;
-    if (e && (e.code === "42P01" || e.code === "PGRST205" || /run_usage/.test(e.message))) return [];
+    // Only a missing table reads as no runs; any other error, a permission error too, is shown (AK-93).
+    if (e && (e.code === "42P01" || e.code === "PGRST205")) return [];
     const rows = check<RunUsage[]>(r);
     if (!rows.length) return out;
     out.push(...rows);

@@ -242,6 +242,8 @@ export class Runner {
   private projectsLoadedAt = 0;
   private ticketChannels: RealtimeChannel[] = [];
   private isAgentRow = true;
+  /** The last try at recording what a run used failed; said once, quiet until one succeeds again. */
+  private runUsageFailing = false;
   private merging = false;
   private mergeCheckedAt = new Map<string, number>();
   private reviewQueue: ReviewJob[] = [];
@@ -1034,12 +1036,19 @@ export class Runner {
   /**
    * Record what a run used for the Results page (AK-92), failed and limit-stopped runs included.
    * Never waits for the database and never fails the run: one before schema 20 just doesn't get it.
+   * Any other failure is logged once and tried again on the next run (AK-93).
    */
   private recordRun(p: ProjectView | undefined, kind: RunKind, ticketId: string | null, result: EngineRun | undefined, startedAt: number): void {
     if (!p || !result || !this.isAgentRow) return;
-    void p
-      .recordRunUsage(runUsageRow(kind, ticketId, result, (Date.now() - startedAt) / 1000))
-      .catch((e) => this.log(`Couldn't record what the ${kind} run used: ${(e as Error).message}`));
+    void p.recordRunUsage(runUsageRow(kind, ticketId, result, (Date.now() - startedAt) / 1000)).then(
+      () => {
+        this.runUsageFailing = false;
+      },
+      (e) => {
+        if (!this.runUsageFailing) this.log(`Couldn't record what the ${kind} run used (trying again next run): ${(e as Error).message}`);
+        this.runUsageFailing = true;
+      },
+    );
   }
 
   /** The next queued review, if reviews may run now. */

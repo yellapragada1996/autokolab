@@ -156,6 +156,53 @@ describe("recording a run", () => {
     expect(() => runner.recordRun({ recordRunUsage: async () => Promise.reject(new Error("offline")) }, "build", "t1", failed, Date.now())).not.toThrow();
     expect(() => runner.recordRun({ recordRunUsage: () => new Promise(() => undefined) }, "build", "t1", failed, Date.now())).not.toThrow();
     await new Promise((r) => setTimeout(r, 0));
-    expect(logged).toEqual(["Couldn't record what the build run used: offline"]);
+    expect(logged).toEqual(["Couldn't record what the build run used (trying again next run): offline"]);
+  });
+
+  it("keeps recording after a permission error: it's thrown, not taken for a missing table (AK-93)", async () => {
+    let calls = 0;
+    const view = Object.assign(Object.create(ProjectView.prototype), {
+      runUsageMissing: false,
+      project: { id: "p1" },
+      sb: { rpc: async () => (calls++, { data: null, error: { code: "42501", message: "permission denied for table run_usage" } }) },
+    }) as ProjectView;
+    await expect(view.recordRunUsage(row)).rejects.toThrow(/permission denied/);
+    await expect(view.recordRunUsage(row)).rejects.toThrow(/permission denied/);
+    expect(calls).toBe(2);
+    // A missing table, either way PostgREST says it, does switch it off.
+    for (const error of [
+      { code: "PGRST205", message: "Could not find the table 'public.run_usage' in the schema cache" },
+      { code: "42883", message: "function public.record_run_usage(uuid, text, integer) does not exist" },
+    ]) {
+      const old = Object.assign(Object.create(ProjectView.prototype), { runUsageMissing: false, project: { id: "p1" }, sb: { rpc: async () => ({ data: null, error }) } }) as ProjectView;
+      expect(await old.recordRunUsage(row)).toBe(false);
+    }
+  });
+
+  it("says a failure once, tries every run, and says it again only after it worked in between", async () => {
+    const logged: string[] = [];
+    const runner = Object.assign(Object.create(Runner.prototype), { isAgentRow: true, log: (m: string) => logged.push(m) });
+    let fail = true;
+    let tries = 0;
+    const p = { recordRunUsage: async () => (tries++, fail ? Promise.reject(new Error("permission denied")) : true) };
+    const settle = () => new Promise((r) => setTimeout(r, 0));
+    const run: EngineRun = { ...freshRun(), usage: noUsage() };
+    for (let i = 0; i < 3; i++) {
+      runner.recordRun(p, "build", "t1", run, Date.now());
+      await settle();
+    }
+    expect(tries).toBe(3);
+    expect(logged).toHaveLength(1);
+    fail = false;
+    runner.recordRun(p, "review", "t1", run, Date.now());
+    await settle();
+    fail = true;
+    runner.recordRun(p, "reply", null, run, Date.now());
+    await settle();
+    expect(tries).toBe(5);
+    expect(logged).toEqual([
+      "Couldn't record what the build run used (trying again next run): permission denied",
+      "Couldn't record what the reply run used (trying again next run): permission denied",
+    ]);
   });
 });
