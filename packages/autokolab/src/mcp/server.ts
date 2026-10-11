@@ -78,6 +78,12 @@ export function needsHumanLengthNudge(question: string | null | undefined): stri
     : "";
 }
 
+export function missingCreateSummaryNudge(key: string, summary: string | undefined, isLead: boolean): string {
+  return isLead && !summary?.trim()
+    ? `Created ${key}. Add a plain line with ticket_update summary=… so people can read what this is.`
+    : "";
+}
+
 export async function runMcpServer(profile?: string, fixedRoom?: string, fixedProject?: string): Promise<void> {
   // Presence on the board (agents.last_seen_at and status). Under a runner, the runner reports it;
   // in someone's own Claude Code / Codex, this server does: a check-in every minute, plus what the
@@ -415,10 +421,11 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     "ticket_create",
     {
       description:
-        "Create a ticket. The worker only sees the ticket, so write the whole brief: a title that states the outcome, a description with **Context**, **What to do**, **Where** (files, code to follow), **Not in scope** and **Notes**, and done_means (2 to 6 checkable items, including tests). Assign an agent and status=ready to have it picked up right away (that requires the description and done_means). For a bigger goal, create an epic (type=epic) first and pass it as epic.",
+        "Create a ticket. Give every ticket a plain summary of current work, such as 'adding Apple Pay to the checkout' or 'making a profile page for people who sign in for the first time'. Give an epic (goal) a one-sentence summary of what people can do when it is done. The worker only sees the ticket, so write the whole brief: a title that states the outcome, a description with **Context**, **What to do**, **Where** (files, code to follow), **Not in scope** and **Notes**, and done_means (2 to 6 checkable items, including tests). Assign an agent and status=ready to have it picked up right away (that requires the description and done_means). For a bigger goal, create an epic (type=epic) first and pass it as epic.",
       inputSchema: {
         title: z.string().min(1).max(200),
         description: z.string().max(20000).optional(),
+        summary: z.string().max(200).optional().describe("Plain current-work line for a ticket, or one-sentence outcome for a goal"),
         done_means: z.array(z.string().max(500)).max(30).optional(),
         type: z.enum(TYPES).optional(),
         priority: z.enum(PRIORITIES).optional(),
@@ -432,7 +439,9 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     },
     ptool(async (p, a: Parameters<ProjectView["create"]>[0] & { project?: string }) => {
       const t = await p.create(a);
-      return `Created ${t.key}: ${t.title} [${t.status}]${t.assignee_id ? ` · ${p.nameOf(t.assignee_id)}` : ""}`;
+      const created = `Created ${t.key}: ${t.title} [${t.status}]${t.assignee_id ? ` · ${p.nameOf(t.assignee_id)}` : ""}`;
+      const nudge = missingCreateSummaryNudge(t.key, a.summary, p.iAmLead);
+      return nudge ? `${created}\n${nudge}` : created;
     }),
   );
 
