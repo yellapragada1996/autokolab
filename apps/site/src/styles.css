@@ -57,6 +57,8 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .ak-show-undo-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .ak-show-undo p[role="alert"] { color: var(--danger); margin-top: 12px; }
 .ak-show-file { color: var(--text-secondary); margin-bottom: 8px !important; }
+.ak-show-totals { margin: 0 0 12px; display: grid; gap: 2px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.ak-show-totals span { color: var(--text-muted); font-size: 13px; }
 .ak-show-change pre { margin: 0 0 18px; padding: 16px; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--text-secondary); font: 12px/1.6 var(--mono); }
 .ak-show-history { list-style: none; margin: 0 0 24px; padding: 0; display: grid; gap: 14px; }
 .ak-show-history li { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 12px; }

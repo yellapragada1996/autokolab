@@ -135,6 +135,19 @@ export interface Ticket {
   summary?: string | null;
   /** What the reviewer recorded with its approval (schema 16): the evidence behind "How do you know?". */
   review?: Review | null;
+  /** What GitHub last said about the PR, recorded by Captain's runner (schema 18; absent before it). */
+  pr_facts?: PrFacts | null;
+}
+
+/** A snapshot of the PR at one commit: its tests and how big the change is (AK-57). */
+export interface PrFacts {
+  sha: string;
+  checks: { passed: number; total: number; state: "success" | "pending" | "failure" };
+  /** How many files change, and the ones that need a person's OK (database, CI, dependencies, sign-in). */
+  files: { total: number; risky: string[] };
+  additions: number;
+  deletions: number;
+  checked_at?: string;
 }
 
 export interface Review {

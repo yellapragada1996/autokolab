@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MERGE_OK_PREFIX, type TicketEvent } from "../lib/data";
 import { parse, showHref } from "../lib/router";
 import { BIRCH, CAPTAIN, ME, at, ticket, workspace } from "./fixtures";
-import { historyTime, workHistory, workRows, workSummary } from "./showWork";
+import { changeTotals, historyTime, workHistory, workRows, workSummary } from "./showWork";
 import { undoMessage, undoState } from "./showWork";
 import { clock, type Turn } from "./captain";
 
@@ -47,6 +47,17 @@ describe("Show the work sentences", () => {
       { label: "Waiting on", value: "your OK to merge" },
     ]);
     expect(workRows(ws, ticket({ key: "SH-3" }))).toEqual([]);
+  });
+
+  it("gives The change its totals only for the approved commit (AK-57)", () => {
+    const sha = "c".repeat(40);
+    const pr_facts = { sha, checks: { passed: 48, total: 48, state: "success" as const }, files: { total: 3, risky: ["db/004_sessions.sql"] }, additions: 62, deletions: 4 };
+    const t = ticket({ key: "SH-2", approved_sha: sha, pr_facts });
+    expect(changeTotals(t)).toEqual({ counts: "3 files, +62 −4", risky: "Needs a person's OK: db/004_sessions.sql" });
+    expect(changeTotals({ ...t, pr_facts: { ...pr_facts, files: { total: 1, risky: [] } } })).toEqual({ counts: "1 file, +62 −4", risky: undefined });
+    expect(changeTotals({ ...t, approved_sha: "d".repeat(40) })).toBeNull();
+    expect(changeTotals({ ...t, approved_sha: null })).toBeNull();
+    expect(changeTotals({ ...t, pr_facts: undefined })).toBeNull();
   });
 
   it("shows open blockers when nothing else is waiting", () => {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ticketDetail, type TicketEvent } from "../lib/data";
 import { closeShow, openShow, type ShowPart } from "../lib/router";
 import { Button, Skeleton } from "../ui";
-import { historyTime, undoMessage, undoState, workHistory, workRows, workSummary } from "./showWork";
+import { changeTotals, historyTime, undoMessage, undoState, workHistory, workRows, workSummary } from "./showWork";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
 
@@ -27,6 +27,7 @@ export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Wor
 
   const undo = ticket ? undoState(ticket, captain.turns) : { kind: "none" as const };
   const askedAt = undo.kind === "asked" ? undo.at : sent;
+  const totals = ticket ? changeTotals(ticket) : null;
   const askUndo = async () => {
     if (!ticket || sending) return;
     setSending(true);
@@ -109,6 +110,7 @@ export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Wor
             </>}
             {part === "change" && <>
               {ticket.review?.line ? <section className="ak-show-change"><h3>The line that matters</h3><p className="ak-show-file">{ticket.review.line.file}</p><pre>{ticket.review.line.code.split("\n").map((line, i) => <span key={i} className={line.startsWith("+") && !line.startsWith("+++") ? "ak-show-added" : undefined}>{line}{"\n"}</span>)}</pre>{ticket.review.line.plain && <p>In plain words: {ticket.review.line.plain}</p>}</section> : !ticket.pr_url && <p>No change recorded yet.</p>}
+              {totals && <p className="ak-show-totals">{totals.counts}{totals.risky && <span>{totals.risky}</span>}</p>}
               {ticket.pr_url && <a href={ticket.pr_url} target="_blank" rel="noopener noreferrer">Open the full change on GitHub</a>}
             </>}
             {part === "history" && <>

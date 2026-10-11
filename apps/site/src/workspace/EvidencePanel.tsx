@@ -28,7 +28,7 @@ export function EvidencePanel({ ws, ticket, id }: { ws: Workspace; ticket: Ticke
       <ul aria-label={`How I know about ${ticket.key}`} style={{ listStyle: "none", margin: 0, padding: 0 }}>
         {rows.map((r, i) => (
           <li key={r.kind} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "12px 14px", borderTop: i ? "1px solid var(--border-subtle)" : 0, minWidth: 0, flexWrap: "wrap" }}>
-            <Icon kind={r.kind} />
+            <Icon row={r} />
             <span style={{ flex: "1 1 200px", minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
               <span style={{ fontSize: 14, color: "var(--text)", overflowWrap: "anywhere" }}>
                 <Main ws={ws} row={r} />
@@ -72,8 +72,18 @@ function Main({ ws, row }: { ws: Workspace; row: EvidenceRow }) {
   );
 }
 
+const TICK = <path d="M5 12.5l4.5 4.5L19 7.5" />;
+const CROSS = <path d="M6 6l12 12M18 6L6 18" />;
+const CLOCK = (
+  <>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
+  </>
+);
+
 const PATHS: Record<EvidenceKind, ReactNode> = {
-  review: <path d="M5 12.5l4.5 4.5L19 7.5" />,
+  tests: TICK,
+  review: TICK,
   change: <path d="M4 7h16M4 12h10M4 17h13" />,
   decisions: <path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5zM5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3" />,
   trail: (
@@ -91,11 +101,14 @@ const PATHS: Record<EvidenceKind, ReactNode> = {
   ),
 };
 
-function Icon({ kind }: { kind: EvidenceKind }) {
-  // Only the review is a verified fact, so only it is green; the rest stay neutral.
+function Icon({ row }: { row: EvidenceRow }) {
+  // Colour only means status: the review and the tests are verified facts, so they carry one
+  // (tests: green passed, coral failed, blue still running); the rest stay neutral.
+  const tone = row.tone ?? (row.kind === "review" ? "green" : null);
+  const path = row.kind === "tests" && tone === "coral" ? CROSS : row.kind === "tests" && tone === "blue" ? CLOCK : PATHS[row.kind];
   return (
-    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: "none", marginTop: 2, color: kind === "review" ? "var(--green)" : "var(--text-dim)" }}>
-      {PATHS[kind]}
+    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: "none", marginTop: 2, color: tone ? `var(--${tone})` : "var(--text-dim)" }}>
+      {path}
     </svg>
   );
 }
