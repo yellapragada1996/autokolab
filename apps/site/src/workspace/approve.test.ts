@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ApproveChange } from "./Approve";
+import { ApproveChange } from "./ApproveChange";
 import { LEAD_BUILT_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, waitsForApproval, type PrFacts } from "../lib/data";
 import { approveState, BUILT_IT, prLabel } from "./approve";
 import { BIRCH, CAPTAIN, ME, ticket } from "./fixtures";

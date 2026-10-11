@@ -24,7 +24,7 @@ import {
   type Row,
   type Turn,
 } from "./captain";
-import { ApproveChange } from "./Approve";
+import { ApproveChange } from "./ApproveChange";
 import { EvidencePanel } from "./EvidencePanel";
 import { agentDot } from "./People";
 import { withTicketLinks } from "./Room";

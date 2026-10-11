@@ -24,7 +24,7 @@ import {
 } from "../lib/data";
 import { href, onNav } from "../lib/router";
 import { Button } from "../ui";
-import { ApproveChange } from "./Approve";
+import { ApproveChange } from "./ApproveChange";
 import { WhoMark } from "./Board";
 import { ago, EpicLozenge, KeyText, Label, Markdown, Picker, PriorityIcon, StatusLozenge, StepProgress, TypeIcon, TypeTag, Who } from "./bits";
 import type { Workspace } from "./useWorkspace";
