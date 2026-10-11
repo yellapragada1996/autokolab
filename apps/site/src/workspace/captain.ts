@@ -1,4 +1,4 @@
-import { MERGE_OK_PREFIX, waitsForMergeOk, type Ticket } from "../lib/data";
+import { MERGE_OK_PREFIX, waitsForMergeOk, type Decision, type Ticket } from "../lib/data";
 import { isBookkeeping, problemOf, type RoomMessage } from "../lib/room";
 import { agentDot, epicOf, goals as storyGoals, headline, plural } from "./story";
 import type { Workspace } from "./useWorkspace";
@@ -343,6 +343,12 @@ export function lowerFirst(s: string): string {
 /** A ticket's title inside a sentence, as written: “Add the sessions column”. */
 export const named = (title: string) => `“${title.trim()}”`;
 
+/** A goal's short name, for sentences: the part of its title before the first ":" ("Captain UX: one point of contact" → "Captain UX"). */
+export function goalName(title: string): string {
+  const short = title.split(":")[0].trim();
+  return short || title.trim();
+}
+
 const be = (n: number) => (n === 1 ? "is" : "are");
 
 function workClause(ws: Workspace): string {
@@ -350,7 +356,7 @@ function workClause(ws: Workspace): string {
   const b = h.building;
   if (!b) return h.stopped ? `Nobody is working; ${plural(h.stopped, "ticket")} ${be(h.stopped)} stopped.` : "Everyone is idle.";
   const who = b.agentsOnly ? plural(b.workers, "agent") : plural(b.workers, "teammate");
-  if (b.epics.length === 1) return `${who} ${be(b.workers)} building ${b.epics[0].title}.`;
+  if (b.epics.length === 1) return `${who} ${be(b.workers)} building ${goalName(b.epics[0].title)}.`;
   if (b.epics.length > 1) return `${who} ${be(b.workers)} working on ${b.epics.length} goals.`;
   return `${who} ${be(b.workers)} working on ${plural(b.tickets, "ticket")}.`;
 }
@@ -424,6 +430,29 @@ export function briefing(ws: Workspace, needs: Need[]): Briefing {
     next: nextLine(ws, needs),
     agents: agentRows(ws),
     goals: goalRows(ws),
+  };
+}
+
+// ------------------------------------------------------------------ today (Overview, DEC-24)
+
+export interface Today {
+  /** Tickets done since local midnight, newest first. */
+  shipped: Ticket[];
+  /** Tickets in review right now, the longest-waiting first. */
+  inReview: Ticket[];
+  /** Decisions recorded since local midnight that still stand, newest first. */
+  decided: Decision[];
+}
+
+/** What happened today, counted from local midnight (not from the person's last visit, like the catch-up). */
+export function today(ws: Workspace, now = new Date()): Today {
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const sinceMidnight = (at: string | null | undefined) => !!at && Date.parse(at) >= midnight;
+  const newest = (a: string, b: string) => Date.parse(b) - Date.parse(a);
+  return {
+    shipped: ws.tickets.filter((t) => t.type !== "epic" && t.status === "done" && sinceMidnight(t.completed_at)).sort((a, b) => newest(a.completed_at!, b.completed_at!)),
+    inReview: ws.tickets.filter((t) => t.type !== "epic" && t.status === "review").sort((a, b) => newest(b.updated_at, a.updated_at)),
+    decided: ws.decisions.filter((d) => !d.superseded_by && sinceMidnight(d.created_at)).sort((a, b) => newest(a.created_at, b.created_at)),
   };
 }
 

@@ -15,6 +15,7 @@ import { GuidePage } from "./GuidePage";
 import { ListView } from "./ListView";
 import { LookFirst } from "./LookFirst";
 import { NewTicket } from "./NewTicket";
+import { Overview } from "./Overview";
 import { People } from "./People";
 import { PlanPage } from "./PlanPage";
 import { Results, Settings } from "./Settings";
@@ -25,7 +26,7 @@ import { useCaptainRoom, type DemoRoom } from "./useCaptainRoom";
 import { useWorkspace, type Workspace as WS } from "./useWorkspace";
 
 // The project workspace (AK-43, 02-information-architecture.md): the AppShell with its sidebar
-// (Captain · Work · Room · People, then Decisions · Results · Settings) and the current page.
+// (Captain · Overview · Work · Room · People, then Decisions · Results · Settings) and the current page.
 
 interface NavItem {
   id: ProjectView;
@@ -39,7 +40,8 @@ interface NavItem {
 }
 
 const NAV_MAIN: NavItem[] = [
-  { id: "overview", label: "Captain", icon: Icon.captain, sub: "Your point of contact for this project", under: ["overview", "plan"] },
+  { id: "captain", label: "Captain", icon: Icon.captain, sub: "Your point of contact for this project", under: ["captain", "plan"] },
+  { id: "overview", label: "Overview", icon: Icon.home, sub: "What's going on, what needs you and what happened today", key: "O", under: ["overview"] },
   { id: "board", label: "Work", icon: Icon.board, sub: "Who is doing what. Agents pick up what's in Ready; drag cards between columns and lanes.", key: "W", under: ["board", "goals", "backlog", "list", "ticket"] },
   { id: "room", label: "Room", icon: Icon.chat, sub: "Where people and agents talk, live. @name to talk to someone.", key: "R", under: ["room"] },
   { id: "people", label: "People", icon: Icon.people, sub: "Who works here and what each agent is doing", key: "P", under: ["people", "connect"] },
@@ -97,7 +99,7 @@ export function Workspace({
   const [paletteOpen, setPaletteOpen] = useCommandPalette();
   const me = profile.id;
 
-  // C: new ticket (like Linear); G then W / R / P / D / S: go to that page. Not while typing.
+  // C: new ticket (like Linear); G then O / W / R / P / D / S: go to that page. Not while typing.
   useEffect(() => {
     let g = 0;
     const onKey = (e: KeyboardEvent) => {
@@ -139,7 +141,7 @@ export function Workspace({
         .filter((t) => !NAV.some((n) => n.id === t.id))
         .map((t) => ({ id: `go-${t.id}`, label: `Go to ${t.id === "guide" ? "the Project Guide" : `Work · ${t.label}`}`, run: () => go({ view: t.id, project: project.slug }) })),
       ...(ws?.tickets ?? []).map((t) => ({ id: `t-${t.id}`, label: `${t.key} ${t.title}`, hint: t.status.replace("_", " "), run: () => go({ view: "ticket", project: project.slug, key: t.key }) })),
-      ...projects.filter((p) => p.id !== project.id).map((p) => ({ id: `p-${p.id}`, label: `Switch to ${p.name}`, run: () => go({ view: "overview", project: p.slug }) })),
+      ...projects.filter((p) => p.id !== project.id).map((p) => ({ id: `p-${p.id}`, label: `Switch to ${p.name}`, run: () => go({ view: "captain", project: p.slug }) })),
       { id: "new-project", label: "New project", run: () => go({ view: "new-project" }) },
       { id: "name", label: "Change your name", run: onEditProfile },
       { id: "github", label: "AutoKolab on GitHub", run: () => window.open("https://github.com/yellapragada1996/autokolab", "_blank", "noopener") },
@@ -165,7 +167,7 @@ export function Workspace({
         <header className="ak-page" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: title ? "18px 28px" : "12px 28px", borderBottom: title ? "1px solid var(--line-soft)" : 0, flexWrap: "wrap" }}>
           {title && (
             <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-              {route.view === "overview" && <AgentAvatar name="Captain" size={32} status={captain.working ? "working" : undefined} ring="var(--bg)" />}
+              {route.view === "captain" && <AgentAvatar name="Captain" size={32} status={captain.working ? "working" : undefined} ring="var(--bg)" />}
               <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                 <h1 style={{ fontSize: 22, fontWeight: 500, letterSpacing: "var(--tracking-tight)" }}>{title.label}</h1>
                 <span style={{ fontSize: 13, color: "var(--faint)" }}>{title.sub}</span>
@@ -179,17 +181,19 @@ export function Workspace({
               </Svg>
               Search
             </Button>
-            {title && !["overview", "board", "goals", "backlog", "list", "room", "connect", "settings", "results"].includes(route.view) && (
+            {title && !["captain", "overview", "board", "goals", "backlog", "list", "room", "connect", "settings", "results"].includes(route.view) && (
               <Button variant="primary" size="sm" onClick={() => setNewTicket({})} title="Create a ticket (C)">
                 Create
               </Button>
             )}
           </div>
         </header>
-        <div className="ak-page" style={{ flex: 1, padding: route.view === "ticket" ? "8px 28px 48px" : route.view === "overview" ? "0 28px" : "22px 28px 40px", minWidth: 0, display: "flex", flexDirection: "column", gap: tabs ? 16 : 0 }}>
+        <div className="ak-page" style={{ flex: 1, padding: route.view === "ticket" ? "8px 28px 48px" : route.view === "captain" ? "0 28px" : "22px 28px 40px", minWidth: 0, display: "flex", flexDirection: "column", gap: tabs ? 16 : 0 }}>
           {tabs && <Tabs label={`${section!.label} views`} tabs={tabs} current={route.view} project={project.slug} />}
           {error && <p style={{ color: "var(--danger)", fontSize: 14, marginBottom: 12 }}>{error}</p>}
-          {!ws ? (
+          {route.view === "overview" ? (
+            <Overview ws={ws} me={me} cr={captain} />
+          ) : !ws ? (
             <p style={{ color: "var(--faint)" }}>Loading {project.name}…</p>
           ) : route.view === "ticket" ? (
             <TicketPage ws={ws} me={me} ticketKey={route.key} />
@@ -216,7 +220,7 @@ export function Workspace({
           ) : route.view === "people" ? (
             <People ws={ws} me={me} onProjectChanged={onProjectChanged} />
           ) : (
-            <CaptainHome ws={ws} me={me} cr={captain} />
+            <CaptainHome ws={ws} cr={captain} />
           )}
         </div>
       </main>
@@ -233,7 +237,7 @@ export function Workspace({
         />
       )}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
-      {ws && route.view === "overview" && route.look && <LookFirst ws={ws} cr={captain} me={me} ticketKey={route.look} covered={!!route.show} />}
+      {ws && route.view === "captain" && route.look &&<LookFirst ws={ws} cr={captain} me={me} ticketKey={route.look} covered={!!route.show} />}
       {ws && route.show && <ShowWork ws={ws} captain={captain} ticketKey={route.show.key} part={route.show.part} demoEvents={demoEvents} />}
     </div>
   );
@@ -284,7 +288,7 @@ function Sidebar({
       >
         <Svg size={16}>{n.icon}</Svg>
         {n.label}
-        {n.id === "overview" && needs > 0 && (
+        {n.id === "captain" && needs > 0 && (
           <span aria-label={`${needs} need${needs === 1 ? "s" : ""} you`} style={{ marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 999, background: "var(--amber)", color: "var(--amber-ink)", fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
             {needs}
           </span>
@@ -306,7 +310,7 @@ function Sidebar({
         <select
           aria-label="Switch project"
           value={project.slug}
-          onChange={(e) => (e.target.value === "__new" ? go({ view: "new-project" }) : go({ view: "overview", project: e.target.value }))}
+          onChange={(e) => (e.target.value === "__new" ? go({ view: "new-project" }) : go({ view: "captain", project: e.target.value }))}
           style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
         >
           {projects.map((p) => (

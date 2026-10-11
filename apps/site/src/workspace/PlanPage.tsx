@@ -16,7 +16,7 @@ import type { Workspace } from "./useWorkspace";
 
 export function PlanPage({ ws, cr, planId }: { ws: Workspace; cr: CaptainRoom; planId: number }) {
   const slug = ws.project.slug;
-  const captain: Route = { view: "overview", project: slug };
+  const captain: Route = { view: "captain", project: slug };
   const plan = cr.plans.find((p) => p.turnId === planId);
 
   let body: ReactNode;

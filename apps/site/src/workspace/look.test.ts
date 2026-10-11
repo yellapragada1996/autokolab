@@ -81,10 +81,10 @@ describe("its address", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("is the Captain page with the step on top, and survives a refresh", () => {
-    expect(parse("/p/shop/look/sh-10")).toEqual({ view: "overview", project: "shop", look: "SH-10" });
-    expect(parse("/p/shop/look")).toEqual({ view: "overview", project: "shop" });
-    expect(parse("/p/shop/look/SH-10", "?show=SH-10&part=change")).toEqual({ view: "overview", project: "shop", look: "SH-10", show: { key: "SH-10", part: "change" } });
-    expect(href({ view: "overview", project: "shop", look: "SH-10" })).toBe("/p/shop/look/SH-10");
+    expect(parse("/p/shop/look/sh-10")).toEqual({ view: "captain", project: "shop", look: "SH-10" });
+    expect(parse("/p/shop/look")).toEqual({ view: "captain", project: "shop" });
+    expect(parse("/p/shop/look/SH-10", "?show=SH-10&part=change")).toEqual({ view: "captain", project: "shop", look: "SH-10", show: { key: "SH-10", part: "change" } });
+    expect(href({ view: "captain", project: "shop", look: "SH-10" })).toBe("/p/shop/look/SH-10");
   });
 
   it("keeps the preview but drops a sheet, going in and coming back", () => {
