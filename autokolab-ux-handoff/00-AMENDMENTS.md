@@ -5,7 +5,7 @@ This package was written without knowing what AutoKolab has already built. Treat
 ## What the package gets right (keep all of it)
 
 - **Captain is the single point of contact**, like a conductor. People talk to Captain and never have to work out which agent to ask. The agents' back-and-forth stays visible in the **Room** for anyone who wants to look.
-- **Home is the Captain conversation** with one pinned sentence on top. Overview, Catch up and Goals as separate pages are dropped.
+- ~~**Home is the Captain conversation** with one pinned sentence on top. Overview, Catch up and Goals as separate pages are dropped.~~ Replaced by DEC-24: see "Captain is a chat; Overview is its own tab" under Changed. Catch up and Goals as separate pages stay dropped.
 - **Three depths in fixed places:** the glance → "How do you know?" → "Show the work".
 - **The purpose rule (P3):** one fact in one place, one fact per row, empty things hidden.
 - **Amber only means "needs you".** Colour only means status. Agent avatars are neutral.
@@ -29,6 +29,11 @@ This package was written without knowing what AutoKolab has already built. Treat
 | **Plan page editing: reorder and remove tickets** (S08) | To change a plan you tell Captain in words ("Change something"). One way to do it. |
 
 ## Changed
+
+**Captain is a chat; Overview is its own tab (DEC-24).** Decided by Raghav, 11 Oct 2026, after using the Captain page. It replaces "Home is the Captain conversation with one pinned sentence on top" above, and the pinned-briefing parts of `screens/S01-captain-home.md` (the sticky "Where we are" card, "Who's doing what" behind a click, the setup checklist above the conversation).
+- **Captain** stays the first tab and the page a project opens on (`/p/<project>`). It is only the conversation and the composer: no pinned briefing, no setup checklist. Its sidebar item keeps the needs-you count.
+- **Overview** is the second tab (`/p/<project>/overview`, G then O), for looking; nothing is typed there. One reading column, top to bottom, each block hidden when empty: the state sentence (with the goal's short name, the part of its title before the first ":") and "Next from me"; one compact row per thing that needs you (a small amber dot, never a filled box), which opens that card on the Captain page; who's doing what; goal progress; today (what shipped since midnight, what's in review, what was decided); the setup checklist while a step is undone.
+- One fact in one place: the state sentence, who's doing what and goal progress live only on Overview.
 
 **Who writes the sentences.** The package has Captain (the model) compose the briefing and catch-up. Instead:
 - **Code builds from the record:** the pinned briefing, the "Who's doing what" rows, the catch-up summary ("3 shipped · 2 handled") and its item lines. They're instant, free, and can't drift from the truth.
@@ -89,7 +94,7 @@ No new "Ask" system until those four are in the conversation and working.
 
 Each phase ends in something usable, and the next starts only after it's merged.
 
-1. **Foundation.** `tokens.css` and Geist in place; shared components; new navigation (Captain · Work · Room · People | Decisions · Results · Settings); every existing page inside the new shell; Captain and goal wording; neutral avatars. No behaviour changes.
+1. **Foundation.** `tokens.css` and Geist in place; shared components; new navigation (Captain · Overview · Work · Room · People | Decisions · Results · Settings; Overview added by DEC-24); every existing page inside the new shell; Captain and goal wording; neutral avatars. No behaviour changes.
 2. **Captain home.** Your conversation with Captain on the website; the pinned briefing and "Who's doing what"; the catch-up message; quiet-updates fold; decision cards for ticket questions and risky merges, wired to what exists.
 3. **Evidence.** The extra fields on Captain's approval; "How do you know?"; the "Show the work" sheet; "Look first"; revert-based Undo.
 4. **Plans.** Plan card, OK to start, the read-only Plan page.

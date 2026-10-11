@@ -19,7 +19,7 @@ export function Settings({ ws, me, onProjectChanged }: { ws: Workspace; me: stri
 
 /** Results has nothing to measure yet (phase 9). */
 export function Results({ ws }: { ws: Workspace }) {
-  const captain = { view: "overview", project: ws.project.slug } as const;
+  const captain = { view: "captain", project: ws.project.slug } as const;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 780 }}>
       <p style={{ fontSize: 20, lineHeight: 1.45, fontWeight: 500 }}>Results will appear here once there's a week of work to measure.</p>

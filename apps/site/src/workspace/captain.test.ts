@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MERGE_OK_PREFIX } from "../lib/data";
-import { awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, lowerFirst, mergeChip, mergeQuestion, needsYou, newerPlan, openQuestions, ownerOf, parsePlan, planAsks, planOrder, planRequest, plans, planTitle, riskyPart, timeline, waitsFor, withoutPlan } from "./captain";
+import { awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, goalName, lowerFirst, mergeChip, mergeQuestion, needsYou, newerPlan, openQuestions, ownerOf, parsePlan, planAsks, planOrder, planRequest, plans, planTitle, riskyPart, timeline, today, waitsFor, withoutPlan } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, message, ticket, workspace } from "./fixtures";
 
 describe("the conversation with Captain", () => {
@@ -195,6 +195,55 @@ describe("the briefing", () => {
   it("doesn't promise to review Captain's own work", () => {
     const ws = workspace([ticket({ key: "SH-1", title: "Lead's ticket", status: "review", assignee_id: CAPTAIN, pr_url: "https://github.com/a/b/pull/3" })]);
     expect(briefing(ws, []).next).toBeNull();
+  });
+
+  it("names a goal by the part of its title before the colon", () => {
+    const long = { ...goal, title: "Captain UX: one point of contact, readable at a glance" };
+    const ws = workspace([long, child("SH-11", { status: "in_progress", assignee_id: BIRCH })]);
+    running(ws, BIRCH);
+    expect(briefing(ws, []).work).toBe("1 agent is building Captain UX.");
+  });
+});
+
+describe("a goal's short name", () => {
+  it("is the title up to the first colon, or the whole title without one", () => {
+    expect(goalName("Captain UX: one point of contact, readable at a glance")).toBe("Captain UX");
+    expect(goalName("Google sign-in")).toBe("Google sign-in");
+    expect(goalName("Search: filters: price")).toBe("Search");
+    expect(goalName("  Checkout  ")).toBe("Checkout");
+    // Nothing before the colon: keep the whole title rather than an empty name.
+    expect(goalName(": odd title")).toBe(": odd title");
+  });
+});
+
+describe("today", () => {
+  // Local times, so midnight is the runner's own.
+  const local = (h: number, m = 0, day = 10) => new Date(2026, 9, day, h, m).toISOString();
+  const now = new Date(2026, 9, 10, 15, 0);
+
+  it("lists what shipped since midnight, what's in review and what was decided today", () => {
+    const ws = workspace(
+      [
+        ticket({ key: "SH-1", status: "done", completed_at: local(9) }),
+        ticket({ key: "SH-2", status: "done", completed_at: local(14) }),
+        ticket({ key: "SH-3", status: "done", completed_at: local(23, 50, 9) }),
+        ticket({ key: "SH-4", type: "epic", status: "done", completed_at: local(10) }),
+        ticket({ key: "SH-5", status: "review", updated_at: local(12) }),
+        ticket({ key: "SH-6", status: "review", updated_at: local(8) }),
+        ticket({ key: "SH-7", status: "in_progress" }),
+        ticket({ key: "SH-8", status: "done", completed_at: null }),
+      ],
+      { decisions: [decision("DEC-1", "Today", local(11)), decision("DEC-2", "Yesterday", local(20, 0, 9)), decision("DEC-3", "Replaced", local(12), { superseded_by: "d-DEC-4" }), decision("DEC-4", "Newest", local(13))] },
+    );
+    const t = today(ws, now);
+    expect(t.shipped.map((x) => x.key)).toEqual(["SH-2", "SH-1"]);
+    expect(t.inReview.map((x) => x.key)).toEqual(["SH-6", "SH-5"]);
+    expect(t.decided.map((d) => d.key)).toEqual(["DEC-4", "DEC-1"]);
+  });
+
+  it("is empty on a quiet day", () => {
+    const t = today(workspace([ticket({ key: "SH-1", status: "ready" })]), now);
+    expect(t).toEqual({ shipped: [], inReview: [], decided: [] });
   });
 });
 

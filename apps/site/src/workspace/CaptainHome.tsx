@@ -1,9 +1,8 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { href, onNav, go, openLook, type Route } from "../lib/router";
-import { AgentAvatar, Button, Chip, SegmentedProgress, type Segment } from "../ui";
-import { ago, Markdown } from "./bits";
+import { AgentAvatar, Button, Chip } from "../ui";
+import { Markdown } from "./bits";
 import {
-  briefing,
   catchUpItems,
   catchUpSummary,
   catchUpText,
@@ -14,18 +13,15 @@ import {
   mergeChip,
   mergeQuestion,
   NEED_WHAT,
-  ownerOf,
   planAsks,
   planTitle,
   riskyPart,
   timeline,
   withoutPlan,
-  type Briefing as BriefingData,
   type CatchUp,
   type Need,
   type Plan,
   type Row,
-  type Segment as GoalSegment,
   type Turn,
 } from "./captain";
 import { EvidencePanel } from "./EvidencePanel";
@@ -34,165 +30,37 @@ import { withTicketLinks } from "./Room";
 import { planKey, type CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
 
-// Captain home (AK-49, autokolab-ux-handoff/screens/S01-captain-home.md): the pinned briefing, the
-// person's conversation with Captain with its decision cards, and the composer. Every sentence comes
-// from captain.ts; this file only draws.
+// Captain (AK-49, autokolab-ux-handoff/screens/S01-captain-home.md, changed by DEC-24): the person's
+// conversation with Captain with its decision cards, and the composer. The state sentence, who's
+// doing what and the setup checklist live on Overview. Every sentence comes from captain.ts; this
+// file only draws.
 
-const SEGMENT: Record<GoalSegment, Segment> = { done: "done", needs_you: "needs", building: "active", todo: "todo" };
-
-export function CaptainHome({ ws, me, cr }: { ws: Workspace; me: string; cr: CaptainRoom }) {
+export function CaptainHome({ ws, cr }: { ws: Workspace; cr: CaptainRoom }) {
   const [pulse, setPulse] = useState<string | null>(null);
-  const b = briefing(ws, cr.needs);
   const { startCatchUp } = cr;
   const roomReady = cr.room !== undefined;
   useEffect(() => {
     if (roomReady) startCatchUp();
   }, [roomReady, startCatchUp]);
 
-  const toOldestCard = () => {
-    const need = cr.needs[0];
-    const el = need && document.getElementById(`need-${need.key}`);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  // A needs-you row on Overview opens this page at #need-<key>: land on that card and pulse it.
+  const toCard = (el: HTMLElement, key: string) => {
+    el.scrollIntoView({ block: "center" });
     el.focus({ preventScroll: true });
-    setPulse(need.key);
+    setPulse(key);
     setTimeout(() => setPulse(null), 1000);
   };
 
   return (
-    <div style={{ flex: 1, width: "100%", maxWidth: 780, margin: "0 auto", display: "flex", flexDirection: "column" }}>
-      <Briefing ws={ws} b={b} online={cr.online} onNeeds={toOldestCard} />
-      <SetupChecklist ws={ws} me={me} />
-      <Conversation ws={ws} cr={cr} pulse={pulse} />
+    <div style={{ flex: 1, width: "100%", maxWidth: 780, margin: "0 auto", display: "flex", flexDirection: "column", paddingTop: 16 }}>
+      <Conversation ws={ws} cr={cr} pulse={pulse} onTarget={toCard} />
     </div>
-  );
-}
-
-// ------------------------------------------------------------------ the pinned briefing
-
-function Briefing({ ws, b, online, onNeeds }: { ws: Workspace; b: BriefingData; online: boolean; onNeeds: () => void }) {
-  const [open, setOpen] = useState(false);
-  // "updated just now": when the workspace last loaded. Each reload makes a new ws.
-  const [loadedAt, setLoadedAt] = useState(() => new Date().toISOString());
-  const [, tick] = useState(0);
-  useEffect(() => setLoadedAt(new Date().toISOString()), [ws]);
-  useEffect(() => {
-    const t = setInterval(() => tick((x) => x + 1), 30_000);
-    return () => clearInterval(t);
-  }, []);
-  const anyoneWorking = [...ws.people.agents.values()].some((a) => agentDot(a) === "working");
-  const slug = ws.project.slug;
-
-  return (
-    <section aria-label="Where we are" style={{ position: "sticky", top: 0, zIndex: 2, background: "var(--bg)", padding: "22px 0 14px" }}>
-      <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-2xl)", padding: "20px 22px", display: "flex", flexDirection: "column", gap: 8 }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-dim)" }}>
-          {online && anyoneWorking && <span className="ak-live" aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", flex: "none" }} />}
-          {online ? `Where we are · updated ${ago(loadedAt)}` : "Captain is offline"}
-        </span>
-        <p className="ak-headline" style={{ fontWeight: 500, letterSpacing: "var(--tracking-tight)", lineHeight: 1.3 }}>
-          {b.work}{" "}
-          {b.needs.tone === "amber" ? (
-            <button type="button" onClick={onNeeds} title="Go to the oldest card" style={{ border: 0, padding: 0, background: "none", font: "inherit", letterSpacing: "inherit", color: "var(--amber)", cursor: "pointer", textAlign: "left" }}>
-              {b.needs.text}
-            </button>
-          ) : (
-            <span style={{ color: "var(--green)" }}>{b.needs.text}</span>
-          )}
-        </p>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-          {b.next && <span style={{ fontSize: 14, color: "var(--text-muted)", flex: "1 1 260px", minWidth: 0 }}>{b.next}</span>}
-          <button type="button" className="ak-tap" aria-expanded={open} onClick={() => setOpen((o) => !o)} style={{ ...textButton, marginLeft: "auto", minHeight: 32 }}>
-            {open ? "Hide" : "Who's doing what"}
-          </button>
-        </div>
-        {open && (
-          <div className="ak-enter" style={{ display: "flex", flexDirection: "column", gap: 12, borderTop: "1px solid var(--border-subtle)", paddingTop: 12, maxHeight: "50vh", overflowY: "auto" }}>
-            {b.goals.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {b.goals.map((g) => {
-                  const to: Route = g.id ? { view: "ticket", project: slug, key: ws.byId.get(g.id)?.key ?? "" } : { view: "backlog", project: slug };
-                  return (
-                    <a key={g.id ?? "other"} href={href(to)} onClick={onNav(to)} style={{ display: "grid", gridTemplateColumns: "minmax(0, 130px) minmax(60px, 1fr) auto", alignItems: "center", gap: 12, fontSize: 14, color: "var(--text)", textDecoration: "none" }}>
-                      <span style={ellipsis}>{g.title}</span>
-                      <SegmentedProgress segments={g.segments.map((s) => SEGMENT[s])} label={`${g.title}: ${g.done} of ${g.total} done`} />
-                      <span style={{ fontSize: 13, color: "var(--text-dim)", whiteSpace: "nowrap" }}>
-                        {g.done} of {g.total}
-                      </span>
-                    </a>
-                  );
-                })}
-              </div>
-            )}
-            {b.agents.length > 0 && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {b.agents.map((a) => {
-                  const to: Route = { view: "ticket", project: slug, key: a.ticket.key };
-                  return (
-                    <a key={a.agentId} href={href(to)} onClick={onNav(to)} title={ownerOf(ws, a.agentId) ?? undefined} style={{ display: "grid", gridTemplateColumns: "minmax(52px, auto) minmax(0, 1fr) auto", alignItems: "baseline", gap: 12, fontSize: 14, color: "var(--text-body)", textDecoration: "none" }}>
-                      <span style={{ color: "var(--text-muted)", ...ellipsis }}>{a.name}</span>
-                      <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{a.doing}</span>
-                      <span style={{ fontSize: 13, whiteSpace: "nowrap", color: a.needsYou ? "var(--amber)" : "var(--text-dim)" }}>{a.needsYou ? "needs you" : (a.step ?? "")}</span>
-                    </a>
-                  );
-                })}
-              </div>
-            )}
-            <a href={href({ view: "board", project: slug })} onClick={onNav({ view: "board", project: slug })} style={{ fontSize: 14, alignSelf: "flex-start", textDecoration: "none" }}>
-              Open the board
-            </a>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-// ------------------------------------------------------------------ setup, while a step is undone
-
-function SetupChecklist({ ws, me }: { ws: Workspace; me: string }) {
-  const g = ws.guide;
-  const agents = [...ws.people.agents.values()];
-  const setup = [
-    { done: !!g && !!(g.concept.trim() || g.rules.trim()), label: "Write the Project Guide", sub: "The concept and rules every agent reads first", to: "guide" as const },
-    { done: agents.some((a) => a.owner_profile_id === me), label: "Connect your agents", sub: "One terminal line brings in your Claude Code and Codex", to: "connect" as const },
-    { done: ws.people.members.filter((m) => m.actor_type === "human").length > 1, label: "Invite the people you work with", sub: "Send them a link; they join with GitHub", to: "settings" as const },
-    { done: !!ws.project.lead_agent_id, label: "Pick Captain", sub: "Your own agent: you talk to it, it writes the tickets and assigns them", to: "people" as const },
-    { done: ws.tickets.length > 0, label: "Ask Captain for the first piece of work", sub: "It plans it into tickets for the other agents", to: "board" as const },
-  ];
-  const left = setup.filter((s) => !s.done).length;
-  if (!left) return null;
-  return (
-    <section style={{ display: "flex", flexDirection: "column", gap: 10, margin: "8px 0 16px" }}>
-      <h2 style={{ fontSize: 16, fontWeight: 600 }}>
-        Set up {ws.project.name} <span style={{ color: "var(--text-dim)", fontWeight: 400, fontSize: 14 }}>· {setup.length - left} of {setup.length}</span>
-      </h2>
-      <div style={{ display: "flex", flexDirection: "column", borderRadius: 12, border: "1px solid var(--border-subtle)", overflow: "hidden" }}>
-        {setup.map((s, i) => (
-          <a
-            key={s.label}
-            href={href({ view: s.to, project: ws.project.slug })}
-            onClick={onNav({ view: s.to, project: ws.project.slug })}
-            className="ak-row"
-            style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 14px", background: "var(--surface)", borderTop: i ? "1px solid var(--border-subtle)" : 0, textDecoration: "none", color: "var(--text)" }}
-          >
-            <span style={{ width: 22, height: 22, borderRadius: "50%", flex: "none", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, ...(s.done ? { background: "var(--green-bg)", color: "var(--green)" } : { border: "1px solid var(--border-strong)", color: "var(--text-dim)" }) }}>
-              {s.done ? "✓" : i + 1}
-            </span>
-            <span style={{ display: "flex", flexDirection: "column" }}>
-              <span style={{ fontSize: 14, fontWeight: 500, color: s.done ? "var(--text-muted)" : "var(--text)", textDecoration: s.done ? "line-through" : "none" }}>{s.label}</span>
-              <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{s.sub}</span>
-            </span>
-          </a>
-        ))}
-      </div>
-    </section>
   );
 }
 
 // ------------------------------------------------------------------ the conversation
 
-function Conversation({ ws, cr, pulse }: { ws: Workspace; cr: CaptainRoom; pulse: string | null }) {
+function Conversation({ ws, cr, pulse, onTarget }: { ws: Workspace; cr: CaptainRoom; pulse: string | null; onTarget: (el: HTMLElement, key: string) => void }) {
   const slug = ws.project.slug;
   const okd = useMemo(() => new Set(cr.okd.map((n) => n.key)), [cr.okd]);
   const entries = useMemo(() => timeline(folded(cr.turns), [...cr.needs, ...cr.okd], cr.catchUp?.at), [cr.turns, cr.needs, cr.okd, cr.catchUp]);
@@ -201,14 +69,19 @@ function Conversation({ ws, cr, pulse }: { ws: Workspace; cr: CaptainRoom; pulse
   const canPost = !noCaptain && !!cr.room?.me && cr.room.me.role !== "observer";
 
   // Opening the page lands at the newest message, once the messages and the catch-up are both in
-  // (the catch-up is the newest message when there is one).
+  // (the catch-up is the newest message when there is one), or on the card the address names
+  // (#need-<key>, from a needs-you row on Overview) while it still waits.
   const landed = useRef(false);
   const complete = cr.room !== undefined && (cr.catchUpReady || !cr.room);
   useLayoutEffect(() => {
     if (landed.current || !complete) return;
     landed.current = true;
-    window.scrollTo(0, document.documentElement.scrollHeight);
-  }, [complete, entries.length]);
+    const id = decodeURIComponent(location.hash.slice(1));
+    const card = id.startsWith("need-") ? document.getElementById(id) : null;
+    if (location.hash) history.replaceState(history.state, "", location.pathname + location.search);
+    if (card) onTarget(card, id.slice("need-".length));
+    else window.scrollTo(0, document.documentElement.scrollHeight);
+  }, [complete, entries.length, onTarget]);
 
   // New Captain messages are read out politely; the ones already there when the page opened aren't.
   const [announce, setAnnounce] = useState("");

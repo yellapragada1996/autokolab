@@ -20,7 +20,7 @@ export function JoinPage({ code, profile, onJoined, notice }: { code: string; pr
 
   // Already in the project: straight to it.
   useEffect(() => {
-    if (peek?.member) go({ view: "overview", project: peek.slug }, true);
+    if (peek?.member) go({ view: "captain", project: peek.slug }, true);
   }, [peek]);
 
   const join = async () => {
