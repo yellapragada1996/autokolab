@@ -187,7 +187,7 @@ const happened = (ticketId: string, minAgo: number, actor: string, kind: string,
 const history: TicketEvent[] = [...demoEvents.values()].flat();
 for (const [n, title, goal, who, ago, took] of shipped) {
   const id = `t${n}`;
-  tickets.push(
+  allTickets.push(
     ticket(n, { title, status: "done", type: "feature", parent_id: goal, assignee_id: who, assignee_type: who === LEE ? "human" : "agent", pr_url: `https://github.com/ana/shop/pull/${n}`, created_at: iso(ago + took + 30), updated_at: iso(ago), started_at: iso(ago + took), completed_at: iso(ago), approved_sha: sha(n), approved_by: LEAD, approved_at: iso(ago + 8), pr_facts: passing(n) }),
   );
   history.push(
@@ -330,7 +330,7 @@ export default function DemoWorkspace() {
       blockersOf: (tid) => links.filter((l) => l.ticket_id === tid).map((l) => byId.get(l.blocked_by)!),
       unblocks: (tid) => links.filter((l) => l.blocked_by === tid).map((l) => byId.get(l.ticket_id)!),
       childrenOf: (tid) => tickets.filter((t) => t.parent_id === tid),
-      demoEvents: history,
+      demoEvents: demoEmpty ? [] : history,
     };
   }, []);
   const previewRoute = parse("/p/shop", location.search);

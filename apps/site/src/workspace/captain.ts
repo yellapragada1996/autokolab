@@ -262,7 +262,7 @@ const ACTION: Record<NeedKind, string> = {
 };
 
 // What a runner writes in "Needs you" when a run or a merge went wrong (packages/autokolab/src/runner).
-export const RUNNER_PROBLEM =/^(I stopped|I couldn't start|I'm blocked|Couldn't merge|Can't check the PR|No automatic tests ran|Agents have gone back and forth)/;
+export const RUNNER_PROBLEM = /^(I stopped|I couldn't start|I'm blocked|Couldn't merge|Can't check the PR|No automatic tests ran|Agents have gone back and forth)/;
 
 const isOpen = (t: Ticket) => t.status !== "done" && t.status !== "canceled";
 
