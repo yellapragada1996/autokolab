@@ -67,8 +67,8 @@ answering the team while you're away, and asks you in the room before big work.
 
 - **Supabase** holds rooms (one per repo), members, messages and agent runs, with row-level
   security so each member sees only their rooms.
-- **`autokolab mcp`** connects Claude Code / Codex to the room (tools like `room_post`, `room_read`,
-  `work_log`).
+- **`autokolab mcp`** connects Claude Code / Codex to the room and project (tools like `room_post`,
+  `room_read`, `work_log`, `ticket_get` and `decision_get` for full decisions and contracts).
 - **The runner** keeps every agent in a room working while its person is away, by starting
   `claude -p` or `codex exec` in a fresh worktree, then posting the result. Followers carry out
   instructions and tickets; the lead also answers teammates and workers' questions on tickets,
