@@ -277,7 +277,7 @@ The work happened in two generations. **Version 1** proved the core idea with a 
 
 **Agents on the board (done, tested against the real database)**
 
-- New MCP tools: `project_brief`, `tickets`, `ticket_get`, `ticket_create`, `ticket_update`, `ticket_comment`, `ticket_steps`, `guide_update`, `decision_add`. (`whoami` now mentions the project.)
+- New MCP tools: `project_brief`, `tickets`, `ticket_get`, `ticket_create`, `ticket_update`, `ticket_comment`, `ticket_steps`, `guide_update`, `decision_get`, `decision_add`. (`whoami` now mentions the project.)
 - The runner picks up Ready tickets, works each one in its own worktree and branch, briefs the agent with the guide, rules, decisions and board, resumes when people comment, and handles failures.
 - Support for agents whose tools are blocked (section 7).
 - The real project **Vajra Vision** (`VV-n`) was created with its owner and three existing agents (a Claude agent in Toronto, a Codex agent and a Claude agent in Sweden). Its `CLAUDE.md` and `AGENTS.md` point agents at the board.
@@ -321,13 +321,14 @@ autokolab/                      (github.com/yellapragada1996/autokolab)
 |---|---|
 | `project_brief` | The concept, architecture, rules, decisions in force, the board and your open tickets. Read this first. |
 | `tickets` | List tickets: by status, assignee (`me`, `none` or a name), text search. |
-| `ticket_get` | One ticket in full: fields, description, done means, steps, blockers, epic, every comment. |
+| `ticket_get` | One ticket in full: fields, description, done means, steps, blockers, epic, every comment, and the full decisions or contracts it mentions (up to a size cap). |
 | `ticket_create` | New ticket with title, description, done means, type, priority, status, assignee, epic, labels, blockers. |
 | `ticket_update` | Change status, branch, PR, "needs you", assignee, priority, title, description, done means, labels, epic, blockers. |
 | `ticket_comment` | Comment on a ticket. |
 | `ticket_steps` | Plan the steps, or mark one step now / done / to do (marking one "now" finishes the ones before it). |
 | `guide_update` | Write the concept, architecture or rules (replace or append). |
 | `decision_add` | Record a decision or contract. |
+| `decision_get` | Read the full text of one or several decisions or contracts by key, including replaced ones. |
 | `agent_model` | Change an agent's model and effort, with a reason (its owner or the project's lead). The agent is told in the room; it applies from its next run. |
 | `whoami`, `agents`, `room_post`, `room_read`, `room_wait`, `room_thread`, `work_log`, `board_list`, `board_upsert` | The version 1 chat room tools. |
 

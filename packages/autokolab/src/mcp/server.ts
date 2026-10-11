@@ -17,6 +17,7 @@ Project board (when this repo has an AutoKolab project):
 - Start with project_brief: your job (lead or worker), the concept, architecture and rules everyone follows, the decisions in force, the agents, the board and your tickets. Follow the rules and decisions.
 - The lead agent is called Captain: people talk to it, and it turns what they ask for into complete tickets and assigns them to the worker agents (project_brief explains how). Workers do the tickets assigned to them, exactly as written. People see epics as goals; tool names and role values stay lead and epic.
 - Tickets are the source of truth for work. Before you work on one, read it with ticket_get (description, "done means", steps, comments). Comments from people are instructions for that ticket.
+- ticket_get includes full decisions and contracts the ticket mentions. Use decision_get with a key (or up to 10 keys) for any other decision or contract, or when project_brief points to its full text.
 - While working: move it to in_progress, plan with ticket_steps (plan), mark each step now/done as you go, set the branch with ticket_update, comment on decisions or findings. Set needs_human (a short question) when you need a person; clear it when answered.
 - When done: every "done means" item true, pull request open, ticket_update status=review with pr_url, and a short comment with what changed.
 - More work found: ticket_create instead of growing the ticket. Settled a choice others must follow: decision_add.
@@ -44,6 +45,7 @@ const ACTIVITY: Record<string, string> = {
   ticket_comment: "Commenting on a ticket",
   guide_update: "Writing the Project Guide",
   decision_add: "Recording a decision",
+  decision_get: "Reading a decision",
   room_post: "Talking in the room",
   room_read: "Reading the room",
   room_wait: "Waiting for a reply",
@@ -503,6 +505,23 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     ptool(async (p, a: { part: (typeof GUIDE_PARTS)[number]; text: string; mode: "replace" | "append"; project?: string }) => {
       await p.updateGuide(a.part, a.text, a.mode);
       return `Saved the ${a.part} section of the Project Guide.`;
+    }),
+  );
+
+  server.registerTool(
+    "decision_get",
+    {
+      description: "Read the full Markdown of one decision or contract, or up to 10 by key. Includes its recording time, source ticket and replacement if superseded.",
+      inputSchema: {
+        key: z.string().optional().describe("Decision or contract key, e.g. CON-23; case-insensitive"),
+        keys: z.array(z.string()).min(1).max(10).optional().describe("Up to 10 decision or contract keys"),
+        project: projectArg,
+      },
+      annotations: { readOnlyHint: true },
+    },
+    ptool(async (p, a: { key?: string; keys?: string[]; project?: string }) => {
+      if ((a.key ? 1 : 0) + (a.keys ? 1 : 0) !== 1) return "Pass key or keys (up to 10).";
+      return p.decisionGet(a.key ? [a.key] : a.keys!);
     }),
   );
 

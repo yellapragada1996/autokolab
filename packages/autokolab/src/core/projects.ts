@@ -156,11 +156,33 @@ export interface Comment {
 }
 
 interface Decision {
+  id: string;
   key: string;
   kind: "decision" | "contract";
   title: string;
   body: string;
+  ticket_id: string | null;
+  created_at: string;
   superseded_by: string | null;
+}
+
+const DECISION_REF = /\b(?:DEC|CON)-\d+\b/gi;
+export const TICKET_DECISIONS_LIMIT = 12_000;
+
+function decisionText(d: Decision, byId: Map<string, Decision>, tickets: Map<string, Ticket>): string {
+  const replacement = d.superseded_by ? byId.get(d.superseded_by) : undefined;
+  const first = replacement ? `Replaced by ${replacement.key}.\n` : d.superseded_by ? "Replaced by another decision.\n" : "";
+  const source = d.ticket_id ? tickets.get(d.ticket_id)?.key : undefined;
+  return `${first}${d.key} (${d.kind}): ${d.title}\nRecorded: ${d.created_at}${source ? `\nFrom ticket: ${source}` : ""}\n\n${d.body}`;
+}
+
+function briefDecision(d: Decision): string {
+  // A code fence is not prose: stop before it rather than join its contents into the sentence.
+  const beforeCode = d.body.split(/^\s*```/m, 1)[0].trim().replace(/\s+/g, " ");
+  const excerpt = beforeCode.slice(0, 400);
+  const cut = beforeCode.length > 400 || beforeCode.length < d.body.trim().replace(/\s+/g, " ").length;
+  const pointer = cut || d.kind === "contract" ? `… (decision_get ${d.key} for the full text)` : "";
+  return `- ${d.key}${d.kind === "contract" ? " (contract)" : ""}: ${d.title}${excerpt ? ` · ${excerpt}` : ""}${pointer}`;
 }
 
 interface Guide {
@@ -563,7 +585,21 @@ export class ProjectView {
   }
 
   async decisions(): Promise<Decision[]> {
-    return check(await this.sb.from("decisions").select("key, kind, title, body, superseded_by").eq("project_id", this.project.id).order("number"));
+    return check(await this.sb.from("decisions").select("*").eq("project_id", this.project.id).order("number"));
+  }
+
+  /** Full decisions by key, including older decisions replaced by another one. */
+  async decisionGet(keys: string[]): Promise<string> {
+    const decisions = await this.decisions();
+    const tickets = await this.tickets();
+    const byKey = new Map(decisions.map((d) => [d.key.toUpperCase(), d]));
+    const byId = new Map(decisions.map((d) => [d.id, d]));
+    const ticketById = new Map(tickets.map((t) => [t.id, t]));
+    return keys.map((raw) => {
+      const key = raw.trim().toUpperCase();
+      const d = byKey.get(key);
+      return d ? decisionText(d, byId, ticketById) : `No decision or contract ${key} in ${this.project.name}.`;
+    }).join("\n\n---\n\n");
   }
 
   async addDecision(title: string, body: string, kind: "decision" | "contract" = "decision", ticket?: string): Promise<Decision> {
@@ -747,7 +783,7 @@ export class ProjectView {
       g.rules.trim() || `(No rules written yet; these are the defaults.)\n${defaultRules(p.default_branch)}`,
       "",
       "## Decisions in force",
-      live.length ? live.map((d) => `- ${d.key}${d.kind === "contract" ? " (contract)" : ""}: ${d.title}${d.body.trim() ? ` · ${d.body.trim().replace(/\s+/g, " ").slice(0, 400)}` : ""}`).join("\n") : "(none yet)",
+      live.length ? live.map(briefDecision).join("\n") : "(none yet)",
       "",
       "## Board",
       counts,
@@ -762,13 +798,34 @@ export class ProjectView {
   /** One ticket in full: fields, description, done means, steps, blockers and the conversation. */
   async ticketText(ref: string): Promise<string> {
     const t = await this.ticket(ref);
-    const [steps, comments, all, links] = await Promise.all([this.steps(t.id), this.comments(t.id), this.tickets(), this.links()]);
+    const [steps, comments, all, links, decisions] = await Promise.all([this.steps(t.id), this.comments(t.id), this.tickets(), this.links(), this.decisions()]);
     const byId = new Map(all.map((x) => [x.id, x]));
     const parent = t.parent_id ? byId.get(t.parent_id) : undefined;
     const blockedBy = links.filter((l) => l.ticket_id === t.id).map((l) => byId.get(l.blocked_by)).filter((x): x is Ticket => !!x);
     const unblocks = links.filter((l) => l.blocked_by === t.id).map((l) => byId.get(l.ticket_id)).filter((x): x is Ticket => !!x);
     const children = all.filter((x) => x.parent_id === t.id);
     const ref2 = (x: Ticket) => `${x.key} (${STATUS_LABEL[x.status]}) ${x.title}`;
+    const mentions = [t.title, t.description, ...t.done_means, ...comments.map((c) => c.body)].join("\n");
+    const keys = [...new Set([...mentions.matchAll(DECISION_REF)].map((m) => m[0].toUpperCase()))];
+    const byKey = new Map(decisions.map((d) => [d.key.toUpperCase(), d]));
+    const byDecisionId = new Map(decisions.map((d) => [d.id, d]));
+    const ticketById = new Map(all.map((x) => [x.id, x]));
+    const decisionLines: string[] = [];
+    let sectionSize = "Decisions and contracts this ticket mentions:\n".length;
+    for (const key of keys) {
+      const d = byKey.get(key);
+      if (!d) continue;
+      const full = decisionText(d, byDecisionId, ticketById);
+      const entry = `${decisionLines.length ? "\n\n" : ""}${full}`;
+      if (sectionSize + entry.length <= TICKET_DECISIONS_LIMIT) {
+        decisionLines.push(full);
+        sectionSize += entry.length;
+      } else {
+        const pointer = `${key}: decision_get ${key} for the full text`;
+        decisionLines.push(pointer);
+        sectionSize += pointer.length + 2;
+      }
+    }
     return [
       `${t.key} · ${t.title}`,
       `Status: ${STATUS_LABEL[t.status]} · Priority: ${t.priority} · Type: ${t.type} · Assignee: ${t.assignee_id ? this.nameOf(t.assignee_id) : "unassigned"} · Reporter: ${this.nameOf(t.reporter_id)}`,
@@ -792,6 +849,7 @@ export class ProjectView {
       "",
       `Comments (${comments.length}, oldest first):`,
       comments.length ? comments.map((c) => `[#${c.id} ${c.created_at.slice(0, 16).replace("T", " ")}] ${this.nameOf(c.author_id)}${c.author_type === "agent" ? " (agent)" : ""}: ${c.body}`).join("\n\n") : "(none)",
+      ...(decisionLines.length ? ["", "Decisions and contracts this ticket mentions:", decisionLines.join("\n\n")] : []),
     ].join("\n");
   }
 
