@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Agent, Decision, Guide, Member, Project, Step, Ticket, TicketEvent } from "../lib/data";
+import type { Agent, Decision, Guide, Member, Project, RunUsage, Step, Ticket, TicketEvent } from "../lib/data";
 import { parse, useRoute } from "../lib/router";
 import type { Profile } from "../lib/session";
 import { starterRules } from "./GuidePage";
@@ -211,6 +211,45 @@ for (const [n, title, goal, who, ago, took] of shipped) {
     happened(id, ago, LEAD, "status", { from: "review", to: "done" }),
   );
 }
+// Where the usage went (AK-92): what each run reported. Every ticket has a build run and Captain's
+// review; some have a question for Captain or a few replies in the room. Before last week one
+// runner was on older code and reported nothing, so the longer period says some runs didn't report.
+let usageId = 1;
+const demoUsage: RunUsage[] = [];
+const ran = (kind: RunUsage["kind"], agent: string, ticketId: string | null, minAgo: number, size: number, reported = true) => {
+  const n = (v: number) => (reported ? Math.round(v * size) : null);
+  demoUsage.push({
+    id: usageId++,
+    agent_id: agent,
+    ticket_id: ticketId,
+    kind,
+    model: reported ? "claude-opus-5-5" : null,
+    input_tokens: n(900),
+    cache_read_tokens: n(410_000),
+    cache_write_tokens: n(31_000),
+    output_tokens: n(8_400),
+    turns: n(34),
+    seconds: Math.round(size * 1500),
+    cost_usd: reported ? Math.round(size * 284) / 100 : null,
+    created_at: iso(minAgo),
+  });
+};
+for (const [n, , , who, ago, took] of shipped) {
+  const id = `t${n}`;
+  const old = ago > 7 * DAY;
+  if (who !== LEE) ran("build", who, id, ago + 20, took / 100, !(old && who === REVIEWER && n % 2 === 0));
+  ran("review", LEAD, id, ago + 8, 0.18 + (n % 3) * 0.05);
+  if (n % 3 === 0) ran("question", LEAD, id, ago + took / 2, 0.07);
+  if (n % 2 === 0) ran("reply", LEAD, null, ago + took / 3, 0.09);
+  if (n % 4 === 1) ran("reply", who === LEE ? BUILDER : who, null, ago + took / 4, 0.06);
+}
+ran("build", BUILDER, "t14", 60, 1.1);
+ran("review", LEAD, "t14", 48, 0.2);
+ran("build", BUILDER, "t16", 80, 2.05);
+ran("review", LEAD, "t16", 68, 0.31);
+ran("reply", LEAD, null, 95, 0.12);
+ran("build", BUILDER, "t2", 30, 0.5);
+
 // Today's two merges, the times a person was asked, and the work that was sent back.
 for (const [id, n, started, done] of [["t14", 14, 150, 40], ["t16", 16, 265, 60]] as const) {
   history.push(happened(id, started, BUILDER, "status", { from: "ready", to: "in_progress" }), happened(id, done + 8, LEAD, "approval", { to: sha(n) }), happened(id, done, LEAD, "status", { from: "review", to: "done" }));
@@ -366,6 +405,7 @@ export default function DemoWorkspace() {
       unblocks: (tid) => links.filter((l) => l.blocked_by === tid).map((l) => byId.get(l.ticket_id)!),
       childrenOf: (tid) => tickets.filter((t) => t.parent_id === tid),
       demoEvents: demoEmpty ? [] : history,
+      demoUsage: demoEmpty ? [] : demoUsage,
     };
   }, []);
   const previewRoute = parse("/p/shop", location.search);
