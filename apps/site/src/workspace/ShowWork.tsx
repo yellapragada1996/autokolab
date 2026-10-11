@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ticketDetail, type TicketEvent } from "../lib/data";
 import { closeShow, openShow, type ShowPart } from "../lib/router";
 import { Button, Skeleton } from "../ui";
-import { changeTotals, historyTime, undoMessage, undoState, workHistory, workRows, workSummary } from "./showWork";
+import { changeTotals, historyTime, undoMessage, undoState, workHistory, workRows, workSummary } from "./sheet";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
 

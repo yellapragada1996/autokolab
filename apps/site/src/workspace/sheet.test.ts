@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { MERGE_OK_PREFIX, type TicketEvent } from "../lib/data";
 import { parse, showHref } from "../lib/router";
 import { BIRCH, CAPTAIN, ME, at, ticket, workspace } from "./fixtures";
-import { changeTotals, historyTime, workHistory, workRows, workSummary } from "./showWork";
-import { undoMessage, undoState } from "./showWork";
+import { changeTotals, historyTime, workHistory, workRows, workSummary } from "./sheet";
+import { undoMessage, undoState } from "./sheet";
 import { clock, type Turn } from "./captain";
 
 describe("Undo in Show the work", () => {
