@@ -482,6 +482,34 @@ export async function recentEvents(projectId: string, limit = 40): Promise<Ticke
   return check(await supabase.from("ticket_events").select("*").eq("project_id", projectId).order("id", { ascending: false }).limit(limit));
 }
 
+const EVENTS_PAGE = 1000;
+
+/**
+ * Everything that happened in the project between two times, oldest first. Read a page at a time,
+ * so a busy month isn't cut off at the server's row limit.
+ */
+export async function eventsBetween(projectId: string, from: Date, to: Date): Promise<TicketEvent[]> {
+  const out: TicketEvent[] = [];
+  // Each page starts after the last row of the one before, and it ends at an empty page: the
+  // server may hand back fewer rows than asked for.
+  for (let after = 0; ; ) {
+    const rows = check<TicketEvent[]>(
+      await supabase
+        .from("ticket_events")
+        .select("*")
+        .eq("project_id", projectId)
+        .gte("created_at", from.toISOString())
+        .lte("created_at", to.toISOString())
+        .gt("id", after)
+        .order("id")
+        .limit(EVENTS_PAGE),
+    );
+    if (!rows.length) return out;
+    out.push(...rows);
+    after = rows[rows.length - 1].id;
+  }
+}
+
 // ------------------------------------------------------------------ guide and decisions
 
 export async function guide(projectId: string): Promise<Guide | null> {
