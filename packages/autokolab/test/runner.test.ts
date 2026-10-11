@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Member, Message, Room } from "../src/core/types.js";
 import { writeConfigFile } from "../src/core/config.js";
 import { parseRunnerConfig, runnerTemplate } from "../src/runner/config.js";
@@ -12,8 +12,8 @@ import { REVIEW_DIFF_LIMIT, buildPrompt, buildReviewPrompt, buildTicketPrompt, b
 import { needsRunner } from "../src/setup/connect.js";
 import { Runner, STALE_RUN_SUMMARY, agentTurnsSinceHuman, isPauseNotice, isRunnerNotice, pauseNotice, runOutcome, shouldWake, staleTeammateMessage, startNotice, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_UNDO, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, leadGuide, questionsForLead, untriaged, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
-import { MERGE_FIELDS, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, readyToMergeMessage, reviewDecision, reviewedShaProblem, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_UNDO, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
+import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
@@ -1042,8 +1042,22 @@ describe("Captain reviews by itself (AK-59)", () => {
       // Failing tests still go back first.
       expect(reviewDecision({ assignee_id: LEAD, needs_human: null }, pr({ statusCheckRollup: [bad()] }), LEAD, null).action).toBe("tests_failed");
     });
-    it("no_checks: no automatic tests ran, like the merge path", () => {
-      for (const statusCheckRollup of [[], null, undefined]) expect(reviewDecision(byWorker, pr({ statusCheckRollup }), LEAD, null).action).toBe("no_checks");
+    it("no_checks: no automatic tests ran within 5 minutes of first seeing the commit; before that, wait", () => {
+      const T = 1_000_000_000;
+      expect(NO_CHECKS_GRACE_MS).toBe(5 * 60_000);
+      for (const statusCheckRollup of [[], null, undefined]) {
+        // First sight: wait, and say since when, so the runner can keep it across a restart.
+        expect(reviewDecision(byWorker, pr({ statusCheckRollup }), LEAD, null, T)).toMatchObject({ action: "wait", noChecksSince: T });
+      }
+      const seen = { sha: "", reviews: 0, noChecks: { sha: SHA, since: T } };
+      expect(reviewDecision(byWorker, pr({ statusCheckRollup: [] }), LEAD, seen, T + NO_CHECKS_GRACE_MS - 1)).toMatchObject({ action: "wait", noChecksSince: T });
+      expect(reviewDecision(byWorker, pr({ statusCheckRollup: [] }), LEAD, seen, T + NO_CHECKS_GRACE_MS)).toMatchObject({ action: "no_checks", noChecksSince: T, why: "no checks ran in 5 minutes" });
+      // A new commit starts its own grace time.
+      expect(reviewDecision(byWorker, pr({ statusCheckRollup: [], headRefOid: NEXT }), LEAD, seen, T + NO_CHECKS_GRACE_MS)).toMatchObject({ action: "wait", noChecksSince: T + NO_CHECKS_GRACE_MS });
+      // Checks arrive for the same commit: decided as usual, nothing about missing checks.
+      const d = reviewDecision(byWorker, pr(), LEAD, seen, T + 2 * NO_CHECKS_GRACE_MS);
+      expect(d.action).toBe("review");
+      expect(d.noChecksSince).toBeUndefined();
     });
     it("limit: at most 5 automatic reviews per ticket", () => {
       expect(MAX_AUTO_REVIEWS).toBe(5);
@@ -1206,7 +1220,7 @@ describe("Captain reviews by itself (AK-59)", () => {
       await check(s.runner, s.project, t, pr({ statusCheckRollup: [bad()] }));
       expect(s.comments).toEqual([testsFailedComment(URL, SHA, ["checks"])]);
       expect(s.comments[0]).toBe("Tests didn't pass on PR #31 at commit ccccccc: checks. It needs a fix and a new push; I've moved it back to In progress. Captain reviews again once the tests pass.");
-      expect(s.updates).toEqual([{ status: "in_progress", needs_human: null }]);
+      expect(s.updates).toEqual([{ needs_human: null }, { status: "in_progress" }]);
       expect(queued(s.runner)).toBe(0);
       await check(s.runner, s.project, t, pr({ statusCheckRollup: [bad()] }));
       await check(s.make(), s.project, t, pr({ statusCheckRollup: [bad()] }));
@@ -1242,12 +1256,79 @@ describe("Captain reviews by itself (AK-59)", () => {
       expect(none.updates).toEqual([{ needs_human: LEAD_BUILT_QUESTION }]);
       expect(LEAD_BUILT_QUESTION).toBe("Captain built this, so a person or another agent has to approve it.");
     });
-    it("asks a person once when no tests ran", async () => {
-      const s = setup();
-      const t = ticket();
-      await check(s.runner, s.project, t, pr({ statusCheckRollup: [] }));
-      await check(s.runner, s.project, t, pr({ statusCheckRollup: [] }));
-      expect(s.updates).toEqual([{ needs_human: NO_CHECKS_QUESTION }]);
+    describe("a PR whose checks haven't started yet", () => {
+      const T = Date.parse("2026-10-11T10:00:00Z");
+      beforeEach(() => vi.useFakeTimers({ now: T, toFake: ["Date"] }));
+      afterEach(() => vi.useRealTimers());
+      const record = (r: Runner, t: Ticket) => r["ticketState"]().reviews?.[t.id];
+
+      it("waits on first sight, then reviews the same commit once its checks pass", async () => {
+        const s = setup();
+        const t = ticket();
+        await check(s.runner, s.project, t, pr({ statusCheckRollup: [] }));
+        expect([s.updates, s.comments, s.posts]).toEqual([[], [], []]);
+        expect(queued(s.runner)).toBe(0);
+        expect(record(s.runner, t)).toEqual({ sha: "", action: "wait", reviews: 0, noChecks: { sha: SHA, since: T, asked: false } });
+        // Two minutes later the checks start, then pass. After a restart, too.
+        vi.setSystemTime(T + 2 * 60_000);
+        const again = s.make();
+        await check(again, s.project, t, pr({ statusCheckRollup: [running()] }));
+        expect(queued(again)).toBe(0);
+        expect(record(again, t)?.noChecks).toBeUndefined();
+        await check(again, s.project, t, pr());
+        expect(queued(again)).toBe(1);
+        expect(s.updates).toEqual([]);
+      });
+      it("keeps the first-seen time across a restart, says so once after 5 minutes, and still isn't handled", async () => {
+        const s = setup();
+        const t = ticket();
+        await check(s.runner, s.project, t, pr({ statusCheckRollup: [] }));
+        vi.setSystemTime(T + 4 * 60_000);
+        await check(s.make(), s.project, t, pr({ statusCheckRollup: [] }));
+        expect(s.updates).toEqual([]);
+        vi.setSystemTime(T + 5 * 60_000);
+        const later = s.make();
+        await check(later, s.project, t, pr({ statusCheckRollup: [] }));
+        expect(s.updates).toEqual([{ needs_human: NO_CHECKS_QUESTION }]);
+        // A person cleared it, or a restart: not said again for this commit.
+        vi.setSystemTime(T + 9 * 60_000);
+        await check(s.make(), s.project, t, pr({ statusCheckRollup: [] }));
+        expect(s.updates).toHaveLength(1);
+        expect(record(later, t)).toMatchObject({ sha: "", noChecks: { sha: SHA, since: T, asked: true } });
+
+        // The checks arrive at last: the question clears and the commit is reviewed as usual.
+        const asked = { ...t, needs_human: NO_CHECKS_QUESTION } as Ticket;
+        const r = s.make();
+        await check(r, s.project, asked, pr());
+        expect(s.updates).toEqual([{ needs_human: NO_CHECKS_QUESTION }, { needs_human: null }]);
+        expect(queued(r)).toBe(1);
+        expect(record(r, t)?.noChecks).toBeUndefined();
+      });
+      it("clears the question while the new checks are still running", async () => {
+        const s = setup();
+        await check(s.runner, s.project, ticket({ needs_human: NO_CHECKS_QUESTION }), pr({ statusCheckRollup: [running()] }));
+        expect(s.updates).toEqual([{ needs_human: null }]);
+        expect(queued(s.runner)).toBe(0);
+      });
+    });
+
+    it("tells a person when a review run ended without a decision", () => {
+      const inReview = { status: "review" as const, pr_url: URL, approved_sha: null, needs_human: null };
+      const before = [{ id: 10, author_id: WORKER }];
+      expect(REVIEW_UNDECIDED_QUESTION).toBe(`${REVIEW_FAILED_PREFIX}: the review ended without a decision. Can you look?`);
+      expect(isReviewQuestion(REVIEW_UNDECIDED_QUESTION)).toBe(true);
+      // Nothing happened: undecided.
+      expect(reviewEndedUndecided(inReview, URL, before, LEAD, 10)).toBe(true);
+      // A worker's comment during the run doesn't count as Captain's decision.
+      expect(reviewEndedUndecided(inReview, URL, [...before, { id: 11, author_id: WORKER }], LEAD, 10)).toBe(true);
+      // An old comment from Captain doesn't either.
+      expect(reviewEndedUndecided(inReview, URL, [{ id: 9, author_id: LEAD }, ...before], LEAD, 10)).toBe(true);
+      // Decided: approved, sent back, commented on, asked a person, or a new PR.
+      expect(reviewEndedUndecided({ ...inReview, approved_sha: SHA }, URL, before, LEAD, 10)).toBe(false);
+      expect(reviewEndedUndecided({ ...inReview, status: "in_progress" }, URL, before, LEAD, 10)).toBe(false);
+      expect(reviewEndedUndecided(inReview, URL, [...before, { id: 12, author_id: LEAD }], LEAD, 10)).toBe(false);
+      expect(reviewEndedUndecided({ ...inReview, needs_human: "Is this OK for old users?" }, URL, before, LEAD, 10)).toBe(false);
+      expect(reviewEndedUndecided({ ...inReview, pr_url: "https://github.com/ana/shop/pull/32" }, URL, before, LEAD, 10)).toBe(false);
     });
     it("starts no review while paused, past the daily limit, or with auto_review = false", async () => {
       const paused = setup();

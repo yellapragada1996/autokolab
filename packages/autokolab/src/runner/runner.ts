@@ -11,7 +11,7 @@ import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineRun, type ModelChoice, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
-import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prNumber, readyToMergeMessage, reviewDecision, riskyFiles, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
+import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, riskyFiles, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
 import { checkoutCommit, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
@@ -786,6 +786,29 @@ export class Runner {
   private async checkReview(p: ProjectView, t: Ticket, pr: PrInfo): Promise<void> {
     const rec = this.ticketState().reviews?.[t.id];
     const d = reviewDecision(t, pr, this.ak.me.id, rec);
+    const ask = async (q: string) => {
+      if (t.needs_human !== q) await p.update(t.key, { needs_human: q });
+    };
+    if (d.noChecksSince !== undefined) {
+      // No checks on this commit yet. That's never "handled": it's looked at again until checks
+      // show up, and "No automatic tests ran" is said once, after the grace time.
+      const asked = rec?.noChecks?.sha === d.sha && !!rec.noChecks.asked;
+      const tell = d.action === "no_checks" && !asked;
+      if (rec?.noChecks?.sha !== d.sha || tell) {
+        this.rememberReview(t.id, { sha: rec?.sha ?? "", action: rec?.action ?? "wait", reviews: rec?.reviews ?? 0, noChecks: { sha: d.sha, since: d.noChecksSince, asked: asked || tell } });
+      }
+      if (tell) {
+        this.log(`${t.key} review: no_checks · ${d.why}.`);
+        await ask(NO_CHECKS_QUESTION);
+      }
+      return;
+    }
+    // Checks showed up: "No automatic tests ran" isn't true any more.
+    if (rec?.noChecks) this.rememberReview(t.id, { sha: rec.sha, action: rec.action, reviews: rec.reviews });
+    if (t.needs_human === NO_CHECKS_QUESTION && (pr.statusCheckRollup ?? []).length) {
+      await p.update(t.key, { needs_human: null });
+      t = { ...t, needs_human: null };
+    }
     if (d.action === "wait") return;
     this.log(`${t.key} review: ${d.action} · ${d.why}.`);
     if (d.action === "review") {
@@ -795,10 +818,6 @@ export class Runner {
     // Handled once per commit, whatever happens below.
     this.rememberReview(t.id, { sha: d.sha, action: d.action, reviews: rec?.reviews ?? 0 });
     const url = t.pr_url!;
-    const ask = async (q: string) => {
-      if (t.needs_human !== q) await p.update(t.key, { needs_human: q });
-    };
-    if (d.action === "no_checks") return ask(NO_CHECKS_QUESTION);
     if (d.action === "limit") return ask(REVIEW_LIMIT_QUESTION);
     if (d.action === "tests_failed") {
       await p.comment(t.key, testsFailedComment(url, d.sha, d.failed ?? []));
@@ -1233,6 +1252,8 @@ export class Runner {
     const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, null, choice) : codexInvocation(cfg, mcp, null, worktree.path, choice);
     const logFile = join(this.logDir, `${p.project.slug}-${t.key}-review-${Date.now()}.log`);
 
+    // The newest comment before the run: a comment from Captain after it means it sent the ticket back.
+    const lastCommentId = (await p.comments(t.id)).reduce((n, c) => Math.max(n, c.id), 0);
     const abort = new AbortController();
     this.current = { what: `the review of ${t.key}`, abort };
     await ak.heartbeat("working").catch(() => undefined);
@@ -1256,6 +1277,17 @@ export class Runner {
       const after = await p.ticket(t.key).catch(() => t);
       if (!after.needs_human && !after.approved_sha) {
         await p.update(t.key, { needs_human: `${REVIEW_FAILED_PREFIX}: ${why}. Can you look, or check the log on ${ak.ownerName(ak.me)}'s computer?` }).catch(() => undefined);
+      }
+    } else {
+      // It finished but neither approved nor sent it back: say so, or the ticket sits in Review unseen.
+      try {
+        const after = await p.ticket(t.key);
+        if (reviewEndedUndecided(after, url, await p.comments(t.id), ak.me.id, lastCommentId)) {
+          this.log(`${t.key} review: ended without a decision; asking a person.`);
+          await p.update(t.key, { needs_human: REVIEW_UNDECIDED_QUESTION });
+        }
+      } catch (e) {
+        this.log(`${t.key} review: couldn't check how it ended: ${(e as Error).message}`);
       }
     }
     const said = redactSecrets(result.finalText.trim()).split("\n")[0].slice(0, 200);

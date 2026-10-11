@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NOTHING_UNSURE, NO_CHECKS_QUESTION, isMergeQuestion, isReviewQuestion, type MergePolicy, type Review, type ReviewerCandidate, type Ticket } from "../core/projects.js";
+import { MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NOTHING_UNSURE, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, isMergeQuestion, isReviewQuestion, type Comment, type MergePolicy, type Review, type ReviewerCandidate, type Ticket } from "../core/projects.js";
 
 // The lead's approval and its runner's merge (AK-30, DEC-19). The decision is plain code, not a
 // model run: the runner merges a PR only at the commit the lead approved, once every check passed
@@ -97,16 +97,23 @@ export interface ReviewDecision {
   sha: string;
   /** For tests_failed: the checks that didn't pass. */
   failed?: string[];
+  /** The PR has no checks yet: when the runner first saw this commit without any (ms), for the record. */
+  noChecksSince?: number;
 }
 
 /** What the lead's runner last did about a ticket waiting for review, kept across restarts. */
 export interface ReviewRecord {
-  /** The head commit last handled. */
+  /** The head commit last handled ("" for none yet). no_checks never counts as handled. */
   sha: string;
   action: ReviewAction;
   /** Automatic review runs started for this ticket, over all its commits. */
   reviews: number;
+  /** A commit seen with no checks: since when (ms), and whether "No automatic tests ran" was set for it. */
+  noChecks?: { sha: string; since: number; asked?: boolean };
 }
+
+/** How long a commit may have no checks before the runner says so: GitHub takes a while to register them. */
+export const NO_CHECKS_GRACE_MS = 5 * 60_000;
 
 /** The lead built it: it's the assignee, or one of the past builders (schema 17; missing means just the assignee). */
 export function leadBuilt(ticket: Pick<Ticket, "assignee_id" | "built_by">, leadId: string): boolean {
@@ -122,7 +129,8 @@ export function reviewDecision(
   ticket: Pick<Ticket, "assignee_id" | "built_by" | "needs_human">,
   pr: PrInfo,
   leadId: string,
-  handled: Pick<ReviewRecord, "sha" | "reviews"> | null | undefined,
+  handled: Pick<ReviewRecord, "sha" | "reviews" | "noChecks"> | null | undefined,
+  now = Date.now(),
   maxReviews = MAX_AUTO_REVIEWS,
 ): ReviewDecision {
   const sha = pr.headRefOid.toLowerCase();
@@ -132,7 +140,12 @@ export function reviewDecision(
   // Someone is already waiting on a person here; a review now would talk over them.
   if (ticket.needs_human && !isMergeQuestion(ticket.needs_human) && !isReviewQuestion(ticket.needs_human)) return d("wait", "it has a question for a person");
   const checks = pr.statusCheckRollup ?? [];
-  if (!checks.length) return d("no_checks", "no checks ran");
+  if (!checks.length) {
+    // A PR opened seconds ago has no checks yet either, so give GitHub time before saying so.
+    const since = handled?.noChecks?.sha.toLowerCase() === sha ? handled.noChecks.since : now;
+    if (now - since < NO_CHECKS_GRACE_MS) return { ...d("wait", "no checks yet; giving GitHub time to start them"), noChecksSince: since };
+    return { ...d("no_checks", `no checks ran in ${Math.round((now - since) / 60_000)} minutes`), noChecksSince: since };
+  }
   const name = (c: PrCheck) => c.name ?? c.context ?? "a check";
   const failed = checks.filter((c) => checkResult(c) === "failure").map(name);
   if (failed.length) return d("tests_failed", `${shortList(failed)} didn't pass`, failed);
@@ -141,6 +154,24 @@ export function reviewDecision(
   if (leadBuilt(ticket, leadId)) return d("ask_worker", "the lead built it, so it can't approve it");
   if ((handled?.reviews ?? 0) >= maxReviews) return d("limit", `already reviewed ${maxReviews} times`);
   return d("review", `tests passed at ${short(sha)}`);
+}
+
+export const REVIEW_UNDECIDED_QUESTION = `${REVIEW_FAILED_PREFIX}: the review ended without a decision. Can you look?`;
+
+/**
+ * After a review run that finished normally: did it leave the ticket with no decision? That's when
+ * it's still in Review at the same PR, unapproved, with no "Needs you" and no comment from the lead
+ * after `lastCommentId` (the newest comment before the run). Then nobody would be told otherwise.
+ */
+export function reviewEndedUndecided(
+  after: Pick<Ticket, "status" | "pr_url" | "approved_sha" | "needs_human">,
+  prUrl: string,
+  comments: Pick<Comment, "id" | "author_id">[],
+  leadId: string,
+  lastCommentId: number,
+): boolean {
+  if (after.status !== "review" || after.pr_url !== prUrl || after.approved_sha || after.needs_human) return false;
+  return !comments.some((c) => c.id > lastCommentId && c.author_id === leadId);
 }
 
 /**
