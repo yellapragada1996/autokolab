@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from
 import { go, href, onNav, openShow, type Route } from "../lib/router";
 import { Button } from "../ui";
 import type { CatchUpItem } from "./captain";
-import { overview, sinceItems, sinceLine, STATE_WORD, updatedText, youLine, type AgentRow, type Feature, type State, type Tone } from "./overview";
+import { overview, sinceItems, sinceLine, STATE_WORD, updatedText, youLine, type AgentRow, type Feature, type State, type Tone } from "./glance";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
 
 // Overview (DEC-24, AK-75): for looking, not talking. What state the work is in, what each agent is
 // doing, what needs you, what's new, and the features in Now · Next · Done. Every sentence comes
-// from overview.ts; this file only draws. No ticket key is shown: keys are hover text at most.
+// from glance.ts; this file only draws. No ticket key is shown: keys are hover text at most.
 
 const STATE_COLOR: Record<State, string> = { working: "var(--blue)", waiting: "var(--amber)", paused: "var(--coral)", idle: "var(--text-dim)" };
 const TONE_COLOR: Record<Tone, string> = { live: "var(--blue)", needs: "var(--amber)", problem: "var(--coral)", quiet: "var(--text-dim)", done: "var(--green)" };

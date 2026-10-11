@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MERGE_OK_PREFIX, type Ticket } from "../lib/data";
 import { needsYou, type CatchUp } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, ticket, workspace } from "./fixtures";
-import { agentRows, finishedWhen, isPhrase, outcomeOf, overview, partLine, plainPhrase, progressWord, resumeAt, sinceItems, sinceLine, stopReason, withoutKeys, youLine } from "./overview";
+import { agentRows, finishedWhen, isPhrase, outcomeOf, overview, partLine, plainPhrase, progressWord, resumeAt, sinceItems, sinceLine, stopReason, withoutKeys, youLine } from "./glance";
 import type { Workspace } from "./useWorkspace";
 
 const NOW = new Date(at("12:00"));
