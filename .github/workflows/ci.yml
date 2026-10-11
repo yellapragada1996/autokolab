@@ -54,6 +54,9 @@ jobs:
       - name: Install
         run: npm ci --no-audit --no-fund
 
+      - name: File names differ by more than case
+        run: npm run check:case
+
       - name: Typecheck
         run: npm run typecheck
 

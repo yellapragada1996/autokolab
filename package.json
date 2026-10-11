@@ -8,7 +8,8 @@
   "scripts": {
     "build": "npm run build -w autokolab-web && npm run build -w autokolab",
     "test": "npm test --workspaces --if-present && supabase/tests/run-local.sh",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "check:case": "node scripts/check-case.mjs"
   },
   "engines": {
     "node": ">=20"
