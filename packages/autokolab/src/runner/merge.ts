@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NOTHING_UNSURE, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, isMergeQuestion, isReviewQuestion, type Comment, type MergePolicy, type Review, type ReviewerCandidate, type Ticket } from "../core/projects.js";
+import { MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NOTHING_UNSURE, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, isMergeQuestion, isReviewQuestion, type Comment, type MergePolicy, type PrFacts, type Review, type ReviewerCandidate, type Ticket } from "../core/projects.js";
 
 // The lead's approval and its runner's merge (AK-30, DEC-19). The decision is plain code, not a
 // model run: the runner merges a PR only at the commit the lead approved, once every check passed
@@ -42,9 +42,13 @@ export interface PrInfo {
   mergeable?: string;
   statusCheckRollup?: PrCheck[] | null;
   files?: { path: string }[] | null;
+  /** How many files the PR changes; `files` lists at most 100. */
+  changedFiles?: number;
+  additions?: number;
+  deletions?: number;
 }
 
-export const MERGE_FIELDS = "number,state,baseRefName,headRefOid,mergeable,statusCheckRollup,files";
+export const MERGE_FIELDS = "number,state,baseRefName,headRefOid,mergeable,statusCheckRollup,files,changedFiles,additions,deletions";
 const GH_FILE_LIMIT = 100;
 
 export type CheckResult = "success" | "pending" | "failure";
@@ -83,6 +87,39 @@ export function riskyFiles(pr: Pick<PrInfo, "files">): string[] {
   const files = (pr.files ?? []).map((f) => f.path);
   // gh lists at most 100 files, so a bigger PR can't be shown to be safe.
   return [...files.filter(isRiskyPath), ...(files.length >= GH_FILE_LIMIT ? [`${GH_FILE_LIMIT}+ files, too many to check`] : [])];
+}
+
+// ------------------------------------------------------------------ PR facts (AK-57)
+
+/**
+ * What the lead's runner records about a PR it looked at, so the website can say "Tests: 48 of 48
+ * passed on GitHub" and how big the change is without calling GitHub (schema 18).
+ */
+export function prFacts(pr: PrInfo): PrFacts {
+  const results = (pr.statusCheckRollup ?? []).map(checkResult);
+  const state = results.includes("failure") ? "failure" : results.includes("pending") || !results.length ? "pending" : "success";
+  const count = (n: unknown) => (typeof n === "number" && Number.isInteger(n) && n >= 0 ? n : 0);
+  return {
+    sha: pr.headRefOid.toLowerCase(),
+    checks: { passed: results.filter((r) => r === "success").length, total: results.length, state },
+    files: { total: Math.max(count(pr.changedFiles), (pr.files ?? []).length), risky: riskyFiles(pr).slice(0, 20).map((f) => f.slice(0, 300)) },
+    additions: count(pr.additions),
+    deletions: count(pr.deletions),
+  };
+}
+
+/** The stored facts say the same as the new ones (when they were recorded doesn't count). */
+export function samePrFacts(stored: PrFacts | null | undefined, next: PrFacts): boolean {
+  if (!stored) return false;
+  const a = stored.checks, b = next.checks;
+  return (
+    stored.sha === next.sha &&
+    a?.passed === b.passed && a?.total === b.total && a?.state === b.state &&
+    stored.files?.total === next.files.total &&
+    (stored.files?.risky ?? []).join("\n") === next.files.risky.join("\n") &&
+    stored.additions === next.additions &&
+    stored.deletions === next.deletions
+  );
 }
 
 // ------------------------------------------------------------------ automatic reviews (AK-59)

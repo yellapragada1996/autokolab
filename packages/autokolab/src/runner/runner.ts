@@ -11,7 +11,7 @@ import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { chooseModel, claudeInvocation, codexInvocation, runEngine, type EngineRun, type ModelChoice, type PlanStep } from "./engines.js";
 import { installHook } from "./githook.js";
-import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, riskyFiles, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
+import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, riskyFiles, samePrFacts, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
 import { checkoutCommit, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
@@ -771,6 +771,7 @@ export class Runner {
             this.log(`${t.key} review: couldn't check the PR: ${plainGhError((e as Error).message, `on ${this.ak.ownerName(this.ak.me)}'s machine`)}`);
             continue;
           }
+          await this.recordPrFacts(p, t, pr);
           await this.checkReview(p, t, pr).catch((e) => this.log(`${t.key} review: ${(e as Error).message}`));
         }
       }
@@ -855,6 +856,20 @@ export class Runner {
     return p.project.room_id ? this.ak.roomById(p.project.room_id) : this.ak.rooms().find((r) => r.repo === p.project.repo);
   }
 
+  /**
+   * Write what GitHub says about the PR to the ticket for "How do you know?" (AK-57), when it
+   * changed. Never stops a review or merge: a database before schema 18 just doesn't get it.
+   */
+  private async recordPrFacts(p: ProjectView, t: Ticket, pr: PrInfo): Promise<void> {
+    const facts = prFacts(pr);
+    if (samePrFacts(t.pr_facts, facts)) return;
+    try {
+      if (await p.recordPrFacts(t.id, facts)) t.pr_facts = facts;
+    } catch (e) {
+      this.log(`${t.key}: couldn't record the PR's tests and files: ${(e as Error).message}`);
+    }
+  }
+
   private async checkMerge(p: ProjectView, t: Ticket): Promise<void> {
     const rec = this.ticketState().merges?.[t.id];
     if (rec?.failedAt && rec.failedAt === t.updated_at) return; // a failed merge waits for the ticket to change
@@ -864,7 +879,9 @@ export class Runner {
     const policy = await p.mergePolicy();
     let d: MergeDecision;
     try {
-      d = mergeDecision(policy, ghPrView<PrInfo>(url), t, p.project.default_branch || "main");
+      const pr = ghPrView<PrInfo>(url);
+      d = mergeDecision(policy, pr, t, p.project.default_branch || "main");
+      await this.recordPrFacts(p, t, pr);
     } catch (e) {
       const why = plainGhError((e as Error).message, where);
       d = { action: "wait", why: `gh: ${why}`, question: `${MERGE_GH_PREFIX} (PR #${prNumber(url)}): ${why}`.slice(0, 1000), risky: [] };

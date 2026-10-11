@@ -77,7 +77,7 @@ const tickets: Ticket[] = [
   ticket(14, { title: "Filter search by price", status: "done", summary: "Shoppers can narrow search results to a price range", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/40", completed_at: iso(40) }),
   ticket(16, { title: "Store saved baskets in the database", status: "done", summary: "Saved baskets now remain available after sign-out", type: "feature", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/39", merge_ok_at: iso(70), merge_ok_by: ANA, completed_at: iso(60) }),
   ticket(15, { title: "Order history", status: "backlog", type: "epic", description: "Shoppers can see what they bought." }),
-  ticket(5, { title: "Checkout shows the wrong tax for Ontario", status: "review", type: "bug", priority: "urgent", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/41", labels: ["checkout"], summary: "Checkout charges the right tax for Ontario again", approved_sha: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912", approved_by: LEAD, approved_at: iso(5) }),
+  ticket(5, { title: "Checkout shows the wrong tax for Ontario", status: "review", type: "bug", priority: "urgent", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/41", labels: ["checkout"], summary: "Checkout charges the right tax for Ontario again", approved_sha: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912", approved_by: LEAD, approved_at: iso(5), pr_facts: { sha: "3f9c2a71d0b84e6a95c1f2d7e8a0b4c6d5e7f912", checks: { passed: 31, total: 48, state: "pending" }, files: { total: 2, risky: [] }, additions: 9, deletions: 3, checked_at: iso(4) } }),
   ticket(10, {
     title: "Store sessions in Postgres",
     status: "review",
@@ -99,6 +99,7 @@ const tickets: Ticket[] = [
       decisions: ["DEC-1", "CON-2"],
       less_sure: "I didn't try it against the live database's size; the table starts empty, so the first deploy should be quick.",
     },
+    pr_facts: { sha: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", checks: { passed: 48, total: 48, state: "success" }, files: { total: 3, risky: ["db/migrations/004_sessions.sql"] }, additions: 62, deletions: 4, checked_at: iso(11) },
     needs_human: "Ready to merge — needs your OK: Everyone who is signed in now will be signed out once, when this ships. Is that OK? (db/migrations/004_sessions.sql)",
   }),
   ticket(6, { title: "Order history page", status: "backlog", type: "feature", priority: "low", parent_id: "t15" }),

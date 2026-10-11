@@ -2,6 +2,7 @@ import { waitsForMergeOk, type Ticket, type TicketEvent } from "../lib/data";
 import { describe } from "./TicketPage";
 import type { Workspace } from "./useWorkspace";
 import { clock, type Turn } from "./captain";
+import { approvedFacts, changeCounts, riskyLine } from "./evidence";
 
 export type UndoState = { kind: "none" | "risky" | "can" } | { kind: "asked"; at: string };
 
@@ -18,6 +19,12 @@ export function undoMessage(ticket: Ticket): string {
 
 export function workSummary(t: Ticket): string {
   return t.review?.summary?.trim() || t.summary?.trim() || t.title;
+}
+
+/** The Change part's totals, from the PR snapshot of the approved commit (AK-57); null otherwise. */
+export function changeTotals(t: Ticket): { counts: string; risky?: string } | null {
+  const f = approvedFacts(t);
+  return f ? { counts: changeCounts(f), risky: riskyLine(f) } : null;
 }
 
 export type WorkRow = { label: "Built by" | "Reviewed by" | "Waiting on"; value: string; sha?: string; at?: string };

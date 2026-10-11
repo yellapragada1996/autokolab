@@ -806,6 +806,60 @@ select pg_temp.expect((select approved_by = '00000000-0000-0000-0000-0000000000e
 reset role;
 select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2']::uuid[] from public.tickets where key = 'MZ-4'), 'only the worker built MZ-4');
 
+-- ------------------------------------------------ what GitHub said about the PR (schema 18)
+reset role;
+select pg_temp.expect((select pr_facts is null from public.tickets where key = 'MZ-1'), 'tickets start without PR facts');
+create temp table mz1_before as select updated_at from public.tickets where key = 'MZ-1';
+grant select on mz1_before to authenticated;
+set role authenticated;
+-- the lead records them, trimmed to the known fields, with the database's time
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select pg_temp.expect((select pr_facts - 'checked_at' = '{"sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "checks": {"passed": 31, "total": 48, "state": "pending"}, "files": {"total": 3, "risky": ["packages/autokolab/sql/018_pr_facts.sql"]}, "additions": 62, "deletions": 4}'::jsonb
+    and (pr_facts ->> 'checked_at')::timestamptz = now()
+  from public.record_pr_facts('00000000-0000-0000-0000-0000000000a9',
+    '{"sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "checks": {"passed": 31, "total": 48, "state": "pending", "names": ["checks"]}, "files": {"total": 3, "risky": ["packages/autokolab/sql/018_pr_facts.sql"]}, "additions": 62, "deletions": 4, "checked_at": "2020-01-01T00:00:00Z", "diff": "+x"}'::jsonb)),
+  'the lead records the PR facts');
+select pg_temp.expect((select t.updated_at = b.updated_at from public.tickets t, mz1_before b where t.key = 'MZ-1'), 'recording PR facts doesn''t move updated_at');
+-- wrong shapes, long lists and secrets are refused, and the facts stay
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', '"all green"'::jsonb)$q$, 'AUTOKOLAB_BAD_PR_FACTS');
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', '{"sha": "abc1234", "checks": {"passed": 1, "total": 1, "state": "success"}, "files": {"total": 1, "risky": []}, "additions": 1, "deletions": 0}'::jsonb)$q$, 'AUTOKOLAB_BAD_PR_FACTS: "sha"');
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('b', 40), 'checks', jsonb_build_object('passed', 5, 'total', 4, 'state', 'success'), 'files', jsonb_build_object('total', 1, 'risky', '[]'::jsonb), 'additions', 1, 'deletions', 0))$q$, 'More checks passed');
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('b', 40), 'checks', jsonb_build_object('passed', 1, 'total', 1, 'state', 'great'), 'files', jsonb_build_object('total', 1, 'risky', '[]'::jsonb), 'additions', 1, 'deletions', 0))$q$, '"checks.state"');
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('b', 40), 'checks', jsonb_build_object('passed', 1, 'total', 1, 'state', 'success'), 'files', jsonb_build_object('total', 1, 'risky', '[]'::jsonb), 'additions', -1, 'deletions', 0))$q$, '"additions"');
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('b', 40), 'checks', jsonb_build_object('passed', 1, 'total', 1, 'state', 'success'), 'files', jsonb_build_object('total', 30, 'risky', to_jsonb(array_fill('a.sql'::text, array[21]))), 'additions', 1, 'deletions', 0))$q$, '"files.risky"');
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('b', 40), 'checks', jsonb_build_object('passed', 1, 'total', 1, 'state', 'success'), 'files', jsonb_build_object('total', 1, 'risky', jsonb_build_array(repeat('a', 301))), 'additions', 1, 'deletions', 0))$q$, '"files.risky"');
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('b', 40), 'checks', jsonb_build_object('passed', 1, 'total', 1, 'state', 'success'), 'files', jsonb_build_object('total', 1, 'risky', jsonb_build_array('ghp_abcdefghijklmnopqrstuvwxyz0123456789')), 'additions', 1, 'deletions', 0))$q$, 'AUTOKOLAB_SECRET');
+select pg_temp.expect((select pr_facts ->> 'sha' = repeat('a', 40) from public.tickets where key = 'MZ-1'), 'refused facts change nothing');
+-- nobody writes them directly, not even the lead
+select pg_temp.expect_error($q$update public.tickets set pr_facts = '{}'::jsonb where key = 'MZ-1'$q$, 'permission denied');
+-- a worker, a person, another project's lead and an outsider can't record them
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', null)$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', null)$q$, 'AUTOKOLAB_FORBIDDEN');
+select pg_temp.expect_error($q$update public.tickets set pr_facts = null where key = 'MZ-1'$q$, 'permission denied');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e3';
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', null)$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b4';
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', null)$q$, 'AUTOKOLAB_FORBIDDEN');
+-- members can read them
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect((select pr_facts -> 'checks' ->> 'total' = '48' from public.tickets where key = 'MZ-1'), 'members read the PR facts');
+-- reassigning keeps them (same PR); a new PR link clears them
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000e4' where key = 'MZ-1';
+select pg_temp.expect((select pr_facts is not null from public.tickets where key = 'MZ-1'), 'reassigning keeps the PR facts');
+update public.tickets set pr_url = 'https://github.com/ana/modelz/pull/11' where key = 'MZ-1';
+select pg_temp.expect((select pr_facts is null from public.tickets where key = 'MZ-1'), 'a new PR link clears the PR facts');
+-- null clears them too
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('c', 40), 'checks', jsonb_build_object('passed', 48, 'total', 48, 'state', 'success'), 'files', jsonb_build_object('total', 2), 'additions', 10, 'deletions', 0));
+select pg_temp.expect((select pr_facts -> 'files' -> 'risky' = '[]'::jsonb from public.tickets where key = 'MZ-1'), 'no risky list means none');
+select pg_temp.expect((select pr_facts is null from public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', null)), 'null clears the PR facts');
+set role anon;
+select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', null)$q$, 'permission denied');
+reset role;
+
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;
 select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from unnest(array[
