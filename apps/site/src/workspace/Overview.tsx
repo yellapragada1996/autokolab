@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { eventsBetween, type TicketEvent } from "../lib/data";
 import { go, href, onNav, openShow, type Route } from "../lib/router";
 import { Button } from "../ui";
 import type { CatchUpItem } from "./captain";
-import { overview, sinceItems, sinceLine, STATE_WORD, updatedText, youLine, type AgentRow, type Feature, type State, type Tone } from "./glance";
+import { overview, sinceItems, sinceLine, STATE_WORD, team, updatedText, watch, WEEK_MS, youLine, type AgentRow, type Feature, type State, type Team, type Tone, type WatchItem } from "./glance";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
 
@@ -16,6 +17,8 @@ const TONE_COLOR: Record<Tone, string> = { live: "var(--blue)", needs: "var(--am
 const DONE_SHOWN = 3;
 /** Next is short at this many features or fewer: "After these, nothing is planned." */
 const NEXT_SHORT = 2;
+/** How often the last week's events are read again. */
+const EVENTS_EVERY_MS = 5 * 60_000;
 
 export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr: CaptainRoom }) {
   const [now, setNow] = useState(() => new Date());
@@ -32,7 +35,34 @@ export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr:
     if (roomReady) startCatchUp();
   }, [roomReady, startCatchUp]);
 
+  // The last week's events, for Worth watching's send-back count. Read again every few minutes; if
+  // it can't be read, that one item is simply missing.
+  const projectId = ws?.project.id;
+  const demoEvents = ws?.demoEvents;
+  const [events, setEvents] = useState<TicketEvent[]>([]);
+  useEffect(() => {
+    if (!projectId || demoEvents) return;
+    let live = true;
+    const load = () =>
+      void eventsBetween(projectId, new Date(Date.now() - WEEK_MS), new Date())
+        .then((e) => live && setEvents(e))
+        .catch(() => undefined);
+    load();
+    const id = setInterval(load, EVENTS_EVERY_MS);
+    return () => {
+      live = false;
+      clearInterval(id);
+    };
+  }, [projectId, demoEvents]);
+
   const look = useMemo(() => (ws ? overview(ws, cr.needs, cr.plans, now) : null), [ws, cr.needs, cr.plans, now]);
+  const members = cr.room?.members;
+  const crew = useMemo(() => {
+    if (!ws) return null;
+    const seen = new Map((members ?? []).filter((m) => m.kind === "human").map((m) => [m.profile_id ?? m.id, m.last_seen_at]));
+    return team(ws, now, seen, me);
+  }, [ws, members, now, me]);
+  const watching = useMemo(() => (ws ? watch(ws, demoEvents ?? events, now) : []), [ws, demoEvents, events, now]);
   if (!ws || !look) return <Skeleton />;
   const slug = ws.project.slug;
   const captain: Route = { view: "captain", project: slug };
@@ -105,6 +135,10 @@ export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr:
           <DoneColumn features={look.features.done} />
         </section>
       )}
+
+      {crew && crew.agents.length > 0 && <TeamBlock team={crew} people={{ view: "people", project: slug }} />}
+
+      {ws.tickets.length > 0 && <WorthWatching items={watching} people={{ view: "people", project: slug }} />}
 
       <SetupChecklist ws={ws} me={me} />
     </div>
@@ -231,6 +265,84 @@ function FeatureCard({ f }: { f: Feature }) {
   );
 }
 
+// ------------------------------------------------------------------ team
+
+export function TeamBlock({ team, people }: { team: Team; people: Route }) {
+  return (
+    <section aria-label="Team" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <h2 style={heading}>Team</h2>
+      <ul style={list}>
+        {team.agents.map((a) => (
+          <li key={a.id}>
+            <a href={href(people)} onClick={onNav(people)} title={a.hover} className="ak-row" style={{ ...teamRow, textDecoration: "none" }}>
+              <Dot color={a.tone === "quiet" ? "var(--text-dim)" : TONE_COLOR[a.tone]} />
+              <span style={{ flex: "1 1 220px", minWidth: 0, fontSize: 14, color: "var(--text-body)", overflowWrap: "anywhere" }}>
+                <strong style={{ fontWeight: 600, color: "var(--text)" }}>{a.name}</strong>{" "}
+                <span style={{ color: a.tone === "quiet" ? "var(--text-muted)" : TONE_COLOR[a.tone] }}>{a.label}</span>
+              </span>
+              {a.usage && (
+                <span style={{ flex: "0 1 200px", display: "flex", flexDirection: "column", gap: 4, minWidth: 140 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-dim)" }}>{a.usage.text}</span>
+                  <span role="img" aria-label={a.usage.text} style={{ display: "block", height: 3, borderRadius: 2, background: "var(--surface-raised)", overflow: "hidden" }}>
+                    <span style={{ display: "block", height: "100%", width: `${Math.round(a.usage.share * 100)}%`, background: a.usage.share >= 1 ? "var(--coral)" : "var(--text-dim)" }} />
+                  </span>
+                </span>
+              )}
+            </a>
+          </li>
+        ))}
+        {team.people.map((p) => (
+          <li key={p.id} style={{ ...teamRow, cursor: "default" }}>
+            <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: "50%", flex: "none", boxSizing: "border-box", ...(p.online ? { background: "var(--text-muted)" } : { border: "1px solid var(--text-dim)" }) }} />
+            <span style={{ flex: "1 1 220px", minWidth: 0, fontSize: 14, color: "var(--text-body)", overflowWrap: "anywhere" }}>
+              <strong style={{ fontWeight: 600, color: "var(--text)" }}>{p.name}</strong> <span style={{ color: "var(--text-muted)" }}>{p.label}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// ------------------------------------------------------------------ worth watching
+
+export function WorthWatching({ items, people }: { items: WatchItem[]; people: Route }) {
+  const text: CSSProperties = { fontSize: 14, color: "var(--text-body)", overflowWrap: "anywhere" };
+  return (
+    <section aria-label="Worth watching" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <h2 style={heading}>Worth watching</h2>
+      {items.length > 0 && (
+        <ul style={list}>
+          {items.map((i, n) => {
+            const dot = <Dot color={i.tone === "problem" ? "var(--coral)" : "var(--text-dim)"} />;
+            return (
+              <li key={n}>
+                {i.key ? (
+                  <button type="button" onClick={() => openShow(i.key!)} title="Show the work" className="ak-row" style={teamRow}>
+                    {dot}
+                    <span style={text}>{i.text}</span>
+                  </button>
+                ) : i.people ? (
+                  <a href={href(people)} onClick={onNav(people)} className="ak-row" style={{ ...teamRow, textDecoration: "none" }}>
+                    {dot}
+                    <span style={text}>{i.text}</span>
+                  </a>
+                ) : (
+                  <span style={{ ...teamRow, cursor: "default" }}>
+                    {dot}
+                    <span style={text}>{i.text}</span>
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <p style={{ fontSize: 14, color: "var(--text-dim)" }}>{items.length ? "Nothing else is off." : "Nothing is off."}</p>
+    </section>
+  );
+}
+
 // ------------------------------------------------------------------ setup, while a step is undone
 
 function SetupChecklist({ ws, me }: { ws: Workspace; me: string }) {
@@ -304,4 +416,6 @@ function Skeleton() {
 const column: CSSProperties = { width: "100%", maxWidth: 880, margin: "0 auto", display: "flex", flexDirection: "column", gap: 28 };
 const list: CSSProperties = { listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 2 };
 const rowButton: CSSProperties = { width: "calc(100% + 20px)", textAlign: "left", background: "transparent", border: 0, cursor: "pointer", padding: "8px 10px", margin: "0 -10px", borderRadius: "var(--radius-md)", color: "inherit", font: "inherit", minWidth: 0, alignItems: "start" };
+const heading: CSSProperties = { fontSize: 13, fontWeight: 500, color: "var(--text-dim)" };
+const teamRow: CSSProperties = { ...rowButton, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", boxSizing: "border-box" };
 const linkButton: CSSProperties = { background: "transparent", border: 0, padding: 0, cursor: "pointer", color: "var(--blue-text)", font: "inherit", fontSize: 13 };

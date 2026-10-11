@@ -19,14 +19,18 @@ const BUILDER = "00000000-0000-0000-0000-0000000000c1";
 const REVIEWER = "00000000-0000-0000-0000-0000000000c2";
 const LEAD = "00000000-0000-0000-0000-0000000000c3";
 const SPARE = "00000000-0000-0000-0000-0000000000c4";
+const FREE = "00000000-0000-0000-0000-0000000000c5";
 // ?preview=workspace&state=waiting|paused|idle shows Overview's other states (AK-75); working is the default.
 // waiting: nobody runs and things need Ana. paused: nothing needs Ana and a stopped agent resumes by
-// itself. idle: everything started is finished.
+// itself. idle: everything started is finished, and Worth watching says "Nothing is off."
 const demoState = new URLSearchParams(location.search).get("state");
 const nobodyRuns = demoState === "waiting" || demoState === "paused" || demoState === "idle";
 const nothingNeeded = demoState === "paused" || demoState === "idle";
 // When lee-claude's usage limit resets, in its own time zone, as its runner writes it.
 const resetsAt = new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Stockholm", hour: "numeric", minute: "2-digit" }).format(new Date(now + 95 * 60_000)).toLowerCase();
+// Team (AK-76): each runner reports its usage for today where it runs, its owner's time zone.
+const dayIn = (timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(now));
+const usedIn = (timeZone: string, minutes: number, limitHours: number) => ({ used_today_s: minutes * 60, daily_limit_s: limitHours * 3600, usage_day: dayIn(timeZone) });
 // ?preview=workspace&empty shows a project with no tickets yet (Overview's empty state).
 const demoEmpty = new URLSearchParams(location.search).has("empty");
 
@@ -117,6 +121,8 @@ const allTickets: Ticket[] = [
     pr_facts: { sha: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", checks: { passed: 48, total: 48, state: "success" }, files: { total: 3, risky: ["db/migrations/004_sessions.sql"] }, additions: 62, deletions: 4, checked_at: iso(11) },
     needs_human: "Ready to merge — needs your OK: Everyone who is signed in now will be signed out once, when this ships. Is that OK? (db/migrations/004_sessions.sql)",
   }),
+  // Worth watching (AK-76): finished 45 minutes ago and nobody has reviewed it.
+  ticket(17, { title: "Show related products", summary: "showing related products under the basket", status: "review", type: "feature", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/44", started_at: iso(140), updated_at: iso(45) }),
   ticket(6, { title: "Order history page", status: "backlog", type: "feature", priority: "low", parent_id: "t15" }),
   ticket(7, { title: "Upgrade to React 19", status: "backlog", type: "chore", assignee_id: LEE, assignee_type: "human" }),
   ticket(8, { title: "Product search", status: "done", summary: "Shoppers can search products by name from any page", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(300) }),
@@ -224,16 +230,22 @@ history.push(
   happened("t59", 12 * DAY + 400, REVIEWER, "needs_human", { note: "Should the reset link last an hour or a day?" }),
   happened("t55", 5 * DAY + 260, LEAD, "status", { from: "review", to: "in_progress" }),
   happened("t64", 22 * DAY + 400, LEAD, "status", { from: "review", to: "in_progress" }),
+  // Worth watching (AK-76): Apple Pay bounced off review twice this week.
+  happened("t12", 3 * DAY, LEAD, "status", { from: "review", to: "in_progress" }),
+  happened("t12", 1 * DAY, LEAD, "status", { from: "review", to: "in_progress" }),
+  happened("t17", 45, BUILDER, "status", { from: "in_progress", to: "review" }),
   happened("t8", 2 * DAY, ANA, "status", { from: "done", to: "in_progress" }),
   happened("t8", 300, BUILDER, "status", { from: "in_progress", to: "done" }),
 );
 history.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
 
 const agents: Agent[] = [
-  { id: LEAD, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "ana-claude", status: "idle", status_note: "Planned the Sign-in goal", current_ticket_id: null, last_seen_at: iso(3), model: "opus", effort: "high", model_set_by: ANA, model_set_at: iso(60), effective_model: "claude-opus-5-5", effective_effort: "high", effective_at: iso(20) },
-  { id: BUILDER, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "builder", status: nobodyRuns ? "idle" : "building", status_note: nobodyRuns ? null : "Creating profiles for new users", current_ticket_id: nobodyRuns ? null : "t2", last_seen_at: iso(1), model: "sonnet", effort: "medium", model_set_by: LEAD, model_set_at: iso(30), effective_model: "haiku", effective_effort: "medium", effective_at: iso(1) },
+  { id: LEAD, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "ana-claude", status: "idle", status_note: "Planned the Sign-in goal", current_ticket_id: null, last_seen_at: iso(3), model: "opus", effort: "high", model_set_by: ANA, model_set_at: iso(60), effective_model: "claude-opus-5-5", effective_effort: "high", effective_at: iso(20), ...usedIn("America/Toronto", 35, 3) },
+  { id: BUILDER, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "builder", status: nobodyRuns ? "idle" : "building", status_note: nobodyRuns ? null : "Creating profiles for new users", current_ticket_id: nobodyRuns ? null : "t2", last_seen_at: iso(1), model: "sonnet", effort: "medium", model_set_by: LEAD, model_set_at: iso(30), effective_model: "haiku", effective_effort: "medium", effective_at: iso(1), ...usedIn("America/Toronto", 70, 3) },
   { id: REVIEWER, owner_profile_id: LEE, owner_label: "lee", vendor: "codex", display_name: "lee-codex", status: nothingNeeded ? "idle" : "waiting_human", status_note: "Asked about the session store", current_ticket_id: "t4", last_seen_at: iso(2), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "gpt-5.5-codex", effective_effort: null, effective_at: iso(120) },
-  { id: SPARE, owner_profile_id: LEE, owner_label: "lee", vendor: "claude", display_name: "lee-claude", status: "idle", status_note: `Waiting for my usage limit to reset, about ${resetsAt} (Europe/Stockholm)`, current_ticket_id: "t12", last_seen_at: iso(2), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: null, effective_effort: null, effective_at: null },
+  { id: SPARE, owner_profile_id: LEE, owner_label: "lee", vendor: "claude", display_name: "lee-claude", status: "idle", status_note: `Waiting for my usage limit to reset, about ${resetsAt} (Europe/Stockholm)`, current_ticket_id: "t12", last_seen_at: iso(2), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: null, effective_effort: null, effective_at: null, ...usedIn("Europe/Stockholm", 160, 4), waiting_until: new Date(now + 95 * 60_000).toISOString() },
+  // Free: connected, with nothing assigned.
+  { id: FREE, owner_profile_id: ANA, owner_label: "ana", vendor: "codex", display_name: "ana-codex", status: "idle", status_note: null, current_ticket_id: null, last_seen_at: iso(1), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "gpt-5-codex", effective_effort: null, effective_at: iso(40), ...usedIn("America/Toronto", 20, 2) },
 ];
 
 const members: Member[] = [
@@ -243,6 +255,7 @@ const members: Member[] = [
   { actor_id: BUILDER, actor_type: "agent", role: "member" },
   { actor_id: REVIEWER, actor_type: "agent", role: "member" },
   { actor_id: SPARE, actor_type: "agent", role: "member" },
+  { actor_id: FREE, actor_type: "agent", role: "member" },
 ];
 
 const allDecisions: Decision[] = [
