@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ticketDetail, type TicketEvent } from "../lib/data";
 import { closeShow, openShow, type ShowPart } from "../lib/router";
 import { Button, Skeleton } from "../ui";
-import { clock } from "./captain";
-import { undoMessage, undoState, workHistory, workRows, workSummary } from "./showWork";
+import { historyTime, undoMessage, undoState, workHistory, workRows, workSummary } from "./showWork";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
 
@@ -113,7 +112,7 @@ export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Wor
               {ticket.pr_url && <a href={ticket.pr_url} target="_blank" rel="noopener noreferrer">Open the full change on GitHub</a>}
             </>}
             {part === "history" && <>
-              {failed ? <p>History couldn't be loaded right now.</p> : events === null ? <Skeleton lines={4} /> : <><ol className="ak-show-history">{workHistory(ws, events).map((e) => <li key={e.id}><time dateTime={e.at}>{clock(e.at)}</time><span>{e.text}</span></li>)}</ol>{!workHistory(ws, events).length && <p>No history recorded yet.</p>}<p className="ak-show-foot">Written by the database, not by the agents.</p></>}
+              {failed ? <p>History couldn't be loaded right now.</p> : events === null ? <Skeleton lines={4} /> : <><ol className="ak-show-history">{workHistory(ws, events).map((e) => <li key={e.id}><time dateTime={e.at}>{historyTime(e.at)}</time><span>{e.text}</span></li>)}</ol>{!workHistory(ws, events).length && <p>No history recorded yet.</p>}<p className="ak-show-foot">Written by the database, not by the agents.</p></>}
             </>}
           </div>
         </>}

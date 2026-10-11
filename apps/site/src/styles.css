@@ -59,11 +59,11 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .ak-show-file { color: var(--text-secondary); margin-bottom: 8px !important; }
 .ak-show-change pre { margin: 0 0 18px; padding: 16px; overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); color: var(--text-secondary); font: 12px/1.6 var(--mono); }
 .ak-show-history { list-style: none; margin: 0 0 24px; padding: 0; display: grid; gap: 14px; }
-.ak-show-history li { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 12px; }
+.ak-show-history li { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 12px; }
 .ak-show-history time, .ak-show-foot { color: var(--text-muted); }
 @keyframes ak-show-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
 @media (max-width: 1099px) { .ak-show-backdrop { align-items: flex-end; } .ak-show-sheet { width: 100%; height: 85%; border-left: 0; border-top: 1px solid var(--line); border-radius: 18px 18px 0 0; animation-name: ak-show-up; } .ak-show-sheet::before { content: ""; width: 36px; height: 4px; border-radius: 4px; background: var(--line-strong); position: absolute; top: 8px; left: calc(50% - 18px); } .ak-show-header { padding-top: 24px; } @keyframes ak-show-up { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } } }
-@media (max-width: 390px) { .ak-show-header { padding-left: 16px; padding-right: 16px; } .ak-show-body { padding-left: 16px; padding-right: 16px; } .ak-show-tabs { padding-left: 12px; } .ak-show-rows > div { grid-template-columns: 92px minmax(0, 1fr); } }
+@media (max-width: 390px) { .ak-show-header { padding-left: 16px; padding-right: 16px; } .ak-show-body { padding-left: 16px; padding-right: 16px; } .ak-show-tabs { padding-left: 12px; } .ak-show-rows > div { grid-template-columns: 92px minmax(0, 1fr); } .ak-show-history li { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
 @media (prefers-reduced-motion: reduce) { .ak-show-sheet { animation: none; } }
 h1, h2, h3, p { margin: 0; }
 .mono { font-family: var(--mono); }
