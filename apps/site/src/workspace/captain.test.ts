@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MERGE_OK_PREFIX } from "../lib/data";
-import { awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, lowerFirst, mergeChip, mergeQuestion, needsYou, openQuestions, ownerOf, parsePlan, planAsks, plans, planTitle, riskyPart, timeline, withoutPlan } from "./captain";
+import { awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, lowerFirst, mergeChip, mergeQuestion, needsYou, newerPlan, openQuestions, ownerOf, parsePlan, planAsks, planOrder, planRequest, plans, planTitle, riskyPart, timeline, waitsFor, withoutPlan } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, message, ticket, workspace } from "./fixtures";
 
 describe("the conversation with Captain", () => {
@@ -420,5 +420,52 @@ describe("plans (CON-23)", () => {
     // A question whose block is broken is an ordinary question, shown without the block.
     const broken = message(CAPTAIN, ME, "Go ahead?\n```autokolab-plan\nnope\n```", { kind: "question", created_at: at("10:00") });
     expect(needsYou(ws, conversation([broken], ME, CAPTAIN))[0]).toMatchObject({ kind: "captain_question", question: "Go ahead?" });
+  });
+
+  it("links a replaced plan to the newer one, and finds the person's request at the root of its thread", () => {
+    const ws = workspace([goalA, goalB, ...kids("backlog")]);
+    const ask = message(ME, CAPTAIN, "We need Google sign-in.", { created_at: at("08:55") });
+    const first = message(CAPTAIN, ME, body, { kind: "question", thread_id: ask.id, created_at: at("09:00") });
+    const other = message(CAPTAIN, ME, "Another.\n```autokolab-plan\ngoals: SH-20\n```", { kind: "question", created_at: at("09:10") });
+    const turns = conversation([ask, first, other], ME, CAPTAIN);
+    const [p, q] = plans(ws, turns);
+    expect(newerPlan([p, q], p)?.turnId).toBe(other.id);
+    expect(newerPlan([p, q], q)).toBeNull();
+    expect(planRequest(p, turns)?.body).toBe("We need Google sign-in.");
+    // A plan that starts its own thread has no request to show.
+    expect(planRequest(q, turns)).toBeNull();
+  });
+});
+
+describe("the plan page's ticket order", () => {
+  const blocked = (tickets: ReturnType<typeof ticket>[], links: [string, string][]) => {
+    const ws = workspace(tickets);
+    return { ...ws, blockersOf: (id: string) => links.filter(([t]) => `t-${t}` === id).map(([, b]) => ws.byKey.get(b)!) };
+  };
+
+  it("puts a ticket after the ones it waits for, ties in board order", () => {
+    const [a, b, c, d] = ["SH-1", "SH-2", "SH-3", "SH-4"].map((key) => ticket({ key }));
+    // SH-1 waits for SH-3; SH-2 waits for SH-1. SH-4 waits for nothing, so it keeps its board place.
+    const ws = blocked([a, b, c, d], [["SH-1", "SH-3"], ["SH-2", "SH-1"]]);
+    expect(planOrder(ws, [a, b, c, d]).map((t) => t.key)).toEqual(["SH-3", "SH-1", "SH-2", "SH-4"]);
+    // No blockers: board order, whatever order they came in.
+    expect(planOrder(workspace([a, b, c]), [c, a, b]).map((t) => t.key)).toEqual(["SH-1", "SH-2", "SH-3"]);
+  });
+
+  it("ignores blockers outside the list, and still lists every ticket when blockers loop", () => {
+    const [a, b, x] = ["SH-1", "SH-2", "SH-9"].map((key) => ticket({ key }));
+    expect(planOrder(blocked([a, b, x], [["SH-1", "SH-9"]]), [a, b]).map((t) => t.key)).toEqual(["SH-1", "SH-2"]);
+    expect(planOrder(blocked([a, b], [["SH-1", "SH-2"], ["SH-2", "SH-1"]]), [a, b]).map((t) => t.key)).toEqual(["SH-1", "SH-2"]);
+  });
+
+  it("says what a ticket still waits for, by title, and nothing when it waits for nothing open", () => {
+    const a = ticket({ key: "SH-1", title: "Add the table" });
+    const b = ticket({ key: "SH-2", title: "Callback" });
+    const c = ticket({ key: "SH-3", title: "Button" });
+    const done = ticket({ key: "SH-4", title: "Old work", status: "done" });
+    const ws = blocked([a, b, c, done], [["SH-3", "SH-1"], ["SH-3", "SH-2"], ["SH-2", "SH-1"], ["SH-1", "SH-4"]]);
+    expect(waitsFor(ws, b)).toBe("after “Add the table”");
+    expect(waitsFor(ws, c)).toBe("after “Add the table” and “Callback”");
+    expect(waitsFor(ws, a)).toBeNull();
   });
 });
