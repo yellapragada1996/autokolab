@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addComment, allowMerge, approveTicket, lastCaughtUp, markCaughtUp, updateTicket, type Agent, type Project, type Ticket } from "../lib/data";
 import { postToRoom, roomFor, roomMessages, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
-import { catchUp, conversation, needsYou, NO_ANSWER_NEEDED, OK_START, plans as plansOf, type Answer, type CatchUp, type Need, type Plan, type Turn } from "./captain";
+import { catchUp, closingAnswers, conversation, needsYou, NO_ANSWER_NEEDED, OK_START, plans as plansOf, settledWithoutYou, type Answer, type CatchUp, type Need, type Plan, type Turn } from "./captain";
 import { agentDot, agentOnline } from "./People";
 import type { Workspace } from "./useWorkspace";
 
@@ -42,6 +42,10 @@ export interface CaptainRoom {
   turns: Turn[];
   /** Everything still waiting on the person, after the answers given on this visit. */
   needs: Need[];
+  /** Captain's questions settled without the person, by message id: what happened (AK-100). */
+  settled: Map<number, string>;
+  /** Captain's answers that closed its own questions: shown under the question, not again on their own. */
+  closers: Set<number>;
   /** Captain's plans, with the tickets moved on this visit already counted as Ready. */
   plans: Plan[];
   /** Risky merges OK'd on this visit: they stay, with a green line. */
@@ -145,6 +149,8 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   const planWs = useMemo(() => (ws && moved.size ? { ...ws, tickets: ws.tickets.map((t) => (moved.has(t.id) && t.status === "backlog" ? { ...t, status: "ready" as const } : t)) } : ws), [ws, moved]);
   const plans = useMemo(() => (planWs ? plansOf(planWs, turns) : []), [planWs, turns]);
   const raw = useMemo(() => (planWs ? needsYou(planWs, turns) : []), [planWs, turns]);
+  const settledQs = useMemo(() => (planWs ? settledWithoutYou(planWs, turns) : new Map<number, string>()), [planWs, turns]);
+  const closers = useMemo(() => closingAnswers(turns), [turns]);
   // An answer hides the card it answered, not a newer question on the same ticket.
   const needs = useMemo(() => raw.filter((n) => settled.get(n.key)?.since !== n.since), [raw, settled]);
   const okd = useMemo(() => [...settled.values()].filter((s) => s.ok && s.answer === "yes").map((s) => s.need), [settled]);
@@ -290,6 +296,11 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   };
 
   const threadOf = (need: Need) => turns.find((t) => t.id === need.turnId)?.thread ?? need.turnId;
+  // A ticket's need that is also Captain's question (needsYou): what settles one closes the other,
+  // so the question doesn't come back on its own once the ticket's "Needs you" is cleared.
+  const alsoInThread = async (need: Need, text: string) => {
+    if (need.ticket && need.turnId !== null) await post(text, threadOf(need));
+  };
   const answerCaptain = (need: Need, text: string) => settle(need, "answered", () => post(text, threadOf(need)));
   const sayNo = (need: Need, text: string) => settle(need, "no", () => post(`No on ${need.ticket?.key ?? "it"}: ${text}`, null));
   const changePlan = (plan: Plan, text: string) => send(text, plan.thread, planKey(plan));
@@ -310,6 +321,8 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     turns,
     plans,
     needs,
+    settled: settledQs,
+    closers,
     okd,
     answered,
     errors,
@@ -327,15 +340,22 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
       settle(
         need,
         "answered",
-        real(async () => {
-          await addComment(need.ticket!.id, profileId, text);
-          await updateTicket(need.ticket!.id, { needs_human: null });
-        }),
+        async () => {
+          await real(async () => {
+            await addComment(need.ticket!.id, profileId, text);
+            await updateTicket(need.ticket!.id, { needs_human: null });
+          })();
+          await alsoInThread(need, text);
+        },
       ),
     answerCaptain,
     sayNo,
     closeQuestion: (need) => settle(need, "closed", () => post(NO_ANSWER_NEEDED, threadOf(need))),
-    clearNeed: (need) => settle(need, "dismissed", real(() => updateTicket(need.ticket!.id, { needs_human: null }))),
+    clearNeed: (need) =>
+      settle(need, "dismissed", async () => {
+        await real(() => updateTicket(need.ticket!.id, { needs_human: null }))();
+        await alsoInThread(need, NO_ANSWER_NEEDED);
+      }),
     startPlan,
     changePlan,
     replyTo,
