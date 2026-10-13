@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addComment, allowMerge, lastCaughtUp, markCaughtUp, updateTicket, type Agent, type Project, type Ticket } from "../lib/data";
 import { postToRoom, roomFor, roomMessages, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
@@ -117,7 +118,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
       setRoom(r);
       setLoadError("");
     } catch (e) {
-      setLoadError((e as Error).message);
+      setLoadError(reportError(e, "load the room"));
       setRoom((x) => (x === undefined ? null : x));
     }
   }, [project.room_id, profileId, demo]);
@@ -186,7 +187,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
         next.delete(need.key);
         return next;
       });
-      setError(need.key, (e as Error).message || "The server refused it.");
+      setError(need.key, reportError(e, "send your reply"));
       return false;
     }
   };
@@ -219,7 +220,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
       await post(text, thread);
       return true;
     } catch (e) {
-      setError(errorKey, (e as Error).message || "The server refused it.");
+      setError(errorKey, reportError(e, "send your message"));
       return false;
     }
   };
@@ -252,19 +253,20 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
         await real(() => updateTicket(t.id, { status: "ready" }))();
       } catch (e) {
         refused.push(t);
-        reason ||= (e as Error).message || "the server refused it.";
+        const message = reportError(e, "start the plan");
+        reason ||= message;
       }
     }
     if (refused.length) {
       mark(refused.map((t) => t.id), false);
       const left = drafts.length - refused.length;
       const which = refused.map((t) => t.key).join(", ");
-      setError(key, left ? `${which} ${refused.length === 1 ? "is" : "are"} still in Backlog: ${reason} The other ${left} moved to Ready. OK, start again tries only ${refused.length === 1 ? "that one" : "those"}.` : `no ticket moved: ${reason}`);
+      setError(key, left ? `${which} ${refused.length === 1 ? "is" : "are"} still in Backlog: ${reason} The other ${left} moved to Ready. OK, start again tries only ${refused.length === 1 ? "that one" : "those"}.` : `No ticket moved. ${reason}`);
     } else {
       try {
         await post(OK_START, plan.thread);
       } catch (e) {
-        setError(key, `the tickets are on the board, but Captain didn't get your OK: ${(e as Error).message || "the server refused it."}`);
+        setError(key, `The tickets are on the board. ${reportError(e, "tell Captain to start")}`);
       }
     }
     if (!demo) {

@@ -32,12 +32,12 @@ describe("usageBetween", () => {
 
   it("shows a permission error, even one that names the table", async () => {
     answer = { data: null, error: { code: "42501", message: "permission denied for table run_usage" } };
-    // Worded like every other refusal in the file.
-    await expect(read()).rejects.toThrow("You can't change that here.");
+    // Preserve the original diagnostic until the UI can log and format it.
+    await expect(read()).rejects.toMatchObject(answer.error!);
   });
 
   it("shows an error that comes without a code", async () => {
     answer = { data: null, error: { code: "", message: "TypeError: fetch failed" } };
-    await expect(read()).rejects.toThrow(/fetch failed/);
+    await expect(read()).rejects.toMatchObject(answer.error!);
   });
 });

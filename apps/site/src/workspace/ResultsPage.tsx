@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import * as data from "../lib/data";
 import type { RunUsage, TicketEvent } from "../lib/data";
@@ -56,7 +57,7 @@ export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment 
     data
       .eventsBetween(ws.project.id, rangeOf("4weeks", now).from, now)
       .then((rows) => live && setEvents(rows))
-      .catch((e: Error) => live && setError(e.message));
+      .catch((e: Error) => live && setError(reportError(e, "load the results")));
     return () => {
       live = false;
     };
@@ -73,7 +74,7 @@ export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment 
     data
       .usageBetween(ws.project.id, rangeOf("4weeks", now).from, now)
       .then((rows) => live && setRuns(rows))
-      .catch((e: Error) => live && setUsageError(e.message));
+      .catch((e: Error) => live && setUsageError(reportError(e, "load the usage")));
     return () => {
       live = false;
     };
@@ -123,7 +124,7 @@ export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment 
         <p style={{ fontSize: 14, color: "var(--muted)" }}>{periodLine(range)}</p>
         {error ? (
           <p role="alert" style={{ fontSize: 14, color: "var(--danger)" }}>
-            Couldn't read the project's history: {error}
+            {error}
           </p>
         ) : !r ? (
           <Skeleton lines={3} />
@@ -135,7 +136,7 @@ export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment 
       {r && r.merged.length > 0 && <Body ws={ws} r={r} />}
       {usageError ? (
         <p role="alert" style={{ fontSize: 14, color: "var(--danger)" }}>
-          Couldn't read what the runs used: {usageError}
+          {usageError}
         </p>
       ) : (
         r && runs && <UsageSection ws={ws} u={usage(ws, runs, period, now)} />

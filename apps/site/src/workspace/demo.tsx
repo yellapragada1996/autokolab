@@ -406,6 +406,8 @@ export default function DemoWorkspace() {
       childrenOf: (tid) => tickets.filter((t) => t.parent_id === tid),
       demoEvents: demoEmpty ? [] : history,
       demoUsage: demoEmpty ? [] : demoUsage,
+      demoDetails: new Map(tickets.map((t) => [t.id, { steps: steps.get(t.id) ?? [], comments: [], events: demoEvents.get(t.id) ?? [] }])),
+      demoInvites: [{ code: "SHOP2026", project_id: project.id, created_at: iso(60), expires_at: new Date(Date.now() + 7 * 86400_000).toISOString(), max_uses: null, uses: 1, revoked: false }],
     };
   }, []);
   const previewRoute = parse("/p/shop", location.search);

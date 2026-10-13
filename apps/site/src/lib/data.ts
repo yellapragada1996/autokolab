@@ -223,17 +223,11 @@ export interface Guide {
 }
 
 function check<T>(r: { data: T | null; error: { message: string } | null }): T {
-  if (r.error) throw new Error(friendly(r.error.message));
+  if (r.error) throw r.error;
   return r.data as T;
 }
 
-export function friendly(m: string): string {
-  if (m.includes("AUTOKOLAB_")) return m.replace(/^.*AUTOKOLAB_[A-Z_]+:\s*/, "");
-  if (/row-level security|permission denied/i.test(m)) return "You can't change that here.";
-  if (/could not find the function/i.test(m)) return "This needs the latest database update. Ask the project's admin to apply it.";
-  if (/JWT|expired/i.test(m)) return "Your session expired. Reload the page.";
-  return m;
-}
+
 
 // ------------------------------------------------------------------ projects and people
 

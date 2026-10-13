@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useEffect, useState } from "react";
 import { saveGuide, type Guide } from "../lib/data";
 import { Button } from "../ui";
@@ -98,7 +99,7 @@ function GuidePart({ ws, part, guide }: { ws: Workspace; part: (typeof PARTS)[nu
       await ws.reload();
       setEditing(false);
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "save the guide"));
     }
     setBusy(false);
   };

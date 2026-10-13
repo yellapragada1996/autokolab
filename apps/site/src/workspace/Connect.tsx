@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useEffect, useState } from "react";
 import { connectLine, createPairing, type Pairing } from "../lib/data";
 import { go } from "../lib/router";
@@ -22,7 +23,7 @@ export function ConnectAgents({ ws, me }: { ws: Workspace; me: string }) {
       setCopied(false);
       setPairing(await createPairing(ws.project.id));
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "connect your agents"));
     }
   };
   useEffect(() => {
