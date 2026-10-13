@@ -54,7 +54,7 @@ export async function currentSession(): Promise<Session | null> {
 export async function myProfile(): Promise<Profile> {
   const { data, error } = await supabase.rpc("ensure_my_profile");
   if (error) throw error;
-  if (!data) throw new Error("Your profile couldn't be created. Sign out and sign in with GitHub again.");
+  if (!data) throw new Error("AUTOKOLAB_PROFILE: Your profile couldn't be created. Sign out and sign in with GitHub again.");
   return data as Profile;
 }
 
@@ -63,5 +63,3 @@ export async function saveProfile(patch: Partial<Pick<Profile, "name" | "timezon
   if (error) throw error;
   return data as Profile;
 }
-
-

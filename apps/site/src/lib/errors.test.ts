@@ -28,18 +28,42 @@ const cases: [unknown, string][] = [
   ["AUTOKOLAB_BAD: ", fallback],
   ["AUTOKOLAB_BAD: invalid uuid syntax", fallback],
   ["AUTOKOLAB_BAD: https://example.com/private", fallback],
-  ["AUTOKOLAB_BAD: SELECT * FROM tickets", fallback],
-  ["AUTOKOLAB_BAD: duplicate key in tickets", fallback],
-  ["AUTOKOLAB_BAD: null value in tickets", fallback],
+  ["SELECT * FROM tickets", fallback],
+  ["duplicate key in tickets", fallback],
+  ["null value in tickets", fallback],
   ["AUTOKOLAB_BAD: example.invalid/private", fallback],
   ["AUTOKOLAB_BAD: ftp://example.com/private", fallback],
   ["AUTOKOLAB_BAD: 10000000-0000-0000-0000-000000000001", fallback],
   ["AUTOKOLAB_UPDATE: Ask the owner to update AutoKolab.", "Ask the owner to update AutoKolab."],
   ["AUTOKOLAB_BAD: Error\n at load (data.ts:3)", fallback],
-  ["AUTOKOLAB_BAD: tickets_pkey", fallback],
+  ["tickets_pkey", fallback],
 ];
 
 describe("plainError", () => {
+  it.each([
+    ["AUTOKOLAB_SECRET: the ticket looks like it contains a key or token", "The ticket looks like it contains a key or token."],
+    ["AUTOKOLAB_SECRET: the comment looks like it contains a key or token", "The comment looks like it contains a key or token."],
+    ["AUTOKOLAB_SECRET: the guide looks like it contains a key or token", "The guide looks like it contains a key or token."],
+    ["AUTOKOLAB_SECRET: message rejected because it looks like it contains a key or token", "Message rejected because it looks like it contains a key or token."],
+    ["AUTOKOLAB_NOT_FOUND: octocat hasn't signed in to AutoKolab yet", "Octocat hasn't signed in to AutoKolab yet."],
+    ["AUTOKOLAB_BAD_INVITE: this invite has expired", "This invite has expired."],
+    ["AUTOKOLAB_BAD_INVITE: this invite has expired; ask for a new one", "This invite has expired; ask for a new one."],
+    ["AUTOKOLAB_TAKEN: a project with that short name already exists", "A project with that short name already exists."],
+    ['AUTOKOLAB_NAME_TAKEN: "octocat_agent" is already taken', '"octocat_agent" is already taken.'],
+    ['AUTOKOLAB_BAD_REVIEW: "line" needs both the file and the code.', '"line" needs both the file and the code.'],
+    ["AUTOKOLAB_PROFILE: Your profile couldn't be created. Sign out and sign in with GitHub again.", "Your profile couldn't be created. Sign out and sign in with GitHub again."],
+    ["AUTOKOLAB_FORBIDDEN: You can't post in this project's room.", "You can't post in this project's room."],
+  ])("preserves app-authored guidance: %s", (message, expected) => {
+    expect(plainError(new Error(message), "save the ticket")).toBe(expected);
+  });
+  it("trusts vocabulary in app-authored sentences", () => {
+    expect(plainError("AUTOKOLAB_FORMAT: the table needs JSON in snake_case for this schema.")).toBe("The table needs JSON in snake_case for this schema.");
+  });
+  it("rejects empty, multiline or overlong app-authored messages", () => {
+    for (const message of ["", "   ", "Try again.\n", "Try again.\rMore details", "a".repeat(241)]) {
+      expect(plainError(`AUTOKOLAB_BAD: ${message}`)).toBe(fallback);
+    }
+  });
   it.each(cases)("formats %j without technical wording", (error, expected) => {
     const output = plainError(error);
     expect(output).toBe(expected);

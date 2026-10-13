@@ -1,5 +1,8 @@
 // Keep error wording in one place. Only the UI boundary logs; this formatter is pure.
 const technical = /\b(uuid|syntax|constraint|relation|column|table|JWT|SQL|JSON|token|stack|postgres\w*|supabase|schema|PGRST\w*|TypeError|NetworkError)\b|\b[a-z][a-z0-9+.-]*:\/\/|www\.|\b[a-z][a-z0-9-]*\.[a-z]{2,}\b|\b(?:select\s+.+\s+from|insert into|update\s+\S+\s+set|delete from)\b|duplicate key|null value|invalid input|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|[\n\r{}<>`"]|\b\w+_\w+\b|\bat \S+\s*\(/i;
+// App-authored sentences may name keys, tokens or quoted names. Guard their shape,
+// rather than treating those words as diagnostics from an unknown source.
+const malformedSentence = /[\n\r]|\buuid\b|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|\b[a-z][a-z0-9+.-]*:\/\/|www\.|\b[a-z][a-z0-9-]*\.[a-z]{2,}\b|\bat \S+\s*\(/i;
 const permission = "You don't have permission to do that here.";
 const signIn = "Your sign-in expired. Reload the page.";
 const database = "This needs the latest database update. Ask the project's owner to apply it.";
@@ -14,10 +17,10 @@ export function plainError(error: unknown, what?: string): string {
   const action = what && what.length <= 70 && /^[a-z][a-z '-]+$/i.test(what) && !technical.test(what) ? what : null;
   const fallback = action ? `Couldn't ${action}. Try again; if it keeps happening, tell Captain.` : "Something went wrong. Try again; if it keeps happening, tell Captain.";
 
-  // These codes carry human wording. Reject malformed diagnostics even with this prefix.
-  const custom = /^AUTOKOLAB_[A-Z0-9_]+:\s*(.+)$/.exec(message);
-  if (custom && !technical.test(custom[1]) && custom[1].length <= 240) {
-    const sentence = custom[1].trim().replace(/\blead\b/gi, "Captain");
+  // These codes carry sentences we wrote. Preserve their reason and next step.
+  const custom = /^AUTOKOLAB_[A-Z0-9_]+:([\s\S]*)$/.exec(message);
+  if (custom && !malformedSentence.test(custom[1]) && custom[1].length <= 240) {
+    const sentence = custom[1].trim().replace(/\blead\b/gi, "Captain").replace(/^[a-z]/, (letter) => letter.toUpperCase());
     if (sentence) return /[.?]$/.test(sentence) ? sentence : `${sentence.replace(/!+$/, "")}.`;
   }
   if (/^(42501|403)$/.test(code) || /row[- ]level security|permission denied|insufficient privilege|not authorized|access denied/i.test(message)) return permission;

@@ -487,7 +487,9 @@ function AddPerson({ ws }: { ws: Workspace }) {
       setMsg({ ok: true, text: `Added ${login.trim().replace(/^@/, "")}.` });
       setLogin("");
     } catch (e2) {
-      setMsg({ ok: false, text: reportError(e2, "add this person") });
+      const message = e2 && typeof e2 === "object" && "message" in e2 ? e2.message : e2;
+      const nextStep = typeof message === "string" && message.startsWith("AUTOKOLAB_NOT_FOUND:") ? " Ask them to sign in with GitHub first." : "";
+      setMsg({ ok: false, text: reportError(e2, "add this person") + nextStep });
     }
     setBusy(false);
   };

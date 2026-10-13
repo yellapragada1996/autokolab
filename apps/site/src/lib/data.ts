@@ -227,8 +227,6 @@ function check<T>(r: { data: T | null; error: { message: string } | null }): T {
   return r.data as T;
 }
 
-
-
 // ------------------------------------------------------------------ projects and people
 
 export async function myProjects(): Promise<Project[]> {

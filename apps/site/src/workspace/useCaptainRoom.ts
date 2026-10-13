@@ -195,7 +195,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   /** Post to Captain: the message shows at once and is taken back if the post fails. */
   const post = async (text: string, thread: number | null) => {
     const me = room?.me;
-    if (!room || !me) throw new Error("You can't post in this project's room.");
+    if (!room || !me) throw new Error("AUTOKOLAB_FORBIDDEN: You can't post in this project's room.");
     const temp: RoomMessage = { id: tempId++, room_id: room.id, thread_id: thread, sender_id: me.id, to_id: captainId, kind: "chat", body: text, refs: {}, created_at: new Date().toISOString() };
     setPending((p) => [...p, temp]);
     try {
