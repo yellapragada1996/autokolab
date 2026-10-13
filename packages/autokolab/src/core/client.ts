@@ -62,14 +62,29 @@ export type RoomMemberView = Member & Pick<RoomMember, "role" | "can_instruct">;
 
 export class AutoKolabError extends Error {}
 
+export const SIGN_IN_LOST =
+  "AutoKolab couldn't sign this agent in again. Its token may have been removed. Ask its owner to reconnect it (People → Connect your agents).";
+export const SIGN_IN_UNREACHABLE = "AutoKolab couldn't reach its server to sign this agent in again. Check the internet connection and try again.";
+
+/** An error that means the request went out with an expired or rejected sign-in. */
+export function looksSignedOut(e: unknown): boolean {
+  const m = (e as Error)?.message ?? String(e);
+  return /JWT|token is expired|PGRST30[0-3]|Session expired or token revoked/i.test(m);
+}
+
 export class AutoKolab {
   private memberMap = new Map<string, Member>();
   private roomMap = new Map<string, Room>();
   private memberships: RoomMember[] = [];
+  /** Completed sign-ins; a call that failed under an older one doesn't sign in yet again. */
+  private signIns = 0;
+  private signingIn: Promise<void> | null = null;
 
   private constructor(
     readonly sb: SupabaseClient,
     public me: Member,
+    /** Signs in again with this machine's token. A closure, so the token is never a field. */
+    private readonly signIn: () => Promise<void>,
   ) {}
 
   static async connect(opts: ConnectOptions): Promise<AutoKolab> {
@@ -85,14 +100,62 @@ export class AutoKolab {
     const { data: me, error } = await sb.from("members").select("*").eq("id", memberId).maybeSingle();
     if (error) throw friendly(error);
     if (!me) throw new AutoKolabError("Signed in, but this token isn't an active member (revoked?).");
-    const ak = new AutoKolab(sb, me as Member);
+    const signIn = async () => {
+      const { error: e } = await sb.auth.signInWithPassword({ email, password });
+      if (e) throw new AutoKolabError(e.name === "AuthRetryableFetchError" ? SIGN_IN_UNREACHABLE : SIGN_IN_LOST);
+    };
+    const ak = new AutoKolab(sb, me as Member, signIn);
     await ak.refresh();
     return ak;
   }
 
   async close(): Promise<void> {
     await this.sb.removeAllChannels();
-    await this.sb.auth.signOut().catch(() => undefined);
+    // Only this session. The default ("global") also ends every other session of this identity,
+    // so each CLI command or runner restart used to sign out the agent's long-running tools,
+    // which then failed when their access token ran out about an hour later (AK-101).
+    await this.sb.auth.signOut({ scope: "local" }).catch(() => undefined);
+  }
+
+  /** Whether this client holds a session that hasn't run out. */
+  async signedIn(): Promise<boolean> {
+    const { data } = await this.sb.auth.getSession();
+    const s = data.session;
+    return !!s && (!s.expires_at || s.expires_at * 1000 > Date.now());
+  }
+
+  /**
+   * Sign in again with this machine's token, unless that already happened since `after`.
+   * Calls that fail together share one sign-in.
+   */
+  async signInAgain(after = this.signIns): Promise<void> {
+    if (this.signIns !== after) return;
+    this.signingIn ??= this.signIn()
+      .then(() => {
+        this.signIns++;
+      })
+      .finally(() => {
+        this.signingIn = null;
+      });
+    return this.signingIn;
+  }
+
+  /**
+   * Run a call that needs the sign-in. When the session is gone (another process signed it out,
+   * or its refresh was refused), sign in again first; when the call fails because of the sign-in,
+   * sign in again once and retry it once.
+   */
+  async withSession<T>(fn: () => Promise<T>): Promise<T> {
+    const before = this.signIns;
+    if (!(await this.signedIn())) await this.signInAgain(before);
+    const start = this.signIns;
+    try {
+      return await fn();
+    } catch (e) {
+      if (!looksSignedOut(e) && (await this.signedIn())) throw e;
+      await this.signInAgain(start);
+      return fn();
+    }
   }
 
   /** Reload members, rooms and memberships visible to this member. */

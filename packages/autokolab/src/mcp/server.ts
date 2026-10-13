@@ -113,7 +113,8 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
         await c.heartbeat().catch(() => undefined);
         await presence(c).catch(() => undefined);
         setInterval(() => {
-          void c.heartbeat().catch(() => undefined);
+          // Also heals the sign-in while the agent is between tool calls.
+          void c.withSession(() => c.heartbeat()).catch(() => undefined);
           void presence(c).catch(() => undefined);
         }, 60_000).unref();
         return c;
@@ -143,7 +144,7 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
   const tool = <T extends { room?: string }>(fn: (c: AutoKolab, room: () => RoomView, args: T) => Promise<string>) => async (args: T) => {
     try {
       const c = await ak();
-      return { content: [{ type: "text" as const, text: await fn(c, () => roomOf(c, args.room), args) }] };
+      return { content: [{ type: "text" as const, text: await c.withSession(() => fn(c, () => roomOf(c, args.room), args)) }] };
     } catch (e) {
       return { content: [{ type: "text" as const, text: `Error: ${(e as Error).message}` }], isError: true };
     }
@@ -365,7 +366,8 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
   const ptool = <T extends { project?: string }>(fn: (p: ProjectView, args: T) => Promise<string>) => async (args: T) => {
     try {
       const c = await ak();
-      return { content: [{ type: "text" as const, text: await fn(await projectOf(c, args.project), args) }] };
+      // Inside withSession, so "not in a project" only shows when it's true, not when the sign-in ran out.
+      return { content: [{ type: "text" as const, text: await c.withSession(async () => fn(await projectOf(c, args.project), args)) }] };
     } catch (e) {
       return { content: [{ type: "text" as const, text: `Error: ${(e as Error).message}` }], isError: true };
     }

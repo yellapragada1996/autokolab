@@ -491,7 +491,9 @@ export class Runner {
     );
     this.timers.push(
       setInterval(() => {
-        void ak.heartbeat(this.stateNow()).catch((e) => this.log(`Heartbeat failed: ${e.message}`));
+        // Signs in again when the session is gone. Without a session every read comes back empty,
+        // so the runner looked up while it couldn't see a single message (AK-101).
+        void ak.withSession(() => ak.heartbeat(this.stateNow())).catch((e) => this.log(`Heartbeat failed: ${e.message}`));
         void this.touchAgent();
         void this.reportUsage();
       }, HEARTBEAT_MS),
