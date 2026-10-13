@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { missingCreateSummaryNudge, needsHumanLengthNudge, roomPostLengthNudge } from "../src/mcp/server.js";
+import { missingCreateSummaryNudge, needsHumanLengthNudge, questionCloseProblem, roomPostLengthNudge } from "../src/mcp/server.js";
+
+describe("question_close (AK-100)", () => {
+  const q = { sender_id: "captain", room_id: "r1", kind: "question" as const };
+  it("closes only a question you asked, in this room", () => {
+    expect(questionCloseProblem(q, "captain", "r1", 7)).toBeNull();
+    expect(questionCloseProblem(undefined, "captain", "r1", 7)).toBe("There's no message #7 in this room.");
+    expect(questionCloseProblem({ ...q, room_id: "r2" }, "captain", "r1", 7)).toBe("There's no message #7 in this room.");
+    expect(questionCloseProblem(q, "birch", "r1", 7)).toBe("Message #7 isn't yours: you can only close a question you asked.");
+    expect(questionCloseProblem({ ...q, kind: "chat" }, "captain", "r1", 7)).toBe("Message #7 isn't a question (it's chat).");
+  });
+});
 
 describe("chat length nudges", () => {
   it("nudges a lead after a long message to a person", () => {
