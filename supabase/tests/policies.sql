@@ -1039,6 +1039,31 @@ select pg_temp.expect((select actor_id = '00000000-0000-0000-0000-0000000000b1' 
 set role anon;
 select pg_temp.expect_error($q$select public.forget_builder('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000e2', 'x')$q$, 'permission denied');
 reset role;
+-- Work done in the same update that hands the ticket on, or moves it out of In progress, still counts.
+-- MZ-10: e2's untouched ticket in progress. MZ-11: the lead's own untouched ticket in progress. MZ-12: e2's, in progress.
+insert into public.tickets (id, project_id, number, key, title, reporter_id, status, assignee_id, assignee_type, pr_url) values
+  ('00000000-0000-0000-0000-0000000001aa', '00000000-0000-0000-0000-0000000000f1', 10, 'MZ-10', 'Work and hand on at once',
+   '00000000-0000-0000-0000-0000000000e1', 'in_progress', '00000000-0000-0000-0000-0000000000e2', 'agent', null),
+  ('00000000-0000-0000-0000-0000000001ab', '00000000-0000-0000-0000-0000000000f1', 11, 'MZ-11', 'The lead works and hands on at once',
+   '00000000-0000-0000-0000-0000000000e1', 'in_progress', '00000000-0000-0000-0000-0000000000e1', 'agent', 'https://github.com/octo/modelz/pull/35'),
+  ('00000000-0000-0000-0000-0000000001ac', '00000000-0000-0000-0000-0000000000f1', 12, 'MZ-12', 'Work and step back at once',
+   '00000000-0000-0000-0000-0000000000e1', 'in_progress', '00000000-0000-0000-0000-0000000000e2', 'agent', null);
+set role authenticated;
+-- AK-48, first loophole in one update: the worker finishes and hands the ticket to the lead
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+update public.tickets set status = 'review', pr_url = 'https://github.com/octo/modelz/pull/34', assignee_id = '00000000-0000-0000-0000-0000000000e1' where key = 'MZ-10';
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2']::uuid[] from public.tickets where key = 'MZ-10'), 'working and handing the ticket on in one update is a builder');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000001aa', repeat('a1', 20))$q$, 'AUTOKOLAB_FORBIDDEN: You worked on this ticket');
+-- AK-48, second loophole in one update: the lead writes its summary and hands its ticket to a worker
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+update public.tickets set summary = 'The lead did this.', assignee_id = '00000000-0000-0000-0000-0000000000e4' where key = 'MZ-11';
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e1']::uuid[] from public.tickets where key = 'MZ-11'), 'the lead working and handing its ticket on in one update is a builder');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000001ab', repeat('a2', 20))$q$, 'AUTOKOLAB_FORBIDDEN: You worked on this ticket');
+-- the assignee setting the PR link while moving the ticket out of In progress
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+update public.tickets set status = 'ready', pr_url = 'https://github.com/octo/modelz/pull/36' where key = 'MZ-12';
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2']::uuid[] from public.tickets where key = 'MZ-12'), 'working while moving the ticket out of In progress is a builder');
+reset role;
 
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;

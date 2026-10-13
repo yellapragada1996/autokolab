@@ -3,9 +3,10 @@
 -- builders for good, and builders can't approve. On 11 Oct 2026 Captain was AK-90's assignee for a
 -- minute by mistake, which locked it out of approving a ticket it never touched. From now on a member
 -- is added to built_by only when:
---   1. as the ticket's assignee, they themselves change it so that it is In progress or Review, in any
---      way other than who it's assigned to (status, title, description, done means, branch, PR link,
---      summary, a question for a person, ...), or change its steps while it's In progress or Review;
+--   1. as the ticket's assignee (before or after the change), they themselves change it while it is
+--      In progress or Review (before or after the change), in any way other than who it's assigned to
+--      (status, title, description, done means, branch, PR link, summary, a question for a person, ...),
+--      or change its steps while it's In progress or Review;
 --   2. a build run for the ticket is recorded for them (run_usage, schema 20).
 -- Being assigned by someone else, or taking a ticket and handing it back without touching it, doesn't
 -- count. Moving a ticket on the board isn't working on it either. Everything else in schema 17 stays:
@@ -54,7 +55,10 @@ begin
   end if;
 
   -- The assignee changing the ticket while it's In progress or Review, other than who it's assigned to.
-  if tg_op = 'UPDATE' and who is not null and who = new.assignee_id and new.status in ('in_progress', 'review')
+  -- Before or after the update on both counts, so work done in the same update that hands the ticket
+  -- on, or moves it out of In progress, still counts (AK-48's loopholes).
+  if tg_op = 'UPDATE' and who is not null and who in (old.assignee_id, new.assignee_id)
+     and (old.status in ('in_progress', 'review') or new.status in ('in_progress', 'review'))
      and not (who = any(new.built_by)) then
     worked := new.status is distinct from old.status
            or new.title is distinct from old.title
