@@ -340,6 +340,7 @@ autokolab/                      (github.com/yellapragada1996/autokolab)
 | `decision_add` | Record a decision or contract. |
 | `decision_get` | Read the full text of one or several decisions or contracts by key, including replaced ones. |
 | `agent_model` | Change an agent's model and effort, with a reason (its owner or the project's lead). The agent is told in the room; it applies from its next run. |
+| `question_close` | Close a question you asked a person that was settled without them: posts one sentence on how, as an answer in its thread, and the person's "needs you" list stops showing it. |
 | `whoami`, `agents`, `room_post`, `room_read`, `room_wait`, `room_thread`, `work_log`, `board_list`, `board_upsert` | The version 1 chat room tools. |
 
 ### Commands (`autokolab …`)

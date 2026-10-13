@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LEAD_BUILT_QUESTION, MERGE_OK_PREFIX, REVIEW_LIMIT_QUESTION } from "../lib/data";
-import { answeredLine, awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, goalName, lowerFirst, mergeChip, mergeQuestion, NO_ANSWER_NEEDED, needsYou, needText, newerPlan, openQuestions, ownerOf, parsePlan, planAsks, planLine, planOrder, planRequest, plans, planTitle, problemText, replyPreview, riskyPart, shortened, timeline, today, waitsFor, withoutPlan } from "./captain";
+import { answeredLine, awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, ANSWERED_BELOW, clock, closingAnswers, closingReply, conversation, settledLine, settledWithoutYou, dayLabel, folded, foldText, goalName, lowerFirst, mergeChip, mergeQuestion, NO_ANSWER_NEEDED, needsYou, needText, newerPlan, openQuestions, ownerOf, parsePlan, planAsks, planLine, planOrder, planRequest, plans, planTitle, problemText, replyPreview, riskyPart, shortened, timeline, today, waitsFor, withoutPlan } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, message, ticket, workspace } from "./fixtures";
 
 describe("the conversation with Captain", () => {
@@ -89,6 +89,189 @@ describe("needs you", () => {
 
   it("is empty when nothing waits", () => {
     expect(needsYou(workspace([ticket({ key: "SH-1", status: "in_progress" })]), [])).toEqual([]);
+  });
+});
+
+describe("needs you shows each request once (AK-100)", () => {
+  const ask = (body: string, time: string, over = {}) => message(CAPTAIN, ME, body, { kind: "question", created_at: at(time), ...over });
+
+  it("shows a ticket's Needs you and Captain's question about it as one item, where Captain asked", () => {
+    const ws = workspace([ticket({ key: "SH-1", status: "in_progress", needs_human: "Redis or Postgres?", updated_at: at("09:00") })]);
+    const q = ask("SH-1 needs a choice: Redis or Postgres for sessions? Redis is faster, Postgres is one less thing to run.", "09:05");
+    const needs = needsYou(ws, conversation([q], ME, CAPTAIN));
+    expect(needs).toHaveLength(1);
+    expect(needs[0]).toMatchObject({ key: `ticket:t-SH-1`, kind: "ticket_question", turnId: q.id, since: at("09:05"), said: q.body });
+    // Captain's message is the fuller one, so it's the text.
+    expect(needText(needs[0], () => "")).toBe(q.body);
+  });
+
+  it("keeps the ticket's words when they say more than Captain's question", () => {
+    const ws = workspace([ticket({ key: "SH-1", status: "in_progress", needs_human: "Redis or Postgres for the sessions table? Redis is faster." })]);
+    const [need] = needsYou(ws, conversation([ask("SH-1?", "09:05")], ME, CAPTAIN));
+    expect(need.said).toBeUndefined();
+    expect(needText(need, () => "Birch")).toMatch(/^Someone has a question on SH-1: Redis or Postgres/);
+  });
+
+  it("collapses several open questions about one ticket to the newest", () => {
+    const ws = workspace([ticket({ key: "SH-2", status: "review" })]);
+    const qs = [ask("SH-2 is stuck on its tests. Retry?", "09:00"), ask("SH-2 failed again. Retry?", "09:10"), ask("SH-2 still fails. Should I hand it to Fjord?", "09:20")];
+    const needs = needsYou(ws, conversation(qs, ME, CAPTAIN));
+    expect(needs.map((n) => [n.kind, n.turnId])).toEqual([["captain_question", qs[2].id]]);
+  });
+
+  it("shows both when it isn't clear they're the same: a question naming several tickets, or none", () => {
+    const ws = workspace([ticket({ key: "SH-1", status: "in_progress", needs_human: "Blue or green?" }), ticket({ key: "SH-2", status: "in_progress" })]);
+    const both = ask("SH-1 and SH-2 both touch the header. Which goes first?", "09:05");
+    const none = ask("Ship today or tomorrow?", "09:06");
+    const needs = needsYou(ws, conversation([both, none], ME, CAPTAIN));
+    expect(needs.map((n) => [n.kind, n.turnId])).toEqual([["ticket_question", null], ["captain_question", both.id], ["captain_question", none.id]]);
+  });
+
+  it("ignores keys that aren't tickets on the board", () => {
+    const ws = workspace([ticket({ key: "SH-1", status: "in_progress", needs_human: "Blue or green?" })]);
+    const needs = needsYou(ws, conversation([ask("Does DEC-17 cover SH-1?", "09:05")], ME, CAPTAIN));
+    expect(needs).toHaveLength(1);
+    expect(needs[0].ticket?.key).toBe("SH-1");
+  });
+
+  it("closes Captain's question with whatever answers the item, so it doesn't come back on its own", () => {
+    const merge = ticket({ key: "SH-2", status: "review", needs_human: `${MERGE_OK_PREFIX} db/004_sessions.sql`, updated_at: at("09:00") });
+    const asked = ask("SH-2 changes the sessions table. OK to merge it?", "09:05");
+    const [need] = needsYou(workspace([merge]), conversation([asked], ME, CAPTAIN));
+    expect(need).toMatchObject({ kind: "risky_merge", turnId: asked.id });
+    expect(closingReply(need, "yes")).toBe("Yes, merge SH-2.");
+    expect(closingReply(need, "approved")).toBe("I approved SH-2.");
+    expect(closingReply(need, "no", " Wait for Monday. ")).toBe("No on SH-2: Wait for Monday.");
+    expect(closingReply(need, "answered", "Postgres.")).toBe("Postgres.");
+    expect(closingReply(need, "dismissed")).toBe(NO_ANSWER_NEEDED);
+    // Any of those, posted by the person in the thread, closes the question: once the ticket's need
+    // is gone too, nothing is left.
+    const reply = message(ME, CAPTAIN, closingReply(need, "yes")!, { thread_id: asked.id, created_at: at("09:10") });
+    expect(needsYou(workspace([{ ...merge, needs_human: null }]), conversation([asked, reply], ME, CAPTAIN))).toEqual([]);
+    // Without the reply, the question would come back as its own item.
+    expect(needsYou(workspace([{ ...merge, needs_human: null }]), conversation([asked], ME, CAPTAIN)).map((n) => n.kind)).toEqual(["captain_question"]);
+    // A need that isn't also Captain's question has no thread to close.
+    const [alone] = needsYou(workspace([merge]), []);
+    expect(closingReply(alone, "yes")).toBeNull();
+  });
+
+  it("is the one list the page, Overview and the badge count: the briefing agrees", () => {
+    const ws = workspace([ticket({ key: "SH-1", status: "in_progress", needs_human: "Blue or green?" })]);
+    const needs = needsYou(ws, conversation([ask("SH-1: blue or green?", "09:05"), ask("SH-1, still: blue or green?", "09:10")], ME, CAPTAIN));
+    expect(briefing(ws, needs).needs.count).toBe(1);
+  });
+});
+
+describe("requests close themselves (AK-100)", () => {
+  const ask = (body: string, time: string) => message(CAPTAIN, ME, body, { kind: "question", created_at: at(time) });
+
+  it("a ticket's Needs you never counts once it's Done or Canceled", () => {
+    const ws = workspace([ticket({ key: "SH-1", status: "done", needs_human: "Blue or green?" }), ticket({ key: "SH-2", status: "canceled", needs_human: "I stopped: hit the 60-minute limit." })]);
+    expect(needsYou(ws, [])).toEqual([]);
+  });
+
+  it("closes a question when every ticket it names is Done or Canceled, and says what happened", () => {
+    const q = ask("SH-1 and SH-2 are stuck. Should I restart them?", "09:00");
+    const open = workspace([ticket({ key: "SH-1", status: "done" }), ticket({ key: "SH-2", status: "in_progress" })]);
+    expect(needsYou(open, conversation([q], ME, CAPTAIN))).toHaveLength(1);
+    const closed = workspace([ticket({ key: "SH-1", status: "done" }), ticket({ key: "SH-2", status: "done" })]);
+    const turns = conversation([q], ME, CAPTAIN);
+    expect(needsYou(closed, turns)).toEqual([]);
+    expect(settledWithoutYou(closed, turns).get(q.id)).toBe("SH-1 and SH-2 were finished");
+    expect(settledLine("SH-1 was canceled")).toBe("Settled without you · SH-1 was canceled");
+    const mixed = workspace([ticket({ key: "SH-1", status: "done" }), ticket({ key: "SH-2", status: "canceled" })]);
+    expect(settledWithoutYou(mixed, turns).get(q.id)).toBe("SH-1 was finished, SH-2 was canceled");
+  });
+
+  it("closes a question about a merge or an approval once that ticket was approved or OK'd after it was asked", () => {
+    const q = ask("SH-3 is ready. Can someone approve it?", "09:00");
+    const turns = conversation([q], ME, CAPTAIN);
+    const before = workspace([ticket({ key: "SH-3", status: "review", approved_at: at("08:30") })]);
+    expect(needsYou(before, turns)).toHaveLength(1);
+    const approved = workspace([ticket({ key: "SH-3", status: "review", approved_at: at("09:30") })]);
+    expect(needsYou(approved, turns)).toEqual([]);
+    expect(settledWithoutYou(approved, turns).get(q.id)).toBe("SH-3 was approved");
+    const merged = workspace([ticket({ key: "SH-3", status: "done" })]);
+    expect(settledWithoutYou(merged, turns).get(q.id)).toBe("SH-3 was merged");
+    // An approval says nothing about a question that isn't about merging or approving.
+    const other = conversation([ask("SH-3: should the button say Save or Done?", "09:00")], ME, CAPTAIN);
+    expect(needsYou(approved, other)).toHaveLength(1);
+  });
+
+  it("closes a question Captain answered itself in its thread (question_close), and shows the answer under it once", () => {
+    const q = ask("The Codex runner keeps failing on jamesblack's machine. Can you look?", "09:00");
+    const done = message(CAPTAIN, ME, "Fixed by jamesblack-codex: it was an old login.", { kind: "answer", thread_id: q.id, created_at: at("10:00") });
+    const turns = conversation([q, done], ME, CAPTAIN);
+    expect(openQuestions(turns)).toEqual([]);
+    expect(needsYou(workspace([]), turns)).toEqual([]);
+    expect(settledWithoutYou(workspace([]), turns).get(q.id)).toBe("Fixed by jamesblack-codex: it was an old login");
+    expect([...closingAnswers(turns)]).toEqual([done.id]);
+    // An ordinary Captain message in the thread doesn't close it.
+    const chat = message(CAPTAIN, ME, "Still looking.", { thread_id: q.id, created_at: at("09:30") });
+    expect(openQuestions(conversation([q, chat], ME, CAPTAIN)).map((t) => t.id)).toEqual([q.id]);
+  });
+
+  describe("hides only the one answer shown under a settled question (review of da5252d)", () => {
+    const q = () => ask("The Codex runner keeps failing. Can you look?", "09:00");
+    const answer = (thread: number, body: string, time: string) => message(CAPTAIN, ME, body, { kind: "answer", thread_id: thread, created_at: at(time) });
+    const you = (thread: number, body: string, time: string) => message(ME, CAPTAIN, body, { thread_id: thread, created_at: at(time) });
+
+    it("keeps Captain's answer after the person replied", () => {
+      const question = q();
+      const reply = you(question.id, "It's the old login.", "09:05");
+      const a = answer(question.id, "Thanks, fixed it.", "09:10");
+      const turns = conversation([question, reply, a], ME, CAPTAIN);
+      expect(closingAnswers(turns).has(a.id)).toBe(false);
+      expect(settledWithoutYou(workspace([]), turns).size).toBe(0);
+      // Also in a thread the person started: they ask, Captain asks back, they reply, Captain answers.
+      const start = message(ME, CAPTAIN, "Can we ship Friday?", { created_at: at("08:00") });
+      const back = message(CAPTAIN, ME, "With or without Apple Pay?", { kind: "question", thread_id: start.id, created_at: at("08:05") });
+      const yes = you(start.id, "Without.", "08:10");
+      const done = answer(start.id, "Then Friday works.", "08:15");
+      expect(closingAnswers(conversation([start, back, yes, done], ME, CAPTAIN)).has(done.id)).toBe(false);
+    });
+
+    it("keeps Captain's answer when the person replied after it", () => {
+      const question = q();
+      const a = answer(question.id, "Fixed by lee-codex.", "09:10");
+      const reply = you(question.id, "Great.", "09:20");
+      const turns = conversation([question, a, reply], ME, CAPTAIN);
+      expect(closingAnswers(turns).has(a.id)).toBe(false);
+      expect(settledWithoutYou(workspace([]), turns).size).toBe(0);
+    });
+
+    it("hides only the first of several answers, the one shown under the question", () => {
+      const question = q();
+      const first = answer(question.id, "Fixed by lee-codex.", "09:10");
+      const second = answer(question.id, "It happened again; fixed for good now.", "09:30");
+      const turns = conversation([question, first, second], ME, CAPTAIN);
+      expect([...closingAnswers(turns)]).toEqual([first.id]);
+      expect(settledWithoutYou(workspace([]), turns).get(question.id)).toBe("Fixed by lee-codex");
+    });
+
+    it("leaves an answer of several lines as its own message, and points to it", () => {
+      const question = q();
+      const a = answer(question.id, "Fixed by lee-codex.\n\nIt was an old login; the update signed it in again.", "09:10");
+      const turns = conversation([question, a], ME, CAPTAIN);
+      expect(closingAnswers(turns).has(a.id)).toBe(false);
+      expect(settledWithoutYou(workspace([]), turns).get(question.id)).toBe(ANSWERED_BELOW);
+      expect(openQuestions(turns)).toEqual([]);
+    });
+  });
+
+  it("a question about no ticket still needs a reply or Not needed any more", () => {
+    const q = ask("Ship today or tomorrow?", "09:00");
+    const ws = workspace([ticket({ key: "SH-1", status: "done" })]);
+    expect(needsYou(ws, conversation([q], ME, CAPTAIN))).toHaveLength(1);
+    expect(settledWithoutYou(ws, conversation([q], ME, CAPTAIN)).size).toBe(0);
+    const close = message(ME, CAPTAIN, NO_ANSWER_NEEDED, { thread_id: q.id });
+    expect(needsYou(ws, conversation([q, close], ME, CAPTAIN))).toEqual([]);
+  });
+
+  it("a question the person replied to is theirs, not settled without them", () => {
+    const q = ask("SH-1 is stuck. Restart it?", "09:00");
+    const reply = message(ME, CAPTAIN, "Yes.", { thread_id: q.id, created_at: at("09:05") });
+    expect(settledWithoutYou(workspace([ticket({ key: "SH-1", status: "done" })]), conversation([q, reply], ME, CAPTAIN)).size).toBe(0);
   });
 });
 

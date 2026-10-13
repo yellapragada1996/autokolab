@@ -22,6 +22,8 @@ export interface Turn {
   thread: number;
   /** For a problem: the short plain line ("couldn't continue: session limit (resets 11:20pm Stockholm)"). */
   problem?: string;
+  /** Captain's message is an answer (question_close posts one in its own question's thread to close it). */
+  answer?: boolean;
 }
 
 /**
@@ -43,6 +45,7 @@ export function conversation(messages: RoomMessage[], meId: string | null | unde
       if (isBookkeeping(m.body)) return { ...base, kind: "bookkeeping" as const };
       const problem = problemOf(m.body);
       if (problem) return { ...base, kind: "problem" as const, problem };
+      if (m.kind === "answer") return { ...base, kind: "captain" as const, answer: true };
       return { ...base, kind: m.kind === "question" ? ("question" as const) : ("captain" as const) };
     });
 }
@@ -61,9 +64,97 @@ export function folded(turns: Turn[]): Row[] {
   return rows;
 }
 
-/** Captain's questions this person hasn't answered: nothing from them later in the same thread. */
+const repliedTo = (turns: Turn[], q: Turn) => turns.find((t) => t.kind === "you" && t.thread === q.thread && t.id > q.id);
+const closedBy = (turns: Turn[], q: Turn) => turns.find((t) => t.answer && t.thread === q.thread && t.id > q.id);
+
+/**
+ * Captain's questions still open: nothing from the person later in the same thread, and no later
+ * answer from Captain there (question_close: Captain closing what it asked).
+ */
 export function openQuestions(turns: Turn[]): Turn[] {
-  return turns.filter((q) => q.kind === "question" && !turns.some((t) => t.kind === "you" && t.thread === q.thread && t.id > q.id));
+  return turns.filter((q) => q.kind === "question" && !repliedTo(turns, q) && !closedBy(turns, q));
+}
+
+const KEY_IN_TEXT = /\b[A-Z][A-Z0-9]*-\d+\b/g;
+
+/** The board's tickets a message names by key, in the order it names them. Keys that aren't tickets (DEC-17) are left out. */
+export function ticketsIn(ws: Workspace, body: string): Ticket[] {
+  const found = [...new Set(body.match(KEY_IN_TEXT) ?? [])].map((k) => ws.byKey.get(k));
+  return found.filter((t): t is Ticket => !!t && t.type !== "epic");
+}
+
+const ABOUT_MERGE = /\b(merg\w*|approv\w*)\b/i;
+const after = (at: string | null | undefined, since: string) => !!at && Date.parse(at) > Date.parse(since);
+
+/** How a ticket a question named was settled after it was asked, or null while it's still open. */
+function settledHow(t: Ticket, q: Turn, aboutMerge: boolean): string | null {
+  if (t.status === "done") return aboutMerge ? "merged" : "finished";
+  if (t.status === "canceled") return "canceled";
+  if (aboutMerge && after(t.merge_ok_at, q.at)) return "OK'd to merge";
+  if (aboutMerge && after(t.approved_at, q.at)) return "approved";
+  return null;
+}
+
+/**
+ * Captain's questions that closed without the person (by question id): what happened, for the quiet
+ * line "Settled without you · …". A question closes this way when Captain answered it itself in its
+ * thread, or when every ticket it names is Done or Canceled (or, for a question about a merge or an
+ * approval, was approved or OK'd since it was asked). A question that names no ticket closes only by
+ * a reply, as before; one the person replied to is theirs, not settled.
+ */
+export function settledWithoutYou(ws: Workspace, turns: Turn[]): Map<number, string> {
+  const out = new Map<number, string>();
+  const closings = captainClosings(turns);
+  for (const q of turns) {
+    if (q.kind !== "question" || repliedTo(turns, q)) continue;
+    const answer = closings.get(q.id);
+    if (answer) {
+      out.set(q.id, shownUnder(answer) ? answer.body.trim().replace(/[.\s]+$/, "") : ANSWERED_BELOW);
+      continue;
+    }
+    const mentioned = ticketsIn(ws, q.body);
+    if (!mentioned.length) continue;
+    const aboutMerge = ABOUT_MERGE.test(q.body);
+    const how = mentioned.map((t) => settledHow(t, q, aboutMerge));
+    if (how.some((h) => !h)) continue;
+    const same = how.every((h) => h === how[0]);
+    out.set(q.id, same ? `${keyList(mentioned.map((t) => t.key))} ${mentioned.length === 1 ? "was" : "were"} ${how[0]}` : mentioned.map((t, i) => `${t.key} was ${how[i]}`).join(", "));
+  }
+  return out;
+}
+
+const keyList = (ks: string[]) => (ks.length === 1 ? ks[0] : `${ks.slice(0, -1).join(", ")} and ${ks[ks.length - 1]}`);
+
+/** "Settled without you · AK-90 was merged" */
+export const settledLine = (what: string) => `Settled without you · ${what}`;
+
+/** The settled line when Captain's closing answer is too long to sit under the question: it stays its own message. */
+export const ANSWERED_BELOW = "Captain answered below";
+
+/**
+ * The answer that closed each of Captain's questions the person didn't reply to (by question id):
+ * the first answer from Captain later in the question's thread. One the person replied to is theirs,
+ * so whatever Captain said there stays an ordinary message.
+ */
+function captainClosings(turns: Turn[]): Map<number, Turn> {
+  const out = new Map<number, Turn>();
+  for (const q of turns) {
+    if (q.kind !== "question" || repliedTo(turns, q)) continue;
+    const answer = closedBy(turns, q);
+    if (answer) out.set(q.id, answer);
+  }
+  return out;
+}
+
+/** A one-line answer is shown whole under the question it closed; a longer one stays its own message. */
+const shownUnder = (answer: Turn) => !answer.body.trim().includes("\n");
+
+/**
+ * The ids of Captain's answers shown whole under the question they closed (settledWithoutYou), so
+ * they aren't shown twice. Exactly those: every other answer of Captain's stays an ordinary message.
+ */
+export function closingAnswers(turns: Turn[]): Set<number> {
+  return new Set([...captainClosings(turns).values()].filter(shownUnder).map((a) => a.id));
 }
 
 // ------------------------------------------------------------------ plans (CON-23)
@@ -248,9 +339,14 @@ export interface Need {
   action: string;
   question: string;
   ticket: Ticket | null;
-  /** The message to answer in, for a question Captain asked directly. */
+  /**
+   * The message to answer in, for a question Captain asked directly. For a ticket's need, Captain's
+   * newest open question about the same ticket: the two are one request, shown where Captain asked.
+   */
   turnId: number | null;
   since: string;
+  /** Captain's own words about a ticket's need, when its question said more than the ticket's "Needs you". */
+  said?: string;
 }
 
 const ACTION: Record<NeedKind, string> = {
@@ -267,8 +363,47 @@ export const RUNNER_PROBLEM = /^(I stopped|I couldn't start|I'm blocked|Couldn't
 
 const isOpen = (t: Ticket) => t.status !== "done" && t.status !== "canceled";
 
-/** Everything waiting on a person, longest-waiting first. */
+/**
+ * Everything waiting on a person, longest-waiting first, each request once (AK-100). The Captain
+ * page, Overview and the sidebar badge all count this one list.
+ *
+ * - A ticket's "Needs you" stops counting once the ticket is Done or Canceled, whatever it still says.
+ * - Captain's questions that were settled without the person (settledWithoutYou) don't count.
+ * - Captain's open questions that name exactly one ticket are about that ticket: the newest one
+ *   stands for all of them, and when the ticket itself needs the person, the two are one item (the
+ *   ticket's), shown where Captain asked. A question naming several tickets, or none, stays its own
+ *   item: when it isn't clear two requests are the same, both show.
+ */
 export function needsYou(ws: Workspace, turns: Turn[]): Need[] {
+  const all = gatherNeeds(ws, turns);
+  const settled = settledWithoutYou(ws, turns);
+  const asks = all.filter((n) => n.kind === "captain_question" && !settled.has(n.turnId!));
+  const rest = all.filter((n) => n.kind !== "captain_question");
+  const about = new Map<string, Need[]>();
+  const out: Need[] = [];
+  for (const q of asks) {
+    const turn = turns.find((t) => t.id === q.turnId)!;
+    const named = ticketsIn(ws, turn.body);
+    if (named.length !== 1) out.push(q);
+    else about.set(named[0].id, [...(about.get(named[0].id) ?? []), q]);
+  }
+  for (const n of rest) {
+    const qs = n.ticket ? about.get(n.ticket.id) : undefined;
+    if (!qs) {
+      out.push(n);
+      continue;
+    }
+    about.delete(n.ticket!.id);
+    const newest = qs[qs.length - 1];
+    const fuller = newest.question.trim().length > n.question.trim().length;
+    out.push({ ...n, turnId: newest.turnId, since: newest.since, ...(fuller ? { said: newest.question } : {}) });
+  }
+  for (const qs of about.values()) out.push(qs[qs.length - 1]);
+  return out.sort((a, b) => Date.parse(a.since) - Date.parse(b.since));
+}
+
+/** Every request, before de-duplication. */
+function gatherNeeds(ws: Workspace, turns: Turn[]): Need[] {
   const out: Need[] = [];
   for (const t of ws.tickets) {
     if (!isOpen(t) || !t.needs_human) continue;
@@ -651,6 +786,8 @@ function stoppedLine(text: string, name: string): string {
 export function needText(need: Need, nameOf: (id: string | null) => string): string {
   const t = need.ticket;
   const key = t?.key ?? "it";
+  // Captain asked about this ticket too and said more: its words, as it wrote them.
+  if (need.said && (need.kind === "ticket_question" || need.kind === "problem")) return withoutPlan(need.said).trim();
   switch (need.kind) {
     case "risky_merge":
       return `${key} is ready and needs your OK. ${mergeQuestion(need)}`;
@@ -696,6 +833,29 @@ export function answeredLine(answer: Answer, at: string): string {
 
 /** What "Not needed any more" posts in a question's thread; any reply there closes it (openQuestions). */
 export const NO_ANSWER_NEEDED = "No answer needed.";
+
+/**
+ * What goes in Captain's question's thread when the person answers a ticket's need that is also
+ * that question (needsYou shows them as one item), so the question closes with it instead of coming
+ * back on its own. Null for anything else: a need that isn't also a question has no thread to close.
+ */
+export function closingReply(need: Need, answer: Answer, text = ""): string | null {
+  if (!need.ticket || need.turnId === null) return null;
+  const key = need.ticket.key;
+  switch (answer) {
+    case "yes":
+      return `Yes, merge ${key}.`;
+    case "approved":
+      return `I approved ${key}.`;
+    case "no":
+      return `No on ${key}: ${text.trim()}`;
+    case "answered":
+      return text.trim() || null;
+    case "closed":
+    case "dismissed":
+      return NO_ANSWER_NEEDED;
+  }
+}
 
 /** Captain messages longer than this, in characters or non-blank lines, are shortened (Show more). */
 export const SHORT_CHARS = 280;

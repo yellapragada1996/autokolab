@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ProjectView, TICKET_DECISIONS_LIMIT, type Comment, type Ticket } from "../src/core/projects.js";
+import { LEAD_ASK_ONCE, ProjectView, TICKET_DECISIONS_LIMIT, type Comment, type Ticket } from "../src/core/projects.js";
 
 const ticket = (change: Partial<Ticket> = {}): Ticket => ({
   id: "ticket-1", project_id: "project-1", number: 1, key: "AK-1", title: "Build it",
@@ -45,6 +45,15 @@ describe("decision_get text", () => {
     expect(text.startsWith("Replaced by DEC-5.\nDEC-4")).toBe(true);
     expect(text).toContain("No decision or contract NO-99 in Test.");
     expect(text.indexOf("NO-99")).toBeLessThan(text.indexOf("CON-23 (contract)"));
+  });
+});
+
+describe("Captain's brief", () => {
+  it("tells Captain to ask a person once, through one channel, and to close what's settled (AK-100)", async () => {
+    const lead = view([]);
+    lead.project.lead_agent_id = "person";
+    const brief = await lead.brief();
+    expect(brief).toContain(LEAD_ASK_ONCE);
   });
 });
 

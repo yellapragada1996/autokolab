@@ -15,6 +15,7 @@ import {
   planLine,
   problemText,
   replyPreview,
+  settledLine,
   shortened,
   timeline,
   withoutPlan,
@@ -65,7 +66,11 @@ export function CaptainHome({ ws, cr, me }: { ws: Workspace; cr: CaptainRoom; me
 function Conversation({ ws, cr, me, pulse, onTarget }: { ws: Workspace; cr: CaptainRoom; me: string; pulse: string | null; onTarget: (el: HTMLElement, key: string) => void }) {
   const slug = ws.project.slug;
   const answeredOf = useMemo(() => new Map(cr.answered.map((a) => [a.need.key, a])), [cr.answered]);
-  const entries = useMemo(() => timeline(folded(cr.turns), [...cr.needs, ...cr.answered.map((a) => a.need)], cr.catchUp?.at), [cr.turns, cr.needs, cr.answered, cr.catchUp]);
+  // Captain's answer that closed its own question shows under the question, so not again on its own.
+  const entries = useMemo(
+    () => timeline(folded(cr.turns.filter((t) => !cr.closers.has(t.id))), [...cr.needs, ...cr.answered.map((a) => a.need)], cr.catchUp?.at),
+    [cr.turns, cr.closers, cr.needs, cr.answered, cr.catchUp],
+  );
   const planOf = useMemo(() => new Map(cr.plans.map((p) => [p.turnId, p])), [cr.plans]);
   const noCaptain = !ws.project.lead_agent_id;
   const canPost = !noCaptain && !!cr.room?.me && cr.room.me.role !== "observer";
@@ -132,7 +137,7 @@ function Conversation({ ws, cr, me, pulse, onTarget }: { ws: Workspace; cr: Capt
       else if (e.kind === "card" && e.need.kind === "plan" && planOf.has(e.need.turnId!)) item = <PlanMessage ws={ws} cr={cr} plan={planOf.get(e.need.turnId!)!} need={e.need} pulse={pulse === e.need.key} />;
       else if (e.kind === "card") item = <NeedMessage ws={ws} cr={cr} me={me} need={e.need} answered={answeredOf.get(e.need.key)} pulse={pulse === e.need.key} />;
       else if (e.row.kind !== "fold" && planOf.has(e.row.id)) item = <PlanMessage ws={ws} cr={cr} plan={planOf.get(e.row.id)!} need={null} pulse={false} />;
-      else item = <RowView ws={ws} row={e.row} />;
+      else item = <RowView ws={ws} row={e.row} settled={e.row.kind === "fold" ? undefined : cr.settled.get(e.row.id)} />;
       return (
         <Fragment key={e.key}>
           {divider}
@@ -217,13 +222,15 @@ function Said({ ws, text }: { ws: Workspace; text: string }) {
   );
 }
 
-function RowView({ ws, row }: { ws: Workspace; row: Row }) {
+/** One row of the conversation. A question of Captain's settled without the person gets one quiet line under it. */
+function RowView({ ws, row, settled }: { ws: Workspace; row: Row; settled?: string }) {
   if (row.kind === "fold") return <QuietFold turns={row.turns} />;
   if (row.kind === "you") return <YouMessage turn={row} ws={ws} />;
   if (row.kind === "problem") return <ProblemRow row={row} />;
   return (
     <CaptainMessage at={row.at}>
       <Said ws={ws} text={withoutPlan(row.body)} />
+      {settled && <Quiet>{settledLine(settled)}</Quiet>}
     </CaptainMessage>
   );
 }

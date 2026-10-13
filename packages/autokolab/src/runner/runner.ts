@@ -12,7 +12,7 @@ import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { chooseModel, chooseReplyModel, claudeInvocation, codexInvocation, noUsage, runEngine, type EngineRun, type ModelChoice, type PlanStep, type RunUsage } from "./engines.js";
 import { installHook } from "./githook.js";
 import { usageLimit, usageReport } from "./limit.js";
-import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, riskyFiles, samePrFacts, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
+import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyMessage } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, fetchBranch, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
 import { checkoutCommit, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
@@ -1348,6 +1348,11 @@ export class Runner {
     if (d.action === "wait") return;
     this.log(`${t.key} review: ${d.action} · ${d.why}.`);
     if (d.action === "review") {
+      // A new commit gets a new review: the old one's "couldn't finish reviewing" no longer waits on anyone.
+      if (reviewNeedsHuman(t.needs_human, "review") === null) {
+        await p.update(t.key, { needs_human: null });
+        t = { ...t, needs_human: null };
+      }
       this.reviewQueue.push({ project: p, ticket: t, pr, sha: d.sha });
       return;
     }
@@ -1369,6 +1374,8 @@ export class Runner {
     const n = Number(prNumber(url));
     await this.ak.room(room).post({ kind: "review", to: reviewer.id, body: askReviewMessage(t.key, t.title, url, d.sha, t.done_means), refs: { ...(n ? { pr: n } : {}), commit: d.sha } });
     this.log(`${t.key} review: asked ${reviewer.name} to review ${d.sha.slice(0, 7)}.`);
+    // An agent is on it now, so a person isn't asked to approve it as well.
+    if (reviewNeedsHuman(t.needs_human, "asked_reviewer") === null) await p.update(t.key, { needs_human: null });
   }
 
   /** Set or (with undefined) forget what the runner did about a ticket waiting for review. */
@@ -1472,7 +1479,7 @@ export class Runner {
       remember(after.updated_at);
       return;
     }
-    await p.update(t.key, { status: "done", ...(isMergeQuestion(t.needs_human) ? { needs_human: null } : {}) });
+    await p.update(t.key, { status: "done", ...(settledByMerge(t.needs_human) ? { needs_human: null } : {}) });
     await p.comment(t.key, mergedComment(sha, policy)).catch((e) => this.log(`Couldn't comment on ${t.key}: ${(e as Error).message}`));
     remember();
     this.log(`${t.key} merge: merged PR #${prNumber(url)} at ${sha.slice(0, 7)}.`);
