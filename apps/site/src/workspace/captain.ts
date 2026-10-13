@@ -104,11 +104,12 @@ function settledHow(t: Ticket, q: Turn, aboutMerge: boolean): string | null {
  */
 export function settledWithoutYou(ws: Workspace, turns: Turn[]): Map<number, string> {
   const out = new Map<number, string>();
+  const closings = captainClosings(turns);
   for (const q of turns) {
     if (q.kind !== "question" || repliedTo(turns, q)) continue;
-    const answer = closedBy(turns, q);
+    const answer = closings.get(q.id);
     if (answer) {
-      out.set(q.id, answer.body.trim().split("\n")[0].replace(/[.\s]+$/, ""));
+      out.set(q.id, shownUnder(answer) ? answer.body.trim().replace(/[.\s]+$/, "") : ANSWERED_BELOW);
       continue;
     }
     const mentioned = ticketsIn(ws, q.body);
@@ -127,8 +128,34 @@ const keyList = (ks: string[]) => (ks.length === 1 ? ks[0] : `${ks.slice(0, -1).
 /** "Settled without you · AK-90 was merged" */
 export const settledLine = (what: string) => `Settled without you · ${what}`;
 
-/** The ids of Captain's own closing answers: the question shows what they say, so they aren't shown again. */
-export const closingAnswers = (turns: Turn[]) => new Set(turns.filter((t) => t.answer && turns.some((q) => q.kind === "question" && q.thread === t.thread && q.id < t.id)).map((t) => t.id));
+/** The settled line when Captain's closing answer is too long to sit under the question: it stays its own message. */
+export const ANSWERED_BELOW = "Captain answered below";
+
+/**
+ * The answer that closed each of Captain's questions the person didn't reply to (by question id):
+ * the first answer from Captain later in the question's thread. One the person replied to is theirs,
+ * so whatever Captain said there stays an ordinary message.
+ */
+function captainClosings(turns: Turn[]): Map<number, Turn> {
+  const out = new Map<number, Turn>();
+  for (const q of turns) {
+    if (q.kind !== "question" || repliedTo(turns, q)) continue;
+    const answer = closedBy(turns, q);
+    if (answer) out.set(q.id, answer);
+  }
+  return out;
+}
+
+/** A one-line answer is shown whole under the question it closed; a longer one stays its own message. */
+const shownUnder = (answer: Turn) => !answer.body.trim().includes("\n");
+
+/**
+ * The ids of Captain's answers shown whole under the question they closed (settledWithoutYou), so
+ * they aren't shown twice. Exactly those: every other answer of Captain's stays an ordinary message.
+ */
+export function closingAnswers(turns: Turn[]): Set<number> {
+  return new Set([...captainClosings(turns).values()].filter(shownUnder).map((a) => a.id));
+}
 
 // ------------------------------------------------------------------ plans (CON-23)
 
@@ -806,6 +833,29 @@ export function answeredLine(answer: Answer, at: string): string {
 
 /** What "Not needed any more" posts in a question's thread; any reply there closes it (openQuestions). */
 export const NO_ANSWER_NEEDED = "No answer needed.";
+
+/**
+ * What goes in Captain's question's thread when the person answers a ticket's need that is also
+ * that question (needsYou shows them as one item), so the question closes with it instead of coming
+ * back on its own. Null for anything else: a need that isn't also a question has no thread to close.
+ */
+export function closingReply(need: Need, answer: Answer, text = ""): string | null {
+  if (!need.ticket || need.turnId === null) return null;
+  const key = need.ticket.key;
+  switch (answer) {
+    case "yes":
+      return `Yes, merge ${key}.`;
+    case "approved":
+      return `I approved ${key}.`;
+    case "no":
+      return `No on ${key}: ${text.trim()}`;
+    case "answered":
+      return text.trim() || null;
+    case "closed":
+    case "dismissed":
+      return NO_ANSWER_NEEDED;
+  }
+}
 
 /** Captain messages longer than this, in characters or non-blank lines, are shortened (Show more). */
 export const SHORT_CHARS = 280;

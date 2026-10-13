@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addComment, allowMerge, approveTicket, lastCaughtUp, markCaughtUp, updateTicket, type Agent, type Project, type Ticket } from "../lib/data";
 import { postToRoom, roomFor, roomMessages, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
-import { catchUp, closingAnswers, conversation, needsYou, NO_ANSWER_NEEDED, OK_START, plans as plansOf, settledWithoutYou, type Answer, type CatchUp, type Need, type Plan, type Turn } from "./captain";
+import { catchUp, closingAnswers, closingReply, conversation, needsYou, NO_ANSWER_NEEDED, OK_START, plans as plansOf, settledWithoutYou, type Answer, type CatchUp, type Need, type Plan, type Turn } from "./captain";
 import { agentDot, agentOnline } from "./People";
 import type { Workspace } from "./useWorkspace";
 
@@ -298,11 +298,18 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   const threadOf = (need: Need) => turns.find((t) => t.id === need.turnId)?.thread ?? need.turnId;
   // A ticket's need that is also Captain's question (needsYou): what settles one closes the other,
   // so the question doesn't come back on its own once the ticket's "Needs you" is cleared.
-  const alsoInThread = async (need: Need, text: string) => {
-    if (need.ticket && need.turnId !== null) await post(text, threadOf(need));
+  const alsoInThread = async (need: Need, answer: Answer, text?: string) => {
+    const reply = closingReply(need, answer, text);
+    // The answer itself went through; if this post doesn't, the question just shows again on its own.
+    if (reply) await post(reply, threadOf(need)).catch(() => undefined);
   };
   const answerCaptain = (need: Need, text: string) => settle(need, "answered", () => post(text, threadOf(need)));
-  const sayNo = (need: Need, text: string) => settle(need, "no", () => post(`No on ${need.ticket?.key ?? "it"}: ${text}`, null));
+  // "No" goes to Captain either way; on an item that is also Captain's question it goes in that thread, which closes it.
+  const sayNo = (need: Need, text: string) =>
+    settle(need, "no", () => {
+      const inThread = closingReply(need, "no", text);
+      return inThread ? post(inThread, threadOf(need)) : post(`No on ${need.ticket?.key ?? "it"}: ${text}`, null);
+    });
   const changePlan = (plan: Plan, text: string) => send(text, plan.thread, planKey(plan));
 
   const sendReply = async (text: string) => {
@@ -334,8 +341,16 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     catchUpReady: cuReady,
     startCatchUp,
     send,
-    okMerge: (need) => settle(need, "yes", real(() => allowMerge(need.ticket!.id))),
-    approve: (need, sha, note) => settle(need, "approved", real(() => approveTicket(need.ticket!.id, sha, note))),
+    okMerge: (need) =>
+      settle(need, "yes", async () => {
+        await real(() => allowMerge(need.ticket!.id))();
+        await alsoInThread(need, "yes");
+      }),
+    approve: (need, sha, note) =>
+      settle(need, "approved", async () => {
+        await real(() => approveTicket(need.ticket!.id, sha, note))();
+        await alsoInThread(need, "approved");
+      }),
     answerTicket: (need, text) =>
       settle(
         need,
@@ -345,7 +360,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
             await addComment(need.ticket!.id, profileId, text);
             await updateTicket(need.ticket!.id, { needs_human: null });
           })();
-          await alsoInThread(need, text);
+          await alsoInThread(need, "answered", text);
         },
       ),
     answerCaptain,
@@ -354,7 +369,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     clearNeed: (need) =>
       settle(need, "dismissed", async () => {
         await real(() => updateTicket(need.ticket!.id, { needs_human: null }))();
-        await alsoInThread(need, NO_ANSWER_NEEDED);
+        await alsoInThread(need, "dismissed");
       }),
     startPlan,
     changePlan,
