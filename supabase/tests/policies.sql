@@ -628,7 +628,9 @@ select pg_temp.expect((select merge_policy = 'ask' from public.projects where sl
 
 -- ------------------------------------------------ nobody approves their own work (schema 13)
 reset role;
--- MZ-1 goes back to Ready, so handing it around here doesn't make anyone one of its builders (schema 17)
+-- MZ-1 goes back to Ready, so handing it around here doesn't make anyone one of its builders (schema 17).
+-- Nobody is signed in for this setup, so it isn't anyone's work on the ticket (schema 21).
+set request.jwt.claim.sub = '';
 update public.tickets set status = 'ready', assignee_id = '00000000-0000-0000-0000-0000000000e1', assignee_type = 'agent' where key = 'MZ-1';
 set role authenticated;
 -- the lead built MZ-1: it can't approve it, or clear an approval on it
