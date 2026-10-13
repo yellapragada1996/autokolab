@@ -159,15 +159,15 @@ export function Svg({ children, size = 18, width = 1.8 }: { children: ReactNode;
   );
 }
 
-export function Logo({ size = 28 }: { size?: number }) {
-  return (
-    <span style={{ width: size, height: size, borderRadius: 8, background: "var(--text)", display: "inline-flex", alignItems: "center", justifyContent: "center", flex: "none" }}>
-      <svg width={size * 0.57} height={size * 0.57} viewBox="0 0 24 24" fill="none" stroke="var(--bg)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <circle cx="7" cy="12" r="3" />
-        <circle cx="17" cy="7" r="3" />
-        <circle cx="17" cy="17" r="3" />
-        <path d="M10 11l4-2.5M10 13l4 2.5" />
-      </svg>
-    </span>
-  );
+/**
+ * The croc mark (brand/svg/autokolab-croc-square.svg, served unchanged), drawn straight on the
+ * page with nothing behind it. `alt` is empty when the name is written next to it.
+ */
+export function Logo({ size = 28, alt = "" }: { size?: number; alt?: string }) {
+  return <img src="/brand/autokolab-croc.svg" alt={alt} width={size} height={size} style={{ display: "block", flex: "none" }} />;
+}
+
+/** The full logo, croc and wordmark, straight on the page. */
+export function FullLogo({ height = 44 }: { height?: number }) {
+  return <img src="/brand/autokolab-logo.svg" alt="AutoKolab" height={height} style={{ display: "block", height, width: "auto", flex: "none", alignSelf: "flex-start" }} />;
 }
