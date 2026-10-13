@@ -1,4 +1,4 @@
-import { reportError } from "../lib/errors";
+import { plainError, reportError } from "../lib/errors";
 import { useEffect, useRef, useState } from "react";
 import { ticketDetail, type TicketEvent } from "../lib/data";
 import { closeShow, openShow, type ShowPart } from "../lib/router";
@@ -105,7 +105,7 @@ export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Wor
                   <p>Captain will open a change that reverses this one. It goes through the same tests, review and merge.</p>
                   <div className="ak-show-undo-actions"><Button size="sm" variant="primary" disabled={sending} onClick={() => void askUndo()}>{sending ? "Sending…" : "Yes, undo it"}</Button><Button size="sm" variant="ghost" disabled={sending} onClick={() => { setConfirm(false); setSendFailed(false); }}>Cancel</Button></div>
                 </> : <Button size="sm" variant="ghost" onClick={() => setConfirm(true)}>Undo this change</Button>}
-                {sendFailed && <p role="alert">{captain.errors.get(`undo:${ticket.key}`)}</p>}
+                {sendFailed && <p role="alert">{captain.errors.get(`undo:${ticket.key}`) ?? plainError(null, "ask Captain to undo this")}</p>}
               </div>}
               {undo.kind === "asked" && <p className="ak-show-undo">You asked Captain to undo this at {new Date(undo.at).toLocaleString()}.</p>}
             </>}

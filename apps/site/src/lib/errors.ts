@@ -1,5 +1,5 @@
 // Keep error wording in one place. Only the UI boundary logs; this formatter is pure.
-const technical = /\b(uuid|syntax|constraint|relation|column|table|JWT|SQL|JSON|token|stack|postgres\w*|supabase|schema|PGRST\w*|TypeError|NetworkError)\b|https?:|www\.|\b(?:select|insert into|update|delete from)\b|[\n\r{}<>`]|\b\w+_\w+\b|\bat \S+\s*\(/i;
+const technical = /\b(uuid|syntax|constraint|relation|column|table|JWT|SQL|JSON|token|stack|postgres\w*|supabase|schema|PGRST\w*|TypeError|NetworkError)\b|\b[a-z][a-z0-9+.-]*:\/\/|www\.|\b[a-z][a-z0-9-]*\.[a-z]{2,}\b|\b(?:select\s+.+\s+from|insert into|update\s+\S+\s+set|delete from)\b|duplicate key|null value|invalid input|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b|[\n\r{}<>`"]|\b\w+_\w+\b|\bat \S+\s*\(/i;
 const permission = "You don't have permission to do that here.";
 const signIn = "Your sign-in expired. Reload the page.";
 const database = "This needs the latest database update. Ask the project's owner to apply it.";
@@ -18,7 +18,7 @@ export function plainError(error: unknown, what?: string): string {
   const custom = /^AUTOKOLAB_[A-Z0-9_]+:\s*(.+)$/.exec(message);
   if (custom && !technical.test(custom[1]) && custom[1].length <= 240) {
     const sentence = custom[1].trim().replace(/\blead\b/gi, "Captain");
-    if (sentence) return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+    if (sentence) return /[.?]$/.test(sentence) ? sentence : `${sentence.replace(/!+$/, "")}.`;
   }
   if (/^(42501|403)$/.test(code) || /row[- ]level security|permission denied|insufficient privilege|not authorized|access denied/i.test(message)) return permission;
   if (/^(PGRST30[12]|401)$/.test(code) || /\bJWT\b|invalid.*(?:token|session|sign-in)|(?:token|session|sign-in).*(?:expired|invalid)|refresh token|invalid login credentials|not authenticated|AuthSessionMissing/i.test(`${name} ${message}`)) return signIn;

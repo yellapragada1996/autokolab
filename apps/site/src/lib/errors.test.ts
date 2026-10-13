@@ -29,6 +29,12 @@ const cases: [unknown, string][] = [
   ["AUTOKOLAB_BAD: invalid uuid syntax", fallback],
   ["AUTOKOLAB_BAD: https://example.com/private", fallback],
   ["AUTOKOLAB_BAD: SELECT * FROM tickets", fallback],
+  ["AUTOKOLAB_BAD: duplicate key in tickets", fallback],
+  ["AUTOKOLAB_BAD: null value in tickets", fallback],
+  ["AUTOKOLAB_BAD: example.invalid/private", fallback],
+  ["AUTOKOLAB_BAD: ftp://example.com/private", fallback],
+  ["AUTOKOLAB_BAD: 10000000-0000-0000-0000-000000000001", fallback],
+  ["AUTOKOLAB_UPDATE: Ask the owner to update AutoKolab.", "Ask the owner to update AutoKolab."],
   ["AUTOKOLAB_BAD: Error\n at load (data.ts:3)", fallback],
   ["AUTOKOLAB_BAD: tickets_pkey", fallback],
 ];

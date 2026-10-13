@@ -28,8 +28,8 @@ export function App() {
       // A sign-in that comes back with a code this browser can't use (started in another tab or
       // on another address) can leave the auth library waiting forever. Don't wait forever.
       session = (await withTimeout(supabase.auth.getSession(), 8000)).data.session;
-    } catch {
-      return restartSignIn("Sign-in didn't finish. Please try again.");
+    } catch (e) {
+      return restartSignIn(reportError(e, "sign in"));
     }
     if (!session) return setView({ kind: "signed-out", error: oauthError() ?? takeSignInNotice() });
     try {
