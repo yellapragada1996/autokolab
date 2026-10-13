@@ -38,7 +38,7 @@ export async function signInWithGitHub(next = "/"): Promise<void> {
     provider: "github",
     options: { redirectTo: `${location.origin}${next}`, scopes: "read:user" },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw error;
 }
 
 export async function signOut(): Promise<void> {
@@ -53,19 +53,13 @@ export async function currentSession(): Promise<Session | null> {
 /** Your profile, created from GitHub on first sign-in. */
 export async function myProfile(): Promise<Profile> {
   const { data, error } = await supabase.rpc("ensure_my_profile");
-  if (error) throw new Error(friendly(error.message));
-  if (!data) throw new Error("Your profile couldn't be created. Sign out and sign in with GitHub again.");
+  if (error) throw error;
+  if (!data) throw new Error("AUTOKOLAB_PROFILE: Your profile couldn't be created. Sign out and sign in with GitHub again.");
   return data as Profile;
 }
 
 export async function saveProfile(patch: Partial<Pick<Profile, "name" | "timezone" | "city" | "onboarded">>, id: string): Promise<Profile> {
   const { data, error } = await supabase.from("profiles").update(patch).eq("id", id).select("*").single();
-  if (error) throw new Error(friendly(error.message));
+  if (error) throw error;
   return data as Profile;
-}
-
-function friendly(m: string): string {
-  if (/ensure_my_profile|schema cache|does not exist/i.test(m)) return "AutoKolab's database isn't ready for website sign-in yet.";
-  if (/JWT|expired/i.test(m)) return "Your session expired. Sign in again.";
-  return m;
 }

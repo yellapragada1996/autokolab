@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useEffect, useRef, useState } from "react";
 import { createTicket, PRIORITIES, STATUSES, TYPES, type Priority, type Status, type Ticket, type TicketType } from "../lib/data";
 import { Button } from "../ui";
@@ -46,7 +47,7 @@ export function NewTicket({ ws, initialStatus, onClose, onCreated }: { ws: Works
       await ws.reload();
       onCreated(t);
     } catch (e2) {
-      setErr((e2 as Error).message);
+      setErr(reportError(e2, "create the ticket"));
       setBusy(false);
     }
   };

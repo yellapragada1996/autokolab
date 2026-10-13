@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useEffect, useState } from "react";
 import { configured, githubEnabled, signInWithGitHub } from "../lib/session";
 import { Button, FullLogo } from "../ui";
@@ -52,7 +53,7 @@ export function SignIn({ error }: { error?: string }) {
                 try {
                   await signInWithGitHub(location.pathname + location.search);
                 } catch (e) {
-                  setErr((e as Error).message);
+                  setErr(reportError(e, "sign in"));
                   setBusy(false);
                 }
               }}

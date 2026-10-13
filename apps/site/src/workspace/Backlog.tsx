@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useMemo, useState } from "react";
 import { createTicket, STATUSES, updateTicket, type Status, type Ticket } from "../lib/data";
 import { onNav } from "../lib/router";
@@ -29,7 +30,7 @@ export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (
       await updateTicket(id, patch);
       await ws.reload();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "save the ticket"));
     }
   };
 
@@ -162,7 +163,7 @@ function InlineCreate({ ws }: { ws: Workspace }) {
       setTitle("");
       await ws.reload();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "save the ticket"));
     }
   };
   if (!open) {

@@ -1,3 +1,4 @@
+import { plainError, reportError } from "../lib/errors";
 import { useEffect, useRef, useState } from "react";
 import { ticketDetail, type TicketEvent } from "../lib/data";
 import { closeShow, openShow, type ShowPart } from "../lib/router";
@@ -17,7 +18,7 @@ export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Wor
   const panel = useRef<HTMLElement>(null);
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const [events, setEvents] = useState<TicketEvent[] | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState("");
   const [confirm, setConfirm] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendFailed, setSendFailed] = useState(false);
@@ -58,11 +59,11 @@ export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Wor
 
   useEffect(() => {
     setEvents(null);
-    setFailed(false);
+    setFailed("");
     if (!ticket) return;
     if (demoEvents) { setEvents(demoEvents.get(ticket.id) ?? []); return; }
     let active = true;
-    void ticketDetail(ticket.id).then((detail) => { if (active) setEvents(detail.events); }).catch(() => { if (active) setFailed(true); });
+    void ticketDetail(ticket.id).then((detail) => { if (active) setEvents(detail.events); }).catch((e) => { const message = reportError(e, "load the history"); if (active) setFailed(message); });
     return () => { active = false; };
   }, [ticket?.id, demoEvents]);
 
@@ -104,7 +105,7 @@ export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Wor
                   <p>Captain will open a change that reverses this one. It goes through the same tests, review and merge.</p>
                   <div className="ak-show-undo-actions"><Button size="sm" variant="primary" disabled={sending} onClick={() => void askUndo()}>{sending ? "Sending…" : "Yes, undo it"}</Button><Button size="sm" variant="ghost" disabled={sending} onClick={() => { setConfirm(false); setSendFailed(false); }}>Cancel</Button></div>
                 </> : <Button size="sm" variant="ghost" onClick={() => setConfirm(true)}>Undo this change</Button>}
-                {sendFailed && <p role="alert">Couldn't ask Captain to undo this. Please try again.</p>}
+                {sendFailed && <p role="alert">{captain.errors.get(`undo:${ticket.key}`) ?? plainError(null, "ask Captain to undo this")}</p>}
               </div>}
               {undo.kind === "asked" && <p className="ak-show-undo">You asked Captain to undo this at {new Date(undo.at).toLocaleString()}.</p>}
             </>}
@@ -114,7 +115,7 @@ export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Wor
               {ticket.pr_url && <a href={ticket.pr_url} target="_blank" rel="noopener noreferrer">Open the full change on GitHub</a>}
             </>}
             {part === "history" && <>
-              {failed ? <p>History couldn't be loaded right now.</p> : events === null ? <Skeleton lines={4} /> : <><ol className="ak-show-history">{workHistory(ws, events).map((e) => <li key={e.id}><time dateTime={e.at}>{historyTime(e.at)}</time><span>{e.text}</span></li>)}</ol>{!workHistory(ws, events).length && <p>No history recorded yet.</p>}<p className="ak-show-foot">Written by the database, not by the agents.</p></>}
+              {failed ? <p>{failed}</p> : events === null ? <Skeleton lines={4} /> : <><ol className="ak-show-history">{workHistory(ws, events).map((e) => <li key={e.id}><time dateTime={e.at}>{historyTime(e.at)}</time><span>{e.text}</span></li>)}</ol>{!workHistory(ws, events).length && <p>No history recorded yet.</p>}<p className="ak-show-foot">Written by the database, not by the agents.</p></>}
             </>}
           </div>
         </>}

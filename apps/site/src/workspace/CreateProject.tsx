@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useState } from "react";
 import { createProject, type Project } from "../lib/data";
 import { Button, Logo } from "../ui";
@@ -40,7 +41,7 @@ export function CreateProject({ first, onCreated, onCancel }: { first: boolean; 
     try {
       onCreated(await createProject(name.trim(), cleanRepo(repo), shownPrefix));
     } catch (e2) {
-      setErr((e2 as Error).message);
+      setErr(reportError(e2, "create the project"));
       setBusy(false);
     }
   };

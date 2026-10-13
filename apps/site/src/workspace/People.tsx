@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useEffect, useState } from "react";
 import { addPerson, createInvite, EFFORTS, inviteLink, invites as listInvites, MERGE_POLICIES, mergePolicyOf, MODEL_CHOICES, revokeInvite, setAgentModel, setLead, setMergePolicy, showCode, type Agent, type Effort, type Invite, type MergePolicy } from "../lib/data";
 import { placeLine } from "../lib/place";
@@ -36,7 +37,7 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
       await setLead(ws.project.id, id);
       onProjectChanged?.();
     } catch (e) {
-      setLeadErr((e as Error).message);
+      setLeadErr(reportError(e, "save the settings"));
     }
   };
   const owner = ws.people.members.find((m) => m.role === "owner")?.actor_id;
@@ -160,10 +161,10 @@ export function Merging({ ws, canEdit, onProjectChanged }: { ws: Workspace; canE
     setBusy(true);
     setErr("");
     try {
-      await setMergePolicy(ws.project.id, policy);
+      if (!ws.demoInvites) await setMergePolicy(ws.project.id, policy);
       onProjectChanged?.();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "save the settings"));
       setPicked(current);
     }
     setBusy(false);
@@ -277,7 +278,7 @@ function AgentModel({ ws, agent: a, mine }: { ws: Workspace; agent: Agent; mine:
       await setAgentModel(a.id, nextModel, nextEffort);
       await ws.reload();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "save the settings"));
       setModel(a.model ?? "");
     }
     setBusy(false);
@@ -376,16 +377,17 @@ function AgentModel({ ws, agent: a, mine }: { ws: Workspace; agent: Agent; mine:
 
 /** Invite links: send one in any chat; people sign in with GitHub and join with one click. */
 export function InvitePanel({ ws }: { ws: Workspace }) {
-  const [list, setList] = useState<Invite[]>([]);
+  const [list, setList] = useState<Invite[]>(ws.demoInvites ?? []);
   const [made, setMade] = useState<Invite | null>(null);
   const [copied, setCopied] = useState(false);
   const [days, setDays] = useState(7);
   const [err, setErr] = useState("");
   const load = async () => {
     try {
-      setList(await listInvites(ws.project.id));
+      setList(ws.demoInvites ?? await listInvites(ws.project.id));
+      setErr("");
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "load the invites"));
     }
   };
   useEffect(() => {
@@ -396,11 +398,12 @@ export function InvitePanel({ ws }: { ws: Workspace }) {
     try {
       setErr("");
       setCopied(false);
-      const inv = await createInvite(ws.project.id, days);
+      const inv = ws.demoInvites ? { code: "PREVIEW1", project_id: ws.project.id, created_at: new Date().toISOString(), expires_at: new Date(Date.now() + days * 86400_000).toISOString(), max_uses: null, uses: 0, revoked: false } : await createInvite(ws.project.id, days);
       setMade(inv);
-      await load();
+      if (ws.demoInvites) setList((items) => [...items.filter((i) => i.code !== inv.code), inv]);
+      else await load();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "create the invite"));
     }
   };
   const copy = async (text: string) => {
@@ -452,7 +455,13 @@ export function InvitePanel({ ws }: { ws: Workspace }) {
               <button type="button" onClick={() => void copy(inviteLink(i.code))} style={{ border: 0, background: "none", color: "var(--muted)", cursor: "pointer", fontSize: 13, padding: 0 }}>
                 Copy
               </button>
-              <button type="button" onClick={async () => (await revokeInvite(i.code), await load())} style={{ border: 0, background: "none", color: "var(--danger)", cursor: "pointer", fontSize: 13, padding: 0 }}>
+              <button type="button" onClick={async () => {
+                try {
+                  setErr("");
+                  if (ws.demoInvites) setList((items) => items.filter((item) => item.code !== i.code));
+                  else { await revokeInvite(i.code); await load(); }
+                } catch (e) { setErr(reportError(e, "cancel the invite")); }
+              }} style={{ border: 0, background: "none", color: "var(--danger)", cursor: "pointer", fontSize: 13, padding: 0 }}>
                 Cancel
               </button>
             </div>
@@ -478,7 +487,9 @@ function AddPerson({ ws }: { ws: Workspace }) {
       setMsg({ ok: true, text: `Added ${login.trim().replace(/^@/, "")}.` });
       setLogin("");
     } catch (e2) {
-      setMsg({ ok: false, text: `${(e2 as Error).message}. Send them ${location.origin} to sign in with GitHub first.` });
+      const message = e2 && typeof e2 === "object" && "message" in e2 ? e2.message : e2;
+      const nextStep = typeof message === "string" && message.startsWith("AUTOKOLAB_NOT_FOUND:") ? " Ask them to sign in with GitHub first." : "";
+      setMsg({ ok: false, text: reportError(e2, "add this person") + nextStep });
     }
     setBusy(false);
   };

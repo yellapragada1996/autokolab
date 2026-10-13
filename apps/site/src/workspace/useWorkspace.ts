@@ -1,6 +1,7 @@
+import { reportError } from "../lib/errors";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import * as data from "../lib/data";
-import type { Agent, Decision, Guide, Link, People, Project, RunUsage, Step, Ticket, TicketEvent } from "../lib/data";
+import type { Agent, Comment, Decision, Guide, Invite, Link, People, Project, RunUsage, Step, Ticket, TicketEvent } from "../lib/data";
 
 // One live snapshot of a project: tickets, steps, links, people, agents, decisions and the guide.
 // Re-loads whenever anything changes (realtime), so every screen stays current.
@@ -26,6 +27,9 @@ export interface Workspace {
   demoEvents?: TicketEvent[];
   /** Preview only: what the runs used, which the live site reads from the database. */
   demoUsage?: RunUsage[];
+  /** Preview reads stay local, including ticket details and Settings invites. */
+  demoDetails?: Map<string, { steps: Step[]; comments: Comment[]; events: TicketEvent[] }>;
+  demoInvites?: Invite[];
 }
 
 export function useWorkspace(project: Project | null): { ws: Workspace | null; error: string } {
@@ -49,7 +53,7 @@ export function useWorkspace(project: Project | null): { ws: Workspace | null; e
       setState({ project, tickets, steps: stepMap, links, people, decisions, guide });
       setError("");
     } catch (e) {
-      setError((e as Error).message);
+      setError(reportError(e, "load the project"));
     }
   }, [project]);
 

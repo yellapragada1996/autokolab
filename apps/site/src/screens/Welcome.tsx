@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useState } from "react";
 import { browserTimezone, cityFromTimezone, localTime } from "../lib/place";
 import type { Profile } from "../lib/session";
@@ -86,7 +87,7 @@ export function Welcome({ profile, onSave }: { profile: Profile; onSave: (p: { n
     try {
       await onSave({ name: trimmed, timezone: tz, city });
     } catch (e2) {
-      setErr((e2 as Error).message);
+      setErr(reportError(e2, "save your profile"));
       setBusy(false);
     }
   };

@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useCallback, useEffect, useState } from "react";
 import {
   addBlocker,
@@ -40,12 +41,13 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
   const load = useCallback(async () => {
     if (!t) return;
     try {
-      setDetail(await ticketDetail(t.id));
+      setDetail(ws.demoDetails ? ws.demoDetails.get(t.id) ?? { steps: ws.steps.get(t.id) ?? [], comments: [], events: [] } : await ticketDetail(t.id));
+      setErr("");
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "load the ticket"));
       setDetail((d) => d ?? { steps: ws.steps.get(t.id) ?? [], comments: [], events: [] });
     }
-  }, [t, ws.steps]);
+  }, [t, ws.steps, ws.demoDetails]);
   useEffect(() => {
     void load();
   }, [load, ws]);
@@ -64,10 +66,10 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
   const save = async (patch: TicketPatch) => {
     try {
       setErr("");
-      await updateTicket(t.id, patch);
+      if (!ws.demoDetails) await updateTicket(t.id, patch);
       await ws.reload();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "save the ticket"));
     }
   };
 
@@ -157,7 +159,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
           </Panel>
 
           <Panel title="Where it is" sub="Steps, checked off as the work proves them">
-            <StepsEditor steps={steps} onToggle={async (idx, status) => (await setStepStatus(t.id, idx, status), await load(), await ws.reload())} onReplace={async (s) => (await setSteps(t.id, s), await load(), await ws.reload())} />
+            <StepsEditor steps={steps} onToggle={async (idx, status) => (await (ws.demoDetails ? Promise.resolve() : setStepStatus(t.id, idx, status)), await load(), await ws.reload())} onReplace={async (s) => (await (ws.demoDetails ? Promise.resolve() : setSteps(t.id, s)), await load(), await ws.reload())} />
           </Panel>
 
           <Panel title="Activity">
@@ -486,11 +488,11 @@ function Blockers({ ws, t, me }: { ws: Workspace; t: Ticket; me: string }) {
     );
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {group("is blocked by", blockers, (b) => async () => (await removeBlocker(t.id, b.id), await ws.reload()))}
+      {group("is blocked by", blockers, (b) => async () => (await (ws.demoDetails ? Promise.resolve() : removeBlocker(t.id, b.id)), await ws.reload()))}
       {group("blocks", blocks)}
       {!blockers.length && !blocks.length && !adding && <p style={{ fontSize: 13, color: "var(--faint)" }}>Not linked to other issues. It can start any time.</p>}
       {adding ? (
-        <select autoFocus aria-label="Is blocked by" defaultValue="" onChange={async (e) => (e.target.value && (await addBlocker(t.id, e.target.value), await ws.reload()), setAdding(false))} onBlur={() => setAdding(false)} style={{ height: 34, borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13 }}>
+        <select autoFocus aria-label="Is blocked by" defaultValue="" onChange={async (e) => (e.target.value && (await (ws.demoDetails ? Promise.resolve() : addBlocker(t.id, e.target.value)), await ws.reload()), setAdding(false))} onBlur={() => setAdding(false)} style={{ height: 34, borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13 }}>
           <option value="">This issue is blocked by…</option>
           {candidates.map((c) => (
             <option key={c.id} value={c.id}>
@@ -729,10 +731,10 @@ export function OkToMerge({ ws, t }: { ws: Workspace; t: Ticket }) {
     setBusy(true);
     setErr("");
     try {
-      await allowMerge(t.id);
+      if (!ws.demoDetails) await allowMerge(t.id);
       await ws.reload();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "approve the change"));
     }
     setBusy(false);
   };
@@ -802,11 +804,11 @@ function Timeline({ ws, me, detail, ticket, onPosted, hint }: { ws: Workspace; m
     setBusy(true);
     setErr("");
     try {
-      await addComment(ticket.id, me, body.trim());
+      if (!ws.demoDetails) await addComment(ticket.id, me, body.trim());
       setBody("");
       await onPosted();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "send your comment"));
     }
     setBusy(false);
   };

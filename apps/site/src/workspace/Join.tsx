@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useEffect, useState } from "react";
 import { acceptInvite, peekInvite, showCode, type InvitePeek } from "../lib/data";
 import { go } from "../lib/router";
@@ -15,7 +16,7 @@ export function JoinPage({ code, profile, onJoined, notice }: { code: string; pr
   useEffect(() => {
     peekInvite(code)
       .then(setPeek)
-      .catch((e) => (setErr((e as Error).message), setPeek(null)));
+      .catch((e) => (setErr(reportError(e, "join the project")), setPeek(null)));
   }, [code, profile?.id]);
 
   // Already in the project: straight to it.
@@ -31,7 +32,7 @@ export function JoinPage({ code, profile, onJoined, notice }: { code: string; pr
       await onJoined?.();
       go({ view: "connect", project: p.slug }, true);
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "join the project"));
       setBusy(false);
     }
   };
