@@ -3,6 +3,8 @@ import {
   addBlocker,
   addComment,
   allowMerge,
+  approveTicket,
+  forgetBuilder,
   PRIORITIES,
   removeBlocker,
   setSteps,
@@ -22,6 +24,7 @@ import {
 } from "../lib/data";
 import { href, onNav } from "../lib/router";
 import { Button } from "../ui";
+import { ApproveChange } from "./ApproveChange";
 import { WhoMark } from "./Board";
 import { ago, EpicLozenge, KeyText, Label, Markdown, Picker, PriorityIcon, StatusLozenge, StepProgress, TypeIcon, TypeTag, Who } from "./bits";
 import type { Workspace } from "./useWorkspace";
@@ -174,7 +177,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
 
           <section style={{ borderRadius: 8, border: "1px solid var(--line)", overflow: "hidden" }}>
             <h2 style={{ fontSize: 14, fontWeight: 600, padding: "10px 14px", borderBottom: "1px solid var(--line)", background: "var(--sidebar)" }}>Details</h2>
-            <dl style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: "10px 12px", margin: 0, padding: 14, fontSize: 13, alignItems: "center" }}>
+            <dl style={{ display: "grid", gridTemplateColumns: "110px minmax(0, 1fr)", gap: "10px 12px", margin: 0, padding: 14, fontSize: 13, alignItems: "center", overflowWrap: "anywhere" }}>
               <dt style={{ color: "var(--muted)" }}>Assignee</dt>
               <dd style={{ margin: 0 }}>
                 <Picker
@@ -547,31 +550,63 @@ export const isPerson = (ws: Workspace, me: string) => ws.people.members.some((m
  */
 function MergeRows({ ws, t, me }: { ws: Workspace; t: Ticket; me: string }) {
   const waiting = waitsForMergeOk(t);
-  const sha = t.approved_sha;
-  const leadBuilt = !!ws.project.lead_agent_id && t.assignee_id === ws.project.lead_agent_id;
-  const approver = t.approved_by ? (isPerson(ws, t.approved_by) ? "a person" : "another agent") : null;
+  // A person's approval shows at once and goes again, with the reason, if the database refuses it (AK-95).
+  const [mine, setMine] = useState<{ sha: string; at: string } | null>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => setMine(null), [t.approved_sha, t.pr_url]);
+  const sha = t.approved_sha ?? mine?.sha;
+  const approvedBy = t.approved_sha ? (t.approved_by ?? null) : mine ? me : null;
+  const approvedAt = t.approved_sha ? t.approved_at : mine?.at;
+  const lead = ws.project.lead_agent_id;
+  const leadBuilt = !!lead && (t.assignee_id === lead || (t.built_by ?? []).includes(lead));
+  const approver = approvedBy ? (isPerson(ws, approvedBy) ? "a person" : "another agent") : null;
+  const waitsHere = !sha && t.status === "review" && !!t.pr_url;
+  const builders = t.built_by ?? [];
+
+  const approve = async (commit: string, note: string) => {
+    setErr("");
+    setMine({ sha: commit, at: new Date().toISOString() });
+    try {
+      if (ws.demoEvents) await demoAnswer();
+      else await approveTicket(t.id, commit, note);
+      await ws.reload();
+    } catch (e) {
+      setMine(null);
+      setErr((e as Error).message || "The server refused it.");
+    }
+  };
+
   return (
     <>
-      {!sha && leadBuilt && t.status === "review" && t.pr_url && (
+      {(sha || waitsHere) && (
         <>
           <dt style={{ color: "var(--muted)" }}>Approval</dt>
-          <dd style={{ margin: 0, minWidth: 0, color: "var(--warn)" }}>Waiting for a person or another agent: Captain built this, so it can't approve it</dd>
-        </>
-      )}
-      {sha && (
-        <>
-          <dt style={{ color: "var(--muted)" }}>Approval</dt>
-          <dd style={{ margin: 0, minWidth: 0 }}>
-            Approved by {ws.nameOf(t.approved_by ?? null)}
-            {leadBuilt && approver && ` (${approver}, since Captain built this)`} for commit{" "}
-            {ws.project.repo ? (
-              <a href={`https://github.com/${ws.project.repo}/commit/${sha}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
-                {sha.slice(0, 7)}
-              </a>
-            ) : (
-              <code style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{sha.slice(0, 7)}</code>
+          <dd style={{ margin: 0, minWidth: 0, display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
+            {sha ? (
+              <span>
+                Approved by {approvedBy === me ? "you" : ws.nameOf(approvedBy)}
+                {leadBuilt && approver && ` (${approver}, since Captain built this)`} for commit{" "}
+                {ws.project.repo ? (
+                  <a href={`https://github.com/${ws.project.repo}/commit/${sha}`} target="_blank" rel="noreferrer" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>
+                    {sha.slice(0, 7)}
+                  </a>
+                ) : (
+                  <code style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{sha.slice(0, 7)}</code>
+                )}
+                {approvedAt && <span style={{ color: "var(--faint)" }}> · {ago(approvedAt)}</span>}
+              </span>
+            ) : waitsHere && leadBuilt ? (
+              <span style={{ color: "var(--warn)" }}>Waiting for a person or another agent: Captain built this, so it can't approve it</span>
+            ) : waitsHere ? (
+              <span style={{ color: "var(--text-muted)" }}>Not approved yet</span>
+            ) : null}
+            {waitsHere && isPerson(ws, me) && <ApproveChange t={t} me={me} id={`approve-${t.id}`} busy={!!mine} onApprove={(commit, note) => void approve(commit, note)} />}
+            {err && (
+              <span role="alert" style={{ fontSize: 13, color: "var(--coral-text)" }}>
+                That didn't go through: {err}
+              </span>
             )}
-            {t.approved_at && <span style={{ color: "var(--faint)" }}> · {ago(t.approved_at)}</span>}
+            {builders.length > 0 && <Builders ws={ws} t={t} me={me} />}
           </dd>
         </>
       )}
@@ -592,6 +627,97 @@ function MergeRows({ ws, t, me }: { ws: Workspace; t: Ticket; me: string }) {
         </>
       )}
     </>
+  );
+}
+
+/** The preview (?preview=workspace) saves nothing: an answer takes a moment, and ?refuse refuses it. */
+async function demoAnswer(): Promise<void> {
+  await new Promise((r) => setTimeout(r, 300));
+  if (new URLSearchParams(location.search).has("refuse")) throw new Error("the preview is set to refuse answers (?refuse).");
+}
+
+/**
+ * Who worked on the ticket, so can't approve it (schema 21). The project's owner can take off someone
+ * recorded by mistake, with a reason that goes in the history.
+ */
+function Builders({ ws, t, me }: { ws: Workspace; t: Ticket; me: string }) {
+  const owner = ws.people.members.some((m) => m.actor_id === me && m.actor_type === "human" && m.role === "owner");
+  const [forgetting, setForgetting] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [gone, setGone] = useState<string[]>([]);
+  const [err, setErr] = useState("");
+  useEffect(() => setGone([]), [t.built_by]);
+  const shown = (t.built_by ?? []).filter((id) => !gone.includes(id));
+  const name = (id: string) => (id === me ? "You" : id === ws.project.lead_agent_id ? "Captain" : ws.nameOf(id));
+
+  const forget = async (id: string) => {
+    const why = reason.trim();
+    if (!why) return;
+    setErr("");
+    setGone((g) => [...g, id]);
+    setForgetting(null);
+    setReason("");
+    try {
+      if (ws.demoEvents) await demoAnswer();
+      else await forgetBuilder(t.id, id, why);
+      await ws.reload();
+    } catch (e) {
+      setGone((g) => g.filter((x) => x !== id));
+      setErr((e as Error).message || "The server refused it.");
+    }
+  };
+
+  if (!shown.length && !err) return null;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 13, width: "100%" }}>
+      {shown.length > 0 && <span style={{ color: "var(--text-muted)" }}>Worked on it, so can't approve it:</span>}
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+        {shown.map((id) => (
+          <li key={id} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+              <span>{name(id)}</span>
+              {owner && forgetting !== id && (
+                <button type="button" className="ak-tap" onClick={() => (setForgetting(id), setReason(""))} style={{ border: 0, padding: 0, background: "none", color: "var(--blue-text)", fontSize: 12, cursor: "pointer" }}>
+                  Didn't work on this
+                </button>
+              )}
+            </span>
+            {forgetting === id && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void forget(id);
+                }}
+                style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}
+              >
+                <input
+                  autoFocus
+                  aria-label={`Why ${name(id)} didn't work on this`}
+                  placeholder="Why? Kept in the history"
+                  value={reason}
+                  maxLength={300}
+                  onChange={(e) => setReason(e.target.value)}
+                  onKeyDown={(e) => e.key === "Escape" && setForgetting(null)}
+                  className="ak-tap"
+                  style={{ flex: "1 1 160px", minWidth: 0, height: 30, padding: "0 8px", borderRadius: "var(--radius-md)", border: "1px solid var(--border-strong)", background: "var(--bg)", fontSize: 13 }}
+                />
+                <Button size="sm" type="submit" className="ak-tap" disabled={!reason.trim()}>
+                  Take off
+                </Button>
+                <button type="button" className="ak-tap" onClick={() => setForgetting(null)} style={{ border: 0, padding: 0, background: "none", color: "var(--text-muted)", fontSize: 12, cursor: "pointer" }}>
+                  Cancel
+                </button>
+              </form>
+            )}
+          </li>
+        ))}
+      </ul>
+      {err && (
+        <span role="alert" style={{ color: "var(--coral-text)" }}>
+          That didn't go through: {err}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -654,6 +780,8 @@ export function describe(ws: Workspace, e: TicketEvent): string | null {
       return d.to ? `approved commit ${d.to.slice(0, 7)}` : d.reason === "pr_changed" || d.reason === "assignee_changed" ? null : "withdrew the approval";
     case "merge_ok":
       return d.by ? "OK'd the merge" : null;
+    case "builder_forgotten":
+      return `said ${d.member === ws.project.lead_agent_id ? "Captain" : ws.nameOf(d.member)} didn't work on it: "${d.reason}"`;
     default:
       return null;
   }

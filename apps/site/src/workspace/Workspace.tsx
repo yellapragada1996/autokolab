@@ -220,7 +220,7 @@ export function Workspace({
           ) : route.view === "people" ? (
             <People ws={ws} me={me} onProjectChanged={onProjectChanged} />
           ) : (
-            <CaptainHome ws={ws} cr={captain} />
+            <CaptainHome ws={ws} cr={captain} me={me} />
           )}
         </div>
       </main>

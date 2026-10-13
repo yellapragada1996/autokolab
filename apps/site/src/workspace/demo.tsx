@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Agent, Decision, Guide, Member, Project, RunUsage, Step, Ticket, TicketEvent } from "../lib/data";
+import { LEAD_BUILT_QUESTION, REVIEW_LIMIT_QUESTION, type Agent, type Decision, type Guide, type Member, type Project, type RunUsage, type Step, type Ticket, type TicketEvent } from "../lib/data";
 import { parse, useRoute } from "../lib/router";
 import type { Profile } from "../lib/session";
 import { starterRules } from "./GuidePage";
@@ -123,6 +123,11 @@ const allTickets: Ticket[] = [
   }),
   // Worth watching (AK-76): finished 45 minutes ago and nobody has reviewed it.
   ticket(17, { title: "Show related products", summary: "showing related products under the basket", status: "review", type: "feature", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/44", started_at: iso(140), updated_at: iso(45) }),
+  // Approving as a person (AK-95): Captain built SH-18, so a person approves it; SH-19's tests are
+  // still running, so it can't be approved yet; Ana worked on SH-20, so someone else has to approve it.
+  ticket(18, { title: "Tidy the order emails", summary: "Order emails show the items and the total in one table", status: "review", type: "feature", parent_id: "t11", assignee_id: LEAD, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/45", started_at: iso(90), updated_at: iso(14), needs_human: LEAD_BUILT_QUESTION, built_by: [LEAD], pr_facts: { ...passing(18), checked_at: iso(15) } }),
+  ticket(19, { title: "Show stock levels", summary: "Product pages say how many are left", status: "review", type: "feature", parent_id: "t13", assignee_id: LEAD, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/46", started_at: iso(70), updated_at: iso(9), needs_human: LEAD_BUILT_QUESTION, built_by: [LEAD], pr_facts: { sha: sha(19), checks: { passed: 31, total: 48, state: "pending" }, files: { total: 2, risky: [] }, additions: 20, deletions: 1, checked_at: iso(9) } }),
+  ticket(20, { title: "Gift wrap at checkout", status: "review", type: "feature", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/47", started_at: iso(200), updated_at: iso(7), needs_human: REVIEW_LIMIT_QUESTION, built_by: [BUILDER, ANA], pr_facts: { ...passing(20), checked_at: iso(8) } }),
   ticket(6, { title: "Order history page", status: "backlog", type: "feature", priority: "low", parent_id: "t15" }),
   ticket(7, { title: "Upgrade to React 19", status: "backlog", type: "chore", assignee_id: LEE, assignee_type: "human" }),
   ticket(8, { title: "Product search", status: "done", summary: "Shoppers can search products by name from any page", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(300) }),

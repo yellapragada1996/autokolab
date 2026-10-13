@@ -628,7 +628,9 @@ select pg_temp.expect((select merge_policy = 'ask' from public.projects where sl
 
 -- ------------------------------------------------ nobody approves their own work (schema 13)
 reset role;
--- MZ-1 goes back to Ready, so handing it around here doesn't make anyone one of its builders (schema 17)
+-- MZ-1 goes back to Ready, so handing it around here doesn't make anyone one of its builders (schema 17).
+-- Nobody is signed in for this setup, so it isn't anyone's work on the ticket (schema 21).
+set request.jwt.claim.sub = '';
 update public.tickets set status = 'ready', assignee_id = '00000000-0000-0000-0000-0000000000e1', assignee_type = 'agent' where key = 'MZ-1';
 set role authenticated;
 -- the lead built MZ-1: it can't approve it, or clear an approval on it
@@ -787,9 +789,16 @@ insert into public.tickets (id, project_id, number, key, title, reporter_id, sta
    '00000000-0000-0000-0000-0000000000e1', 'review', '00000000-0000-0000-0000-0000000000e1', 'agent', 'https://github.com/octo/modelz/pull/21'),
   ('00000000-0000-0000-0000-0000000000ac', '00000000-0000-0000-0000-0000000000f1', 4, 'MZ-4', 'Handed over early',
    '00000000-0000-0000-0000-0000000000e1', 'ready', '00000000-0000-0000-0000-0000000000e1', 'agent', 'https://github.com/octo/modelz/pull/22');
-select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2']::uuid[] from public.tickets where key = 'MZ-2'), 'the assignee of a ticket in progress is a builder');
+-- being named the assignee isn't working on it (schema 21): each builder changes its own ticket first
+select pg_temp.expect((select built_by = '{}' from public.tickets where key = 'MZ-2'), 'the assignee of a ticket in progress isn''t a builder until it changes it');
 select pg_temp.expect((select built_by = '{}' from public.tickets where key = 'MZ-4'), 'an assignee in Ready isn''t a builder yet');
 set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+update public.tickets set branch = 'MZ-2-worker-builds' where key = 'MZ-2';
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2']::uuid[] from public.tickets where key = 'MZ-2'), 'the assignee setting the branch is a builder');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+update public.tickets set summary = 'The lead built this' where key = 'MZ-3';
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e1']::uuid[] from public.tickets where key = 'MZ-3'), 'the lead summing up its own ticket is a builder');
 -- nobody writes built_by directly
 set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
 select pg_temp.expect_error($q$update public.tickets set built_by = '{}' where key = 'MZ-2'$q$, 'permission denied');
@@ -938,6 +947,125 @@ reset role;
 -- the table has nowhere to put text: every column is a number, an id, a time, the kind or the model name
 select pg_temp.expect((select count(*) = 2 from information_schema.columns
   where table_schema = 'public' and table_name = 'run_usage' and data_type in ('text', 'character varying', 'json', 'jsonb')), 'run_usage holds no free text');
+
+-- ------------------------------------------------ builders are the members who worked on a ticket (schema 21)
+reset role;
+-- MZ-5: e2's ticket in Review that nobody has touched. MZ-6: Mona's (b2) ticket in progress.
+-- MZ-7: the lead's ticket in Review with no PR yet. MZ-8: the lead's own ticket in progress.
+insert into public.tickets (id, project_id, number, key, title, reporter_id, status, assignee_id, assignee_type, pr_url) values
+  ('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000f1', 5, 'MZ-5', 'Named, not worked',
+   '00000000-0000-0000-0000-0000000000e1', 'review', '00000000-0000-0000-0000-0000000000e2', 'agent', 'https://github.com/octo/modelz/pull/30'),
+  ('00000000-0000-0000-0000-0000000000ae', '00000000-0000-0000-0000-0000000000f1', 6, 'MZ-6', 'A person builds',
+   '00000000-0000-0000-0000-0000000000e1', 'in_progress', '00000000-0000-0000-0000-0000000000b2', 'human', 'https://github.com/octo/modelz/pull/32'),
+  ('00000000-0000-0000-0000-0000000000af', '00000000-0000-0000-0000-0000000000f1', 7, 'MZ-7', 'A second ticket for one PR',
+   '00000000-0000-0000-0000-0000000000e1', 'review', '00000000-0000-0000-0000-0000000000e1', 'agent', null),
+  ('00000000-0000-0000-0000-0000000001a8', '00000000-0000-0000-0000-0000000000f1', 8, 'MZ-8', 'The lead builds',
+   '00000000-0000-0000-0000-0000000000e1', 'in_progress', '00000000-0000-0000-0000-0000000000e1', 'agent', null);
+select pg_temp.expect((select built_by = '{}' from public.tickets where key = 'MZ-5'), 'assigned but untouched isn''t a builder');
+set role authenticated;
+-- AK-90's mistake: the lead takes a ticket in Review and hands it back without touching anything else
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000e1' where key = 'MZ-5';
+update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000e2' where key = 'MZ-5';
+select pg_temp.expect((select built_by = '{}' from public.tickets where key = 'MZ-5'), 'taking a ticket and handing it back isn''t working on it');
+select pg_temp.expect((select approved_by = '00000000-0000-0000-0000-0000000000e1'
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000ad', repeat('f1', 20), '{"less_sure": "none"}'::jsonb)), 'so the lead can still approve it');
+-- the assignee changing the status is working on it
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+update public.tickets set status = 'in_progress' where key = 'MZ-5';
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2']::uuid[] from public.tickets where key = 'MZ-5'), 'the assignee changing the status is a builder');
+update public.tickets set status = 'review' where key = 'MZ-5';
+-- AK-48, first loophole: the worker hands its ticket to the lead and approves it
+update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000e1' where key = 'MZ-5';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000ad', repeat('f2', 20))$q$, 'AUTOKOLAB_FORBIDDEN: You worked on this ticket');
+-- a person approves a worker's ticket, with the website's review
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect((select approved_by = '00000000-0000-0000-0000-0000000000b2' and review = '{"less_sure": "Approved by a person; no notes."}'::jsonb
+  from public.approve_ticket('00000000-0000-0000-0000-0000000000ad', repeat('f2', 20), '{"less_sure": "Approved by a person; no notes."}'::jsonb)),
+  'a person approves a worker''s ticket');
+-- the assignee changing the PR link is working on it; AK-48, second loophole: the lead hands its ticket to a worker and approves it
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+update public.tickets set pr_url = 'https://github.com/octo/modelz/pull/33' where key = 'MZ-8';
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e1']::uuid[] from public.tickets where key = 'MZ-8'), 'the assignee changing the PR link is a builder');
+update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000e4' where key = 'MZ-8';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000001a8', repeat('f3', 20))$q$, 'AUTOKOLAB_FORBIDDEN: You worked on this ticket');
+-- a person who built a ticket can't approve it after handing it on
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+update public.tickets set description = 'Mona fills in the details.' where key = 'MZ-6';
+update public.tickets set assignee_id = '00000000-0000-0000-0000-0000000000e2' where key = 'MZ-6';
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000ae', repeat('f4', 20), '{"less_sure": "none"}'::jsonb)$q$, 'AUTOKOLAB_FORBIDDEN: You worked on this ticket');
+-- the assignee's steps are work; someone else's aren't
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+insert into public.ticket_steps (ticket_id, idx, label) values ('00000000-0000-0000-0000-0000000000ae', 0, 'Write the page');
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000b2', '00000000-0000-0000-0000-0000000000e2']::uuid[] from public.tickets where key = 'MZ-6'), 'the assignee planning steps is a builder');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e4';
+update public.ticket_steps set status = 'done' where ticket_id = '00000000-0000-0000-0000-0000000000ae';
+-- a recorded build run is work; a review run isn't
+select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'review', 60, '00000000-0000-0000-0000-0000000000ae');
+select pg_temp.expect((select not ('00000000-0000-0000-0000-0000000000e4' = any(built_by)) from public.tickets where key = 'MZ-6'), 'someone else''s steps and a review run don''t make a builder');
+select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'build', 60, '00000000-0000-0000-0000-0000000000ad');
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000e4']::uuid[] from public.tickets where key = 'MZ-5'), 'a recorded build run makes a builder');
+-- a second ticket for the same PR takes on its builders, so it can't be used to approve the PR
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+update public.tickets set pr_url = 'https://github.com/Octo/Modelz/pull/30/files' where key = 'MZ-7';
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000e4']::uuid[] from public.tickets where key = 'MZ-7'), 'a ticket given another ticket''s PR link takes on its builders');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000000af', repeat('f5', 20))$q$, 'AUTOKOLAB_FORBIDDEN: You worked on this ticket');
+reset role;
+insert into public.tickets (id, project_id, number, key, title, reporter_id, status, assignee_id, assignee_type, pr_url) values
+  ('00000000-0000-0000-0000-0000000001a9', '00000000-0000-0000-0000-0000000000f1', 9, 'MZ-9', 'A third ticket for one PR',
+   '00000000-0000-0000-0000-0000000000e1', 'review', '00000000-0000-0000-0000-0000000000e1', 'agent', 'https://github.com/octo/modelz/pull/30#top');
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2', '00000000-0000-0000-0000-0000000000e4']::uuid[] from public.tickets where key = 'MZ-9'), 'so does a new ticket created with that PR link');
+-- only the project's owner takes a wrongly recorded builder off, with a reason
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect_error($q$select public.forget_builder('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000e4', 'Only reviewed it')$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select pg_temp.expect_error($q$select public.forget_builder('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000e4', 'Only reviewed it')$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b4';
+select pg_temp.expect_error($q$select public.forget_builder('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000e4', 'Only reviewed it')$q$, 'AUTOKOLAB_FORBIDDEN');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+select pg_temp.expect_error($q$select public.forget_builder('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000e4', '   ')$q$, 'AUTOKOLAB_BAD_REASON');
+select pg_temp.expect_error($q$select public.forget_builder('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000e4', repeat('x', 301))$q$, 'AUTOKOLAB_BAD_REASON');
+select pg_temp.expect_error($q$select public.forget_builder('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000e4', 'see ghp_abcdefghijklmnopqrstuvwxyz0123456789')$q$, 'AUTOKOLAB_SECRET');
+select pg_temp.expect_error($q$select public.forget_builder('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000e1', 'Never touched it')$q$, 'AUTOKOLAB_NOT_FOUND');
+-- nobody adds builders by hand either
+select pg_temp.expect_error($q$select public.add_builder('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000b1')$q$, 'permission denied');
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2']::uuid[]
+  from public.forget_builder('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000e4', '  Its run was a review, recorded as a build by mistake. ')),
+  'the owner takes a wrongly recorded builder off');
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2']::uuid[] from public.tickets where key = 'MZ-5'), 'and it stays off');
+reset role;
+select pg_temp.expect((select actor_id = '00000000-0000-0000-0000-0000000000b1' and actor_type = 'human'
+    and data ->> 'member' = '00000000-0000-0000-0000-0000000000e4' and data ->> 'reason' = 'Its run was a review, recorded as a build by mistake.'
+  from public.ticket_events where ticket_id = '00000000-0000-0000-0000-0000000000ad' and kind = 'builder_forgotten'), 'history says who took the builder off and why');
+set role anon;
+select pg_temp.expect_error($q$select public.forget_builder('00000000-0000-0000-0000-0000000000ad', '00000000-0000-0000-0000-0000000000e2', 'x')$q$, 'permission denied');
+reset role;
+-- Work done in the same update that hands the ticket on, or moves it out of In progress, still counts.
+-- MZ-10: e2's untouched ticket in progress. MZ-11: the lead's own untouched ticket in progress. MZ-12: e2's, in progress.
+insert into public.tickets (id, project_id, number, key, title, reporter_id, status, assignee_id, assignee_type, pr_url) values
+  ('00000000-0000-0000-0000-0000000001aa', '00000000-0000-0000-0000-0000000000f1', 10, 'MZ-10', 'Work and hand on at once',
+   '00000000-0000-0000-0000-0000000000e1', 'in_progress', '00000000-0000-0000-0000-0000000000e2', 'agent', null),
+  ('00000000-0000-0000-0000-0000000001ab', '00000000-0000-0000-0000-0000000000f1', 11, 'MZ-11', 'The lead works and hands on at once',
+   '00000000-0000-0000-0000-0000000000e1', 'in_progress', '00000000-0000-0000-0000-0000000000e1', 'agent', 'https://github.com/octo/modelz/pull/35'),
+  ('00000000-0000-0000-0000-0000000001ac', '00000000-0000-0000-0000-0000000000f1', 12, 'MZ-12', 'Work and step back at once',
+   '00000000-0000-0000-0000-0000000000e1', 'in_progress', '00000000-0000-0000-0000-0000000000e2', 'agent', null);
+set role authenticated;
+-- AK-48, first loophole in one update: the worker finishes and hands the ticket to the lead
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+update public.tickets set status = 'review', pr_url = 'https://github.com/octo/modelz/pull/34', assignee_id = '00000000-0000-0000-0000-0000000000e1' where key = 'MZ-10';
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2']::uuid[] from public.tickets where key = 'MZ-10'), 'working and handing the ticket on in one update is a builder');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000001aa', repeat('a1', 20))$q$, 'AUTOKOLAB_FORBIDDEN: You worked on this ticket');
+-- AK-48, second loophole in one update: the lead writes its summary and hands its ticket to a worker
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+update public.tickets set summary = 'The lead did this.', assignee_id = '00000000-0000-0000-0000-0000000000e4' where key = 'MZ-11';
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e1']::uuid[] from public.tickets where key = 'MZ-11'), 'the lead working and handing its ticket on in one update is a builder');
+select pg_temp.expect_error($q$select public.approve_ticket('00000000-0000-0000-0000-0000000001ab', repeat('a2', 20))$q$, 'AUTOKOLAB_FORBIDDEN: You worked on this ticket');
+-- the assignee setting the PR link while moving the ticket out of In progress
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+update public.tickets set status = 'ready', pr_url = 'https://github.com/octo/modelz/pull/36' where key = 'MZ-12';
+select pg_temp.expect((select built_by = array['00000000-0000-0000-0000-0000000000e2']::uuid[] from public.tickets where key = 'MZ-12'), 'working while moving the ticket out of In progress is a builder');
+reset role;
 
 -- ------------------------------------------------ secret patterns match the client-side list
 reset role;

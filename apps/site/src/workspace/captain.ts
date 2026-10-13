@@ -1,4 +1,4 @@
-import { MERGE_OK_PREFIX, waitsForMergeOk, type Decision, type Ticket } from "../lib/data";
+import { LEAD_BUILT_QUESTION, MERGE_OK_PREFIX, waitsForApproval, waitsForMergeOk, type Decision, type Ticket } from "../lib/data";
 import { isBookkeeping, problemOf, type RoomMessage } from "../lib/room";
 import { agentDot, epicOf, goals as storyGoals, headline, plural } from "./story";
 import type { Workspace } from "./useWorkspace";
@@ -238,7 +238,7 @@ export function waitsFor(ws: Workspace, t: Ticket): string | null {
 
 // ------------------------------------------------------------------ needs you
 
-export type NeedKind = "risky_merge" | "ticket_question" | "captain_question" | "plan" | "problem";
+export type NeedKind = "risky_merge" | "approval" | "ticket_question" | "captain_question" | "plan" | "problem";
 
 /** One thing that needs a person. Amber on screen means exactly this list, and nothing else. */
 export interface Need {
@@ -255,6 +255,7 @@ export interface Need {
 
 const ACTION: Record<NeedKind, string> = {
   risky_merge: "OK a risky merge",
+  approval: "Approve a change",
   ticket_question: "Answer a question",
   captain_question: "Answer a question",
   plan: "OK a plan",
@@ -275,6 +276,8 @@ export function needsYou(ws: Workspace, turns: Turn[]): Need[] {
       out.push({ key: `merge:${t.id}`, kind: "risky_merge", action: ACTION.risky_merge, question: t.needs_human.slice(MERGE_OK_PREFIX.length).trim(), ticket: t, turnId: null, since: t.updated_at });
     } else if (t.needs_human.startsWith(MERGE_OK_PREFIX)) {
       continue; // already OK'd: it merges by itself now
+    } else if (waitsForApproval(t)) {
+      out.push({ key: `approve:${t.id}`, kind: "approval", action: ACTION.approval, question: t.needs_human, ticket: t, turnId: null, since: t.updated_at });
     } else {
       const kind: NeedKind = RUNNER_PROBLEM.test(t.needs_human) ? "problem" : "ticket_question";
       out.push({ key: `ticket:${t.id}`, kind, action: ACTION[kind], question: t.needs_human, ticket: t, turnId: null, since: t.updated_at });
@@ -401,6 +404,7 @@ function goalRows(ws: Workspace): GoalRow[] {
 
 const WAITING: Record<NeedKind, (title: string) => string> = {
   risky_merge: (t) => `${t} is waiting on your OK`,
+  approval: (t) => `${t} is waiting for an approval`,
   ticket_question: (t) => `${t} is waiting on your answer`,
   captain_question: () => "my question is waiting on your answer",
   plan: () => "my plan is waiting on your OK",
@@ -599,6 +603,7 @@ export const foldText = (n: number) => plural(n, "quiet update");
 /** What a card is about, after "Needs you · ". The ticket's key and title follow the ones ending in "on". */
 export const NEED_WHAT: Record<NeedKind, string> = {
   risky_merge: "a risky merge on",
+  approval: "a change to approve on",
   ticket_question: "a question on",
   captain_question: "my question",
   plan: "my plan",
@@ -649,6 +654,8 @@ export function needText(need: Need, nameOf: (id: string | null) => string): str
   switch (need.kind) {
     case "risky_merge":
       return `${key} is ready and needs your OK. ${mergeQuestion(need)}`;
+    case "approval":
+      return need.question === LEAD_BUILT_QUESTION ? `${key} is ready. I built it, so someone else has to approve it.` : `${key} is waiting for an approval. ${need.question.trim()}`;
     case "ticket_question":
       return `${t?.assignee_id ? nameOf(t.assignee_id) : "Someone"} has a question on ${key}: ${need.question.trim()}`;
     case "problem":
@@ -667,7 +674,7 @@ export function planLine(p: Plan): string {
   return `${plural(p.goals.length, "goal")}, ${plural(p.tickets.length, "ticket")}.${asks ? ` ${asks}.` : ""}`;
 }
 
-export type Answer = "yes" | "no" | "answered" | "closed" | "dismissed";
+export type Answer = "yes" | "no" | "approved" | "answered" | "closed" | "dismissed";
 
 /** The quiet line that replaces a message's actions once the person has answered it. */
 export function answeredLine(answer: Answer, at: string): string {
@@ -676,6 +683,8 @@ export function answeredLine(answer: Answer, at: string): string {
       return `You said yes · ${clock(at)}`;
     case "no":
       return `You said no · ${clock(at)}`;
+    case "approved":
+      return `You approved it · ${clock(at)}`;
     case "answered":
       return `You answered · ${clock(at)}`;
     case "closed":

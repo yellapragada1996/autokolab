@@ -62,6 +62,19 @@ export const MERGE_OK_PREFIX = "Ready to merge — needs your OK:";
 
 export const waitsForMergeOk = (t: Ticket) => !!t.needs_human?.startsWith(MERGE_OK_PREFIX) && !t.merge_ok_at;
 
+/** What the lead's runner puts in "Needs you" when a change waits for someone to approve it (AK-59; packages/autokolab/src/core/projects.ts). */
+export const LEAD_BUILT_QUESTION = "Captain built this, so a person or another agent has to approve it.";
+export const REVIEW_LIMIT_QUESTION = "I've reviewed this 5 times and it still isn't right. Can you look?";
+export const REVIEW_FAILED_PREFIX = "Captain couldn't finish reviewing this";
+
+export const isReviewQuestion = (text: string | null | undefined) => !!text && (text === LEAD_BUILT_QUESTION || text === REVIEW_LIMIT_QUESTION || text.startsWith(REVIEW_FAILED_PREFIX));
+
+/** A change in Review that waits for someone to approve it, because Captain can't or didn't (AK-95). */
+export const waitsForApproval = (t: Ticket) => t.status === "review" && !!t.pr_url && !t.approved_sha && isReviewQuestion(t.needs_human);
+
+/** The review a person's approval is stored with when they leave "Anything you're unsure about?" empty. */
+export const PERSON_NO_NOTES = "Approved by a person; no notes.";
+
 export interface Agent {
   id: string;
   owner_profile_id: string | null;
@@ -144,6 +157,8 @@ export interface Ticket {
   review?: Review | null;
   /** What GitHub last said about the PR, recorded by Captain's runner (schema 18; absent before it). */
   pr_facts?: PrFacts | null;
+  /** Everyone who worked on it; none of them can approve it (schema 17, narrowed by 21; absent before 17). */
+  built_by?: string[] | null;
 }
 
 /** A snapshot of the PR at one commit: its tests and how big the change is (AK-57). */
@@ -356,6 +371,21 @@ export async function setMergePolicy(projectId: string, policy: MergePolicy): Pr
 export async function allowMerge(ticketId: string): Promise<Ticket> {
   const t = check<Ticket>(await supabase.rpc("allow_merge", { p_ticket: ticketId }));
   return t.needs_human?.startsWith(MERGE_OK_PREFIX) ? updateTicket(ticketId, { needs_human: null }) : t;
+}
+
+/**
+ * A person approves the exact commit they were shown (AK-95). Their note, or PERSON_NO_NOTES, is the
+ * review's "less sure" line. The question asking for an approval is cleared, as allowMerge does.
+ * The database refuses anyone who worked on the ticket, with a plain sentence.
+ */
+export async function approveTicket(ticketId: string, sha: string, note: string): Promise<Ticket> {
+  const t = check<Ticket>(await supabase.rpc("approve_ticket", { p_ticket: ticketId, p_sha: sha.toLowerCase(), p_review: { less_sure: note.trim() || PERSON_NO_NOTES } }));
+  return isReviewQuestion(t.needs_human) ? updateTicket(ticketId, { needs_human: null }) : t;
+}
+
+/** The project's owner says someone didn't work on a ticket after all (schema 21). History keeps the reason. */
+export async function forgetBuilder(ticketId: string, memberId: string, reason: string): Promise<Ticket> {
+  return check(await supabase.rpc("forget_builder", { p_ticket: ticketId, p_member: memberId, p_reason: reason }));
 }
 
 export async function addPerson(projectId: string, githubLogin: string): Promise<void> {

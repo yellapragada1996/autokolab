@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MERGE_OK_PREFIX } from "../lib/data";
+import { LEAD_BUILT_QUESTION, MERGE_OK_PREFIX, REVIEW_LIMIT_QUESTION } from "../lib/data";
 import { answeredLine, awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, clock, conversation, dayLabel, folded, foldText, goalName, lowerFirst, mergeChip, mergeQuestion, NO_ANSWER_NEEDED, needsYou, needText, newerPlan, openQuestions, ownerOf, parsePlan, planAsks, planLine, planOrder, planRequest, plans, planTitle, problemText, replyPreview, riskyPart, shortened, timeline, today, waitsFor, withoutPlan } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, message, ticket, workspace } from "./fixtures";
 
@@ -407,11 +407,27 @@ describe("Captain's messages (AK-69)", () => {
     expect(problemText("couldn't continue: session limit (resets 11:20pm Stockholm)")).toBe("I couldn't continue: session limit (resets 11:20pm Stockholm).");
   });
 
+  it("asks a person to approve a change waiting for an approval (AK-95)", () => {
+    const pr = "https://github.com/ana/shop/pull/45";
+    const built = ticket({ key: "SH-7", status: "review", assignee_id: CAPTAIN, pr_url: pr, needs_human: LEAD_BUILT_QUESTION });
+    const limit = ticket({ key: "SH-8", status: "review", assignee_id: BIRCH, pr_url: pr, needs_human: REVIEW_LIMIT_QUESTION });
+    const approved = ticket({ key: "SH-9", status: "review", assignee_id: CAPTAIN, pr_url: pr, needs_human: LEAD_BUILT_QUESTION, approved_sha: "a".repeat(40) });
+    const needs = needsYou(workspace([built, limit, approved]), []);
+    expect(needs.map((n) => [n.ticket?.key, n.kind, n.action])).toEqual([
+      ["SH-7", "approval", "Approve a change"],
+      ["SH-8", "approval", "Approve a change"],
+      ["SH-9", "ticket_question", "Answer a question"],
+    ]);
+    expect(needText(needs[0], nameOf)).toBe("SH-7 is ready. I built it, so someone else has to approve it.");
+    expect(needText(needs[1], nameOf)).toBe(`SH-8 is waiting for an approval. ${REVIEW_LIMIT_QUESTION}`);
+  });
+
   it("replaces the actions with one quiet line once answered", () => {
     const t = new Date(2026, 9, 10, 9, 20).toISOString();
     expect(answeredLine("yes", t)).toMatch(/^You said yes · 0?9:20( am)?$/);
     expect(answeredLine("no", t)).toMatch(/^You said no · /);
     expect(answeredLine("answered", t)).toMatch(/^You answered · /);
+    expect(answeredLine("approved", t)).toMatch(/^You approved it · /);
     expect(answeredLine("closed", t)).toMatch(/^No answer needed · /);
     expect(answeredLine("dismissed", t)).toBe("Dismissed");
   });
