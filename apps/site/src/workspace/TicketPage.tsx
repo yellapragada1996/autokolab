@@ -177,7 +177,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
 
           <section style={{ borderRadius: 8, border: "1px solid var(--line)", overflow: "hidden" }}>
             <h2 style={{ fontSize: 14, fontWeight: 600, padding: "10px 14px", borderBottom: "1px solid var(--line)", background: "var(--sidebar)" }}>Details</h2>
-            <dl style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: "10px 12px", margin: 0, padding: 14, fontSize: 13, alignItems: "center" }}>
+            <dl style={{ display: "grid", gridTemplateColumns: "110px minmax(0, 1fr)", gap: "10px 12px", margin: 0, padding: 14, fontSize: 13, alignItems: "center", overflowWrap: "anywhere" }}>
               <dt style={{ color: "var(--muted)" }}>Assignee</dt>
               <dd style={{ margin: 0 }}>
                 <Picker
