@@ -4,6 +4,7 @@ import { go, href, onNav, type ProjectView, type Route } from "../lib/router";
 import type { Profile } from "../lib/session";
 import { AgentAvatar, Button, Icon, Logo, PersonAvatar, Svg } from "../ui";
 import { CommandPalette, useCommandPalette, type Command } from "../ui/CommandPalette";
+import { workHeadline } from "./work";
 import { Backlog } from "./Backlog";
 import { Board } from "./Board";
 import { CaptainHome } from "./CaptainHome";
@@ -42,7 +43,7 @@ interface NavItem {
 const NAV_MAIN: NavItem[] = [
   { id: "captain", label: "Captain", icon: Icon.captain, sub: "Your point of contact for this project", under: ["captain", "plan"] },
   { id: "overview", label: "Overview", icon: Icon.home, sub: "Who is working on what, and which features are being built, next and done", key: "O", under: ["overview"] },
-  { id: "board", label: "Work", icon: Icon.board, sub: "Who is doing what. Agents pick up what's in Ready; drag cards between columns and lanes.", key: "W", under: ["board", "goals", "backlog", "list", "ticket"] },
+  { id: "board", label: "Work", icon: Icon.board, sub: "Who is doing what, and what is waiting next", key: "W", under: ["board", "goals", "backlog", "list", "ticket"] },
   { id: "room", label: "Room", icon: Icon.chat, sub: "Where people and agents talk, live. @name to talk to someone.", key: "R", under: ["room"] },
   { id: "people", label: "People", icon: Icon.people, sub: "Who works here and what each agent is doing", key: "P", under: ["people", "connect"] },
 ];
@@ -56,9 +57,9 @@ const NAV = [...NAV_MAIN, ...NAV_RECORDS];
 /** The views inside Work and Decisions, as tabs. */
 const WORK_TABS: { id: ProjectView; label: string }[] = [
   { id: "board", label: "By agent" },
-  { id: "goals", label: "By goal" },
-  { id: "backlog", label: "Backlog" },
-  { id: "list", label: "All issues" },
+  { id: "goals", label: "By feature" },
+  { id: "backlog", label: "Later" },
+  { id: "list", label: "All tickets" },
 ];
 const DECISION_TABS: { id: ProjectView; label: string }[] = [
   { id: "guide", label: "Guide" },
@@ -135,7 +136,7 @@ export function Workspace({
 
   const commands = useMemo<Command[]>(() => {
     const c: Command[] = [
-      { id: "new", label: "Create an issue", hint: "C", run: () => setNewTicket({}) },
+      { id: "new", label: "New ticket", hint: "C", run: () => setNewTicket({}) },
       ...NAV.map((n) => ({ id: `go-${n.id}`, label: `Go to ${n.label}`, hint: n.key && `G then ${n.key}`, run: () => go({ view: n.id, project: project.slug }) })),
       ...[...WORK_TABS, ...DECISION_TABS]
         .filter((t) => !NAV.some((n) => n.id === t.id))
@@ -170,7 +171,7 @@ export function Workspace({
               {route.view === "captain" && <AgentAvatar name="Captain" size={32} status={captain.working ? "working" : undefined} ring="var(--bg)" />}
               <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                 <h1 style={{ fontSize: 22, fontWeight: 500, letterSpacing: "var(--tracking-tight)" }}>{title.label}</h1>
-                <span style={{ fontSize: 13, color: "var(--faint)" }}>{title.sub}</span>
+                <span style={{ fontSize: 13, color: "var(--faint)" }}>{section?.id === "board" && ws && route.view !== "ticket" ? workHeadline(ws) : title.sub}</span>
               </div>
             </div>
           )}
@@ -204,7 +205,7 @@ export function Workspace({
           ) : route.view === "room" ? (
             <Room ws={ws} profile={profile} demo={demoRoom} />
           ) : route.view === "board" || route.view === "goals" ? (
-            <Board ws={ws} me={me} groupBy={route.view === "goals" ? "epic" : "assignee"} onNew={(status) => setNewTicket({ status })} />
+            <Board ws={ws} me={me} needs={captain.needs} groupBy={route.view === "goals" ? "epic" : "assignee"} onNew={(status) => setNewTicket({ status })} />
           ) : route.view === "settings" ? (
             <Settings ws={ws} me={me} onProjectChanged={onProjectChanged} />
           ) : route.view === "results" ? (
@@ -363,7 +364,7 @@ function TeamClocks({ ws }: { ws: WS }) {
   );
 }
 
-/** The views inside a page (Work's By agent · By goal · Backlog · All issues; Decisions' Guide · Decisions). */
+/** The views inside a page (Work's By agent · By feature · Backlog · All tickets; Decisions' Guide · Decisions). */
 function Tabs({ label, tabs, current, project }: { label: string; tabs: { id: ProjectView; label: string }[]; current: string; project: string }) {
   return (
     <nav aria-label={label} style={{ display: "flex", gap: 4, padding: 3, borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", alignSelf: "flex-start", maxWidth: "100%", overflowX: "auto" }}>

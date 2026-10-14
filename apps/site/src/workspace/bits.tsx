@@ -1,6 +1,7 @@
 import { Fragment, type CSSProperties, type ReactNode } from "react";
 import type { Priority, Status, Ticket, TicketType } from "../lib/data";
 import { AgentAvatar, PersonAvatar } from "../ui";
+import { workStatus } from "./work";
 import type { Workspace } from "./useWorkspace";
 
 // Small display pieces shared by the board, list and ticket screens. Colour only means status:
@@ -85,7 +86,7 @@ export function TypeTag({ type }: { type: TicketType }) {
 }
 
 /** Jira's status lozenge: grey to do, blue in progress, green done, amber needs you. */
-export function StatusLozenge({ status, needs }: { status: Status; needs?: boolean }) {
+export function StatusLozenge({ status, needs, work = false }: { status: Status; needs?: boolean; work?: boolean }) {
   const tone = needs
     ? { bg: "var(--amber-bg-2)", fg: "var(--amber)", line: "var(--amber-border)" }
     : status === "done"
@@ -93,9 +94,9 @@ export function StatusLozenge({ status, needs }: { status: Status; needs?: boole
       : status === "in_progress" || status === "review"
         ? { bg: "var(--blue-bg)", fg: "var(--blue-text)", line: "transparent" }
         : { bg: "var(--surface-2)", fg: "var(--text-2)", line: "transparent" };
-  const text = needs ? "Needs you" : { backlog: "Backlog", ready: "Ready", in_progress: "In progress", review: "In review", done: "Done", canceled: "Canceled" }[status];
+  const text = needs ? "Needs you" : work ? workStatus[status] : { backlog: "Backlog", ready: "Ready", in_progress: "In progress", review: "In review", done: "Done", canceled: "Canceled" }[status];
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 6px", borderRadius: 4, background: tone.bg, color: tone.fg, border: `1px solid ${tone.line}`, font: "600 12px var(--sans)", letterSpacing: "0.03em", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+    <span style={{ display: "inline-flex", alignItems: "center", height: 20, padding: "0 6px", borderRadius: 4, background: tone.bg, color: tone.fg, border: `1px solid ${tone.line}`, font: "600 12px var(--sans)", letterSpacing: "0.03em", textTransform: work ? "none" : "uppercase", whiteSpace: "nowrap" }}>
       {text}
     </span>
   );

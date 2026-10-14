@@ -2,6 +2,7 @@ import { reportError } from "../lib/errors";
 import { useEffect, useRef, useState } from "react";
 import { createTicket, PRIORITIES, STATUSES, TYPES, type Priority, type Status, type Ticket, type TicketType } from "../lib/data";
 import { Button } from "../ui";
+import { workStatus } from "./work";
 import type { Workspace } from "./useWorkspace";
 
 // Quick ticket creation: title first, everything else optional. Agents get tickets in "Ready".
@@ -57,7 +58,7 @@ export function NewTicket({ ws, initialStatus, onClose, onCreated }: { ws: Works
   const epics = ws.tickets.filter((t) => t.type === "epic" && t.status !== "done");
 
   return (
-    <div role="dialog" aria-modal="true" aria-label="Create issue" onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--backdrop)", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "8vh 16px", zIndex: 40, overflowY: "auto" }}>
+    <div role="dialog" aria-modal="true" aria-label="New ticket" onClick={onClose} style={{ position: "fixed", inset: 0, background: "var(--backdrop)", display: "flex", justifyContent: "center", alignItems: "flex-start", padding: "8vh 16px", zIndex: 40, overflowY: "auto" }}>
       <form
         onSubmit={submit}
         onClick={(e) => e.stopPropagation()}
@@ -85,7 +86,7 @@ export function NewTicket({ ws, initialStatus, onClose, onCreated }: { ws: Works
           <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value as Status)} style={sel}>
             {STATUSES.map((s) => (
               <option key={s.id} value={s.id}>
-                {s.label}
+                {workStatus[s.id]}
               </option>
             ))}
           </select>
@@ -108,13 +109,13 @@ export function NewTicket({ ws, initialStatus, onClose, onCreated }: { ws: Works
           <select aria-label="Type" value={type} onChange={(e) => setType(e.target.value as TicketType)} style={sel}>
             {TYPES.map((t) => (
               <option key={t.id} value={t.id}>
-                {t.label}
+                {t.id === "epic" ? "Feature" : t.id === "feature" ? "Ticket" : t.label}
               </option>
             ))}
           </select>
           {epics.length > 0 && (
-            <select aria-label="Goal" value={parent} onChange={(e) => setParent(e.target.value)} style={sel}>
-              <option value="">No goal</option>
+            <select aria-label="Feature" value={parent} onChange={(e) => setParent(e.target.value)} style={sel}>
+              <option value="">No feature</option>
               {epics.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.key} · {e.title}
@@ -130,14 +131,14 @@ export function NewTicket({ ws, initialStatus, onClose, onCreated }: { ws: Works
           </p>
         ) : assignee && ws.agentOf(assignee) ? (
           <p style={{ fontSize: 13, color: "var(--muted)" }}>
-            {ws.nameOf(assignee)} picks up tickets in <strong style={{ color: "var(--text)" }}>Ready</strong> by itself, reads the Project Guide, and reports progress here.
+            {ws.nameOf(assignee)} picks up tickets in <strong style={{ color: "var(--text)" }}>To do</strong> by itself, reads the Project Guide, and reports progress here.
           </p>
         ) : null}
         {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, alignItems: "center" }}>
           <span style={{ fontSize: 12, color: "var(--faint)" }}>⌘ Enter to create</span>
           <Button type="submit" variant="primary" disabled={busy || !title.trim()}>
-            {busy ? "Creating…" : "Create"}
+            {busy ? "Creating…" : "New ticket"}
           </Button>
         </div>
       </form>

@@ -1,24 +1,17 @@
 import { reportError } from "../lib/errors";
 import { useEffect, useMemo, useState } from "react";
 import { updateTicket, type Status, type Ticket, type TicketPatch } from "../lib/data";
-import { onNav } from "../lib/router";
+import { go, href, onNav } from "../lib/router";
 import { AgentAvatar, Button, Icon, PersonAvatar, Svg } from "../ui";
-import { EpicLozenge, KeyText, LeadBadge, PriorityIcon, StepProgress, TypeIcon } from "./bits";
-import { AgentFace, agentOnline, agentStatusText } from "./People";
+import { LeadBadge } from "./bits";
+import { needsYou, type Need } from "./captain";
+import { crew, team } from "./glance";
+import { agentDot } from "./story";
+import { cardContext, cardWords, WORK_COLUMNS, workColumn, workNeed, type WorkColumn } from "./work";
 import type { Workspace } from "./useWorkspace";
 
-// The board, modelled on Jira's: columns for the work in flight, swimlanes by assignee or epic,
-// an avatar row and quick filters to narrow it, cards you drag between columns and lanes.
-// Backlog lives on its own page, like Jira's Kanban backlog.
+// Work in flight, grouped by agent or feature. Later keeps its own ranking.
 
-export const BOARD_COLUMNS: { id: Status; label: string }[] = [
-  { id: "ready", label: "Ready" },
-  { id: "in_progress", label: "In progress" },
-  { id: "review", label: "In review" },
-  { id: "done", label: "Done" },
-];
-
-/** Done cards stay on the board this long, like Jira hiding old done issues. */
 const DONE_DAYS = 14;
 
 export type Quick = "mine" | "needs" | "recent";
@@ -32,13 +25,14 @@ export const emptyFilter: FilterState = { query: "", people: [], quick: [] };
 
 export function applyFilter(ws: Workspace, me: string, f: FilterState): Ticket[] {
   const q = f.query.trim().toLowerCase();
+  const needs = f.quick.includes("needs") ? needsYou(ws, []) : [];
   return ws.tickets.filter((t) => {
     if (t.status === "canceled") return false;
     if (f.people.length && !f.people.includes(t.assignee_id ?? "none")) return false;
     if (f.quick.includes("mine") && !(t.assignee_id === me || ws.agentOf(t.assignee_id)?.owner_profile_id === me)) return false;
-    if (f.quick.includes("needs") && !t.needs_human) return false;
+    if (f.quick.includes("needs") && !workNeed(t, needs)) return false;
     if (f.quick.includes("recent") && Date.now() - Date.parse(t.updated_at) > 86400_000) return false;
-    if (q && !`${t.key} ${t.title} ${t.labels.join(" ")}`.toLowerCase().includes(q)) return false;
+    if (q && !`${t.key} ${t.title} ${t.summary ?? ""} ${t.labels.join(" ")}`.toLowerCase().includes(q)) return false;
     return true;
   });
 }
@@ -135,20 +129,20 @@ export function useStored<T extends string>(key: string, initial: T): [T, (v: T)
   return [v, setV];
 }
 
-/** The board under Work: lanes by agent (and person), or by goal. */
-export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; onNew: (status?: Status) => void; groupBy: GroupBy }) {
+/** The board under Work: lanes by agent (and person), or by feature. */
+export function Board({ ws, me, onNew, groupBy, needs }: { ws: Workspace; me: string; onNew: (status?: Status) => void; groupBy: GroupBy; needs: Need[] }) {
   const [f, setF] = useState<FilterState>(emptyFilter);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dragging, setDragging] = useState<string | null>(null);
-  const [over, setOver] = useState<{ lane: string; status: Status; index: number } | null>(null);
+  const [over, setOver] = useState<{ lane: string; status: WorkColumn; index: number } | null>(null);
   const [err, setErr] = useState("");
 
   const shown = useMemo(
     () =>
       applyFilter(ws, me, f).filter(
-        (t) => t.type !== "epic" && BOARD_COLUMNS.some((c) => c.id === t.status) && (t.status !== "done" || !t.completed_at || Date.now() - Date.parse(t.completed_at) < DONE_DAYS * 86400_000),
+        (t) => t.type !== "epic" && (WORK_COLUMNS.some((c) => c.id === t.status) || !!workNeed(t, needs)) && (t.status !== "done" || !t.completed_at || Date.now() - Date.parse(t.completed_at) < DONE_DAYS * 86400_000),
       ),
-    [ws, me, f],
+    [ws, me, f, needs],
   );
 
   const lanes = useMemo<Lane[]>(() => {
@@ -163,9 +157,7 @@ export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; o
           tickets: shown.filter((t) => t.parent_id === e.id),
           head: (
             <>
-              <TypeIcon type="epic" />
               <span style={{ fontWeight: 600 }}>{e.title}</span>
-              <KeyText t={e} />
               <span style={{ color: "var(--faint)" }}>
                 {kids.filter((k) => k.status === "done").length} of {kids.length} done
               </span>
@@ -173,8 +165,8 @@ export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; o
           ),
         };
       });
-      out.push({ id: "no-epic", patch: { parent_id: null }, tickets: shown.filter((t) => !t.parent_id || !epics.some((e) => e.id === t.parent_id)), head: <span style={{ fontWeight: 600 }}>Not in a goal</span> });
-      return out.filter((l) => l.tickets.length || l.id !== "no-epic");
+      out.push({ id: "no-epic", patch: { parent_id: null }, tickets: shown.filter((t) => !t.parent_id || !epics.some((e) => e.id === t.parent_id)), head: <span style={{ fontWeight: 600 }}>Not in a feature</span> });
+      return out.filter((l) => l.tickets.length);
     }
     // By assignee: the lead and the worker agents first, then people, then unassigned.
     const lead = ws.project.lead_agent_id;
@@ -182,28 +174,24 @@ export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; o
       const rank = (id: string) => (id === lead ? 0 : ws.agentOf(id) ? 1 : id === me ? 2 : 3);
       return rank(a) - rank(b) || ws.nameOf(a).localeCompare(ws.nameOf(b));
     });
+    const states = new Map(crew(team(ws, new Date()), []).map((a) => [a.id, a]));
     const out: Lane[] = ids.map((id) => {
       const agent = ws.agentOf(id);
       const p = ws.people.profiles.get(id);
-      const st = agent ? (agentOnline(agent) ? agentStatusText[agent.status] : agentStatusText.offline) : null;
+      const st = states.get(id);
       return {
         id,
         patch: { assignee_id: id },
         tickets: shown.filter((t) => t.assignee_id === id),
         head: (
           <>
-            {agent ? <AgentFace a={agent} size={22} /> : <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={22} you={id === me} />}
-            <span style={{ fontWeight: 600 }}>
+            {agent ? <span title={st?.hover}><AgentAvatar name={agent.display_name} vendor={agent.vendor} status={agentDot(agent)} size={26} /></span> : <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={22} you={id === me} />}
+            <span title={st?.hover} style={{ fontWeight: 600 }}>
               {ws.nameOf(id)}
               {id === me ? " (you)" : ""}
             </span>
             {id === lead && <LeadBadge />}
-            {st && (
-              <span style={{ color: st.color }}>
-                {st.label}
-                {agent?.status_note && agentOnline(agent) ? ` · ${agent.status_note}` : ""}
-              </span>
-            )}
+            {st && <span title={st.hover} style={{ color: "var(--text-muted)" }}>{st.word.toLowerCase()}</span>}
           </>
         ),
       };
@@ -213,17 +201,17 @@ export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; o
     return out;
   }, [groupBy, shown, ws, me]);
 
-  const drop = async (lane: Lane, status: Status, index: number) => {
+  const drop = async (lane: Lane, status: WorkColumn, index: number) => {
     const t = dragging ? ws.byId.get(dragging) : undefined;
     setDragging(null);
     setOver(null);
     if (!t) return;
-    const cell = lane.tickets.filter((x) => x.status === status && x.id !== t.id).sort((a, b) => a.sort_order - b.sort_order);
+    const cell = lane.tickets.filter((x) => workColumn(x, needs) === status && x.id !== t.id).sort((a, b) => a.sort_order - b.sort_order);
     const before = cell[index - 1]?.sort_order;
     const after = cell[index]?.sort_order;
     const sort_order = before === undefined ? (after === undefined ? t.sort_order : after - 1) : after === undefined ? before + 1 : (before + after) / 2;
     const patch: TicketPatch = { ...lane.patch };
-    if (t.status !== status) patch.status = status;
+    if (status !== "needs" && t.status !== status) patch.status = status;
     if (sort_order !== t.sort_order) patch.sort_order = sort_order;
     for (const k of Object.keys(patch) as (keyof TicketPatch)[]) if (patch[k] === t[k as keyof Ticket]) delete patch[k];
     if (!Object.keys(patch).length) return;
@@ -236,7 +224,9 @@ export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; o
     }
   };
 
-  const grid = `repeat(${BOARD_COLUMNS.length}, minmax(220px, 1fr))`;
+  const columns = WORK_COLUMNS.filter((c) => shown.some((t) => workColumn(t, needs) === c.id));
+  const hidden = WORK_COLUMNS.filter((c) => !columns.includes(c));
+  const grid = `repeat(${columns.length}, minmax(220px, 1fr))`;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0, flex: 1 }}>
@@ -244,19 +234,19 @@ export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; o
         <Filters ws={ws} me={me} f={f} setF={setF} />
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <Button variant="primary" size="sm" onClick={() => onNew("ready")}>
-            Create <kbd style={{ font: "500 12px var(--mono)", opacity: 0.7 }}>C</kbd>
+            New ticket <kbd style={{ font: "500 12px var(--mono)", opacity: 0.7 }}>C</kbd>
           </Button>
         </div>
       </div>
       {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
 
       <div style={{ overflowX: "auto", paddingBottom: 8 }}>
-        <div style={{ minWidth: BOARD_COLUMNS.length * 230 }}>
-          {/* Column headers, like Jira: name and count. */}
+        <div style={{ minWidth: columns.length * 230, borderRadius: 12, background: "var(--surface-sunken)", border: "1px solid var(--border-subtle)", padding: 12 }}>
+          {/* Empty columns stay out of the reading path. */}
           <div style={{ display: "grid", gridTemplateColumns: grid, gap: 8, position: "sticky", top: 0, zIndex: 3, background: "var(--bg)", paddingBottom: 8 }}>
-            {BOARD_COLUMNS.map((c) => (
-              <div key={c.id} style={{ padding: "10px 12px", borderRadius: 8, background: "var(--sidebar)", font: "600 12px var(--sans)", letterSpacing: "0.04em", textTransform: "uppercase", color: "var(--muted)" }}>
-                {c.label} <span style={{ color: "var(--faint)", marginLeft: 4 }}>{shown.filter((t) => t.status === c.id).length}</span>
+            {columns.map((c) => (
+              <div key={c.id} style={{ padding: "10px 12px", borderRadius: 8, background: "var(--sidebar)", font: "600 12px var(--sans)", color: c.color }}>
+                {c.label} <span style={{ color: "var(--faint)", marginLeft: 4 }}>{shown.filter((t) => workColumn(t, needs) === c.id).length}</span>
               </div>
             ))}
           </div>
@@ -277,14 +267,14 @@ export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; o
                     </span>
                     {lane.head}
                     <span style={{ color: "var(--faint)", marginLeft: 4 }}>
-                      {lane.tickets.length} issue{lane.tickets.length === 1 ? "" : "s"}
+                      {lane.tickets.length} ticket{lane.tickets.length === 1 ? "" : "s"}
                     </span>
                   </button>
                 )}
                 {!isCollapsed && (
                   <div style={{ display: "grid", gridTemplateColumns: grid, gap: 8 }}>
-                    {BOARD_COLUMNS.map((col) => {
-                      const cards = lane.tickets.filter((t) => t.status === col.id).sort((a, b) => a.sort_order - b.sort_order);
+                    {columns.map((col) => {
+                      const cards = lane.tickets.filter((t) => workColumn(t, needs) === col.id).sort((a, b) => a.sort_order - b.sort_order);
                       const here = over?.lane === lane.id && over.status === col.id;
                       return (
                         <div
@@ -312,7 +302,7 @@ export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; o
                               }}
                             >
                               {here && over!.index === i && dragging && dragging !== t.id && <DropLine />}
-                              <Card ws={ws} t={t} me={me} dragging={dragging === t.id} onDragStart={() => setDragging(t.id)} onDragEnd={() => (setDragging(null), setOver(null))} />
+                              <Card ws={ws} t={t} groupBy={groupBy} need={workNeed(t, needs)} problem={needs.find((n) => n.ticket?.id === t.id && n.kind === "problem")} dragging={dragging === t.id} onDragStart={() => setDragging(t.id)} onDragEnd={() => (setDragging(null), setOver(null))} />
                             </div>
                           ))}
                           {here && over!.index === cards.length && dragging && <DropLine />}
@@ -327,11 +317,12 @@ export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; o
 
           {!shown.length && (
             <div style={{ padding: "28px 20px", borderRadius: 12, border: "1px dashed var(--line)", textAlign: "center", color: "var(--muted)", fontSize: 14, display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
-              {ws.tickets.length ? <span>No issues on the board match. Tickets waiting in the Backlog aren't shown here.</span> : <EmptyBoard ws={ws} />}
+              {ws.tickets.length ? <span>No tickets on the board match. Tickets in Later stay on their own tab.</span> : <EmptyBoard ws={ws} />}
             </div>
           )}
         </div>
       </div>
+      {hidden.length > 0 && <p style={{ color: "var(--text-muted)", fontSize: 12 }}>Hidden while empty: {hidden.map((c) => c.label).join(", ")}</p>}
     </div>
   );
 }
@@ -362,79 +353,28 @@ function DropLine() {
   return <div style={{ height: 3, borderRadius: 2, background: "var(--primary)", margin: "2px 0" }} />;
 }
 
-/** A Jira-style card: title, what's happening, epic, then type, key, priority and assignee. */
-export function Card({ ws, t, me, action, dragging, onDragStart, onDragEnd }: { ws: Workspace; t: Ticket; me: string; /** What a person is asked to do, e.g. "Answer a question". */ action?: string; dragging?: boolean; onDragStart?: () => void; onDragEnd?: () => void }) {
-  const steps = ws.steps.get(t.id);
-  const openBlockers = ws.blockersOf(t.id).filter((b) => !["done", "canceled"].includes(b.status));
-  const parent = t.parent_id ? ws.byId.get(t.parent_id) : undefined;
-  const waiting = openBlockers.length > 0 && t.status !== "done";
-  const needs = !!t.needs_human;
-  const done = steps?.filter((s) => s.status === "done").length ?? 0;
-  const now = steps?.find((s) => s.status === "now");
-  const meta = needs
-    ? t.needs_human
-    : waiting
-      ? `Waiting on ${openBlockers.map((b) => b.key).join(", ")}`
-      : steps?.length && t.status !== "done"
-        ? `Step ${Math.min(done + 1, steps.length)} of ${steps.length}${now ? ` · ${now.label}` : ""}`
-        : null;
+/** A plain line, its state, and the feature or agent that owns it. */
+export function Card({ ws, t, groupBy, need, problem, dragging, onDragStart, onDragEnd }: { ws: Workspace; t: Ticket; groupBy: GroupBy; need?: Need; problem?: Need; dragging?: boolean; onDragStart?: () => void; onDragEnd?: () => void }) {
+  const words = cardWords(t, ws.blockersOf(t.id), ws.steps.get(t.id) ?? [], need, new Date());
+  const context = cardContext(ws, t, groupBy);
+  const target = need ?? problem;
+  const url = target ? `${href({ view: "captain", project: ws.project.slug })}#need-${target.key}` : `/p/${ws.project.slug}/work/${t.key}`;
   return (
     <a
-      href={`/p/${ws.project.slug}/work/${t.key}`}
-      onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })}
+      className="ak-work-card"
+      href={url}
+      title={`${t.key} · ${t.title}`}
+      onClick={target ? (e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); go(url, false, false); } } : onNav({ view: "ticket", project: ws.project.slug, key: t.key })}
       draggable={!!onDragStart}
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/plain", t.key);
-        onDragStart?.();
-      }}
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", t.key); onDragStart?.(); }}
       onDragEnd={onDragEnd}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-        padding: "10px 12px",
-        borderRadius: 6,
-        textDecoration: "none",
-        color: "var(--text)",
-        opacity: dragging ? 0.4 : 1,
-        cursor: onDragStart ? "grab" : "pointer",
-        boxShadow: "var(--shadow-sm)",
-        ...(needs ? { background: "var(--warn-bg)", border: "1px solid var(--warn-line)" } : { background: "var(--surface)", border: `1px ${waiting ? "dashed" : "solid"} var(--line)` }),
-      }}
+      style={{ opacity: dragging ? 0.4 : 1, borderColor: need ? "var(--amber-border)" : "var(--border)", borderStyle: t.status === "ready" && !need ? "dashed" : "solid", color: t.status === "done" ? "var(--text-muted)" : "var(--text)" }}
     >
-      {action && <span style={{ fontSize: 13, fontWeight: 600, color: needs ? "var(--warn)" : "var(--text-secondary)" }}>{action}</span>}
-      <span style={{ fontSize: 14, lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{t.title}</span>
-      {t.summary && (
-        <span title={t.summary} style={{ fontSize: 12, lineHeight: 1.4, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {t.summary}
-        </span>
-      )}
-      {steps && steps.length > 0 && t.status !== "done" && <StepProgress steps={steps} />}
-      {meta && <span style={{ fontSize: 12, lineHeight: 1.4, color: needs ? "var(--warn)" : "var(--muted)" }}>{meta}</span>}
-      {(parent || t.labels.length > 0) && (
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {parent && <EpicLozenge epic={parent} />}
-          {t.labels.slice(0, 2).map((l) => (
-            <span key={l} style={{ height: 20, padding: "0 6px", borderRadius: 4, border: "1px solid var(--line)", fontSize: 12, color: "var(--text-2)", display: "inline-flex", alignItems: "center" }}>
-              {l}
-            </span>
-          ))}
-        </div>
-      )}
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <TypeIcon type={t.type} />
-        <KeyText t={t} style={{ textDecoration: t.status === "done" ? "line-through" : "none" }} />
-        {t.pr_url && (
-          <span title="Pull request open" style={{ fontSize: 12, color: "var(--text-muted)", fontFamily: "var(--mono)" }}>
-            PR
-          </span>
-        )}
-        <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <PriorityIcon priority={t.priority} />
-          <WhoMark ws={ws} id={t.assignee_id} me={me} />
-        </span>
-      </div>
+      <span style={{ fontSize: 14, lineHeight: 1.5 }}>{words.line}</span>
+      {words.sub && <span style={{ fontSize: 12, color: need ? "var(--amber)" : t.status === "in_progress" ? "var(--blue-text)" : "var(--text-muted)" }}>{t.status === "done" && <span style={{ color: "var(--green)" }}>✓ </span>}{words.sub}</span>}
+      {words.progress !== null && <div role="progressbar" aria-label="Ticket steps" aria-valuenow={Math.round(words.progress * 100)} aria-valuemin={0} aria-valuemax={100} className="ak-work-progress"><span style={{ width: `${words.progress * 100}%` }} /></div>}
+      {problem && <span style={{ fontSize: 12, color: "var(--coral)" }}>{problem.question}</span>}
+      {context && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{context}</span>}
     </a>
   );
 }

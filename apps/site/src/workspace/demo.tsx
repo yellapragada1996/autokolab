@@ -383,7 +383,14 @@ function forState(t: Ticket): Ticket {
 export default function DemoWorkspace() {
   const route = useRoute();
   const ws = useMemo<WS>(() => {
-    const tickets = demoEmpty ? [] : allTickets.map(forState);
+    const workPreview = route.view === "board" || route.view === "goals";
+    // Work has a blocked to-do and each card kind, with In review empty to show the quiet note.
+    const tickets = demoEmpty ? [] : allTickets.map(forState).map((t) => {
+      if (!workPreview || demoState) return t;
+      if (t.id === "t3") return { ...t, needs_human: null };
+      if (t.id === "t5" || t.id === "t17") return { ...t, status: "done" as const, completed_at: iso(90) };
+      return t;
+    });
     const decisions = demoEmpty ? [] : allDecisions;
     const byId = new Map(tickets.map((t) => [t.id, t]));
     // The plan's tickets wait on the database change and the charge, so the plan page reorders them.
@@ -422,7 +429,7 @@ export default function DemoWorkspace() {
       demoDetails: new Map(tickets.map((t) => [t.id, { steps: steps.get(t.id) ?? [], comments: [], events: demoEvents.get(t.id) ?? [] }])),
       demoInvites: [{ code: "SHOP2026", project_id: project.id, created_at: iso(60), expires_at: new Date(Date.now() + 7 * 86400_000).toISOString(), max_uses: null, uses: 1, revoked: false }],
     };
-  }, []);
+  }, [route.view]);
   const previewRoute = parse("/p/shop", location.search);
   const r = route.view === "home" || route.view === "new-project" || route.view === "join" ? ({ view: "captain", project: "shop", show: "show" in previewRoute ? previewRoute.show : undefined } as const) : route;
   return <Workspace project={project} projects={[project]} route={r} profile={profile} demo={ws} demoRoom={demoRoom} demoEvents={demoEvents} onSignOut={() => undefined} onEditProfile={() => undefined} />;

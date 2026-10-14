@@ -4,11 +4,13 @@ import { createTicket, STATUSES, updateTicket, type Status, type Ticket } from "
 import { onNav } from "../lib/router";
 import { Button } from "../ui";
 import { applyFilter, emptyFilter, Filters, WhoMark, type FilterState } from "./Board";
-import { EpicLozenge, KeyText, PriorityIcon, StatusLozenge, TypeIcon } from "./bits";
+import { EpicLozenge, KeyText, PriorityIcon, StatusLozenge } from "./bits";
+import { cardLine, workStatus } from "./work";
+import { needsYou } from "./captain";
 import type { Workspace } from "./useWorkspace";
 
 // Jira's Kanban backlog: what's on the board at the top, the ranked backlog below. Drag to rank,
-// drag up to put work on the board, create issues inline.
+// drag up to put work on the board, create tickets inline.
 
 const ON_BOARD: Status[] = ["ready", "in_progress", "review"];
 
@@ -63,7 +65,7 @@ export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (
       <div style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "6px 8px 10px", flexWrap: "wrap" }}>
         <h2 style={{ fontSize: 14, fontWeight: 600 }}>{title}</h2>
         <span style={{ fontSize: 13, color: "var(--faint)" }}>
-          {list.length} issue{list.length === 1 ? "" : "s"} · {sub}
+          {list.length} ticket{list.length === 1 ? "" : "s"} · {sub}
         </span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 1, borderRadius: 6, overflow: "hidden" }}>
@@ -83,20 +85,20 @@ export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (
           </div>
         ))}
         {over?.section === id && over.index === list.length && dragging && <div style={{ height: 2, background: "var(--primary)" }} />}
-        {!list.length && <div style={{ padding: "14px 10px", fontSize: 13, color: "var(--faint)" }}>{id === "board" ? "Nothing on the board. Drag issues up from the backlog." : "The backlog is empty."}</div>}
+        {!list.length && <div style={{ padding: "14px 10px", fontSize: 13, color: "var(--faint)" }}>{id === "board" ? "Nothing on the board. Drag tickets up from Later." : "Later is empty."}</div>}
       </div>
       {id === "backlog" && <InlineCreate ws={ws} />}
     </section>
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <Filters ws={ws} me={me} f={f} setF={setF} />
           {epics.length > 0 && (
-            <select aria-label="Goal" value={epic} onChange={(e) => setEpic(e.target.value)} style={{ height: 32, padding: "0 8px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13 }}>
-              <option value="">All goals</option>
+            <select aria-label="Feature" value={epic} onChange={(e) => setEpic(e.target.value)} style={{ height: 32, padding: "0 8px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13 }}>
+              <option value="">All features</option>
               {epics.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.key} · {e.title}
@@ -106,12 +108,12 @@ export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (
           )}
         </div>
         <Button variant="primary" size="sm" onClick={onNew}>
-          Create <kbd style={{ font: "500 12px var(--mono)", opacity: 0.7 }}>C</kbd>
+          New ticket <kbd style={{ font: "500 12px var(--mono)", opacity: 0.7 }}>C</kbd>
         </Button>
       </div>
       {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
-      {section("board", "Board", "Ready, In progress and In review", board)}
-      {section("backlog", "Backlog", "ranked; drag to reorder, drag up to start", backlog)}
+      {section("board", "Board", "To do, Building and In review", board)}
+      {section("backlog", "Later", "ranked; drag to reorder, drag up to start", backlog)}
     </div>
   );
 }
@@ -127,20 +129,19 @@ function Row({ ws, t, me, dragging, onDragStart, onDragEnd, onStatus }: { ws: Wo
         onDragStart();
       }}
       onDragEnd={onDragEnd}
-      style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 40, padding: "6px 10px", background: "var(--surface)", opacity: dragging ? 0.4 : 1, cursor: "grab" }}
+      style={{ display: "flex", alignItems: "center", gap: 10, minHeight: 44, flexWrap: "wrap", padding: "6px 10px", background: "var(--surface)", opacity: dragging ? 0.4 : 1, cursor: "grab" }}
     >
-      <TypeIcon type={t.type} />
       <KeyText t={t} style={{ width: 64, flex: "none" }} />
-      <a href={`/p/${ws.project.slug}/work/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ flex: 1, minWidth: 0, color: "var(--text)", textDecoration: "none", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {t.title}
+      <a href={`/p/${ws.project.slug}/work/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ flex: "1 1 160px", minWidth: 0, color: "var(--text)", textDecoration: "none", fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {cardLine(t)}
       </a>
       {parent && <EpicLozenge epic={parent} />}
       <label style={{ position: "relative", display: "inline-flex", cursor: "pointer" }} title="Change status">
-        <StatusLozenge status={t.status} needs={!!t.needs_human} />
+        <StatusLozenge work status={t.status} needs={!!needsYou(ws, []).find((n) => n.ticket?.id === t.id && n.kind !== "problem")} />
         <select aria-label={`Status of ${t.key}`} value={t.status} onChange={(e) => onStatus(e.target.value as Status)} style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}>
           {[...STATUSES, { id: "canceled" as const, label: "Canceled" }].map((s) => (
             <option key={s.id} value={s.id}>
-              {s.label}
+              {workStatus[s.id]}
             </option>
           ))}
         </select>
@@ -169,7 +170,7 @@ function InlineCreate({ ws }: { ws: Workspace }) {
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} style={{ marginTop: 6, width: "100%", padding: "8px 10px", border: 0, borderRadius: 6, background: "transparent", color: "var(--muted)", fontSize: 13, textAlign: "left", cursor: "pointer" }}>
-        + Create issue
+        + New ticket
       </button>
     );
   }
@@ -185,7 +186,7 @@ function InlineCreate({ ws }: { ws: Workspace }) {
         }}
         onBlur={() => !title.trim() && setOpen(false)}
         placeholder="What needs to be done? Enter to create"
-        aria-label="New issue title"
+        aria-label="New ticket title"
         style={{ height: 38, padding: "0 10px", borderRadius: 6, border: "1px solid var(--primary)", background: "var(--bg)", fontSize: 14 }}
       />
       {err && <span style={{ fontSize: 13, color: "var(--danger)" }}>{err}</span>}
