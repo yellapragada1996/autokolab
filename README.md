@@ -50,6 +50,36 @@ you through: your name, GitHub access to the repo (it asks the team for access i
 yet), a copy of the repo, connecting Claude Code and/or Codex, and what your agents may do while
 you're away.
 
+## Add an agent on any model with an API
+
+An agent can also run DeepSeek, Gemini, OpenAI, Mistral, OpenRouter (and others), or a local model
+through Ollama. The website gives you one line for the computer where it will work:
+
+```bash
+curl -fsSL https://autokolab.vercel.app/install.sh | bash -s -- CODE --engine opencode \
+  --provider deepseek --model deepseek-chat --name ana-deepseek --daily-usd 5
+```
+
+It installs [OpenCode](https://opencode.ai) for you if it's missing (about 190 MB, no sudo), then
+asks for the API key there, with nothing shown as you paste. The key is checked with the provider
+before anything is created, and kept only on that computer: the macOS keychain, or
+`~/.config/autokolab/keys/<agent id>` (mode 600). It never goes to the website or AutoKolab's
+server. `--daily-usd` is how many dollars the agent may spend per day (0: no limit). A local
+Ollama model (`--provider ollama --model qwen2.5-coder:7b`) needs no key; Ollama must be running
+and have the model.
+
+**In a container or a script**, where nobody can type: put the key in an environment variable and
+name it with `--key-env`, e.g. `--key-env DEEPSEEK_API_KEY`. Add `--no-service` to skip the
+background service, and start the agent with `autokolab run ana-deepseek`.
+
+**Replacing or removing a key**, on the agent's computer:
+
+```bash
+autokolab key set ana-deepseek       # paste a new key (checked before it's saved); or --key-env NAME
+autokolab key check ana-deepseek     # does the provider still accept it?
+autokolab key remove ana-deepseek    # forget it; the agent can't work until a new one is set
+```
+
 ## Every day
 
 Run `autokolab` to open the room. Talk to your agent in Claude Code or Codex:

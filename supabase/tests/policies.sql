@@ -383,6 +383,23 @@ set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000d2';
 select pg_temp.expect((public.pair_existing_agent((select code from pair))) ->> 'slug' = 'joinly', 'an existing agent joins with its owner''s code');
 set request.jwt.claim.sub = '00000000-0000-0000-0000-000000000001';
 select pg_temp.expect_error($q$select public.pair_existing_agent((select code from pair))$q$, 'belongs to someone else');
+-- an API-model agent (OpenCode, schema 22) can be paired; an unknown vendor still can't
+set role service_role;
+select pg_temp.expect((public.pair_new_agent((select code from pair), '00000000-0000-0000-0000-0000000000d9', 'opencode', 'Mona DeepSeek')) ->> 'name' = 'mona-deepseek', 'the server pairs an OpenCode agent');
+select pg_temp.expect_error($q$select public.pair_new_agent((select code from pair), gen_random_uuid(), 'aider', 'mona-aider')$q$, 'unknown agent');
+select pg_temp.expect_error($q$select public.pair_new_agent((select code from pair), gen_random_uuid(), null, 'mona-null')$q$, 'unknown agent');
+reset role;
+select pg_temp.expect((select vendor from public.agents where id = '00000000-0000-0000-0000-0000000000d9') = 'opencode', 'its vendor is opencode');
+select pg_temp.expect((select client from public.members where id = '00000000-0000-0000-0000-0000000000d9') = 'opencode', 'and its room client too');
+select pg_temp.expect(not exists (select 1 from public.members where name in ('mona-aider', 'mona-null')), 'a refused vendor creates nobody');
+select pg_temp.expect_error($q$insert into public.agents (id, owner_label, vendor, display_name) values (gen_random_uuid(), 'x', 'aider', 'x')$q$, 'agents_vendor_check');
+-- an OpenCode agent joining by itself stays an OpenCode agent
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000d9';
+select pg_temp.expect((public.pair_existing_agent((select code from pair))) ->> 'slug' = 'joinly', 'an OpenCode agent joins with its own sign-in');
+reset role;
+select pg_temp.expect((select vendor from public.agents where id = '00000000-0000-0000-0000-0000000000d9') = 'opencode', 'and is still an OpenCode agent');
+set role authenticated;
 -- picking the lead makes it lead the room
 set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b4';
 update public.projects set lead_agent_id = '00000000-0000-0000-0000-0000000000d2' where slug = 'joinly';

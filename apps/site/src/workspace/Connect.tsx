@@ -1,6 +1,6 @@
 import { reportError } from "../lib/errors";
 import { useEffect, useState } from "react";
-import { connectLine, createPairing, type Pairing } from "../lib/data";
+import { connectLine, createPairing, VENDOR_LABEL, type Pairing } from "../lib/data";
 import { go } from "../lib/router";
 import { Button } from "../ui";
 import { ago } from "./bits";
@@ -99,7 +99,7 @@ export function ConnectAgents({ ws, me }: { ws: Workspace; me: string }) {
               <span style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                 <span style={{ fontSize: 14, fontWeight: 500 }}>{a.display_name}</span>
                 <span style={{ fontSize: 12, color: "var(--faint)" }}>
-                  {a.vendor === "claude" ? "Claude Code" : "Codex"}
+                  {VENDOR_LABEL[a.vendor] ?? a.vendor}
                   {a.last_seen_at ? ` · seen ${ago(a.last_seen_at)}` : " · connected, not checked in yet"}
                 </span>
               </span>

@@ -38,10 +38,10 @@ export function PersonAvatar({ name, src, size = 30, you, presence, ring = "var(
   );
 }
 
-export type Vendor = "claude" | "codex";
+export type Vendor = "claude" | "codex" | "opencode";
 export type AgentState = "working" | "idle" | "waiting";
 const agentStateLabel: Record<AgentState, string> = { working: "Working", idle: "Idle", waiting: "Waiting on a person" };
-const vendorLabel: Record<Vendor, string> = { claude: "Claude", codex: "Codex" };
+const vendorLabel: Record<Vendor, string> = { claude: "Claude", codex: "Codex", opencode: "API model" };
 
 /**
  * An agent: a neutral tile with its first letter and, optionally, a status dot

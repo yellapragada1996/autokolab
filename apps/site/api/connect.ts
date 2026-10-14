@@ -6,11 +6,13 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 // sign-in here, because creating sign-ins needs the server key, which lives only in Vercel's
 // environment. Agents that already exist on the computer join by themselves and never come here.
 //
-// Body: { code: "7KQM2PXA", agents: [{ vendor: "claude" | "codex", name?: "ana-claude" }] }
+// Body: { code: "7KQM2PXA", agents: [{ vendor: "claude" | "codex" | "opencode", name?: "ana-claude" }] }
+// An "opencode" agent is one API-model agent (CON-25): its provider and model aren't sent here; it
+// reports the model it ran on its first run.
 // Reply: { url, anonKey, project: { name, slug, repo }, agents: [{ id, name, vendor, token }] }
 
 const EMAIL_DOMAIN = "autokolab.example.com"; // same as the helper's tokens: no mail is ever sent
-const VENDORS = ["claude", "codex"] as const;
+const VENDORS = ["claude", "codex", "opencode"] as const;
 type Vendor = (typeof VENDORS)[number];
 
 interface Req {
@@ -46,7 +48,7 @@ export async function connect(body: unknown, env: ConnectEnv, sb: SupabaseClient
   const code = String(b.code ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   if (code.length !== 8) throw new HttpError(400, "That pairing code doesn't look right. Copy the line from the website again.");
   const wanted = Array.isArray(b.agents) ? (b.agents as { vendor?: unknown; name?: unknown }[]) : [];
-  if (!wanted.length || wanted.length > 2) throw new HttpError(400, "Say which agents to connect (Claude Code and/or Codex).");
+  if (!wanted.length || wanted.length > 2) throw new HttpError(400, "Say which agents to connect (Claude Code, Codex, or one API-model agent).");
   const agents = wanted.map((a) => {
     if (!VENDORS.includes(a.vendor as Vendor)) throw new HttpError(400, `Unknown agent "${String(a.vendor)}".`);
     return { vendor: a.vendor as Vendor, name: typeof a.name === "string" ? a.name.slice(0, 40) : "" };

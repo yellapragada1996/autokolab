@@ -95,6 +95,8 @@ const RunnerConfigSchema = z.object({
       variant: z.string().optional(),
       /** The variable OpenCode reads the key from, for a provider AutoKolab doesn't know yet. */
       key_env: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
+      /** Where a model on this computer listens (Ollama); unset is the provider's usual address. */
+      base_url: z.string().url().optional(),
       effort: z.enum(EFFORTS).optional(),
       reply_model: z.string().optional(),
       reply_effort: z.enum(EFFORTS).default("low"),
@@ -165,6 +167,10 @@ export interface ApiModel {
   provider: string;
   model: string;
   dailyUsd: number;
+  /** The OpenCode that `autokolab connect` found or installed, so the background service finds it too. */
+  bin?: string;
+  /** Where a model on this computer listens (Ollama), when it isn't the usual address. */
+  baseUrl?: string;
 }
 
 export function runnerTemplate(agentId: string, engine: Engine, api?: ApiModel): string {
@@ -176,7 +182,7 @@ export function runnerTemplate(agentId: string, engine: Engine, api?: ApiModel):
 
 agent_id = "${agentId}"
 engine = "${engine}"
-# model_locked = true             # always use the model and effort in this file, whatever AutoKolab says
+${api?.bin ? `opencode_bin = ${JSON.stringify(api.bin)}\n` : ""}# model_locked = true             # always use the model and effort in this file, whatever AutoKolab says
 auto_review = true                # as the project's lead: review each finished PR once its tests pass (false: only when asked)
 
 [limits]
@@ -218,6 +224,7 @@ ${api ? `model = ${JSON.stringify(api.model)}` : `# model = "deepseek-flash"    
 daily_usd = ${api ? api.dailyUsd : 0}                     # dollars per day; work stops for the day once it's spent (0: no limit)
 # variant = "high"                # the provider's reasoning setting, if the model has one
 # key_env = "MY_PROVIDER_API_KEY" # only for a provider AutoKolab doesn't know yet
+${api?.baseUrl ? `base_url = ${JSON.stringify(api.baseUrl)}` : `# base_url = "http://127.0.0.1:11434" # where a model on this computer (Ollama) listens`}
 `;
 }
 

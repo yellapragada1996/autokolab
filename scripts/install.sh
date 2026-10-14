@@ -3,13 +3,15 @@
 #
 #   ~/.autokolab/scripts/install.sh                 install, then open AutoKolab
 #   ~/.autokolab/scripts/install.sh akinv_…         install, then open the join page for this invite
-#   ~/.autokolab/scripts/install.sh connect CODE    install, then connect this computer's agents to a
-#                                                   project (the website's line runs this)
+#   ~/.autokolab/scripts/install.sh connect CODE [options]
+#                                                   install, then connect this computer's agents to a
+#                                                   project (the website's line runs this); the options
+#                                                   go to `autokolab connect` as they are
 set -euo pipefail
 cd "$(dirname "$0")/.."
 INVITE="${1:-}"
 CONNECT=""
-if [ "$INVITE" = "connect" ]; then CONNECT="${2:-}"; INVITE=""; fi
+if [ "$INVITE" = "connect" ]; then CONNECT="${2:-}"; INVITE=""; shift; if [ $# -gt 0 ]; then shift; fi; fi
 
 say() { printf '\n  %s\n' "$*"; }
 fail() { printf '\n  %s\n\n' "$*" >&2; exit 1; }
@@ -45,7 +47,7 @@ esac
 
 if [ -n "$CONNECT" ]; then
   say "Installed."
-  exec "$bin_dir/autokolab" connect "$CONNECT"
+  exec "$bin_dir/autokolab" connect "$CONNECT" ${1+"$@"}   # ${1+…}: macOS's bash 3.2 with set -u
 fi
 
 say "Installed. Opening AutoKolab in your browser…"

@@ -3,7 +3,7 @@ import { createWriteStream, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { providerKeyEnv, providerName } from "../core/providers.js";
+import { isLocalProvider, LOCAL_PROVIDERS, providerKeyEnv, providerName } from "../core/providers.js";
 import { EFFORTS, opencodeProvider, type Effort, type RunnerConfig } from "./config.js";
 
 // Starts Claude Code, Codex or OpenCode headless with the task as its prompt, using their supported
@@ -231,10 +231,12 @@ export function opencodePermissions(cfg: RunnerConfig): Record<string, unknown> 
  * OPENCODE_CONFIG; the key goes only into the engine's environment, under the provider's variable.
  * Logs at ERROR level go to stderr: they're the only place a rate limit or an unknown model shows.
  */
-export function opencodeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, key: string, choice: ModelChoice = chooseModel(cfg, null)): EngineInvocation {
+export function opencodeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, key: string | undefined, choice: ModelChoice = chooseModel(cfg, null)): EngineInvocation {
   const provider = opencodeProvider(cfg)!;
-  const keyEnv = providerKeyEnv(provider, cfg.opencode.key_env);
-  if (!keyEnv) throw new Error(`I don't know where OpenCode reads a ${providerName(provider)} key from. Set key_env in the [opencode] part of my runner file.`);
+  const local = isLocalProvider(provider);
+  const keyEnv = local ? null : providerKeyEnv(provider, cfg.opencode.key_env);
+  if (!local && !keyEnv) throw new Error(`I don't know where OpenCode reads a ${providerName(provider)} key from. Set key_env in the [opencode] part of my runner file.`);
+  if (!local && !key) throw new Error(`I don't have an API key on this computer. Add one with \`autokolab key set\`.`);
   const model = opencodeModel(cfg, choice);
   const tempDir = mkdtempSync(join(tmpdir(), "autokolab-"));
   const configFile = join(tempDir, "opencode.json");
@@ -244,17 +246,38 @@ export function opencodeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSess
     share: "disabled",
     mcp: { autokolab: { type: "local", command: [mcp.command, ...mcp.args], enabled: true } },
     permission: opencodePermissions(cfg),
+    ...(local ? { provider: localProviderConfig(cfg, provider, model) } : {}),
   }));
   const args = ["run", "--format", "json", "--print-logs", "--log-level", "ERROR", "-m", model];
   if (cfg.opencode.variant) args.push("--variant", cfg.opencode.variant);
   if (resumeSession) args.push("--session", resumeSession);
-  return { bin: cfg.opencode_bin, args, tempDir, env: { OPENCODE_CONFIG: configFile, [keyEnv]: key }, secrets: [key], model };
+  const env: Record<string, string> = { OPENCODE_CONFIG: configFile };
+  if (keyEnv && key) env[keyEnv] = key;
+  return { bin: cfg.opencode_bin, args, tempDir, env, secrets: key ? [key] : [], model };
 }
 
-/** The invocation for the agent's engine. OpenCode needs the agent's key; the others never get one. */
+/**
+ * A model on this computer (Ollama) through OpenCode's OpenAI-compatible adapter: OpenCode only knows
+ * the models it's told about, so the run's model is listed. No key.
+ */
+export function localProviderConfig(cfg: RunnerConfig, provider: string, model: string): Record<string, unknown> {
+  const base = (cfg.opencode.base_url ?? LOCAL_PROVIDERS[provider].baseUrl).replace(/\/+$/, "");
+  const id = model.slice(provider.length + 1);
+  return {
+    [provider]: {
+      npm: "@ai-sdk/openai-compatible",
+      name: providerName(provider),
+      options: { baseURL: `${base}/v1` },
+      models: { [id]: { name: id } },
+    },
+  };
+}
+
+/** The invocation for the agent's engine. OpenCode needs the agent's key (unless its model is local); the others never get one. */
 export function engineInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, cwd: string, choice: ModelChoice, key?: () => string): EngineInvocation {
   if (cfg.engine === "claude") return claudeInvocation(cfg, mcp, resumeSession, choice);
   if (cfg.engine === "codex") return codexInvocation(cfg, mcp, resumeSession, cwd, choice);
+  if (isLocalProvider(opencodeProvider(cfg)!)) return opencodeInvocation(cfg, mcp, resumeSession, undefined, choice);
   if (!key) throw new Error("OpenCode needs the agent's key.");
   return opencodeInvocation(cfg, mcp, resumeSession, key(), choice);
 }
