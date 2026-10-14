@@ -20,6 +20,7 @@ export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<{ section: "board" | "backlog"; index: number } | null>(null);
   const [err, setErr] = useState("");
+  const needs = useMemo(() => needsYou(ws, []), [ws]);
 
   const rows = useMemo(() => applyFilter(ws, me, f).filter((t) => t.type !== "epic" && (!epic || t.parent_id === epic)), [ws, me, f, epic]);
   const board = rows.filter((t) => ON_BOARD.includes(t.status)).sort((a, b) => ON_BOARD.indexOf(a.status) - ON_BOARD.indexOf(b.status) || a.sort_order - b.sort_order);
@@ -81,7 +82,7 @@ export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (
             }}
           >
             {over?.section === id && over.index === i && dragging && dragging !== t.id && <div style={{ height: 2, background: "var(--primary)" }} />}
-            <Row ws={ws} t={t} me={me} dragging={dragging === t.id} onDragStart={() => setDragging(t.id)} onDragEnd={() => (setDragging(null), setOver(null))} onStatus={(status) => void save(t.id, { status })} />
+            <Row ws={ws} t={t} me={me} needs={!!needs.find((n) => n.ticket?.id === t.id && n.kind !== "problem")} dragging={dragging === t.id} onDragStart={() => setDragging(t.id)} onDragEnd={() => (setDragging(null), setOver(null))} onStatus={(status) => void save(t.id, { status })} />
           </div>
         ))}
         {over?.section === id && over.index === list.length && dragging && <div style={{ height: 2, background: "var(--primary)" }} />}
@@ -118,7 +119,7 @@ export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (
   );
 }
 
-function Row({ ws, t, me, dragging, onDragStart, onDragEnd, onStatus }: { ws: Workspace; t: Ticket; me: string; dragging: boolean; onDragStart: () => void; onDragEnd: () => void; onStatus: (s: Status) => void }) {
+function Row({ ws, t, me, needs, dragging, onDragStart, onDragEnd, onStatus }: { ws: Workspace; t: Ticket; me: string; needs: boolean; dragging: boolean; onDragStart: () => void; onDragEnd: () => void; onStatus: (s: Status) => void }) {
   const parent = t.parent_id ? ws.byId.get(t.parent_id) : undefined;
   return (
     <div
@@ -137,7 +138,7 @@ function Row({ ws, t, me, dragging, onDragStart, onDragEnd, onStatus }: { ws: Wo
       </a>
       {parent && <EpicLozenge epic={parent} />}
       <label style={{ position: "relative", display: "inline-flex", cursor: "pointer" }} title="Change status">
-        <StatusLozenge work status={t.status} needs={!!needsYou(ws, []).find((n) => n.ticket?.id === t.id && n.kind !== "problem")} />
+        <StatusLozenge work status={t.status} needs={needs} />
         <select aria-label={`Status of ${t.key}`} value={t.status} onChange={(e) => onStatus(e.target.value as Status)} style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}>
           {[...STATUSES, { id: "canceled" as const, label: "Canceled" }].map((s) => (
             <option key={s.id} value={s.id}>

@@ -18,6 +18,7 @@ export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: 
   const [f, setF] = useState<FilterState>(emptyFilter);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "status", dir: 1 });
   const [showDone, setShowDone] = useState(false);
+  const needs = useMemo(() => needsYou(ws, []), [ws]);
 
   const rows = useMemo(() => {
     const r = applyFilter(ws, me, f).filter((t) => showDone || t.status !== "done");
@@ -93,10 +94,9 @@ export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: 
                       <Label key={l}>{l}</Label>
                     ))}
                   </span>
-
                 </td>
                 <td style={{ padding: "10px 12px" }}>
-                  <StatusLozenge work status={t.status} needs={!!needsYou(ws, []).find((n) => n.ticket?.id === t.id && n.kind !== "problem")} />
+                  <StatusLozenge work status={t.status} needs={!!needs.find((n) => n.ticket?.id === t.id && n.kind !== "problem")} />
                 </td>
                 <td style={{ padding: "10px 12px" }}>
                   <PriorityIcon priority={t.priority} />

@@ -400,7 +400,7 @@ export default function DemoWorkspace() {
       { ticket_id: "t42", blocked_by: "t41" },
       // Order history starts after Apple Pay, so Overview says "starts after Checkout".
       { ticket_id: "t6", blocked_by: "t12" },
-    ];
+    ].filter((l) => byId.has(l.ticket_id) && byId.has(l.blocked_by));
     const profiles = new Map<string, Profile>([
       [ANA, profile],
       [LEE, { ...profile, id: LEE, github_login: "lee", name: "Lee", city: "Stockholm", timezone: "Europe/Stockholm" }],
