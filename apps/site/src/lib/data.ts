@@ -69,9 +69,6 @@ export const REVIEW_FAILED_PREFIX = "Captain couldn't finish reviewing this";
 
 export const isReviewQuestion = (text: string | null | undefined) => !!text && (text === LEAD_BUILT_QUESTION || text === REVIEW_LIMIT_QUESTION || text.startsWith(REVIEW_FAILED_PREFIX));
 
-/** A change in Review that waits for someone to approve it, because Captain can't or didn't (AK-95). */
-export const waitsForApproval = (t: Ticket) => t.status === "review" && !!t.pr_url && !t.approved_sha && isReviewQuestion(t.needs_human);
-
 /** The review a person's approval is stored with when they leave "Anything you're unsure about?" empty. */
 export const PERSON_NO_NOTES = "Approved by a person; no notes.";
 

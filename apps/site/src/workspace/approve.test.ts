@@ -2,13 +2,14 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ApproveChange } from "./ApproveChange";
-import { LEAD_BUILT_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, waitsForApproval, type PrFacts } from "../lib/data";
-import { approveState, BUILT_IT, prLabel } from "./approve";
+import { LEAD_BUILT_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, type PrFacts } from "../lib/data";
+import { approval, approveState, BUILT_IT, movedOnLine, needsApproval, prLabel, waitsForApproval } from "./approve";
 import { BIRCH, CAPTAIN, ME, ticket } from "./fixtures";
 
 const SHA = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
 const facts = (checks: PrFacts["checks"], sha = SHA): PrFacts => ({ sha, checks, files: { total: 3, risky: [] }, additions: 10, deletions: 2 });
 const green = facts({ passed: 48, total: 48, state: "success" });
+const OLD = "48e571b0c2d4e6f80a1b3c5d7e9f102132435465";
 
 describe("approving as a person", () => {
   it("is ready at the commit the runner recorded, after its tests passed", () => {
@@ -38,9 +39,43 @@ describe("approving as a person", () => {
     expect(waiting({ key: "SH-1", needs_human: REVIEW_LIMIT_QUESTION })).toBe(true);
     expect(waiting({ key: "SH-1", needs_human: `${REVIEW_FAILED_PREFIX}: the run stopped.` })).toBe(true);
     expect(waiting({ key: "SH-1", needs_human: "Redis or Postgres?" })).toBe(false);
-    expect(waiting({ key: "SH-1", needs_human: LEAD_BUILT_QUESTION, approved_sha: SHA })).toBe(false);
+    expect(waiting({ key: "SH-1", needs_human: LEAD_BUILT_QUESTION, approved_sha: SHA, pr_facts: green })).toBe(false);
+    expect(waiting({ key: "SH-1", needs_human: LEAD_BUILT_QUESTION, approved_sha: OLD, pr_facts: green })).toBe(true);
     expect(waiting({ key: "SH-1", needs_human: LEAD_BUILT_QUESTION, pr_url: null })).toBe(false);
     expect(waiting({ key: "SH-1", needs_human: LEAD_BUILT_QUESTION, status: "in_progress" })).toBe(false);
+  });
+
+  describe("an approval only counts for the commit it names (AK-106)", () => {
+    const inReview = (over: Parameters<typeof ticket>[0]) => ticket({ status: "review", pr_url: "https://github.com/a/b/pull/7", assignee_id: BIRCH, ...over });
+
+    it("waits for a first approval when it was never approved", () => {
+      const t = inReview({ key: "SH-1", pr_facts: green });
+      expect(approval(t)).toEqual({ kind: "never" });
+      expect(needsApproval(t)).toBe(true);
+      expect(approveState(t, ME)).toMatchObject({ kind: "ready", sha: SHA });
+    });
+
+    it("offers nothing when it's approved at the commit the tests ran on", () => {
+      const t = inReview({ key: "SH-1", approved_sha: SHA.slice(0, 7).toUpperCase(), pr_facts: green });
+      expect(approval(t)).toEqual({ kind: "current", sha: SHA.slice(0, 7).toLowerCase() });
+      expect(needsApproval(t)).toBe(false);
+      expect(needsApproval({ ...t, status: "done" })).toBe(false);
+    });
+
+    it("offers the new commit when the change moved on past its approval", () => {
+      const t = inReview({ key: "SH-1", approved_sha: OLD, pr_facts: green });
+      expect(approval(t)).toEqual({ kind: "moved", approved: OLD, head: SHA });
+      expect(needsApproval(t)).toBe(true);
+      expect(approveState(t, ME)).toEqual({ kind: "ready", sha: SHA, tests: "Tests: 48 of 48 passed on GitHub" });
+      expect(movedOnLine(OLD, SHA)).toBe("Approved at 48e571b, but the change has moved on to a1b2c3d since. It needs a new approval.");
+    });
+
+    it("says the tests aren't recorded yet when there's nothing to check the approval against", () => {
+      const t = inReview({ key: "SH-1", approved_sha: OLD, pr_facts: null });
+      expect(approval(t)).toEqual({ kind: "unknown", approved: OLD });
+      expect(needsApproval(t)).toBe(true);
+      expect(approveState(t, ME)).toEqual({ kind: "not_yet", why: "Captain hasn't recorded this pull request's tests yet, so it can't be approved here yet." });
+    });
   });
 
   it("shows the plain line, the tests, the commit and the PR before the button, or one sentence instead", () => {
