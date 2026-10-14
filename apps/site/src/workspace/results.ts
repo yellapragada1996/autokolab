@@ -262,7 +262,7 @@ export interface Usage {
   mergedCount: number;
   /** The three tickets the most usage went on, most first. */
   top: { ticket: Ticket; name: string; tokens: number }[];
-  agents: (UsageShare & { id: string })[];
+  agents: (UsageShare & { id: string; costUsd: number | null })[];
   /** The tools' own cost figure, only when every run in the period gave one. */
   costUsd: number | null;
 }
@@ -302,7 +302,10 @@ export function usage(ws: Workspace, rows: RunUsage[], period: Period, now: Date
   const byAgent = agentIds.map((id) => counted.filter((c) => c.u.agent_id === id));
   const agentPercents = percents(byAgent.map(sum));
   const agents = agentIds
-    .map((id, i) => ({ id, runs: byAgent[i].length, tokens: sum(byAgent[i]), percent: agentPercents[i] }))
+    .map((id, i) => {
+      const costs = byAgent[i].map((c) => num(c.u.cost_usd));
+      return { id, runs: byAgent[i].length, tokens: sum(byAgent[i]), percent: agentPercents[i], costUsd: costs.every((c) => c !== null) ? costs.reduce<number>((sum, c) => sum + (c ?? 0), 0) : null };
+    })
     .sort((a, b) => b.tokens - a.tokens || b.runs - a.runs || ws.nameOf(a.id).localeCompare(ws.nameOf(b.id)));
 
   const perTicket = new Map<string, number>();

@@ -96,6 +96,7 @@ export function Workspace({
   const error = live.error;
   // The conversation with Captain: shared by the Captain page and the sidebar badge, so they agree.
   const captain = useCaptainRoom(project, ws, profile.id, demoRoom);
+  const [addAgent, setAddAgent] = useState(false);
   const [newTicket, setNewTicket] = useState<{ status?: Status } | null>(null);
   const [paletteOpen, setPaletteOpen] = useCommandPalette();
   const me = profile.id;
@@ -136,6 +137,7 @@ export function Workspace({
 
   const commands = useMemo<Command[]>(() => {
     const c: Command[] = [
+      { id: "add-agent", label: "Add an agent", run: () => setAddAgent(true) },
       { id: "new", label: "New ticket", hint: "C", run: () => setNewTicket({}) },
       ...NAV.map((n) => ({ id: `go-${n.id}`, label: `Go to ${n.label}`, hint: n.key && `G then ${n.key}`, run: () => go({ view: n.id, project: project.slug }) })),
       ...[...WORK_TABS, ...DECISION_TABS]
@@ -156,7 +158,7 @@ export function Workspace({
     route.view === "ticket" || route.view === "plan"
       ? null
       : route.view === "connect"
-        ? { label: "Connect your agents", sub: "Bring your Claude Code and Codex into this project with one terminal line" }
+        ? { label: "Add an agent", sub: "Choose a model and connect it on your computer" }
         : section;
   const tabs = section?.id === "board" && route.view !== "ticket" ? WORK_TABS : section?.id === "decisions" ? DECISION_TABS : null;
 
@@ -219,7 +221,7 @@ export function Workspace({
           ) : route.view === "decisions" ? (
             <Decisions ws={ws} />
           ) : route.view === "people" ? (
-            <People ws={ws} me={me} onProjectChanged={onProjectChanged} />
+            <People ws={ws} me={me} onProjectChanged={onProjectChanged} onAddAgent={() => setAddAgent(true)} />
           ) : (
             <CaptainHome ws={ws} cr={captain} me={me} />
           )}
@@ -237,6 +239,7 @@ export function Workspace({
           }}
         />
       )}
+      {ws && addAgent && <ConnectAgents ws={ws} me={me} onClose={() => setAddAgent(false)} />}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
       {ws && route.view === "captain" && route.look &&<LookFirst ws={ws} cr={captain} me={me} ticketKey={route.look} covered={!!route.show} />}
       {ws && route.show && <ShowWork ws={ws} captain={captain} ticketKey={route.show.key} part={route.show.part} demoEvents={demoEvents} />}

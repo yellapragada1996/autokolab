@@ -24,6 +24,8 @@ import {
   type WatchItem,
 } from "./glance";
 import type { CaptainRoom } from "./useCaptainRoom";
+import { costText } from "./agentCosts";
+import { useAgentCosts } from "./useAgentCosts";
 import type { Workspace } from "./useWorkspace";
 
 // Overview (DEC-24, AK-75, AK-111): for looking, not talking. Read top to bottom it answers, in order:
@@ -39,6 +41,7 @@ const ASKS_SHOWN = 3;
 const EVENTS_EVERY_MS = 5 * 60_000;
 
 export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr: CaptainRoom }) {
+  const { costs, error: costError } = useAgentCosts(ws);
   const [now, setNow] = useState(() => new Date());
   const [loadedAt, setLoadedAt] = useState(() => Date.now());
   useEffect(() => setLoadedAt(Date.now()), [ws]);
@@ -88,7 +91,7 @@ export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr:
   const peoplePage: Route = { view: "people", project: slug };
   const asks = askItems(ws, cr.needs, cr.plans, now);
   const counts = pulse(people, asks.length);
-  const rows = crew(people, look.rows);
+  const rows = crew(people, look.rows).map((r) => ({ ...r, notes: [...r.notes, ...costText(costs.get(r.id)) ? [costText(costs.get(r.id))!] : []] }));
   const since = sinceLine(ws, cr.catchUp?.c ?? null);
   const answer = (key: string) => go(`${href(captain)}#need-${key}`, false, false);
 
@@ -119,6 +122,7 @@ export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr:
       )}
 
       <Section id="ov-team" title="Team right now" right={<SmallLink to={peoplePage}>People</SmallLink>}>
+        {costError && <p role="alert" style={{ fontSize: 13, color: "var(--coral)" }}>{costError}</p>}
         <CrewTable rows={rows} people={people} peoplePage={peoplePage} />
       </Section>
 

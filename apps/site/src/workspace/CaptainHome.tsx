@@ -161,7 +161,7 @@ function Conversation({ ws, cr, me, pulse, onTarget }: { ws: Workspace; cr: Capt
           {announce}
         </div>
       </div>
-      <Composer cr={cr} disabled={!canPost} noCaptain={noCaptain} autoFocus={canPost && !entries.length} />
+      <Composer projectId={ws.project.id} cr={cr} disabled={!canPost} noCaptain={noCaptain} autoFocus={canPost && !entries.length} />
     </>
   );
 }
@@ -578,8 +578,13 @@ const COMPOSER = "captain-composer";
 /** The message reply mode answers, for the chip's first words. */
 const replyingTo = (t: ReplyTarget) => (t.kind === "plan" ? t.plan.text || planLine(t.plan) : t.kind === "no" ? needText(t.need, () => "") : t.need.question);
 
-function Composer({ cr, disabled, noCaptain, autoFocus }: { cr: CaptainRoom; disabled: boolean; noCaptain: boolean; autoFocus: boolean }) {
-  const [body, setBody] = useState("");
+function Composer({ projectId, cr, disabled, noCaptain, autoFocus }: { projectId: string; cr: CaptainRoom; disabled: boolean; noCaptain: boolean; autoFocus: boolean }) {
+  const [body, setBody] = useState(() => {
+    const key = `autokolab.captainDraft.${projectId}`;
+    const draft = sessionStorage.getItem(key) ?? "";
+    return draft;
+  });
+  useEffect(() => { sessionStorage.removeItem(`autokolab.captainDraft.${projectId}`); }, [projectId]);
   const box = useRef<HTMLTextAreaElement>(null);
   const reply = cr.replyTo;
   const err = reply ? undefined : cr.errors.get("composer");
