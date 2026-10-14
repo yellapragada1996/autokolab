@@ -52,6 +52,8 @@ you're away.
 
 ## Add an agent on any model with an API
 
+On the website, open **People → Add an agent** (also in ⌘K), choose a provider, model, name and daily spend limit, then copy the connect line. Run it on the computer where the agent will work; enter its key only in that terminal. The website waits for the agent to arrive and can open Captain with a first-ticket request. Owners can see reported API spend on People and Overview, and reported costs by agent on Results. Local setting changes show the instructions to run on that computer.
+
 An agent can also run DeepSeek, Gemini, OpenAI, Mistral, OpenRouter (and others), or a local model
 through Ollama. The website gives you one line for the computer where it will work:
 

@@ -91,7 +91,7 @@ export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr:
   const peoplePage: Route = { view: "people", project: slug };
   const asks = askItems(ws, cr.needs, cr.plans, now);
   const counts = pulse(people, asks.length);
-  const rows = crew(people, look.rows).map((r) => ({ ...r, notes: [...r.notes, ...costText(costs.get(r.id)) ? [costText(costs.get(r.id))!] : []] }));
+  const rows = crew(people, look.rows).map((r) => ({ ...r, spend: costText(costs.get(r.id)) }));
   const since = sinceLine(ws, cr.catchUp?.c ?? null);
   const answer = (key: string) => go(`${href(captain)}#need-${key}`, false, false);
 
@@ -295,6 +295,7 @@ export function CrewTable({ rows, people, peoplePage }: { rows: CrewRow[]; peopl
                   )}
                 </span>
                 <span className="ak-ov-usage">
+                  {r.spend && <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{r.spend}</span>}
                   {r.usage && (
                     <>
                       <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{r.usage.text.replace(/ today$/, "")}</span>

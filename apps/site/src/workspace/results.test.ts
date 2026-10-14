@@ -399,9 +399,9 @@ describe("where the usage went", () => {
 
   it("shares it by agent, most usage first", () => {
     expect(usage(ws, week, "week", NOW).agents).toEqual([
-      { id: FJORD, runs: 1, tokens: 58_000, percent: 58 },
-      { id: BIRCH, runs: 2, tokens: 25_000, percent: 25 },
-      { id: CAPTAIN, runs: 3, tokens: 17_000, percent: 17 },
+      { id: FJORD, runs: 1, tokens: 58_000, percent: 58, costUsd: 0.5 },
+      { id: BIRCH, runs: 2, tokens: 25_000, percent: 25, costUsd: 1 },
+      { id: CAPTAIN, runs: 3, tokens: 17_000, percent: 17, costUsd: 1.5 },
     ]);
   });
 
@@ -412,13 +412,16 @@ describe("where the usage went", () => {
     expect(missingText(u)).toBe("2 of 8 runs didn't report usage.");
     expect(u.total).toBe(100_000);
     expect(u.kinds.map((k) => [k.kind, k.runs, k.percent])).toEqual([["build", 3, 78], ["review", 1, 9], ["reply", 3, 11], ["question", 1, 2]]);
-    expect(u.agents.find((a) => a.id === FJORD)).toEqual({ id: FJORD, runs: 3, tokens: 58_000, percent: 58 });
+    expect(u.agents.find((a) => a.id === FJORD)).toEqual({ id: FJORD, runs: 3, tokens: 58_000, percent: 58, costUsd: null });
   });
 
   it("shows the engine's cost only when every run in the period gave one", () => {
     expect(usage(ws, week, "week", NOW).costUsd).toBe(3);
     expect(usage(ws, [...week, ran("review", CAPTAIN, "SH-2", local(10, 9), 100, null)], "week", NOW).costUsd).toBeNull();
     expect(usage(ws, [...week, ran("build", FJORD, "SH-2", local(10, 9), null)], "week", NOW).costUsd).toBeNull();
+    const mixed = usage(ws, [...week, ran("build", FJORD, "SH-2", local(10, 9), null)], "week", NOW);
+    expect(mixed.agents.find((a) => a.id === FJORD)?.costUsd).toBeNull();
+    expect(mixed.agents.find((a) => a.id === BIRCH)?.costUsd).toBe(1);
     expect(dollars(3)).toBe("$3.00");
   });
 

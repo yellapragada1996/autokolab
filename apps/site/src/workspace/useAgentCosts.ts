@@ -15,15 +15,28 @@ export function useAgentCosts(ws: Workspace | null) {
     const load = async () => {
       const end = new Date();
       try {
-        const runs = ws.demoUsage ?? await usageBetween(ws.project.id, new Date(end.getTime() - 48 * 3600_000), end);
-        if (!canceled) { setRows(runs); setNow(end); setError(""); }
-      } catch (e) { if (!canceled) setError(reportError(e, "read agent costs")); }
+        const runs = ws.demoUsage ?? (await usageBetween(ws.project.id, new Date(end.getTime() - 48 * 3600_000), end));
+        if (!canceled) {
+          setRows(runs);
+          setNow(end);
+          setError("");
+        }
+      } catch (e) {
+        if (!canceled) setError(reportError(e, "read agent costs"));
+      }
     };
     void load();
     const timer = setInterval(() => void load(), 30_000);
-    return () => { canceled = true; clearInterval(timer); };
+    return () => {
+      canceled = true;
+      clearInterval(timer);
+    };
   }, [ws?.project.id, ws?.demoUsage]);
   const costs = new Map<string, AgentCost>();
-  if (ws) for (const a of ws.people.agents.values()) { const cost = costToday(ws, a, rows, now); if (cost) costs.set(a.id, cost); }
+  if (ws)
+    for (const a of ws.people.agents.values()) {
+      const cost = costToday(ws, a, rows, now);
+      if (cost) costs.set(a.id, cost);
+    }
   return { costs, error };
 }
