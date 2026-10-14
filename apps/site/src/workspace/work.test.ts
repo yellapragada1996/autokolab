@@ -48,7 +48,7 @@ describe("Work card words", () => {
   });
 
   it("shows the feature by agent and the assignee by feature", () => {
-    const goal = ticket({ key: "SH-1", type: "epic", title: "Sign-in" });
+    const goal = ticket({ key: "SH-1", type: "epic", title: "Sign-in: Google and email" });
     const t = ticket({ key: "SH-2", parent_id: goal.id, assignee_id: BIRCH });
     const ws = workspace([goal, t]);
     expect(cardContext(ws, t, "assignee")).toBe("Sign-in");

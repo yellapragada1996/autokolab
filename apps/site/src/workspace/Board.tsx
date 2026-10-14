@@ -4,7 +4,7 @@ import { updateTicket, type Status, type Ticket, type TicketPatch } from "../lib
 import { go, href, onNav } from "../lib/router";
 import { AgentAvatar, Button, Icon, PersonAvatar, Svg } from "../ui";
 import { LeadBadge } from "./bits";
-import { needsYou, type Need } from "./captain";
+import { goalName, needsYou, type Need } from "./captain";
 import { crew, team } from "./glance";
 import { boardMove, cardContext, cardWords, WORK_COLUMNS, workColumn, workNeed, type WorkColumn } from "./work";
 import type { Workspace } from "./useWorkspace";
@@ -157,7 +157,7 @@ export function Board({ ws, me, onNew, groupBy, needs }: { ws: Workspace; me: st
           tickets: shown.filter((t) => t.parent_id === e.id),
           head: (
             <>
-              <span style={{ fontWeight: 600 }}>{e.title}</span>
+              <span title={e.title} style={{ fontWeight: 600 }}>{goalName(e.title)}</span>
               <span style={{ color: "var(--faint)" }}>
                 {kids.filter((k) => k.status === "done").length} of {kids.length} done
               </span>
@@ -356,7 +356,7 @@ export function Card({ ws, t, groupBy, need, problem, dragging, onDragStart, onD
       {words.sub && <span style={{ fontSize: 12, color: need ? "var(--amber)" : t.status === "in_progress" ? "var(--blue-text)" : "var(--text-muted)" }}>{t.status === "in_progress" && !need && <span aria-hidden="true" style={{ color: "var(--blue)" }}>● </span>}{t.status === "done" && <span style={{ color: "var(--green)" }}>✓ </span>}{words.sub}</span>}
       {words.progress !== null && <div role="progressbar" aria-label="Ticket steps" aria-valuenow={Math.round(words.progress * 100)} aria-valuemin={0} aria-valuemax={100} className="ak-work-progress"><span className="ak-shimmer" style={{ width: `${words.progress * 100}%` }} /></div>}
       {problem && <span style={{ fontSize: 12, color: "var(--coral)" }}>{problem.question}</span>}
-      {context && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{context}</span>}
+      {context && <span title={context} style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{context}</span>}
     </a>
   );
 }

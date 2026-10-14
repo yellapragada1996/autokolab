@@ -1,5 +1,5 @@
 import type { Status, Step, Ticket, TicketPatch } from "../lib/data";
-import { needsYou, type Need } from "./captain";
+import { goalName, needsYou, type Need } from "./captain";
 import { epicOf, headline, plural } from "./story";
 import type { Workspace } from "./useWorkspace";
 
@@ -55,7 +55,8 @@ export function workHeadline(ws: Workspace, now = new Date()): string {
 }
 
 export function cardContext(ws: Workspace, t: Ticket, groupBy: "none" | "assignee" | "epic"): string | null {
-  return groupBy === "epic" ? ws.nameOf(t.assignee_id) : groupBy === "assignee" ? epicOf(ws, t)?.title ?? null : null;
+  const feature = epicOf(ws, t);
+  return groupBy === "epic" ? ws.nameOf(t.assignee_id) : groupBy === "assignee" && feature ? goalName(feature.title) : null;
 }
 
 /** Moving to a request column reassigns/ranks the ticket without inventing a request or status. */
