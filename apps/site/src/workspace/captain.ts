@@ -1,5 +1,6 @@
-import { LEAD_BUILT_QUESTION, MERGE_OK_PREFIX, waitsForApproval, waitsForMergeOk, type Decision, type Ticket } from "../lib/data";
+import { LEAD_BUILT_QUESTION, MERGE_OK_PREFIX, waitsForMergeOk, type Decision, type Ticket } from "../lib/data";
 import { isBookkeeping, problemOf, type RoomMessage } from "../lib/room";
+import { waitsForApproval } from "./approve";
 import { agentDot, epicOf, goals as storyGoals, headline, plural } from "./story";
 import type { Workspace } from "./useWorkspace";
 

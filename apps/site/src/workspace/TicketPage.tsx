@@ -26,6 +26,7 @@ import {
 import { href, onNav } from "../lib/router";
 import { Button } from "../ui";
 import { ApproveChange } from "./ApproveChange";
+import { approval, movedOnLine } from "./approve";
 import { WhoMark } from "./Board";
 import { ago, EpicLozenge, KeyText, Label, Markdown, Picker, PriorityIcon, StatusLozenge, StepProgress, TypeIcon, TypeTag, Who } from "./bits";
 import type { Workspace } from "./useWorkspace";
@@ -556,13 +557,16 @@ function MergeRows({ ws, t, me }: { ws: Workspace; t: Ticket; me: string }) {
   const [mine, setMine] = useState<{ sha: string; at: string } | null>(null);
   const [err, setErr] = useState("");
   useEffect(() => setMine(null), [t.approved_sha, t.pr_url]);
-  const sha = t.approved_sha ?? mine?.sha;
-  const approvedBy = t.approved_sha ? (t.approved_by ?? null) : mine ? me : null;
-  const approvedAt = t.approved_sha ? t.approved_at : mine?.at;
+  const sha = mine?.sha ?? t.approved_sha;
+  const approvedBy = mine ? me : t.approved_sha ? (t.approved_by ?? null) : null;
+  const approvedAt = mine ? mine.at : t.approved_sha ? t.approved_at : undefined;
   const lead = ws.project.lead_agent_id;
   const leadBuilt = !!lead && (t.assignee_id === lead || (t.built_by ?? []).includes(lead));
   const approver = approvedBy ? (isPerson(ws, approvedBy) ? "a person" : "another agent") : null;
-  const waitsHere = !sha && t.status === "review" && !!t.pr_url;
+  // An approval only counts for the commit it names: once the change moves on, it waits again (AK-106).
+  const state = mine ? null : approval(t);
+  const moved = state?.kind === "moved" ? state : null;
+  const waitsHere = state?.kind === "never" || state?.kind === "moved" || state?.kind === "unknown";
   const builders = t.built_by ?? [];
 
   const approve = async (commit: string, note: string) => {
@@ -584,7 +588,9 @@ function MergeRows({ ws, t, me }: { ws: Workspace; t: Ticket; me: string }) {
         <>
           <dt style={{ color: "var(--muted)" }}>Approval</dt>
           <dd style={{ margin: 0, minWidth: 0, display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
-            {sha ? (
+            {moved ? (
+              <span style={{ color: "var(--warn)" }}>{movedOnLine(moved.approved, moved.head)}</span>
+            ) : sha ? (
               <span>
                 Approved by {approvedBy === me ? "you" : ws.nameOf(approvedBy)}
                 {leadBuilt && approver && ` (${approver}, since Captain built this)`} for commit{" "}

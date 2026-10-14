@@ -594,12 +594,16 @@ describe("Captain's messages (AK-69)", () => {
     const pr = "https://github.com/ana/shop/pull/45";
     const built = ticket({ key: "SH-7", status: "review", assignee_id: CAPTAIN, pr_url: pr, needs_human: LEAD_BUILT_QUESTION });
     const limit = ticket({ key: "SH-8", status: "review", assignee_id: BIRCH, pr_url: pr, needs_human: REVIEW_LIMIT_QUESTION });
-    const approved = ticket({ key: "SH-9", status: "review", assignee_id: CAPTAIN, pr_url: pr, needs_human: LEAD_BUILT_QUESTION, approved_sha: "a".repeat(40) });
-    const needs = needsYou(workspace([built, limit, approved]), []);
+    const facts = (sha: string) => ({ sha, checks: { passed: 4, total: 4, state: "success" as const }, files: { total: 1, risky: [] }, additions: 1, deletions: 0 });
+    const approved = ticket({ key: "SH-9", status: "review", assignee_id: CAPTAIN, pr_url: pr, needs_human: LEAD_BUILT_QUESTION, approved_sha: "a".repeat(40), pr_facts: facts("a".repeat(40)) });
+    // An approval of an older commit doesn't count once the change has moved on (AK-106).
+    const moved = ticket({ key: "SH-10", status: "review", assignee_id: CAPTAIN, pr_url: pr, needs_human: LEAD_BUILT_QUESTION, approved_sha: "a".repeat(40), pr_facts: facts("b".repeat(40)) });
+    const needs = needsYou(workspace([built, limit, approved, moved]), []);
     expect(needs.map((n) => [n.ticket?.key, n.kind, n.action])).toEqual([
       ["SH-7", "approval", "Approve a change"],
       ["SH-8", "approval", "Approve a change"],
       ["SH-9", "ticket_question", "Answer a question"],
+      ["SH-10", "approval", "Approve a change"],
     ]);
     expect(needText(needs[0], nameOf)).toBe("SH-7 is ready. I built it, so someone else has to approve it.");
     expect(needText(needs[1], nameOf)).toBe(`SH-8 is waiting for an approval. ${REVIEW_LIMIT_QUESTION}`);
