@@ -3,9 +3,12 @@ import { useEffect, useState } from "react";
 import { addPerson, createInvite, EFFORTS, inviteLink, invites as listInvites, MERGE_POLICIES, mergePolicyOf, MODEL_CHOICES, revokeInvite, setAgentModel, setLead, setMergePolicy, showCode, VENDOR_LABEL, type Agent, type Effort, type Invite, type MergePolicy } from "../lib/data";
 import { placeLine } from "../lib/place";
 import { go, href, onNav } from "../lib/router";
-import { AgentAvatar, Button, PersonAvatar } from "../ui";
+import { AgentAvatar, Button, PersonAvatar, StatusPill } from "../ui";
 import { ago, KeyText, LeadBadge } from "./bits";
 import { agentDot, agentOnline } from "./story";
+import { providerModel } from "./agentOptions";
+import { costText } from "./agentCosts";
+import { useAgentCosts } from "./useAgentCosts";
 import type { Workspace } from "./useWorkspace";
 
 export { agentDot, agentOnline } from "./story";
@@ -29,7 +32,8 @@ export function AgentFace({ a, size, ring }: { a: Agent; size?: number; ring?: s
   return <AgentAvatar name={a.display_name} vendor={a.vendor} status={agentDot(a)} size={size} ring={ring} />;
 }
 
-export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string; onProjectChanged?: () => void }) {
+export function People({ ws, me, onProjectChanged, onAddAgent }: { ws: Workspace; me: string; onProjectChanged?: () => void; onAddAgent?: () => void }) {
+  const { costs, error: costError } = useAgentCosts(ws);
   const [leadErr, setLeadErr] = useState("");
   const makeLead = async (id: string | null) => {
     try {
@@ -91,10 +95,11 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
         <p style={{ fontSize: 14, color: "var(--muted)" }}>
           <strong style={{ color: "var(--text)" }}>Captain</strong> is the agent you talk to (in Claude Code, for example). It turns what you ask for into complete tickets and assigns them to the other agents, who pick them up and do them.
         </p>
+        {costError && <p role="alert" style={{ color: "var(--coral)", fontSize: 13 }}>{costError}</p>}
         {leadErr && <p style={{ color: "var(--danger)", fontSize: 14 }}>{leadErr}</p>}
         <div>
-          <Button variant="secondary" size="sm" onClick={() => go({ view: "connect", project: ws.project.slug })}>
-            Connect your agents
+          <Button variant="secondary" size="sm" onClick={() => onAddAgent ? onAddAgent() : go({ view: "connect", project: ws.project.slug })}>
+            Add an agent
           </Button>
         </div>
         {agents.map((a) => {
@@ -112,7 +117,7 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
                   {VENDOR_LABEL[a.vendor] ?? a.vendor} · {a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : a.owner_label ? `${a.owner_label}'s` : "shared"}
                   {a.last_seen_at ? ` · seen ${ago(a.last_seen_at)}` : " · not connected yet"}
                 </span>
-                <AgentModel ws={ws} agent={a} mine={a.owner_profile_id === me} />
+                <>{a.vendor === "opencode" ? <ApiAgentDetails ws={ws} agent={a} mine={a.owner_profile_id === me} spend={costText(costs.get(a.id))} missing={costs.get(a.id)?.missing ?? false} /> : <AgentModel ws={ws} agent={a} mine={a.owner_profile_id === me} />}</>
               </span>
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
                 {isOwner && (
@@ -134,7 +139,7 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
         })}
         {!agents.length && (
           <div style={{ padding: 16, borderRadius: 12, border: "1px dashed var(--line)", fontSize: 14, color: "var(--muted)" }}>
-            No agents yet. Use "Connect your agents": one terminal line brings in your Claude Code or Codex.
+            No agents yet. Use "Add an agent" to choose one and connect it on your computer.
           </div>
         )}
       </section>
@@ -507,4 +512,26 @@ function AddPerson({ ws }: { ws: Workspace }) {
       </span>
     </form>
   );
+}
+
+
+/** API settings live on the owner's computer. Show instructions rather than a remote control. */
+function ApiAgentDetails({ ws, agent: a, mine, spend, missing }: { ws: Workspace; agent: Agent; mine: boolean; spend: string | null; missing: boolean }) {
+  const [action, setAction] = useState<string | null>(null);
+  const local = (a.effective_model ?? a.model)?.startsWith("ollama/");
+  const settings = `~/.config/autokolab/runners/${a.display_name}.toml`;
+  return <span style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6, fontSize: 13, color: "var(--text-muted)" }}>
+    <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>{providerModel(a.effective_model ?? a.model)} <StatusPill tone="neutral">{local ? "Local model" : "Pay-per-use"}</StatusPill></span>
+    {!local && <span>Key stored on {a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : "its owner's"} computer.</span>}
+    {spend && <span>{spend} · daily limit set on its computer</span>}
+    {missing && <span>Cost isn't reported for this model, so the daily limit can't be enforced.</span>}
+    {mine && <>
+      <span style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {["Change model", ...local ? [] : ["Change daily limit"], "Pause", "Remove"].map((label) => <Button key={label} variant="ghost" size="sm" onClick={() => setAction(action === label ? null : label)} aria-expanded={action === label}>{label}</Button>)}
+      </span>
+      {action && <span style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 8, lineHeight: 1.6, overflowWrap: "anywhere" }}>
+        {action === "Change model" ? <>On that computer, edit <code>{settings}</code>. Under <code>[opencode]</code>, change <code>model</code> to the model name from your provider. Restart its runner. To replace its key, run <code>autokolab key set {a.display_name}</code>.</> : action === "Change daily limit" ? <>On that computer, edit <code>{settings}</code>. Under <code>[opencode]</code>, set <code>daily_usd = 5</code> to your dollar limit (0 means no limit), then restart its runner.</> : action === "Pause" ? <>Run <code>autokolab pause {a.display_name}</code> in a terminal. To start it again, run <code>autokolab resume {a.display_name}</code>.</> : <>On that computer, run <code>autokolab pause {a.display_name}</code>{!local && <> and <code>autokolab key remove {a.display_name}</code></>}. Ask the project owner to run <code>autokolab remove {a.display_name}</code> to remove it from the team.</>}
+      </span>}
+    </>}
+  </span>;
 }

@@ -777,6 +777,8 @@ export function askItems(ws: Workspace, needs: Need[], plans: Plan[], now: Date)
 
 /** One row of the team table: an agent's state in a word, what it is doing, and where. */
 export interface CrewRow {
+  /** Reported API spend, alongside time used; absent when no cost is known. */
+  spend?: string | null;
   id: string;
   name: string;
   state: TeamState;

@@ -257,6 +257,7 @@ function UsageAgents({ ws, u }: { ws: Workspace; u: Usage }) {
           <th scope="col" style={th} title={HOW.usage}>
             Share
           </th>
+          {u.agents.some((a) => a.costUsd !== null) && <th scope="col" style={th}>Cost</th>}
         </tr>
       </thead>
       <tbody>
@@ -269,6 +270,7 @@ function UsageAgents({ ws, u }: { ws: Workspace; u: Usage }) {
             <td style={td} title={`${tokens(a.tokens)} tokens`}>
               {a.percent}%
             </td>
+            {u.agents.some((row) => row.costUsd !== null) && <td style={td}>{a.costUsd !== null ? dollars(a.costUsd) : "Not reported"}</td>}
           </tr>
         ))}
       </tbody>

@@ -255,6 +255,10 @@ ran("build", BUILDER, "t16", 80, 2.05);
 ran("review", LEAD, "t16", 68, 0.31);
 ran("reply", LEAD, null, 95, 0.12);
 ran("build", BUILDER, "t2", 30, 0.5);
+ran("build", "api-demo", null, 1, 1);
+Object.assign(demoUsage.at(-1)!, { model: "deepseek/deepseek-v4-flash", cost_usd: 1.2, created_at: new Date(now).toISOString() });
+ran("build", "api-no-cost", null, 1, 1);
+Object.assign(demoUsage.at(-1)!, { model: "ollama/qwen3-coder", cost_usd: null, created_at: new Date(now).toISOString() });
 
 // Today's two merges, the times a person was asked, and the work that was sent back.
 for (const [id, n, started, done] of [["t14", 14, 150, 40], ["t16", 16, 265, 60]] as const) {
@@ -285,6 +289,8 @@ history.push(
 history.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
 
 const agents: Agent[] = [
+  { id: "api-demo", owner_profile_id: ANA, owner_label: "ana", vendor: "opencode", display_name: "ana-api", status: "idle", status_note: null, current_ticket_id: null, last_seen_at: iso(1), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "deepseek/deepseek-v4-flash", effective_at: iso(2), ...usedIn("America/Toronto", 12, 3) },
+  { id: "api-no-cost", owner_profile_id: ANA, owner_label: "ana", vendor: "opencode", display_name: "ana-local", status: "idle", status_note: null, current_ticket_id: null, last_seen_at: iso(1), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "ollama/qwen3-coder", effective_at: iso(2) },
   { id: LEAD, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "ana-claude", status: "idle", status_note: "Planned the Sign-in goal", current_ticket_id: null, last_seen_at: iso(3), model: "opus", effort: "high", model_set_by: ANA, model_set_at: iso(60), effective_model: "claude-opus-5-5", effective_effort: "high", effective_at: iso(20), ...usedIn("America/Toronto", 35, 3) },
   { id: BUILDER, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "builder", status: nobodyRuns ? "idle" : "building", status_note: nobodyRuns ? null : "Creating profiles for new users", current_ticket_id: nobodyRuns ? null : "t2", last_seen_at: iso(1), model: "sonnet", effort: "medium", model_set_by: LEAD, model_set_at: iso(30), effective_model: "haiku", effective_effort: "medium", effective_at: iso(1), ...usedIn("America/Toronto", 70, 3) },
   { id: REVIEWER, owner_profile_id: LEE, owner_label: "lee", vendor: "codex", display_name: "lee-codex", status: nothingNeeded ? "idle" : "waiting_human", status_note: "Asked about the session store", current_ticket_id: "t4", last_seen_at: iso(2), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "gpt-5.5-codex", effective_effort: null, effective_at: iso(120) },
@@ -294,6 +300,8 @@ const agents: Agent[] = [
 ];
 
 const members: Member[] = [
+  { actor_id: "api-demo", actor_type: "agent", role: "member" },
+  { actor_id: "api-no-cost", actor_type: "agent", role: "member" },
   { actor_id: ANA, actor_type: "human", role: "owner" },
   { actor_id: LEE, actor_type: "human", role: "member" },
   { actor_id: LEAD, actor_type: "agent", role: "member" },

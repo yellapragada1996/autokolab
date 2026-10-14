@@ -1,3 +1,4 @@
+import { CAPTAIN_DRAFT_EVENT, captainDraftKey } from "./captainDraft";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { href, onNav, go, openLook, type Route } from "../lib/router";
 import { AgentAvatar, Button } from "../ui";
@@ -161,7 +162,7 @@ function Conversation({ ws, cr, me, pulse, onTarget }: { ws: Workspace; cr: Capt
           {announce}
         </div>
       </div>
-      <Composer cr={cr} disabled={!canPost} noCaptain={noCaptain} autoFocus={canPost && !entries.length} />
+      <Composer projectId={ws.project.id} cr={cr} disabled={!canPost} noCaptain={noCaptain} autoFocus={canPost && !entries.length} />
     </>
   );
 }
@@ -578,15 +579,31 @@ const COMPOSER = "captain-composer";
 /** The message reply mode answers, for the chip's first words. */
 const replyingTo = (t: ReplyTarget) => (t.kind === "plan" ? t.plan.text || planLine(t.plan) : t.kind === "no" ? needText(t.need, () => "") : t.need.question);
 
-function Composer({ cr, disabled, noCaptain, autoFocus }: { cr: CaptainRoom; disabled: boolean; noCaptain: boolean; autoFocus: boolean }) {
-  const [body, setBody] = useState("");
+function Composer({ projectId, cr, disabled, noCaptain, autoFocus }: { projectId: string; cr: CaptainRoom; disabled: boolean; noCaptain: boolean; autoFocus: boolean }) {
+  const [body, setBody] = useState(() => {
+    const key = captainDraftKey(projectId);
+    const draft = sessionStorage.getItem(key) ?? "";
+    return draft;
+  });
+  useEffect(() => {
+    sessionStorage.removeItem(captainDraftKey(projectId));
+    const receive = (event: Event) => {
+      const draft = (event as CustomEvent<{ projectId: string; text: string }>).detail;
+      if (draft.projectId !== projectId) return;
+      setBody(draft.text);
+      sessionStorage.removeItem(captainDraftKey(projectId));
+      box.current?.focus();
+    };
+    window.addEventListener(CAPTAIN_DRAFT_EVENT, receive);
+    return () => window.removeEventListener(CAPTAIN_DRAFT_EVENT, receive);
+  }, [projectId]);
   const box = useRef<HTMLTextAreaElement>(null);
   const reply = cr.replyTo;
   const err = reply ? undefined : cr.errors.get("composer");
   const chip = reply ? `Replying to: ${replyPreview(replyingTo(reply))}` : "";
 
   useEffect(() => {
-    if (autoFocus) box.current?.focus();
+    if (autoFocus || body) box.current?.focus();
   }, [autoFocus]);
   // 2 rows, growing to 8.
   useLayoutEffect(() => {
