@@ -39,7 +39,7 @@ function online(m: RoomMember): boolean {
 
 function Mark({ m, size = 30, me }: { m?: RoomMember; size?: number; me?: string }) {
   if (!m) return <PersonAvatar name="?" size={size} />;
-  return m.kind === "agent" ? <AgentAvatar name={m.name} vendor={m.client === "codex" ? "codex" : "claude"} size={size} /> : <PersonAvatar name={m.name} size={size} you={m.id === me} />;
+  return m.kind === "agent" ? <AgentAvatar name={m.name} vendor={m.client === "codex" || m.client === "opencode" ? m.client : "claude"} size={size} /> : <PersonAvatar name={m.name} size={size} you={m.id === me} />;
 }
 
 function time(iso: string): string {

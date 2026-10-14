@@ -9,6 +9,7 @@ import { resolveRoom } from "./core/repo.js";
 import { BULLETIN_STATES, MESSAGE_KINDS, type Message } from "./core/types.js";
 import { runMcpServer } from "./mcp/server.js";
 import { runConnect } from "./setup/pair.js";
+import { apiAgentOptions, keyCheck, keyRemove, keySet } from "./setup/apimodel.js";
 import { runAll } from "./runner/runner.js";
 import { connectAgents } from "./setup/connect.js";
 import { runInit } from "./setup/init.js";
@@ -470,12 +471,36 @@ program
   .command("connect <code>")
   .description("Connect this computer's agents to a project (the website gives you this line)")
   .option("--site <url>", "the AutoKolab website", undefined)
-  .action(async (code: string, o: { site?: string }) => {
-    await runConnect(code, { site: o.site }).catch((e) => {
+  .option("--engine <engine>", "add one API-model agent instead: opencode")
+  .option("--provider <provider>", "its model provider, e.g. deepseek, google, openai, mistral, openrouter, ollama")
+  .option("--model <model>", "its model, e.g. deepseek-chat")
+  .option("--name <name>", "its name, e.g. ana-deepseek")
+  .option("--daily-usd <dollars>", "its spending limit per day in US dollars (0: no limit)")
+  .option("--key-env <name>", "read its API key from this environment variable instead of asking")
+  .option("--no-service", "don't start or restart the background runner")
+  .action(async (code: string, o: { site?: string; engine?: string; provider?: string; model?: string; name?: string; dailyUsd?: string; keyEnv?: string; service: boolean }) => {
+    try {
+      await runConnect(code, { site: o.site, api: apiAgentOptions(o), service: o.service });
+    } catch (e) {
       console.error(`\n  ${(e as Error).message}\n`);
       process.exit(1);
-    });
+    }
   });
+
+const key = program.command("key").description("An API-model agent's key on this computer (it never leaves it)");
+key
+  .command("set <agent>")
+  .description("Add or replace the agent's key: asked for with hidden input, checked with its provider, then saved")
+  .option("--key-env <name>", "read the key from this environment variable instead of asking")
+  .action(action(async (agent: string, o: { keyEnv?: string }) => keySet(agent, { keyEnv: o.keyEnv })));
+key
+  .command("check <agent>")
+  .description("Check that the agent's provider still accepts its key")
+  .action(action(async (agent: string) => keyCheck(agent)));
+key
+  .command("remove <agent>")
+  .description("Remove the agent's key from this computer")
+  .action(action((agent: string) => keyRemove(agent)));
 
 program
   .command("mcp")

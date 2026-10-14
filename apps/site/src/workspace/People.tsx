@@ -1,6 +1,6 @@
 import { reportError } from "../lib/errors";
 import { useEffect, useState } from "react";
-import { addPerson, createInvite, EFFORTS, inviteLink, invites as listInvites, MERGE_POLICIES, mergePolicyOf, MODEL_CHOICES, revokeInvite, setAgentModel, setLead, setMergePolicy, showCode, type Agent, type Effort, type Invite, type MergePolicy } from "../lib/data";
+import { addPerson, createInvite, EFFORTS, inviteLink, invites as listInvites, MERGE_POLICIES, mergePolicyOf, MODEL_CHOICES, revokeInvite, setAgentModel, setLead, setMergePolicy, showCode, VENDOR_LABEL, type Agent, type Effort, type Invite, type MergePolicy } from "../lib/data";
 import { placeLine } from "../lib/place";
 import { go, href, onNav } from "../lib/router";
 import { AgentAvatar, Button, PersonAvatar } from "../ui";
@@ -109,7 +109,7 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
                   {a.id === ws.project.lead_agent_id && <LeadBadge />}
                 </span>
                 <span style={{ fontSize: 13, color: "var(--faint)" }}>
-                  {a.vendor === "claude" ? "Claude Code" : "Codex"} · {a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : a.owner_label ? `${a.owner_label}'s` : "shared"}
+                  {VENDOR_LABEL[a.vendor] ?? a.vendor} ·{a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : a.owner_label ? `${a.owner_label}'s` : "shared"}
                   {a.last_seen_at ? ` · seen ${ago(a.last_seen_at)}` : " · not connected yet"}
                 </span>
                 <AgentModel ws={ws} agent={a} mine={a.owner_profile_id === me} />
@@ -338,7 +338,7 @@ function AgentModel({ ws, agent: a, mine }: { ws: Workspace; agent: Agent; mine:
             style={{ ...fieldStyle, width: 170, fontFamily: "var(--mono)" }}
           />
           <datalist id={listId}>
-            {MODEL_CHOICES[a.vendor].map((m) => (
+            {(MODEL_CHOICES[a.vendor] ?? []).map((m) => (
               <option key={m} value={m} />
             ))}
           </datalist>
@@ -369,7 +369,7 @@ function AgentModel({ ws, agent: a, mine }: { ws: Workspace; agent: Agent; mine:
       )}
       {runNote}
       <span style={{ fontSize: 12, color: "var(--faint)" }}>
-        Applies from its next run. Your machine can ignore this: set <code style={{ fontFamily: "var(--mono)" }}>model_locked = true</code> in this agent's runner settings. Sessions you open yourself in {a.vendor === "claude" ? "Claude Code" : "Codex"} use whatever you pick there.
+        Applies from its next run. Your machine can ignore this: set <code style={{ fontFamily: "var(--mono)" }}>model_locked = true</code> in this agent's runner settings.{a.vendor !== "opencode" && <> Sessions you open yourself in {VENDOR_LABEL[a.vendor]} use whatever you pick there.</>}
       </span>
     </span>
   );

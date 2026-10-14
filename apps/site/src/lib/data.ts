@@ -76,7 +76,8 @@ export interface Agent {
   id: string;
   owner_profile_id: string | null;
   owner_label: string;
-  vendor: "claude" | "codex";
+  /** "opencode": any provider's model through OpenCode (DEC-26); its model shows as provider/model. */
+  vendor: "claude" | "codex" | "opencode";
   display_name: string;
   status: "idle" | "planning" | "building" | "waiting_human" | "blocked" | "paused" | "offline";
   status_note: string | null;
@@ -109,7 +110,11 @@ export type Effort = (typeof EFFORTS)[number];
 export const MODEL_CHOICES: Record<Agent["vendor"], string[]> = {
   claude: ["opus", "sonnet", "haiku", "fable", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1"],
   codex: ["gpt-5-codex", "gpt-5"],
+  opencode: [],
 };
+
+/** What runs the agent, in words. */
+export const VENDOR_LABEL: Record<Agent["vendor"], string> = { claude: "Claude Code", codex: "Codex", opencode: "API model" };
 
 export interface Member {
   actor_id: string;
