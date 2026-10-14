@@ -6,7 +6,7 @@ import { readConfigFile, writeConfigFile } from "../src/core/config.js";
 import { keyFile, keyProblem, readAgentKey, removeAgentKey, saveAgentKey } from "../src/core/keys.js";
 import { loadRunnerConfig, parseRunnerConfig, runnerConfigPath, runnerTemplate } from "../src/runner/config.js";
 import { engineInvocation, opencodeInvocation } from "../src/runner/engines.js";
-import { apiAgentOptions, checkKey, keyCheck, keyFromEnv, keyRemove, keySet } from "../src/setup/apimodel.js";
+import { apiAgentOptions, checkKey, keyCheck, keyFromEnv, keyRemove, keySet, OPENCODE_VERSION, opencodePackageJson } from "../src/setup/apimodel.js";
 import { runConnect } from "../src/setup/pair.js";
 
 // Connecting an API-model agent from a terminal (AK-108, CON-25): the connect line's options, the key
@@ -167,6 +167,10 @@ describe("checking a key with its provider", () => {
 
   it("says when a provider's key can't be checked in advance", async () => {
     expect(await checkKey("zhipuai", KEY, { fetch: fakeNet().f })).toMatchObject({ ok: true, note: /can't check a Zhipu key in advance/ });
+  });
+
+  it("lets npm 12 run OpenCode's install script, for the tested version only", () => {
+    expect(JSON.parse(opencodePackageJson())).toEqual({ private: true, allowScripts: { [`opencode-ai@${OPENCODE_VERSION}`]: true } });
   });
 
   it("reads --key-env, naming only the variable", () => {

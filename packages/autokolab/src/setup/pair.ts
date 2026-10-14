@@ -204,7 +204,7 @@ async function connectApiAgent(rawCode: string, api: ApiAgentOptions, opts: Conn
   const local = isLocalProvider(api.provider);
   const model = `${api.provider}/${api.model}`;
 
-  console.log(`\n  ${bold(`Adding a ${name} agent to this computer`)}`);
+  console.log(`\n  ${bold(`Adding ${api.name ?? "an agent"} (${name}) to this computer`)}`);
   const bin = setupTools ? findOpencode() ?? installOpencode() : undefined;
   const baseUrl = local ? process.env.OLLAMA_HOST?.replace(/^(?!https?:\/\/)/, "http://") : undefined;
 

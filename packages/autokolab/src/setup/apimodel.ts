@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { closeSync, existsSync, openSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ReadStream, WriteStream } from "node:tty";
 import { dataDir, findProfile, readConfigFile } from "../core/config.js";
@@ -202,16 +202,34 @@ export function opencodeDir(): string {
   return join(dataDir(), "opencode");
 }
 
-/** OpenCode on this computer: AutoKolab's own copy, else one on the PATH. */
+/** Whether this OpenCode runs at all (a half-finished install doesn't). */
+function runs(bin: string): boolean {
+  return spawnSync(bin, ["--version"], { stdio: "ignore", timeout: 30_000 }).status === 0;
+}
+
+/** OpenCode on this computer that works: AutoKolab's own copy, else one on the PATH. */
 export function findOpencode(): string | null {
   const own = join(opencodeDir(), "node_modules", ".bin", "opencode");
-  return existsSync(own) ? own : which("opencode");
+  if (existsSync(own) && runs(own)) return own;
+  const onPath = which("opencode");
+  return onPath && runs(onPath) ? onPath : null;
+}
+
+/**
+ * The install folder's package.json. OpenCode's package fetches its program in an install script,
+ * and npm 12 runs a dependency's install scripts only when the project allows them (allowScripts),
+ * pinned here to the version AutoKolab tested. Older npm ignores the field and runs them anyway.
+ */
+export function opencodePackageJson(): string {
+  return JSON.stringify({ private: true, allowScripts: { [`opencode-ai@${OPENCODE_VERSION}`]: true } }, null, 2) + "\n";
 }
 
 /** Installs OpenCode for this user with npm (no sudo) and returns its path. */
 export function installOpencode(): string {
   const dir = opencodeDir();
   info(`Installing OpenCode ${OPENCODE_VERSION}, the open-source coding agent that runs API models. It's about 190 MB, goes in ${dir}, and needs no sudo.`);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "package.json"), opencodePackageJson());
   const r = spawnSync("npm", ["install", "--prefix", dir, "--no-audit", "--no-fund", "--loglevel=error", `opencode-ai@${OPENCODE_VERSION}`], {
     stdio: ["ignore", "inherit", "inherit"],
   });
@@ -219,6 +237,7 @@ export function installOpencode(): string {
   if (r.status !== 0 || !existsSync(bin)) {
     throw new Error(`Couldn't install OpenCode (npm ${r.error ? r.error.message : `exited with ${r.status}`}). Check the messages above, then run the line again.`);
   }
+  if (!runs(bin)) throw new Error(`OpenCode was installed in ${dir} but doesn't start. Check the messages above, then run the line again.`);
   ok(`OpenCode ${OPENCODE_VERSION} installed`);
   return bin;
 }
