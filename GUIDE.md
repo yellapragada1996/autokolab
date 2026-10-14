@@ -211,6 +211,26 @@ Agents that *do* have the tools report their own steps; the runner notices and s
 
 ---
 
+## 7b. Agents on any model with an API (DeepSeek, Gemini, OpenRouter, …)
+
+Besides Claude Code and Codex, an agent can run any provider's model through **OpenCode**, an open-source coding agent that already talks to many providers (DEC-20; OpenCode was picked over Aider in DEC-26 because it has MCP tools, JSON output, session resume and a cost per step). In AutoKolab its engine is `opencode`, and its model is written `provider/model`, for example `deepseek/deepseek-flash` (`opencode models <provider>` lists the models OpenCode knows).
+
+- **How it runs.** The runner starts `opencode run --format json -m <provider/model>` in the ticket's worktree with the prompt on stdin, the same way it starts the other engines. A small config file gives OpenCode the AutoKolab tools and the owner's limits as OpenCode permission rules: no force-push or `--no-verify`, no pushing to protected branches, no reading or changing the forbidden paths, nothing outside the working folder. OpenCode's to-do list becomes the ticket's steps; tokens, turns and cost come from its own figures for every step; later comments continue the same session.
+- **The key stays on the owner's computer.** It's in the macOS keychain (service `autokolab`, account the agent's id), or else in `~/.config/autokolab/keys/<agent id>`, which must be mode 600 (the runner refuses a file others can read). The runner reads it for each run and passes it only to OpenCode's process, through the provider's environment variable (`DEEPSEEK_API_KEY` for DeepSeek, and so on). It's never in a command line, a log, a prompt, a ticket, the room or the server; if it shows up in the output anyway, it's replaced with `[redacted]`. Without a key the agent doesn't start, and says so on the ticket.
+- **A daily spend limit.** `daily_usd` under `[opencode]` in the agent's runner file is how many dollars it may spend per day (0: no limit). The runner adds up the cost OpenCode reports for each run; once the day's total reaches the limit it starts no new work and says once: "I've spent today's $5 limit on DeepSeek. I'll carry on tomorrow." It starts again after local midnight. If a provider reports no cost, the limit can't be enforced, and the runner's log says so.
+- **Plain reasons when the provider says no.** A rejected key, an account with no credit, or a model that doesn't exist stops the run with "I stopped: …" on the ticket saying which, and what to do. A rate limit waits like a subscription's usage limit: OpenCode keeps retrying on its own, so after three refusals in a row the runner stops the run and tries again 15 minutes later.
+
+```toml
+engine = "opencode"
+
+[opencode]
+provider = "deepseek"
+model = "deepseek-flash"
+daily_usd = 5
+```
+
+---
+
 ## 8. Safety and trust
 
 | Protection | How |
@@ -319,7 +339,7 @@ autokolab/                      (github.com/yellapragada1996/autokolab)
 │  ├─ src/cli.ts                 every command
 │  ├─ src/core/                  database client: rooms (client.ts), projects and tickets (projects.ts)
 │  ├─ src/mcp/server.ts          the tools agents use
-│  ├─ src/runner/                runner, engines (Claude/Codex), prompts, worktrees, git hook
+│  ├─ src/runner/                runner, engines (Claude/Codex/OpenCode), prompts, worktrees, git hook
 │  └─ src/setup/                 local app server, setup, join, invites, service install
 ├─ supabase/tests/               database permission tests
 └─ autokolab-spec/               the full product spec and wireframes (not committed yet)
@@ -356,7 +376,7 @@ autokolab/                      (github.com/yellapragada1996/autokolab)
 - **Website:** React 19, TypeScript, Vite, Supabase JS client, hosted on Vercel.
 - **Helper:** Node.js 20+, TypeScript, Commander (CLI), MCP SDK, Zod, smol-toml (runner limits in `~/.config/autokolab/runners/<agent>.toml`), `ws` for WebSockets on Node 20.
 - **Backend:** Supabase (Postgres, Row-Level Security, Realtime, Auth with GitHub). Database migrations 001 to 005.
-- **Agents:** Claude Code (`claude -p --output-format stream-json`) and Codex (`codex exec --json`), each running on its owner's machine and subscription.
+- **Agents:** Claude Code (`claude -p --output-format stream-json`) and Codex (`codex exec --json`), each running on its owner's machine and subscription, and any provider's model through OpenCode (`opencode run --format json`) with the owner's own API key.
 
 ---
 

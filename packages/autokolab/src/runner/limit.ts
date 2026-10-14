@@ -2,6 +2,20 @@ import type { UsageReport } from "../core/projects.js";
 import type { EngineRun } from "./engines.js";
 
 /**
+ * Whether an API-model agent's dollars for today are used up. 0 (or less) means no limit. Only the
+ * engine's own cost figures count, so a provider that reports none can't be held to it.
+ */
+export function overSpend(spentUsd: number, dailyUsd: number): boolean {
+  return dailyUsd > 0 && spentUsd >= dailyUsd;
+}
+
+/** The day's notice once the spend limit is reached (CON-25). */
+export function spendNotice(dailyUsd: number, providerName: string): string {
+  const usd = Number.isInteger(dailyUsd) ? String(dailyUsd) : dailyUsd.toFixed(2);
+  return `I've spent today's $${usd} limit on ${providerName}. I'll carry on tomorrow.`;
+}
+
+/**
  * What the runner reports about its day (AK-76): time used, the owner's daily limit, the local day
  * they belong to, and when it expects to work again. That is the end of a subscription-limit wait
  * still ahead, else five past the next local midnight once the daily limit is used up, else null.
@@ -19,9 +33,13 @@ export function usageReport(usedSeconds: number, maxHoursPerDay: number, waitUnt
   return { used_s: used, limit_s: limit, day: `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`, waiting_until: waiting };
 }
 
+/** How long an API-model agent waits after its provider's rate limit before trying again. */
+export const RATE_LIMIT_WAIT_MS = 15 * 60_000;
+
 /** Subscription limits are engine errors, never words quoted in a successful reply. */
-export function usageLimit(run: Pick<EngineRun, "isError" | "aborted" | "timedOut" | "finalText">, now = new Date()): { until: Date } | null {
+export function usageLimit(run: Pick<EngineRun, "isError" | "aborted" | "timedOut" | "finalText" | "rateLimited">, now = new Date()): { until: Date } | null {
   if (!run.isError || run.aborted || run.timedOut) return null;
+  if (run.rateLimited) return { until: new Date(now.getTime() + RATE_LIMIT_WAIT_MS) };
   const text = run.finalText;
   if (!/(?:you(?:'|’)ve hit your|you have hit your) (?:session|usage|weekly) limit/i.test(text)) return null;
   const fallback = new Date(now.getTime() + 30 * 60_000);
