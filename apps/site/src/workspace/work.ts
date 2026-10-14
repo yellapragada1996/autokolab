@@ -1,5 +1,5 @@
-import type { Status, Step, Ticket } from "../lib/data";
-import type { Need } from "./captain";
+import type { Status, Step, Ticket, TicketPatch } from "../lib/data";
+import { needsYou, type Need } from "./captain";
 import { epicOf, headline, plural } from "./story";
 import type { Workspace } from "./useWorkspace";
 
@@ -49,10 +49,22 @@ export function cardWords(t: Ticket, blockers: Ticket[], steps: Step[], need: Ne
 
 export function workHeadline(ws: Workspace, now = new Date()): string {
   const h = headline(ws, now);
-  const parts = [h.building ? `${plural(h.building.workers, h.building.agentsOnly ? "agent" : "teammate")} building` : h.stopped ? `${plural(h.stopped, "ticket")} stopped` : "Nobody building", h.needs ? `${h.needs} waiting on you` : null];
+  const waiting = needsYou(ws, []).filter((n) => n.kind !== "problem" && n.ticket?.type !== "epic").length;
+  const parts = [h.building ? `${plural(h.building.workers, h.building.agentsOnly ? "agent" : "teammate")} building` : h.stopped ? `${plural(h.stopped, "ticket")} stopped` : "Nobody building", waiting ? `${waiting} waiting on you` : null];
   return `${parts.filter(Boolean).join(", ")}.`;
 }
 
 export function cardContext(ws: Workspace, t: Ticket, groupBy: "none" | "assignee" | "epic"): string | null {
   return groupBy === "epic" ? ws.nameOf(t.assignee_id) : groupBy === "assignee" ? epicOf(ws, t)?.title ?? null : null;
+}
+
+/** Moving to a request column reassigns/ranks the ticket without inventing a request or status. */
+export function boardMove(t: Ticket, lanePatch: TicketPatch, cell: Ticket[], index: number, column: WorkColumn): TicketPatch {
+  const cards = cell.filter((x) => x.id !== t.id).sort((a, b) => a.sort_order - b.sort_order);
+  const before = cards[index - 1]?.sort_order;
+  const after = cards[index]?.sort_order;
+  const sort_order = before === undefined ? (after === undefined ? t.sort_order : after - 1) : after === undefined ? before + 1 : (before + after) / 2;
+  const patch: TicketPatch = { ...lanePatch, sort_order, ...(column === "needs" ? {} : { status: column }) };
+  for (const k of Object.keys(patch) as (keyof TicketPatch)[]) if (patch[k] === t[k as keyof Ticket]) delete patch[k];
+  return patch;
 }

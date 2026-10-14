@@ -6,8 +6,7 @@ import { AgentAvatar, Button, Icon, PersonAvatar, Svg } from "../ui";
 import { LeadBadge } from "./bits";
 import { needsYou, type Need } from "./captain";
 import { crew, team } from "./glance";
-import { agentDot } from "./story";
-import { cardContext, cardWords, WORK_COLUMNS, workColumn, workNeed, type WorkColumn } from "./work";
+import { boardMove, cardContext, cardWords, WORK_COLUMNS, workColumn, workNeed, type WorkColumn } from "./work";
 import type { Workspace } from "./useWorkspace";
 
 // Work in flight, grouped by agent or feature. Later keeps its own ranking.
@@ -108,6 +107,7 @@ interface Lane {
   /** What dropping a card into this lane changes. */
   patch: TicketPatch;
   head: React.ReactNode;
+  hover?: string;
   tickets: Ticket[];
 }
 
@@ -181,11 +181,12 @@ export function Board({ ws, me, onNew, groupBy, needs }: { ws: Workspace; me: st
       const st = states.get(id);
       return {
         id,
+        hover: st?.hover,
         patch: { assignee_id: id },
         tickets: shown.filter((t) => t.assignee_id === id),
         head: (
           <>
-            {agent ? <span title={st?.hover}><AgentAvatar name={agent.display_name} vendor={agent.vendor} status={agentDot(agent)} size={26} /></span> : <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={22} you={id === me} />}
+            {agent ? <span title={st?.hover}><AgentAvatar name={agent.display_name} vendor={agent.vendor} status={st?.state === "working" || st?.state === "reviewing" ? "working" : st?.state === "waiting" ? "waiting" : st?.state === "free" || st?.state === "idle" ? "idle" : undefined} size={26} /></span> : <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={22} you={id === me} />}
             <span title={st?.hover} style={{ fontWeight: 600 }}>
               {ws.nameOf(id)}
               {id === me ? " (you)" : ""}
@@ -206,14 +207,8 @@ export function Board({ ws, me, onNew, groupBy, needs }: { ws: Workspace; me: st
     setDragging(null);
     setOver(null);
     if (!t) return;
-    const cell = lane.tickets.filter((x) => workColumn(x, needs) === status && x.id !== t.id).sort((a, b) => a.sort_order - b.sort_order);
-    const before = cell[index - 1]?.sort_order;
-    const after = cell[index]?.sort_order;
-    const sort_order = before === undefined ? (after === undefined ? t.sort_order : after - 1) : after === undefined ? before + 1 : (before + after) / 2;
-    const patch: TicketPatch = { ...lane.patch };
-    if (status !== "needs" && t.status !== status) patch.status = status;
-    if (sort_order !== t.sort_order) patch.sort_order = sort_order;
-    for (const k of Object.keys(patch) as (keyof TicketPatch)[]) if (patch[k] === t[k as keyof Ticket]) delete patch[k];
+    const cell = lane.tickets.filter((x) => workColumn(x, needs) === status);
+    const patch = boardMove(t, lane.patch, cell, index, status);
     if (!Object.keys(patch).length) return;
     try {
       setErr("");
@@ -240,7 +235,7 @@ export function Board({ ws, me, onNew, groupBy, needs }: { ws: Workspace; me: st
       </div>
       {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
 
-      <div style={{ overflowX: "auto", paddingBottom: 8 }}>
+      <div role="region" aria-label="Work board" tabIndex={0} style={{ overflowX: "auto", paddingBottom: 8 }}>
         <div style={{ minWidth: columns.length * 230, borderRadius: 12, background: "var(--surface-sunken)", border: "1px solid var(--border-subtle)", padding: 12 }}>
           {/* Empty columns stay out of the reading path. */}
           <div style={{ display: "grid", gridTemplateColumns: grid, gap: 8, position: "sticky", top: 0, zIndex: 3, background: "var(--bg)", paddingBottom: 8 }}>
@@ -260,6 +255,7 @@ export function Board({ ws, me, onNew, groupBy, needs }: { ws: Workspace; me: st
                     type="button"
                     onClick={() => setCollapsed((s) => (s.has(lane.id) ? new Set([...s].filter((x) => x !== lane.id)) : new Set([...s, lane.id])))}
                     aria-expanded={!isCollapsed}
+                    title={lane.hover}
                     style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 4px", border: 0, borderBottom: "1px solid var(--line-soft)", background: "none", color: "var(--text)", fontSize: 13, cursor: "pointer", textAlign: "left", marginBottom: 8 }}
                   >
                     <span aria-hidden="true" style={{ display: "inline-block", width: 12, color: "var(--faint)", transform: isCollapsed ? "rotate(-90deg)" : "none", transition: "transform 120ms" }}>
@@ -329,24 +325,10 @@ export function Board({ ws, me, onNew, groupBy, needs }: { ws: Workspace; me: st
 
 /** Nothing on the board yet: the lead writes the tickets, so say how to ask it. */
 export function EmptyBoard({ ws }: { ws: Workspace }) {
-  const lead = ws.project.lead_agent_id ? ws.nameOf(ws.project.lead_agent_id) : null;
-  return lead ? (
-    <>
-      <strong style={{ color: "var(--text)" }}>The board is empty.</strong>
-      <span>
-        Tell Captain, <strong style={{ color: "var(--text)" }}>{lead}</strong>, what you want built. In Claude Code, for example:
-      </span>
-      <code style={{ display: "block", padding: "10px 14px", borderRadius: 8, background: "var(--surface)", border: "1px solid var(--line)", font: "13px var(--mono)", color: "var(--text-2)", textAlign: "left" }}>
-        Plan "add Google sign-in" on the AutoKolab board and assign the tickets.
-      </code>
-      <span style={{ fontSize: 13, color: "var(--faint)" }}>It writes complete tickets and assigns them to the other agents, who start right away.</span>
-    </>
-  ) : (
-    <>
-      <strong style={{ color: "var(--text)" }}>The board is empty.</strong>
-      <span>Pick Captain on the People page: it writes the tickets and assigns them to the other agents.</span>
-    </>
-  );
+  return <>
+    <strong style={{ color: "var(--text)" }}>The board is empty.</strong>
+    {ws.project.lead_agent_id ? <a href={href({ view: "captain", project: ws.project.slug })} onClick={onNav({ view: "captain", project: ws.project.slug })}>Tell Captain what you'd like built.</a> : <span>Choose Captain on the People page to start planning work.</span>}
+  </>;
 }
 
 function DropLine() {
@@ -371,8 +353,8 @@ export function Card({ ws, t, groupBy, need, problem, dragging, onDragStart, onD
       style={{ opacity: dragging ? 0.4 : 1, borderColor: need ? "var(--amber-border)" : "var(--border)", borderStyle: t.status === "ready" && !need ? "dashed" : "solid", color: t.status === "done" ? "var(--text-muted)" : "var(--text)" }}
     >
       <span style={{ fontSize: 14, lineHeight: 1.5 }}>{words.line}</span>
-      {words.sub && <span style={{ fontSize: 12, color: need ? "var(--amber)" : t.status === "in_progress" ? "var(--blue-text)" : "var(--text-muted)" }}>{t.status === "done" && <span style={{ color: "var(--green)" }}>✓ </span>}{words.sub}</span>}
-      {words.progress !== null && <div role="progressbar" aria-label="Ticket steps" aria-valuenow={Math.round(words.progress * 100)} aria-valuemin={0} aria-valuemax={100} className="ak-work-progress"><span style={{ width: `${words.progress * 100}%` }} /></div>}
+      {words.sub && <span style={{ fontSize: 12, color: need ? "var(--amber)" : t.status === "in_progress" ? "var(--blue-text)" : "var(--text-muted)" }}>{t.status === "in_progress" && !need && <span aria-hidden="true" style={{ color: "var(--blue)" }}>● </span>}{t.status === "done" && <span style={{ color: "var(--green)" }}>✓ </span>}{words.sub}</span>}
+      {words.progress !== null && <div role="progressbar" aria-label="Ticket steps" aria-valuenow={Math.round(words.progress * 100)} aria-valuemin={0} aria-valuemax={100} className="ak-work-progress"><span className="ak-shimmer" style={{ width: `${words.progress * 100}%` }} /></div>}
       {problem && <span style={{ fontSize: 12, color: "var(--coral)" }}>{problem.question}</span>}
       {context && <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{context}</span>}
     </a>

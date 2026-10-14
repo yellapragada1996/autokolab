@@ -170,5 +170,5 @@ li:last-child > .ak-ov-crew { border-bottom: 0; }
 .ak-work-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 .ak-work-card:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 3px; }
 .ak-work-progress { height: 3px; background: var(--track); border-radius: 3px; overflow: hidden; }
-.ak-work-progress > span { display: block; height: 100%; background: var(--blue); }
+.ak-work-progress > span { display: block; height: 100%; background-color: var(--blue); }
 @media (max-width: 600px) { .ak-work-card { min-height: 44px; } }

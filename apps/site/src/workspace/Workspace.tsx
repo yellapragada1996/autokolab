@@ -364,7 +364,7 @@ function TeamClocks({ ws }: { ws: WS }) {
   );
 }
 
-/** The views inside a page (Work's By agent · By feature · Backlog · All tickets; Decisions' Guide · Decisions). */
+/** The views inside a page (Work's By agent · By feature · Later · All tickets; Decisions' Guide · Decisions). */
 function Tabs({ label, tabs, current, project }: { label: string; tabs: { id: ProjectView; label: string }[]; current: string; project: string }) {
   return (
     <nav aria-label={label} style={{ display: "flex", gap: 4, padding: 3, borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", alignSelf: "flex-start", maxWidth: "100%", overflowX: "auto" }}>

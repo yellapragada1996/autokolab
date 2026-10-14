@@ -88,6 +88,7 @@ const allTickets: Ticket[] = [
     review: { summary: "Google sign-in is being added beside email sign-in.", line: { file: "src/auth/google.ts", code: "+  const profile = await createProfile(account);\n+  return startSession(profile);", plain: "A new Google account gets a profile before its session starts." }, less_sure: "The callback has not been tested against a live Google account yet." },
     pr_url: "https://github.com/ana/shop/pull/42",
   }),
+  ticket(21, { title: "Remember sign-in across devices", summary: "people stay signed in across their devices", status: "ready", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent" }),
   ticket(3, { title: "Remember me for 30 days", status: "ready", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", priority: "medium", labels: ["auth"], needs_human: "I couldn't start: the session table from SH-4 isn't merged yet." }),
   ticket(4, { title: "Pick the session store", summary: "choosing where sign-ins are kept", status: "in_progress", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", needs_human: "Redis or Postgres for sessions? Postgres is simpler, Redis is faster.", priority: "high" }),
   ticket(11, { title: "Checkout", summary: "Paying takes under a minute, with a card or Apple Pay.", status: "in_progress", type: "epic", priority: "high", description: "Paying should take under a minute." }),
@@ -383,19 +384,16 @@ function forState(t: Ticket): Ticket {
 export default function DemoWorkspace() {
   const route = useRoute();
   const ws = useMemo<WS>(() => {
-    const workPreview = route.view === "board" || route.view === "goals";
-    // Work has a blocked to-do and each card kind, with In review empty to show the quiet note.
-    const tickets = demoEmpty ? [] : allTickets.map(forState).map((t) => {
-      if (!workPreview || demoState) return t;
-      if (t.id === "t3") return { ...t, needs_human: null };
-      if (t.id === "t5" || t.id === "t17") return { ...t, status: "done" as const, completed_at: iso(90) };
-      return t;
-    });
+    const workPreview = ["board", "goals", "backlog", "list"].includes(route.view);
+    // A small board sample has every card kind; In review is empty so its quiet note is visible.
+    const boardSample = new Set(["t2", "t4", "t8", "t10", "t12", "t14", "t21"]);
+    const tickets = demoEmpty ? [] : allTickets.map(forState).filter((t) => !workPreview || demoState || t.type === "epic" || t.status === "backlog" || boardSample.has(t.id));
     const decisions = demoEmpty ? [] : allDecisions;
     const byId = new Map(tickets.map((t) => [t.id, t]));
     // The plan's tickets wait on the database change and the charge, so the plan page reorders them.
     const links = demoEmpty ? [] : [
       { ticket_id: "t3", blocked_by: "t4" },
+      { ticket_id: "t21", blocked_by: "t4" },
       { ticket_id: "t31", blocked_by: "t32" },
       { ticket_id: "t33", blocked_by: "t32" },
       { ticket_id: "t33", blocked_by: "t31" },

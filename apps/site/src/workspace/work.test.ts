@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MERGE_OK_PREFIX } from "../lib/data";
 import { needsYou } from "./captain";
 import { BIRCH, at, ticket, workspace } from "./fixtures";
-import { cardContext, cardLine, cardWords, shippedTime, workColumn, workHeadline, workNeed, WORK_COLUMNS } from "./work";
+import { boardMove, cardContext, cardLine, cardWords, shippedTime, workColumn, workHeadline, workNeed, WORK_COLUMNS } from "./work";
 
 const now = new Date(2026, 9, 14, 12);
 
@@ -86,5 +86,23 @@ describe("Work columns and sentence", () => {
     Object.assign(ws.agentOf(BIRCH)!, { status: "building", last_seen_at: at("11:59") });
     expect(workHeadline(ws, new Date(at("12:00")))).toBe("1 agent building, 1 waiting on you.");
     expect(workHeadline(workspace([]), now)).toBe("Nobody building.");
+    const stale = workspace([ticket({ key: "SH-3", status: "done", needs_human: "Old question" }), ticket({ key: "SH-4", needs_human: "I couldn't start: no shell" })]);
+    expect(workHeadline(stale, now)).toBe("Nobody building.");
+  });
+});
+
+describe("moving cards", () => {
+  const t = ticket({ key: "SH-1", status: "ready", sort_order: 10 });
+  const cell = [ticket({ key: "SH-2", sort_order: 2 }), ticket({ key: "SH-3", sort_order: 6 })];
+
+  it("preserves reassignment, feature moves and ranking between columns", () => {
+    expect(boardMove(t, { assignee_id: BIRCH }, cell, 1, "in_progress")).toEqual({ assignee_id: BIRCH, status: "in_progress", sort_order: 4 });
+    expect(boardMove(t, { parent_id: "feature" }, cell, 0, "ready")).toEqual({ parent_id: "feature", sort_order: 1 });
+    expect(boardMove(t, {}, cell, 2, "review")).toEqual({ status: "review", sort_order: 7 });
+    expect(boardMove(t, {}, [], 0, "ready")).toEqual({});
+  });
+
+  it("never writes a virtual status or manufactures a person's question", () => {
+    expect(boardMove(t, { assignee_id: BIRCH }, cell, 1, "needs")).toEqual({ assignee_id: BIRCH, sort_order: 4 });
   });
 });

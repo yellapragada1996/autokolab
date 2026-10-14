@@ -94,10 +94,10 @@ export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", minWidth: 0, maxWidth: "100%" }}>
           <Filters ws={ws} me={me} f={f} setF={setF} />
           {epics.length > 0 && (
-            <select aria-label="Feature" value={epic} onChange={(e) => setEpic(e.target.value)} style={{ height: 32, padding: "0 8px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13 }}>
+            <select aria-label="Feature" value={epic} onChange={(e) => setEpic(e.target.value)} style={{ height: 32, padding: "0 8px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", fontSize: 13, maxWidth: "100%" }}>
               <option value="">All features</option>
               {epics.map((e) => (
                 <option key={e.id} value={e.id}>
