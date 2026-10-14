@@ -162,6 +162,10 @@ export interface AgentRow {
   doing: string;
   /** The small line under it: "Checkout · step 3 of 5 · tests passed · 12 min". */
   detail: string;
+  /** The same line in parts, for layouts that show them separately. */
+  feature: string;
+  notes: string[];
+  held: string;
   since: string;
   /** For hover text and opening the work; never drawn as text. */
   key: string;
@@ -204,8 +208,9 @@ export function agentRows(ws: Workspace, now: Date): AgentRow[] {
     }
     if (t.pr_facts?.checks?.state === "success" && t.pr_facts.checks.total > 0) extra.splice(kind === "running" ? 1 : 0, 0, "tests passed");
     const held = Math.max(0, now.getTime() - Date.parse(since));
-    const detail = [feature ?? FIXES, ...extra, held >= 60_000 ? awayText(held) : "just now"].join(" · ");
-    rows.push({ agentId: a.id, name, kind, doing, detail, since, key: t.key });
+    const heldText = held >= 60_000 ? awayText(held) : "just now";
+    const detail = [feature ?? FIXES, ...extra, heldText].join(" · ");
+    rows.push({ agentId: a.id, name, kind, doing, detail, feature: feature ?? FIXES, notes: extra, held: heldText, since, key: t.key });
   }
   return rows.sort((x, y) => Date.parse(y.since) - Date.parse(x.since));
 }
@@ -246,6 +251,12 @@ export interface Feature {
   active: boolean;
   /** Work started and nobody is on it now. */
   stopped: boolean;
+  /** Who is on it right now, by name. */
+  on: string[];
+  /** Something in it is waiting for the person. */
+  waits: boolean;
+  /** "paused until about 17:26" or "stopped", when its work has stopped. */
+  pause: string | null;
   parts: Part[];
 }
 
@@ -330,16 +341,19 @@ export function overview(ws: Workspace, needs: Need[], plans: Plan[], now: Date)
     let word: string | null = null;
     let status: string;
     let tone: Tone;
+    let on: string[] = [];
+    let pause: string | null = null;
     if (column === "done") {
       word = "Finished";
       status = finishedWhen(finishedAt ?? now.toISOString(), now);
       tone = "done";
     } else if (column === "now") {
       word = progressWord(done, total);
-      const on = [...new Set(sorted.filter((t) => active.has(t.id) && t.assignee_id).map((t) => whoName(ws, t.assignee_id!)))];
+      on = [...new Set(sorted.filter((t) => active.has(t.id) && t.assignee_id).map((t) => whoName(ws, t.assignee_id!)))];
       const reviewer = agents.find((r) => r.running && r.ticket && sorted.includes(r.ticket) && r.ticket.assignee_id !== r.agent.id);
       if (reviewer && !on.includes(whoName(ws, reviewer.agent.id))) on.push(whoName(ws, reviewer.agent.id));
       const back = building.map((t) => resumes.get(t.id)).filter((x): x is Date => !!x).sort((a, b) => a.getTime() - b.getTime())[0];
+      if (stopped && !on.length) pause = back ? `paused until ${aboutTime(back)}` : "stopped";
       if (waits) [status, tone] = [`${word} · ${on.length ? `${listed(on)} on it · ` : ""}waiting for your answer`, "needs"];
       else if (on.length) [status, tone] = [`${word} · ${listed(on)} on it`, "live"];
       else if (stopped) [status, tone] = [`${word} · ${back ? `paused until ${aboutTime(back)}` : "stopped"}`, "problem"];
@@ -364,6 +378,9 @@ export function overview(ws: Workspace, needs: Need[], plans: Plan[], now: Date)
       finishedAt,
       active: isActive,
       stopped,
+      on,
+      waits: waits && column !== "done",
+      pause,
       parts: sorted.map(partOf),
     };
   };
@@ -698,4 +715,106 @@ export function watch(ws: Workspace, events: TicketEvent[], now: Date): WatchIte
 export function updatedText(loadedAt: number, now: Date): string {
   const ms = now.getTime() - loadedAt;
   return ms < 60_000 ? "updated just now" : `updated ${awayText(ms)} ago`;
+}
+
+// ------------------------------------------------------------------ at a glance (AK-111)
+
+/**
+ * The counts across the top of Overview. Agents waiting on the person are counted in `needs`, as
+ * requests; an idle agent (work queued but not started) is in the team table only.
+ */
+export interface Pulse {
+  working: number;
+  needs: number;
+  stopped: number;
+  free: number;
+  offline: number;
+}
+
+export function pulse(t: Team, needs: number): Pulse {
+  const n = (states: TeamState[]) => t.agents.filter((a) => states.includes(a.state)).length;
+  return { working: n(["working", "reviewing"]), needs, stopped: n(["stopped", "limit"]), free: n(["free"]), offline: n(["offline"]) };
+}
+
+/** One request in the Needs-you panel: a line to read and a smaller line of context. */
+export interface AskItem {
+  key: string;
+  title: string;
+  sub: string;
+}
+
+/** The first sentence of a question, cut to about a line. */
+export function firstSentence(s: string, max = 110): string {
+  const one = s.replace(/\s+/g, " ").trim().split(/(?<=[.?!])\s/)[0] ?? "";
+  return one.length > max ? `${one.slice(0, max - 1).trimEnd()}…` : one;
+}
+
+const capital = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
+
+/** What needs the person, oldest first, each as one plain line naming what to do and about what. */
+export function askItems(ws: Workspace, needs: Need[], plans: Plan[], now: Date): AskItem[] {
+  return [...needs]
+    .sort((a, b) => Date.parse(a.since) - Date.parse(b.since))
+    .map((n) => {
+      const t = n.ticket;
+      const subject = t ? withoutKeys(ws, partLine(t)) : "";
+      const question = withoutKeys(ws, firstSentence(n.question));
+      let title: string;
+      if (n.kind === "risky_merge") title = `OK to merge: ${subject}`;
+      else if (n.kind === "approval") title = `Approve: ${subject}`;
+      else if (n.kind === "plan") {
+        const names = plans.find((p) => `plan:${p.turnId}` === n.key)?.goals.map((g) => goalName(g.goal.title)) ?? [];
+        title = names.length ? `OK the plan for ${listed(names)}` : "OK Captain's plan";
+      } else if (n.kind === "captain_question") title = `Captain asks: ${question}`;
+      else if (n.kind === "ticket_question") title = `${t?.assignee_id ? whoName(ws, t.assignee_id) : "An agent"} asks: ${question}`;
+      else if (n.kind === "problem" && t?.assignee_id && /^I\s/.test(question)) title = `${whoName(ws, t.assignee_id)} ${question.replace(/^I\s+/, "")}`;
+      else title = capital(question || subject);
+      const waited = Math.max(0, now.getTime() - Date.parse(n.since));
+      const sub = [t ? (featureName(ws, t) ?? FIXES) : null, waited >= 60_000 ? `waiting ${awayText(waited)}` : "just now"].filter(Boolean).join(" · ");
+      return { key: n.key, title, sub };
+    });
+}
+
+/** One row of the team table: an agent's state in a word, what it is doing, and where. */
+export interface CrewRow {
+  id: string;
+  name: string;
+  state: TeamState;
+  /** "Working", "Reviewing", "Waiting on you", "Stopped", "Limit reached", "Free", "Idle", "Offline". */
+  word: string;
+  tone: Tone;
+  /** What it is doing, as a sentence without its name: "Adding Google sign-in beside the email form". */
+  doing: string;
+  /** The feature it's on; null when it has nothing. */
+  feature: string | null;
+  /** Why it stopped, when it resumes, its step, how long: small facts, each shown on its own. */
+  notes: string[];
+  usage: Usage | null;
+  hover: string;
+  /** The ticket it is on, for Show the work; null when none. */
+  key: string | null;
+}
+
+const CREW_WORD: Record<TeamState, string> = { working: "Working", reviewing: "Reviewing", waiting: "Waiting on you", stopped: "Stopped", limit: "Limit reached", free: "Free", idle: "Idle", offline: "Offline" };
+const CREW_ORDER: TeamState[] = ["working", "reviewing", "waiting", "stopped", "limit", "idle", "free", "offline"];
+
+/** The team table: every agent once, working first, then waiting, stopped, idle, free and offline. */
+export function crew(t: Team, rows: AgentRow[]): CrewRow[] {
+  const byAgent = new Map(rows.map((r) => [r.agentId, r]));
+  return t.agents
+    .map((a): CrewRow => {
+      const r = byAgent.get(a.id);
+      let doing: string;
+      if (r) {
+        const d = r.doing.replace(/^is /, "");
+        doing = r.kind === "stopped" ? capital(d.replace(/^stopped while /, "was ")) : r.kind === "waiting" ? capital(d.replace(/^waiting for your answer before /, "")) : capital(d);
+      } else if (a.state === "free") doing = "Nothing assigned";
+      else if (a.state === "idle") doing = "Has work waiting to start";
+      else if (a.state === "offline") doing = capital(a.label);
+      else if (a.state === "limit") doing = capital(a.label.replace(/^limit reached · /, ""));
+      else doing = capital(a.label);
+      const notes = r ? [...r.notes, r.held] : a.state === "free" || a.state === "idle" ? a.label.split(" · ").slice(1) : [];
+      return { id: a.id, name: a.name, state: a.state, word: CREW_WORD[a.state], tone: a.tone, doing, feature: r?.feature ?? null, notes, usage: a.usage, hover: a.hover, key: r?.key ?? null };
+    })
+    .sort((x, y) => CREW_ORDER.indexOf(x.state) - CREW_ORDER.indexOf(y.state));
 }
