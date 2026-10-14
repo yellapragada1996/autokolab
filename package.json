@@ -9,9 +9,13 @@
     "build": "npm run build -w autokolab-web && npm run build -w autokolab",
     "test": "npm test --workspaces --if-present && supabase/tests/run-local.sh",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "check:case": "node scripts/check-case.mjs"
+    "check:case": "node scripts/check-case.mjs",
+    "look": "node scripts/look.mjs"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.0"
   }
 }

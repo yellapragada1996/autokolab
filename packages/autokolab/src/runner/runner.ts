@@ -1372,7 +1372,7 @@ export class Runner {
     const room = this.projectRoom(p);
     if (!reviewer || !room) return ask(LEAD_BUILT_QUESTION);
     const n = Number(prNumber(url));
-    await this.ak.room(room).post({ kind: "review", to: reviewer.id, body: askReviewMessage(t.key, t.title, url, d.sha, t.done_means), refs: { ...(n ? { pr: n } : {}), commit: d.sha } });
+    await this.ak.room(room).post({ kind: "review", to: reviewer.id, body: askReviewMessage(t.key, t.title, url, d.sha, t.done_means, (pr.files ?? []).map((f) => f.path), pr.baseRefName || undefined), refs: { ...(n ? { pr: n } : {}), commit: d.sha } });
     this.log(`${t.key} review: asked ${reviewer.name} to review ${d.sha.slice(0, 7)}.`);
     // An agent is on it now, so a person isn't asked to approve it as well.
     if (reviewNeedsHuman(t.needs_human, "asked_reviewer") === null) await p.update(t.key, { needs_human: null });

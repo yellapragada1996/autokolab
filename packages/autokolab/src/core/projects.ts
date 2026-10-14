@@ -227,6 +227,19 @@ export const BIG_WORK = "a new epic or more than 3 tickets, migrations, dependen
 export const LEAD_VOICE = "To a person (room, Needs you, ticket reply), write like a helpful colleague texting: two or three short plain sentences, about 400 characters. Ask one question, last; prefer yes/no. No headings, tables, code, file paths or commit ids unless asked; lists only for two or three short items. Put detail in a ticket comment and name its key. Say what happened and what you need; never paste logs or tool output. Messages to agents can be as detailed as needed.";
 /** AK-90: each message to an agent can start a model run, so the ticket is the report. */
 export const ROOM_QUIET = "When you finish a ticket, don't post in the room: the ticket's status and your final comment are the report, and Captain's runner picks it up from there. Write to another agent only to ask something you can't answer from the ticket, the guide or the decisions, or to answer a question you were asked; one message with everything. Never post to say you started, are continuing, agree, or have nothing to add.";
+/** AK-96: the folders whose changes show on a screen, so someone has to look at them. */
+export const SCREEN_PATHS = ["apps/site/", "apps/web/"];
+export function changesScreens(files: string[]): boolean {
+  return files.some((f) => SCREEN_PATHS.some((p) => f.startsWith(p)));
+}
+/** AK-96: builders look at the pages they change. */
+export const LOOK_BUILD = "When a ticket changes anything under apps/site or apps/web, run `npm run look -- <the pages you touched>` before Review (it takes screenshots at desktop and phone width; `npm run look -- --help` has the options), open the screenshots, and say in your final comment what you saw at each width. Exit code 1 means a page is broken: fix it. Exit code 2 means the browser couldn't start: say plainly that you couldn't look and why, and carry on; the reviewer looks instead.";
+/** AK-96: looking at a page is never a person's chore. */
+export const LOOK_NEVER_ASK = 'Never set "Needs you", post a question or create a ticket asking a person to look at a page or check a layout. If the builder couldn\'t look, the reviewer does; if neither could, say so in the approval\'s less_sure and carry on.';
+/** AK-96: a website change is looked at in review, not only tested. `where` is the checkout to run it in. */
+export function reviewLook(where: string, base: string): string {
+  return `This PR changes the website (${SCREEN_PATHS.join(" or ")}), so look at it too. In ${where}, run \`npm install\` if node_modules is missing (that, and screenshots saved outside the checkout, are all you may add), then \`npm run look -- <the pages the change affects>\` and open the screenshots at each width. Exit code 1 (a page didn't load, has console errors or scrolls sideways) means it isn't approved on tests alone: send it back saying what you saw, unless ${base} has the same problem. Exit code 2 means you couldn't look. Either way, record in less_sure what you looked at, or that you couldn't and why. ${LOOK_NEVER_ASK}`;
+}
 /** AK-100: a person's "Needs you" lists each request once and only while it still needs them. */
 export const LEAD_ASK_ONCE =
   "Asking a person: ask through one channel only. When the question is about a ticket, set needs_human on that ticket; post a kind=question to them in the room only when it isn't about any ticket. Never both. Before asking, check whether you already have an open request about the same thing (the ticket's Needs you, or your question's thread); if so, update it (edit needs_human, or reply in that thread) instead of asking again. When something you asked about is settled without the person, close your request in the same run: question_close with the question's id and one sentence on how, or ticket_update needs_human=null. Don't ask a person for something an agent can do: if another agent can review, test or look at a page, ask that agent.";
@@ -271,7 +284,7 @@ ${LEAD_WORK_SUMMARIES}
    - Blocked by: tickets that must land first. If two tickets touch the same files, order them with blocked_by instead of running them in parallel.
 4. Assign each ticket to a worker agent (see Agents below: status and open tickets) and put it in Ready so it starts now, or Backlog if it shouldn't start yet. Spread the work; don't stack one agent while another is idle.
 5. Tell your person what you created: keys, who has what, and the order.
-6. Your runner starts you on a review of each worker's PR by itself once its tests pass, and sends failing tests back to the worker, so nobody has to ask. The board is the report, for workers and for you: ${ROOM_QUIET} Ask workers with kind=question and assign with kind=task: only question, task, review and answer wake an agent. Whenever your person comes back or asks, also check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. ${LEAD_ASK_ONCE} ${LEAD_APPROVAL} Record settled choices with decision_add.
+6. Your runner starts you on a review of each worker's PR by itself once its tests pass, and sends failing tests back to the worker, so nobody has to ask. The board is the report, for workers and for you: ${ROOM_QUIET} Ask workers with kind=question and assign with kind=task: only question, task, review and answer wake an agent. Whenever your person comes back or asks, also check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. ${LEAD_ASK_ONCE} ${LEAD_APPROVAL} Record settled choices with decision_add. ${LOOK_NEVER_ASK}
 7. ${leadAutonomy("your person")}
 8. ${LEAD_UNDO}
 9. You may change a worker's model and effort with agent_model when the work calls for it: stronger (e.g. opus, high) for hard, risky or wide changes; lighter (e.g. sonnet or haiku, low/medium) for routine, small or docs work. Prefer changing it right before assigning the ticket, and always give the reason. Owners can lock their machine (model_locked), in which case your change won't take effect there.
@@ -286,6 +299,8 @@ export function defaultRules(defaultBranch: string): string {
     "- One branch per ticket, named <ticket key>-<short-title>. Commit and push early so others can see your work.",
     `- Never push to ${defaultBranch}. Open a pull request against ${defaultBranch} (even when your branch builds on unmerged work) and move the ticket to Review.`,
     '- Every item under "Done means" must be true before you move a ticket to Review. Run the tests and the type checker first.',
+    `- ${LOOK_BUILD}`,
+    `- ${LOOK_NEVER_ASK}`,
     "- Follow the decisions. If you need to break one, ask first.",
     '- If something is ambiguous, first put the background in a ticket comment, then set "Needs you" to one short question a person can answer without opening anything.',
     "- If you find more work, create a new ticket instead of growing this one.",
