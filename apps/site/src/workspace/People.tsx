@@ -109,7 +109,7 @@ export function People({ ws, me, onProjectChanged }: { ws: Workspace; me: string
                   {a.id === ws.project.lead_agent_id && <LeadBadge />}
                 </span>
                 <span style={{ fontSize: 13, color: "var(--faint)" }}>
-                  {VENDOR_LABEL[a.vendor] ?? a.vendor} ·{a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : a.owner_label ? `${a.owner_label}'s` : "shared"}
+                  {VENDOR_LABEL[a.vendor] ?? a.vendor} · {a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : a.owner_label ? `${a.owner_label}'s` : "shared"}
                   {a.last_seen_at ? ` · seen ${ago(a.last_seen_at)}` : " · not connected yet"}
                 </span>
                 <AgentModel ws={ws} agent={a} mine={a.owner_profile_id === me} />
