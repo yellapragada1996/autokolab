@@ -11,12 +11,15 @@ export { EFFORTS, type Effort } from "../core/projects.js";
 // `autokolab join` with safe defaults. This is the owner's standing permission: inside it the agent
 // never stops to ask; outside it, it reports "blocked". Editing is optional.
 
+export const ENGINES = ["claude", "codex", "opencode"] as const;
+
 const RunnerConfigSchema = z.object({
   /** The agent's member id (its name can change; this can't). */
   agent_id: z.string().uuid(),
-  engine: z.enum(["claude", "codex"]),
+  engine: z.enum(ENGINES),
   claude_bin: z.string().default("claude"),
   codex_bin: z.string().default("codex"),
+  opencode_bin: z.string().default("opencode"),
   /** Also run tasks addressed to everyone in a room, not just to this agent. */
   accept_broadcast_tasks: z.boolean().default(false),
   /**
@@ -78,7 +81,28 @@ const RunnerConfigSchema = z.object({
       reply_effort: z.enum(EFFORTS).default("low"),
     })
     .prefault({}),
+
+  /** Any provider's model through OpenCode (DEC-26, CON-25). The key is never in this file. */
+  opencode: z
+    .object({
+      /** OpenCode's provider id, e.g. "deepseek". */
+      provider: z.string().regex(/^[a-z0-9][a-z0-9._-]*$/).optional(),
+      /** The model, as "provider/model" or just the model's id. */
+      model: z.string().optional(),
+      /** Dollars per day; 0 means no limit. */
+      daily_usd: z.number().min(0).default(0),
+      /** The provider's own reasoning setting (OpenCode's --variant, e.g. "high"); unset is the model's default. */
+      variant: z.string().optional(),
+      /** The variable OpenCode reads the key from, for a provider AutoKolab doesn't know yet. */
+      key_env: z.string().regex(/^[A-Z][A-Z0-9_]*$/).optional(),
+      effort: z.enum(EFFORTS).optional(),
+      reply_model: z.string().optional(),
+      reply_effort: z.enum(EFFORTS).default("low"),
+    })
+    .prefault({}),
 });
+
+export type Engine = (typeof ENGINES)[number];
 
 export type RunnerConfig = z.infer<typeof RunnerConfigSchema> & { profile: string };
 
@@ -95,7 +119,15 @@ export function parseRunnerConfig(text: string, profile: string): RunnerConfig {
     const issues = r.error.issues.map((i) => `  ${i.path.join(".") || "(root)"}: ${i.message}`).join("\n");
     throw new Error(`Runner limits for ${profile} have problems:\n${issues}`);
   }
+  if (r.data.engine === "opencode" && !opencodeProvider(r.data)) {
+    throw new Error(`Runner limits for ${profile} have problems:\n  opencode.provider: say which provider this agent uses, e.g. provider = "deepseek"`);
+  }
   return { ...r.data, profile };
+}
+
+/** The OpenCode agent's provider: the toml's, else the one its model names. */
+export function opencodeProvider(cfg: Pick<RunnerConfig, "opencode">): string | undefined {
+  return cfg.opencode.provider ?? (cfg.opencode.model?.includes("/") ? cfg.opencode.model.split("/")[0] : undefined);
 }
 
 export function runnerConfigPath(name: string): string {
@@ -128,7 +160,14 @@ export function runnerFileFor(agentId: string): string | undefined {
   });
 }
 
-export function runnerTemplate(agentId: string, engine: "claude" | "codex"): string {
+/** What an API-model agent runs (CON-25): set when it's connected. */
+export interface ApiModel {
+  provider: string;
+  model: string;
+  dailyUsd: number;
+}
+
+export function runnerTemplate(agentId: string, engine: Engine, api?: ApiModel): string {
   return `# AutoKolab runner limits for this agent, set once by its person. Inside them the agent works
 # unattended and never stops to ask; anything outside them is reported as "blocked" instead.
 # Changes apply when the runner restarts (autokolab restart). Model and effort are different: the
@@ -170,15 +209,24 @@ network = true                    # needed for git push, installs, gh
 # keeps the model and effort above for replies too):
 # reply_model = "gpt-5-codex"     # not set: the model above
 # reply_effort = "low"
+
+[opencode]
+# Any provider's model through OpenCode. Its API key is never in this file: it's in this computer's
+# keychain (macOS) or in ~/.config/autokolab/keys/<agent id> (mode 600), and goes only to OpenCode.
+${api ? `provider = ${JSON.stringify(api.provider)}` : `# provider = "deepseek"`}
+${api ? `model = ${JSON.stringify(api.model)}` : `# model = "deepseek-flash"        # \`opencode models deepseek\` lists them`}
+daily_usd = ${api ? api.dailyUsd : 0}                     # dollars per day; work stops for the day once it's spent (0: no limit)
+# variant = "high"                # the provider's reasoning setting, if the model has one
+# key_env = "MY_PROVIDER_API_KEY" # only for a provider AutoKolab doesn't know yet
 `;
 }
 
 /** Create the limits file for an agent if it doesn't have one yet. Returns its path if created. */
-export function ensureRunnerConfig(agentId: string, name: string, engine: "claude" | "codex"): string | null {
+export function ensureRunnerConfig(agentId: string, name: string, engine: Engine, api?: ApiModel): string | null {
   if (runnerFileFor(agentId)) return null;
   mkdirSync(runnersDir(), { recursive: true });
   const path = runnerConfigPath(name);
-  writeFileSync(path, runnerTemplate(agentId, engine));
+  writeFileSync(path, runnerTemplate(agentId, engine, api));
   return path;
 }
 

@@ -9,9 +9,10 @@ import { redactSecrets } from "../core/secrets.js";
 import type { Message, MessageKind, Room, RunState, TaskRun } from "../core/types.js";
 import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
-import { chooseModel, chooseReplyModel, claudeInvocation, codexInvocation, noUsage, runEngine, type EngineRun, type ModelChoice, type PlanStep, type RunUsage } from "./engines.js";
+import { chooseModel, chooseReplyModel, engineInvocation, engineLabel, noUsage, runEngine, type EngineInvocation, type EngineRun, type McpLaunch, type ModelChoice, type PlanStep, type RunUsage } from "./engines.js";
 import { installHook } from "./githook.js";
-import { usageLimit, usageReport } from "./limit.js";
+import { overSpend, spendNotice, usageLimit, usageReport } from "./limit.js";
+import { readAgentKey } from "../core/keys.js";
 import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyMessage } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, fetchBranch, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
@@ -523,10 +524,64 @@ export class Runner {
     }
   }
 
-  private addUsage(seconds: number): void {
+  private addUsage(seconds: number, run?: EngineRun): void {
     mkdirSync(join(stateDir(), "usage"), { recursive: true });
     writeFileSync(this.usagePath(), JSON.stringify({ date: today(), seconds: this.usedToday() + seconds }));
+    if (run) this.addSpend(run);
     void this.reportUsage();
+  }
+
+  // An API-model agent's dollars for the day (CON-25), next to its time, from the engine's own figures.
+
+  private spendPath(): string {
+    return join(stateDir(), "usage", `${this.ak.me.id}-spend.json`);
+  }
+
+  private spentToday(): number {
+    try {
+      const s = JSON.parse(readFileSync(this.spendPath(), "utf8")) as { date: string; usd: number };
+      return s.date === today() && Number.isFinite(s.usd) ? s.usd : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private spendUnknownSaid = false;
+  private addSpend(run: EngineRun): void {
+    if (this.cfg.engine !== "opencode") return;
+    const cost = run.usage?.costUsd ?? null;
+    if (cost === null) {
+      // A run that never reached the model reports nothing either way; one that did, without a cost, can't be counted.
+      if (this.cfg.opencode.daily_usd > 0 && (run.usage?.turns ?? 0) > 0 && !this.spendUnknownSaid) {
+        this.spendUnknownSaid = true;
+        this.log(`${engineLabel(this.cfg)} reports no cost for my runs, so my $${this.cfg.opencode.daily_usd} daily limit can't be enforced.`);
+      }
+      return;
+    }
+    writeFileSync(this.spendPath(), JSON.stringify({ date: today(), usd: this.spentToday() + cost }));
+  }
+
+  private overSpend(): boolean {
+    return this.cfg.engine === "opencode" && overSpend(this.spentToday(), this.cfg.opencode.daily_usd);
+  }
+
+  /** Once a day when the spend limit stops work and no message is waiting to be told: the agent's status says it. */
+  private spendNoticeDay = "";
+  private async noteSpendLimit(): Promise<void> {
+    if (this.spendNoticeDay === today()) return;
+    this.spendNoticeDay = today();
+    this.log(`Daily spend limit reached ($${this.spentToday().toFixed(2)} of $${this.cfg.opencode.daily_usd}); waiting until tomorrow.`);
+    await this.setStatus(this.ak.me.paused ? "paused" : "idle", spendNotice(this.cfg.opencode.daily_usd, engineLabel(this.cfg)));
+  }
+
+  /** The invocation for this agent's engine; an API-model agent's key is read here, for this run only. */
+  private invocation(mcp: McpLaunch, resume: string | null, cwd: string, choice: ModelChoice): EngineInvocation {
+    return engineInvocation(this.cfg, mcp, resume, cwd, choice, () => readAgentKey(this.cfg.agent_id).key);
+  }
+
+  /** Words for a usage-limit wait: a subscription's limit, or an API provider's rate limit. */
+  private limitWords(run: Pick<EngineRun, "rateLimited">): string {
+    return run.rateLimited ? `${engineLabel(this.cfg)} is limiting how fast I can send requests` : `I've reached my ${engineLabel(this.cfg)} usage limit`;
   }
 
   /**
@@ -547,6 +602,10 @@ export class Runner {
   }
 
   private overLimit(): boolean {
+    return this.overHours() || this.overSpend();
+  }
+
+  private overHours(): boolean {
     return this.usedToday() >= this.cfg.limits.max_hours_per_day * 3600;
   }
 
@@ -602,7 +661,7 @@ export class Runner {
       wait.noticedAt = new Date().toISOString();
       this.saveLimitWait(wait);
       if (job) {
-        const message = `I've reached my ${this.cfg.engine === "claude" ? "Claude" : "Codex"} usage limit. I'll continue with ${target!.key} at about ${this.waitTime(wait)}.`;
+        const message = `${this.limitWords(run)}. I'll continue with ${target!.key} at about ${this.waitTime(wait)}.`;
         await job.project.comment(target!.key, message).catch((e) => this.log(`Couldn't comment on ${target!.key}: ${(e as Error).message}`));
       }
     }
@@ -615,9 +674,17 @@ export class Runner {
     if (this.limitNoticeDay !== today()) {
       this.limitNoticeDay = today();
       const hours = this.cfg.limits.max_hours_per_day;
-      await this.say(job.message.room_id, job.run.thread_root, job.message.sender_id,
-        `I've done my ${hours} hour${hours === 1 ? "" : "s"} of work for today (the limit ${this.ak.ownerName(this.ak.me)} set). I'll pick up #${job.message.id} tomorrow.`);
-      this.log(`Daily limit reached; waiting until tomorrow.`);
+      if (this.overHours()) {
+        await this.say(job.message.room_id, job.run.thread_root, job.message.sender_id,
+          `I've done my ${hours} hour${hours === 1 ? "" : "s"} of work for today (the limit ${this.ak.ownerName(this.ak.me)} set). I'll pick up #${job.message.id} tomorrow.`);
+        this.log(`Daily limit reached; waiting until tomorrow.`);
+      } else {
+        // The day's one spend notice goes here, where someone is waiting for an answer.
+        this.spendNoticeDay = today();
+        await this.say(job.message.room_id, job.run.thread_root, job.message.sender_id,
+          `${spendNotice(this.cfg.opencode.daily_usd, engineLabel(this.cfg))} I'll pick up #${job.message.id} then.`);
+        this.log(`Daily spend limit reached; waiting until tomorrow.`);
+      }
     }
     const now = new Date();
     const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 5).getTime() - now.getTime();
@@ -648,8 +715,9 @@ export class Runner {
       `who you are and your understanding of what this project is and how it's built. Your final message is posted to the team's room as is.`;
     const mcp = { command: process.execPath, args: mcpArgs(this.cfg.agent_id, room.name) };
     const choice = await this.modelChoice();
-    const inv = this.cfg.engine === "claude" ? claudeInvocation(this.cfg, mcp, null, choice) : codexInvocation(this.cfg, mcp, null, clone, choice);
+    const inv = this.invocation(mcp, null, clone, choice);
     const result = await runEngine({ cfg: this.cfg, inv, cwd: clone, prompt, logFile: join(this.logDir, `${room.name}-hello.log`), signal: new AbortController().signal, onModel: this.reportModel(choice) });
+    this.addSpend(result);
     const text = redactSecrets(result.finalText.trim()).slice(0, 4000);
     if (result.isError || !text) throw new Error(text || "no reply");
     await this.ak.room(room).post({ kind: "chat", body: text });
@@ -959,6 +1027,7 @@ export class Runner {
           await this.setStatus("blocked", `Couldn't start ${tj.ticket.key}`, tj.ticket.id);
         });
       }
+      if (!this.queue.length && !this.ak.me.paused && !this.stopping && this.overSpend()) await this.noteSpendLimit();
     } catch (e) {
       this.log(`Couldn't resume after usage limit: ${(e as Error).message}`);
     } finally {
@@ -1029,7 +1098,7 @@ export class Runner {
       choice = await this.modelChoice();
     }
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, room.name) };
-    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, resume, choice) : codexInvocation(cfg, mcp, resume, worktree.path, choice);
+    const inv = this.invocation(mcp, resume, worktree.path, choice);
     const logFile = join(this.logDir, `${room.name}-run${run.id}-msg${m.id}.log`);
     const ids = [m, ...job.more.map((x) => x.message)].map((x) => `#${x.id}`).join(", ");
 
@@ -1047,7 +1116,7 @@ export class Runner {
       result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
     } finally {
       this.current = null;
-      this.addUsage((Date.now() - startedAt) / 1000);
+      this.addUsage((Date.now() - startedAt) / 1000, result);
     }
     this.recordRun(this.projects.find((p) => this.projectRoom(p)?.id === room.id), "reply", null, result, startedAt);
     this.log(runCostLine(isReply ? "Reply" : "Work", ids, prompt.length, result.model ?? choice.model ?? "", choice.effort, result.usage ?? noUsage()));
@@ -1059,7 +1128,7 @@ export class Runner {
       await this.updateRuns(job, { state: "queued", session_id: result.sessionId, summary: "Waiting for usage limit to reset" });
       this.queue.unshift({ ...job, notBefore: 0 });
       if (limited.notice) await this.say(room.id, run.thread_root, sender.id,
-        `I've reached my ${cfg.engine === "claude" ? "Claude" : "Codex"} usage limit. I'll continue with #${m.id} at about ${this.waitTime(limited.wait)}.`);
+        `${this.limitWords(result)}. I'll continue with #${m.id} at about ${this.waitTime(limited.wait)}.`);
       return;
     }
     if (this.limitWait?.kind === "message") {
@@ -1570,7 +1639,7 @@ export class Runner {
     });
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
     const choice = await this.modelChoice();
-    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, resume, choice) : codexInvocation(cfg, mcp, resume, worktree.path, choice);
+    const inv = this.invocation(mcp, resume, worktree.path, choice);
     const logFile = join(this.logDir, `${p.project.slug}-${t.key}-${Date.now()}.log`);
 
     const abort = new AbortController();
@@ -1623,7 +1692,7 @@ export class Runner {
       else pendingPlan = null;
       await syncing;
       this.current = null;
-      this.addUsage((Date.now() - startedAt) / 1000);
+      this.addUsage((Date.now() - startedAt) / 1000, result);
     }
     this.recordRun(p, "build", t.id, result, startedAt);
 
@@ -1646,7 +1715,7 @@ export class Runner {
       await p.comment(t.key, `Stopped: ${this.stopping ? "my runner was shut down" : `${ak.ownerName(ak.me)} paused me`}.${text ? `\n\nWhere it got to:\n${text}` : ""}`).catch(() => undefined);
     } else if (result.timedOut || result.isError) {
       outcome = "failed";
-      const why = result.timedOut ? `hit the ${cfg.limits.max_minutes}-minute limit` : "the run failed";
+      const why = result.timedOut ? `hit the ${cfg.limits.max_minutes}-minute limit` : result.problem?.reason ?? "the run failed";
       await p.comment(t.key, `Stopped: ${why}.${text ? `\n\n${text}` : ""}`).catch(() => undefined);
       await p.update(t.key, { needs_human: `I stopped: ${why}. Comment here to have me continue, or check the log on ${ak.ownerName(ak.me)}'s computer.` }).catch(() => undefined);
     } else if (text.startsWith(BLOCKED_PREFIX)) {
@@ -1793,7 +1862,7 @@ export class Runner {
     });
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
     const choice = await this.modelChoice();
-    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, null, choice) : codexInvocation(cfg, mcp, null, worktree.path, choice);
+    const inv = this.invocation(mcp, null, worktree.path, choice);
     const logFile = join(this.logDir, `${p.project.slug}-${t.key}-triage-${Date.now()}.log`);
 
     const abort = new AbortController();
@@ -1801,13 +1870,13 @@ export class Runner {
     await ak.heartbeat("working").catch(() => undefined);
     await this.setStatus("planning", `Looking at ${p.nameOf(t.assignee_id)}'s question on ${t.key}`);
     this.log(`Looking at the question on ${t.key} in ${p.project.name}.`);
-    let result: EngineRun;
+    let result!: EngineRun;
     const startedAt = Date.now();
     try {
       result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
     } finally {
       this.current = null;
-      this.addUsage((Date.now() - startedAt) / 1000);
+      this.addUsage((Date.now() - startedAt) / 1000, result);
     }
     this.recordRun(p, "question", t.id, result, startedAt);
     if (await this.waitForUsage(result, "triage", job)) {
@@ -1877,7 +1946,7 @@ export class Runner {
     });
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
     const choice = await this.modelChoice();
-    const inv = cfg.engine === "claude" ? claudeInvocation(cfg, mcp, null, choice) : codexInvocation(cfg, mcp, null, worktree.path, choice);
+    const inv = this.invocation(mcp, null, worktree.path, choice);
     const logFile = join(this.logDir, `${p.project.slug}-${t.key}-review-${Date.now()}.log`);
 
     // The newest comment before the run: a comment from Captain after it means it sent the ticket back.
@@ -1887,13 +1956,13 @@ export class Runner {
     await ak.heartbeat("working").catch(() => undefined);
     await this.setStatus("planning", `Reviewing ${t.key}`, t.id);
     this.log(`Reviewing ${t.key} at ${sha.slice(0, 7)} in ${p.project.name}.`);
-    let result: EngineRun;
+    let result!: EngineRun;
     const startedAt = Date.now();
     try {
       result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
     } finally {
       this.current = null;
-      this.addUsage((Date.now() - startedAt) / 1000);
+      this.addUsage((Date.now() - startedAt) / 1000, result);
     }
     this.recordRun(p, "review", t.id, result, startedAt);
     if (await this.waitForUsage(result, "review", job)) {

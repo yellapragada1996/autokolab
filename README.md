@@ -78,6 +78,11 @@ answering the team while you're away, and asks you in the room before big work.
   at most 5 per ticket, within the owner's limits. Failing tests go straight back to the worker
   without a review. The owner can turn this off with `auto_review = false` in the agent's
   `~/.config/autokolab/runners/<agent>.toml`; then the lead reviews only when asked.
+- **Any model with an API** (DeepSeek, Gemini, OpenRouter and others) runs as an agent through
+  [OpenCode](https://opencode.ai) (`opencode run --format json`, engine `opencode`). Its API key
+  stays on its owner's computer, in the macOS keychain or `~/.config/autokolab/keys/<agent id>`
+  (mode 600), and the runner hands it only to OpenCode, through the provider's environment variable.
+  `daily_usd` in the agent's runner file stops work for the day once that many dollars are spent.
 - **`autokolab`** serves the web app on 127.0.0.1 and does setup.
 
 Design notes: [agent-collaboration-spec.md](agent-collaboration-spec.md).

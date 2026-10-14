@@ -3,10 +3,11 @@ import { createWriteStream, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { EFFORTS, type Effort, type RunnerConfig } from "./config.js";
+import { providerKeyEnv, providerName } from "../core/providers.js";
+import { EFFORTS, opencodeProvider, type Effort, type RunnerConfig } from "./config.js";
 
-// Starts Claude Code or Codex headless with the task as its prompt, using their supported
-// non-interactive modes (claude -p, codex exec). The prompt goes in on stdin.
+// Starts Claude Code, Codex or OpenCode headless with the task as its prompt, using their supported
+// non-interactive modes (claude -p, codex exec, opencode run). The prompt goes in on stdin.
 
 export interface McpLaunch {
   command: string; // node executable
@@ -58,6 +59,10 @@ export interface EngineRun {
   model?: string;
   /** What the run used (AK-92). runEngine always sets it; all nulls when the tool reported nothing. */
   usage?: RunUsage;
+  /** The provider kept refusing for too many requests, so the run was stopped to wait (OpenCode). */
+  rateLimited?: boolean;
+  /** What the provider's error means, in plain words, when the run failed on one (OpenCode). */
+  problem?: { kind: ProviderProblemKind; reason: string };
 }
 
 export interface EngineInvocation {
@@ -67,6 +72,12 @@ export interface EngineInvocation {
   tempDir: string;
   /** Where Codex writes its last message. */
   lastMessageFile?: string;
+  /** Added to the engine's environment only: OpenCode's config file and the provider's key. */
+  env?: Record<string, string>;
+  /** Values that must never reach a log or a message (the key), replaced wherever they show up. */
+  secrets?: string[];
+  /** The model the engine was told to run, when the engine itself doesn't say (OpenCode). */
+  model?: string;
 }
 
 /** Extra deny rules the runner always adds for Claude Code, derived from the owner's limits. */
@@ -99,13 +110,24 @@ export interface ModelChoice {
 /** Effort when nothing sets one: both tools' own default, passed explicitly so it's always reported (AK-23). */
 export const DEFAULT_EFFORT: Effort = "medium";
 
+function engineToml(cfg: RunnerConfig) {
+  return cfg.engine === "claude" ? cfg.claude : cfg.engine === "codex" ? cfg.codex : cfg.opencode;
+}
+
+/** The engine's name for messages: "Claude", "Codex", or the provider's name ("DeepSeek"). */
+export function engineLabel(cfg: RunnerConfig): string {
+  if (cfg.engine === "claude") return "Claude";
+  if (cfg.engine === "codex") return "Codex";
+  return providerName(opencodeProvider(cfg) ?? "the provider");
+}
+
 /**
  * Database first (set on AutoKolab by the owner or the project's lead), then the toml, then the
  * tool's own default model and medium effort, value by value. With model_locked the toml has the
  * last word (DEC-18).
  */
 export function chooseModel(cfg: RunnerConfig, fromDb: { model: string | null; effort: string | null } | null): ModelChoice {
-  const toml = cfg.engine === "claude" ? cfg.claude : cfg.codex;
+  const toml = engineToml(cfg);
   const db = cfg.model_locked ? null : fromDb;
   const effort = db?.effort && (EFFORTS as readonly string[]).includes(db.effort) ? (db.effort as Effort) : toml.effort ?? DEFAULT_EFFORT;
   return { model: db?.model || toml.model, effort };
@@ -117,7 +139,7 @@ export function chooseModel(cfg: RunnerConfig, fromDb: { model: string | null; e
  */
 export function chooseReplyModel(cfg: RunnerConfig, usual: ModelChoice): ModelChoice {
   if (cfg.model_locked) return usual;
-  const toml = cfg.engine === "claude" ? cfg.claude : cfg.codex;
+  const toml = engineToml(cfg);
   return { model: toml.reply_model || usual.model, effort: toml.reply_effort ?? usual.effort };
 }
 
@@ -167,6 +189,76 @@ export function codexInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession
   return { bin: cfg.codex_bin, args, tempDir, lastMessageFile };
 }
 
+/**
+ * The "provider/model" an OpenCode run uses. A bare model id gets the agent's provider. A model from
+ * another provider is refused: the agent's key only works with its own provider.
+ */
+export function opencodeModel(cfg: RunnerConfig, choice: ModelChoice): string {
+  const provider = opencodeProvider(cfg)!;
+  const model = choice.model || cfg.opencode.model;
+  if (!model) throw new Error(`I don't know which ${providerName(provider)} model to use. Set model in the [opencode] part of my runner file.`);
+  if (!model.includes("/")) return `${provider}/${model}`;
+  const [asked] = model.split("/");
+  if (asked !== provider) throw new Error(`I was asked to run ${model}, but my API key is for ${providerName(provider)}. Pick a ${providerName(provider)} model for me.`);
+  return model;
+}
+
+/**
+ * OpenCode's permission rules from the owner's limits (the same ones Claude Code gets as deny rules):
+ * no force-push, no --no-verify, no pushing to protected branches, no reading or changing the
+ * forbidden paths, and nothing outside the working folder. The last matching rule wins.
+ */
+export function opencodePermissions(cfg: RunnerConfig): Record<string, unknown> {
+  const pathRules: Record<string, string> = { "*": "allow" };
+  for (const p of cfg.limits.deny_paths) {
+    pathRules[p] = "deny";
+    pathRules[`**/${p}`] = "deny";
+  }
+  const bash: Record<string, string> = { "*": "allow" };
+  for (const c of [
+    "git push --force", "git push -f", "git push --force-with-lease", "git push --no-verify", "git commit --no-verify",
+    "git push --delete", "git push origin --delete", "git config core.hooksPath",
+  ]) bash[`${c}*`] = "deny";
+  for (const b of cfg.limits.protected_branches) {
+    for (const c of [`git push origin ${b}`, `git push -u origin ${b}`, `git push origin HEAD:${b}`]) bash[`${c}*`] = "deny";
+  }
+  for (const p of cfg.limits.deny_paths) bash[`cat ${p}*`] = "deny";
+  return { "*": "allow", read: pathRules, edit: { ...pathRules }, bash, external_directory: "deny" };
+}
+
+/**
+ * OpenCode run headless with JSON events (DEC-26). Its settings go in a config file named by
+ * OPENCODE_CONFIG; the key goes only into the engine's environment, under the provider's variable.
+ * Logs at ERROR level go to stderr: they're the only place a rate limit or an unknown model shows.
+ */
+export function opencodeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, key: string, choice: ModelChoice = chooseModel(cfg, null)): EngineInvocation {
+  const provider = opencodeProvider(cfg)!;
+  const keyEnv = providerKeyEnv(provider, cfg.opencode.key_env);
+  if (!keyEnv) throw new Error(`I don't know where OpenCode reads a ${providerName(provider)} key from. Set key_env in the [opencode] part of my runner file.`);
+  const model = opencodeModel(cfg, choice);
+  const tempDir = mkdtempSync(join(tmpdir(), "autokolab-"));
+  const configFile = join(tempDir, "opencode.json");
+  writeFileSync(configFile, JSON.stringify({
+    $schema: "https://opencode.ai/config.json",
+    autoupdate: false,
+    share: "disabled",
+    mcp: { autokolab: { type: "local", command: [mcp.command, ...mcp.args], enabled: true } },
+    permission: opencodePermissions(cfg),
+  }));
+  const args = ["run", "--format", "json", "--print-logs", "--log-level", "ERROR", "-m", model];
+  if (cfg.opencode.variant) args.push("--variant", cfg.opencode.variant);
+  if (resumeSession) args.push("--session", resumeSession);
+  return { bin: cfg.opencode_bin, args, tempDir, env: { OPENCODE_CONFIG: configFile, [keyEnv]: key }, secrets: [key], model };
+}
+
+/** The invocation for the agent's engine. OpenCode needs the agent's key; the others never get one. */
+export function engineInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, cwd: string, choice: ModelChoice, key?: () => string): EngineInvocation {
+  if (cfg.engine === "claude") return claudeInvocation(cfg, mcp, resumeSession, choice);
+  if (cfg.engine === "codex") return codexInvocation(cfg, mcp, resumeSession, cwd, choice);
+  if (!key) throw new Error("OpenCode needs the agent's key.");
+  return opencodeInvocation(cfg, mcp, resumeSession, key(), choice);
+}
+
 const clip = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, 200);
 
 /** Codex's todo_list items → steps: done ones, then the first open one is "now". */
@@ -189,12 +281,84 @@ function claudePlan(todos: { content?: string; status?: string }[]): PlanStep[] 
     .map((t) => ({ label: clip(t.content!), status: t.status === "completed" ? "done" : t.status === "in_progress" ? "now" : "todo" }));
 }
 
+/** OpenCode's todowrite todos → steps (its statuses: pending, in_progress, completed, cancelled). */
+function opencodePlan(todos: { content?: string; status?: string }[]): PlanStep[] {
+  return todos
+    .filter((t) => typeof t.content === "string" && t.content.trim() && t.status !== "cancelled")
+    .map((t) => ({ label: clip(t.content!), status: t.status === "completed" ? "done" : t.status === "in_progress" ? "now" : "todo" }));
+}
+
+/** OpenCode's events: step_start, tool_use, text, step_finish (tokens and cost per step) and error. */
+function parseOpencode(ev: Record<string, any>, run: EngineRun): void {
+  if (typeof ev.sessionID === "string" && ev.sessionID) run.sessionId = ev.sessionID;
+  const part = ev.part && typeof ev.part === "object" ? ev.part : {};
+  if (ev.type === "tool_use") {
+    const done = part.state?.status === "completed";
+    if (part.tool === "todowrite" && Array.isArray(part.state?.input?.todos)) run.plan = opencodePlan(part.state.input.todos);
+    // MCP tools show as <server>_<tool>.
+    if (part.tool === "autokolab_ticket_steps" && done) run.reportsSteps = true;
+  }
+  // The last text is the final message.
+  if (ev.type === "text" && typeof part.text === "string" && part.text.trim()) run.finalText = part.text;
+  // Each step is one model call; its reasoning tokens are billed as output.
+  if (ev.type === "step_finish") {
+    const t = part.tokens && typeof part.tokens === "object" ? part.tokens : {};
+    const was = run.usage ?? noUsage();
+    const out = count(t.output);
+    const reasoning = count(t.reasoning);
+    const cost = typeof part.cost === "number" && Number.isFinite(part.cost) && part.cost >= 0 ? part.cost : null;
+    run.usage = {
+      inputTokens: plus(was.inputTokens, count(t.input)),
+      cacheReadTokens: plus(was.cacheReadTokens, count(t.cache?.read)),
+      cacheWriteTokens: plus(was.cacheWriteTokens, count(t.cache?.write)),
+      outputTokens: plus(was.outputTokens, out === null && reasoning === null ? null : (out ?? 0) + (reasoning ?? 0)),
+      turns: plus(was.turns, 1),
+      costUsd: plus(was.costUsd, cost),
+    };
+    if (run.usage.costUsd !== null) run.costUsd = run.usage.costUsd;
+  }
+  if (ev.type === "error") {
+    run.isError = true;
+    const data = ev.error?.data ?? {};
+    const msg = [typeof data.message === "string" ? data.message : ev.error?.name, typeof data.statusCode === "number" ? `(HTTP ${data.statusCode})` : ""].filter(Boolean).join(" ");
+    if (msg) run.finalText = `${run.finalText ? run.finalText + "\n\n" : ""}Error: ${msg}`;
+  }
+}
+
+export type ProviderProblemKind = "key" | "credit" | "model" | "rate";
+
+/**
+ * What a provider's error means, in plain words, from the run's output and OpenCode's error log:
+ * a rejected key, no credit, a model that doesn't exist, or a rate limit. Null when it's none of them.
+ */
+export function providerProblem(output: string, provider: string, model: string): { kind: ProviderProblemKind; reason: string } | null {
+  const name = providerName(provider);
+  // Before rate limits: OpenAI says "exceeded your current quota" with a 429 when the money ran out.
+  if (/insufficient[ _](balance|credit|funds|quota)|exceeded your current quota|credit balance is too low|out of credits?|payment required|HTTP 402\b|statusCode":?402/i.test(output)) {
+    return { kind: "credit", reason: `my ${name} account has no credit left; add credit on ${name}'s site` };
+  }
+  if (/ProviderModelNotFoundError|model[_ ]not[_ ](found|exist)|model .{0,80}(does not|doesn't) exist|unknown model|invalid model|no such model/i.test(output)) {
+    return { kind: "model", reason: `${name} doesn't have the model ${model}; pick another model for me` };
+  }
+  if (/HTTP 401\b|HTTP 403\b|statusCode":?40[13]|authentication[ _]fail|invalid[ _-]?api[ _-]?key|incorrect api key|api key (is )?(invalid|not valid)|unauthori[sz]ed/i.test(output)) {
+    return { kind: "key", reason: `${name} rejected my API key; set a new one with \`autokolab key set\`` };
+  }
+  if (/rate[ _-]?limit|too many requests|HTTP 429\b|statusCode":?429/i.test(output)) {
+    return { kind: "rate", reason: `${name} is limiting how fast I can send requests` };
+  }
+  return null;
+}
+
 /** Pull session id / final text / the agent's plan out of one JSON line of engine output. */
 export function parseEvent(engine: RunnerConfig["engine"], line: string, run: EngineRun): void {
   let ev: Record<string, any>;
   try {
     ev = JSON.parse(line);
   } catch {
+    return;
+  }
+  if (engine === "opencode") {
+    parseOpencode(ev, run);
     return;
   }
   if (engine === "claude") {
@@ -260,6 +424,20 @@ export function parseEvent(engine: RunnerConfig["engine"], line: string, run: En
   }
 }
 
+/** Refusals for too many requests in a row before an OpenCode run is stopped to wait. */
+export const RATE_LIMIT_STOP_AFTER = 3;
+
+/** An OpenCode error-log line saying the main agent's request was rate-limited (not its title helper's). */
+export function isRateLimitLog(line: string): boolean {
+  return /level=ERROR/.test(line) && !/\bsmall=true\b/.test(line) && /rate[ _-]?limit|too many requests|\b429\b/i.test(line);
+}
+
+/** Replaces each secret value wherever it shows up. */
+export function scrubber(secrets: string[] = []): (s: string) => string {
+  const values = secrets.filter((x) => x.length >= 8);
+  return (s) => values.reduce((t, v) => t.split(v).join("[redacted]"), s);
+}
+
 export async function runEngine(opts: {
   cfg: RunnerConfig;
   inv: EngineInvocation;
@@ -276,6 +454,8 @@ export async function runEngine(opts: {
 }): Promise<EngineRun> {
   const { cfg, inv, prompt } = opts;
   const run: EngineRun = { sessionId: null, finalText: "", exitCode: null, timedOut: false, aborted: false, isError: false, usage: noUsage() };
+  if (inv.model) run.model = inv.model;
+  const scrub = scrubber(inv.secrets);
   const log = createWriteStream(opts.logFile, { flags: "a" });
   log.write(`# ${new Date().toISOString()} ${inv.bin} ${inv.args.join(" ")}\n# prompt:\n${prompt}\n# output:\n`);
 
@@ -284,8 +464,9 @@ export async function runEngine(opts: {
       cwd: opts.cwd,
       stdio: ["pipe", "pipe", "pipe"],
       detached: true, // own process group, so a stop also ends the agent's child processes
-      env: { ...process.env, AUTOKOLAB_RUNNER: "1", GIT_TERMINAL_PROMPT: "0" },
+      env: { ...process.env, AUTOKOLAB_RUNNER: "1", GIT_TERMINAL_PROMPT: "0", ...inv.env },
     });
+    if (run.model) opts.onModel?.(run.model);
 
     const killGroup = (sig: NodeJS.Signals) => {
       try {
@@ -294,9 +475,10 @@ export async function runEngine(opts: {
         /* already gone */
       }
     };
-    const stop = (why: "timeout" | "abort") => {
+    const stop = (why: "timeout" | "abort" | "rate") => {
       if (why === "timeout") run.timedOut = true;
-      else run.aborted = true;
+      else if (why === "abort") run.aborted = true;
+      else run.rateLimited = true;
       killGroup("SIGTERM");
       setTimeout(() => killGroup("SIGKILL"), 10_000).unref();
     };
@@ -305,7 +487,8 @@ export async function runEngine(opts: {
     opts.signal.addEventListener("abort", onAbort, { once: true });
 
     child.stdin.end(prompt);
-    createInterface({ input: child.stdout }).on("line", (line) => {
+    createInterface({ input: child.stdout }).on("line", (raw) => {
+      const line = scrub(raw);
       log.write(line + "\n");
       const before = run.plan;
       const modelBefore = run.model;
@@ -315,9 +498,16 @@ export async function runEngine(opts: {
       opts.onLine?.(line);
     });
     let stderrTail = "";
-    child.stderr.on("data", (d: Buffer) => {
-      log.write(d);
-      stderrTail = (stderrTail + d.toString()).slice(-2000);
+    let rateErrors = 0;
+    createInterface({ input: child.stderr }).on("line", (raw) => {
+      const line = scrub(raw);
+      log.write(line + "\n");
+      stderrTail = (stderrTail + line + "\n").slice(-2000);
+      // A run stopped before its first event still has a session to continue later.
+      if (cfg.engine === "opencode" && !run.sessionId) run.sessionId = line.match(/\bsession\.id=(ses_\w+)/)?.[1] ?? null;
+      // OpenCode retries a rate-limited provider on its own, for as long as it takes, and says so only
+      // in its error log. After a few refusals in a row the run stops, to wait like a usage limit.
+      if (cfg.engine === "opencode" && !run.rateLimited && isRateLimitLog(line) && ++rateErrors >= RATE_LIMIT_STOP_AFTER) stop("rate");
     });
 
     run.exitCode = await new Promise<number | null>((resolve) => {
@@ -338,10 +528,21 @@ export async function runEngine(opts: {
         /* not written */
       }
     }
+    if (cfg.engine === "opencode" && (run.isError || run.exitCode !== 0) && !run.timedOut && !run.aborted) {
+      const problem = providerProblem(`${run.finalText}\n${stderrTail}`, opencodeProvider(cfg) ?? "", inv.model ?? "");
+      if (problem) run.problem = problem;
+      if (problem?.kind === "rate") run.rateLimited = true;
+    }
+    if (run.rateLimited) {
+      run.isError = true;
+      run.problem ??= providerProblem("rate limit", opencodeProvider(cfg) ?? "", inv.model ?? "")!;
+      if (!run.finalText.trim()) run.finalText = `Stopped: ${run.problem.reason}.`;
+    }
     if (run.exitCode !== 0 && !run.timedOut && !run.aborted) {
       run.isError = true;
       if (!run.finalText) run.finalText = stderrTail.trim() || `${inv.bin} exited with code ${run.exitCode}`;
     }
+    run.finalText = scrub(run.finalText);
   } finally {
     log.end();
     rmSync(inv.tempDir, { recursive: true, force: true });
