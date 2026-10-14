@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MERGE_OK_PREFIX, type Ticket, type TicketEvent } from "../lib/data";
 import { needsYou, type CatchUp } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, ticket, workspace } from "./fixtures";
-import { agentRows, dayIn, finishedWhen, isPhrase, outcomeOf, overview, partLine, plainPhrase, progressWord, resumeAt, sinceItems, sinceLine, stopReason, team, watch, withoutKeys, workTime, youLine } from "./glance";
+import { agentRows, askItems, crew, dayIn, firstSentence, pulse, finishedWhen, isPhrase, outcomeOf, overview, partLine, plainPhrase, progressWord, resumeAt, sinceItems, sinceLine, stopReason, team, watch, withoutKeys, workTime, youLine } from "./glance";
 import type { Workspace } from "./useWorkspace";
 
 const NOW = new Date(at("12:00"));
@@ -439,5 +439,43 @@ describe("resume times", () => {
     expect(resumeAt("Waiting for my usage limit to reset, about 5:40 am (UTC)", NOW)?.toISOString()).toBe("2026-10-11T05:40:00.000Z");
     expect(resumeAt("resets 1:20pm (Europe/Stockholm)", NOW)?.toISOString()).toBe("2026-10-11T11:20:00.000Z");
     expect(resumeAt("Creating profiles", NOW)).toBeNull();
+  });
+});
+
+describe("at a glance (AK-111)", () => {
+  it("counts working, needing you, stopped and free agents, keeping idle and waiting agents out of the tiles", () => {
+    const building = ticket({ key: "SH-2", status: "in_progress", assignee_id: BIRCH, summary: "adding Google sign-in" });
+    const ws = workspace([building]);
+    run(ws, BIRCH, building);
+    seen(ws, FJORD, { status: "paused" });
+    seen(ws, CAPTAIN);
+    const t = team(ws, NOW);
+    expect(pulse(t, 3)).toEqual({ working: 1, needs: 3, stopped: 1, free: 1, offline: 0 });
+  });
+
+  it("lists the team working first, with what each is doing as a sentence and no ticket key", () => {
+    const building = ticket({ key: "SH-2", status: "in_progress", assignee_id: BIRCH, summary: "adding Google sign-in" });
+    const ws = workspace([building]);
+    run(ws, BIRCH, building);
+    seen(ws, CAPTAIN);
+    const rows = crew(team(ws, NOW), agentRows(ws, NOW));
+    expect(rows[0]).toMatchObject({ name: "Birch", word: "Working", doing: "Adding Google sign-in" });
+    expect(rows.find((r) => r.name === "Captain")).toMatchObject({ word: "Free", doing: "Nothing assigned", feature: null });
+    expect(JSON.stringify(rows.map(({ key: _key, ...r }) => r))).not.toMatch(/SH-\d/);
+  });
+
+  it("words what needs the person by kind, oldest first, naming the agent instead of I", () => {
+    const merge = ticket({ key: "SH-3", title: "Add the sessions table", summary: "adding the sessions table", status: "review", assignee_id: BIRCH, needs_human: `${MERGE_OK_PREFIX} Everyone signs out once. OK?`, updated_at: at("11:00") });
+    const stuck = ticket({ key: "SH-4", title: "Store sessions", status: "in_progress", assignee_id: FJORD, needs_human: "I couldn't start: SH-3 isn't merged yet.", updated_at: at("11:30") });
+    const ws = workspace([merge, stuck]);
+    const items = askItems(ws, needsYou(ws, []), [], NOW);
+    expect(items.map((i) => i.title)).toEqual(["OK to merge: Adding the sessions table", "Fjord couldn't start: “Add the sessions table” isn't merged yet."]);
+    expect(items[0].sub).toBe("Fixes and upkeep · waiting 1 h");
+    expect(JSON.stringify(items.map(({ key: _key, ...i }) => i))).not.toMatch(/SH-\d/);
+  });
+
+  it("cuts a question to its first sentence and about a line", () => {
+    expect(firstSentence("Redis or Postgres? Postgres is simpler.")).toBe("Redis or Postgres?");
+    expect(firstSentence("x".repeat(200), 20)).toHaveLength(20);
   });
 });

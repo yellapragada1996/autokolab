@@ -112,8 +112,44 @@ h1, h2, h3, p { margin: 0; }
 .ak-headline { font-size: 26px; }
 .ak-indent { margin-left: 40px; }
 /* Overview (AK-75): Now · Next · Done side by side, stacked below 900px. */
-.ak-features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
-@media (max-width: 899px) { .ak-features { grid-template-columns: minmax(0, 1fr); } }
+/* Overview (AK-111): counts on top, two panels, the team table, then the feature board. */
+.ak-ov { width: 100%; max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 32px; padding-bottom: 24px; }
+.ak-ov-top { display: flex; flex-direction: column; gap: 16px; }
+.ak-ov-pulse { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--border-subtle); border: 1px solid var(--border-subtle); border-radius: 16px; overflow: hidden; }
+.ak-ov-pulse > li { background: var(--surface); }
+.ak-ov-tile { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 18px 22px; background: transparent; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ak-ov-tile:hover:not(:disabled) { background: var(--surface-hover); }
+.ak-ov-tile:disabled { cursor: default; }
+.ak-ov-num { font-size: 34px; font-weight: 500; line-height: 1; letter-spacing: var(--tracking-tight); font-variant-numeric: tabular-nums; }
+.ak-ov-headline { font-size: 21px; font-weight: 500; line-height: 1.35; color: var(--text); letter-spacing: var(--tracking-tight); }
+.ak-ov-panels { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.ak-ov-panel { display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; border: 1px solid; border-left-width: 3px; border-radius: 12px; }
+.ak-ov-panel-h { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 600; color: var(--text); }
+.ak-ov-ask { display: flex; align-items: center; gap: 16px; padding: 10px 0; border-top: 1px solid var(--amber-border); }
+.ak-ov-ask:first-child { border-top: 0; padding-top: 2px; }
+.ak-ov-off { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; width: calc(100% + 20px); padding: 7px 10px; margin: 0 -10px; background: transparent; border: 0; border-radius: 8px; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.ak-ov-section { display: flex; flex-direction: column; gap: 14px; padding-top: 26px; border-top: 1px solid var(--border-subtle); }
+.ak-ov-crew { width: 100%; display: grid; grid-template-columns: minmax(170px, 220px) minmax(0, 1fr) 180px; gap: 20px; align-items: center; padding: 12px 10px; background: transparent; border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+li:last-child > .ak-ov-crew { border-bottom: 0; }
+.ak-ov-who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.ak-ov-doing { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ak-ov-usage { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ak-ov-tag { color: var(--text-secondary); }
+.ak-ov-board { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.ak-ov-card { border-radius: 12px; border: 1px solid var(--border); background: var(--surface); min-width: 0; }
+.ak-ov-needs-mark { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--amber); }
+.ak-ov-needs-mark::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
+.ak-ov-foot { display: flex; flex-direction: column; gap: 10px; padding-top: 22px; border-top: 1px solid var(--border-subtle); }
+@media (max-width: 899px) {
+  .ak-ov { gap: 26px; }
+  .ak-ov-pulse { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ak-ov-tile { padding: 14px 16px; }
+  .ak-ov-num { font-size: 28px; }
+  .ak-ov-headline { font-size: 18px; }
+  .ak-ov-panels, .ak-ov-board { grid-template-columns: minmax(0, 1fr); }
+  .ak-ov-crew { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 12px 4px; }
+  .ak-ov-usage { max-width: 260px; }
+}
 /* Captain's words are plain 15px text, with no space left under the last paragraph (Markdown sets 14px inline). */
 .ak-said p, .ak-said li { font-size: 15px !important; color: var(--text-body) !important; }
 .ak-said > div > :last-child { margin-bottom: 0 !important; }
