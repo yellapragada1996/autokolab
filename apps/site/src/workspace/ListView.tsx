@@ -3,7 +3,9 @@ import { PRIORITIES, STATUSES, type Ticket } from "../lib/data";
 import { onNav } from "../lib/router";
 import { Button } from "../ui";
 import { applyFilter, emptyFilter, Filters, type FilterState } from "./Board";
-import { ago, EpicLozenge, KeyText, Label, PriorityIcon, StatusLozenge, TypeIcon, Who } from "./bits";
+import { ago, EpicLozenge, KeyText, Label, PriorityIcon, StatusLozenge, Who } from "./bits";
+import { cardLine } from "./work";
+import { needsYou } from "./captain";
 import type { Workspace } from "./useWorkspace";
 
 // Every ticket as a sortable table, for when the board gets busy (like Jira's backlog).
@@ -16,6 +18,7 @@ export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: 
   const [f, setF] = useState<FilterState>(emptyFilter);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "status", dir: 1 });
   const [showDone, setShowDone] = useState(false);
+  const needs = useMemo(() => needsYou(ws, []), [ws]);
 
   const rows = useMemo(() => {
     const r = applyFilter(ws, me, f).filter((t) => showDone || t.status !== "done");
@@ -51,15 +54,15 @@ export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: 
   );
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <Filters ws={ws} me={me} f={f} setF={setF} />
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, color: "var(--muted)" }}>
-            <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Show done
+            <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Show shipped
           </label>
           <Button variant="primary" onClick={onNew}>
-            Create
+            New ticket
           </Button>
         </div>
       </div>
@@ -67,8 +70,6 @@ export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: 
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
           <thead style={{ background: "var(--sidebar)" }}>
             <tr>
-              <th style={{ width: 28 }} />
-              <th style={{ width: 28 }} />
               {th("key", "Key", 90)}
               {th("title", "Title")}
               {th("status", "Status", 130)}
@@ -80,16 +81,12 @@ export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: 
           <tbody>
             {rows.map((t) => (
               <tr key={t.id} style={{ borderTop: "1px solid var(--line-soft)" }}>
-                <td style={{ padding: "0 0 0 12px" }}>
-                  <TypeIcon type={t.type} />
-                </td>
-                <td />
                 <td style={{ padding: "10px 12px" }}>
                   <KeyText t={t} />
                 </td>
                 <td style={{ padding: "10px 12px" }}>
                   <a href={`/p/${ws.project.slug}/work/${t.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ color: "var(--text)", textDecoration: "none", fontSize: 14, fontWeight: 500 }}>
-                    {t.title}
+                    {cardLine(t)}
                   </a>
                   <span style={{ display: "inline-flex", gap: 6, marginLeft: 8, verticalAlign: "middle" }}>
                     {t.parent_id && ws.byId.get(t.parent_id) && <EpicLozenge epic={ws.byId.get(t.parent_id)!} />}
@@ -97,14 +94,9 @@ export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: 
                       <Label key={l}>{l}</Label>
                     ))}
                   </span>
-                  {t.summary && (
-                    <span title={t.summary} style={{ display: "block", marginTop: 2, fontSize: 12, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 560 }}>
-                      {t.summary}
-                    </span>
-                  )}
                 </td>
                 <td style={{ padding: "10px 12px" }}>
-                  <StatusLozenge status={t.status} needs={!!t.needs_human} />
+                  <StatusLozenge work status={t.status} needs={!!needs.find((n) => n.ticket?.id === t.id && n.kind !== "problem")} />
                 </td>
                 <td style={{ padding: "10px 12px" }}>
                   <PriorityIcon priority={t.priority} />
@@ -117,7 +109,7 @@ export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: 
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={8} style={{ padding: 24, textAlign: "center", color: "var(--faint)", fontSize: 14 }}>
+                <td colSpan={6} style={{ padding: 24, textAlign: "center", color: "var(--faint)", fontSize: 14 }}>
                   No tickets match.
                 </td>
               </tr>

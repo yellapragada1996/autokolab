@@ -88,6 +88,7 @@ const allTickets: Ticket[] = [
     review: { summary: "Google sign-in is being added beside email sign-in.", line: { file: "src/auth/google.ts", code: "+  const profile = await createProfile(account);\n+  return startSession(profile);", plain: "A new Google account gets a profile before its session starts." }, less_sure: "The callback has not been tested against a live Google account yet." },
     pr_url: "https://github.com/ana/shop/pull/42",
   }),
+  ticket(21, { title: "Remember sign-in across devices", summary: "people stay signed in across their devices", status: "ready", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent" }),
   ticket(3, { title: "Remember me for 30 days", status: "ready", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", priority: "medium", labels: ["auth"], needs_human: "I couldn't start: the session table from SH-4 isn't merged yet." }),
   ticket(4, { title: "Pick the session store", summary: "choosing where sign-ins are kept", status: "in_progress", parent_id: "t1", assignee_id: REVIEWER, assignee_type: "agent", needs_human: "Redis or Postgres for sessions? Postgres is simpler, Redis is faster.", priority: "high" }),
   ticket(11, { title: "Checkout", summary: "Paying takes under a minute, with a card or Apple Pay.", status: "in_progress", type: "epic", priority: "high", description: "Paying should take under a minute." }),
@@ -383,19 +384,23 @@ function forState(t: Ticket): Ticket {
 export default function DemoWorkspace() {
   const route = useRoute();
   const ws = useMemo<WS>(() => {
-    const tickets = demoEmpty ? [] : allTickets.map(forState);
+    const workPreview = ["board", "goals", "backlog", "list"].includes(route.view);
+    // A small board sample has every card kind; In review is empty so its quiet note is visible.
+    const boardSample = new Set(["t2", "t4", "t8", "t10", "t12", "t14", "t21"]);
+    const tickets = demoEmpty ? [] : allTickets.map(forState).filter((t) => !workPreview || demoState || t.type === "epic" || t.status === "backlog" || boardSample.has(t.id));
     const decisions = demoEmpty ? [] : allDecisions;
     const byId = new Map(tickets.map((t) => [t.id, t]));
     // The plan's tickets wait on the database change and the charge, so the plan page reorders them.
     const links = demoEmpty ? [] : [
       { ticket_id: "t3", blocked_by: "t4" },
+      { ticket_id: "t21", blocked_by: "t4" },
       { ticket_id: "t31", blocked_by: "t32" },
       { ticket_id: "t33", blocked_by: "t32" },
       { ticket_id: "t33", blocked_by: "t31" },
       { ticket_id: "t42", blocked_by: "t41" },
       // Order history starts after Apple Pay, so Overview says "starts after Checkout".
       { ticket_id: "t6", blocked_by: "t12" },
-    ];
+    ].filter((l) => byId.has(l.ticket_id) && byId.has(l.blocked_by));
     const profiles = new Map<string, Profile>([
       [ANA, profile],
       [LEE, { ...profile, id: LEE, github_login: "lee", name: "Lee", city: "Stockholm", timezone: "Europe/Stockholm" }],
@@ -422,7 +427,7 @@ export default function DemoWorkspace() {
       demoDetails: new Map(tickets.map((t) => [t.id, { steps: steps.get(t.id) ?? [], comments: [], events: demoEvents.get(t.id) ?? [] }])),
       demoInvites: [{ code: "SHOP2026", project_id: project.id, created_at: iso(60), expires_at: new Date(Date.now() + 7 * 86400_000).toISOString(), max_uses: null, uses: 1, revoked: false }],
     };
-  }, []);
+  }, [route.view]);
   const previewRoute = parse("/p/shop", location.search);
   const r = route.view === "home" || route.view === "new-project" || route.view === "join" ? ({ view: "captain", project: "shop", show: "show" in previewRoute ? previewRoute.show : undefined } as const) : route;
   return <Workspace project={project} projects={[project]} route={r} profile={profile} demo={ws} demoRoom={demoRoom} demoEvents={demoEvents} onSignOut={() => undefined} onEditProfile={() => undefined} />;

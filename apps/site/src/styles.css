@@ -164,3 +164,11 @@ li:last-child > .ak-ov-crew { border-bottom: 0; }
   .ak-indent { margin-left: 0; }
   .ak-tap { min-height: 44px !important; }
 }
+
+/* Work: quiet cards, with colour reserved for their state. */
+.ak-work-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); text-decoration: none; overflow-wrap: anywhere; transition: transform var(--dur-hover), box-shadow var(--dur-hover); }
+.ak-work-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.ak-work-card:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 3px; }
+.ak-work-progress { height: 3px; background: var(--track); border-radius: 3px; overflow: hidden; }
+.ak-work-progress > span { display: block; height: 100%; background-color: var(--blue); }
+@media (max-width: 600px) { .ak-work-card { min-height: 44px; } }
