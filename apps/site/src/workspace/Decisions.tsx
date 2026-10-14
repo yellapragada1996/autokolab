@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useState } from "react";
 import { addDecision, supersede, type Decision } from "../lib/data";
 import { onNav } from "../lib/router";
@@ -93,7 +94,7 @@ function NewDecision({ ws, replaces, onDone }: { ws: Workspace; replaces?: Decis
       await ws.reload();
       onDone();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "save the decision"));
       setBusy(false);
     }
   };

@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "../lib/session";
 import { isBookkeeping, postToRoom, problemOf, roomFor, roomMessages, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
@@ -79,7 +80,7 @@ export function Room({ ws, profile, demo }: { ws: Workspace; profile: Profile; d
       if (r) setMessages(await roomMessages(r.id));
       setErr("");
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "load the room"));
       setRoom((x) => (x === undefined ? null : x));
     }
   }, [ws.project.room_id, profile.id, demo]);
@@ -359,7 +360,7 @@ function Composer({ room, replyTo, thread, onClearReply, onPosted }: { room: Roo
       onClearReply();
       await onPosted();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "send your message"));
     }
     setBusy(false);
   };

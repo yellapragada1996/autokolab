@@ -1,4 +1,3 @@
-import { friendly } from "./data";
 import { supabase } from "./session";
 
 // The room: the live chat where people and agents talk (one per repo). The website reads it as the
@@ -81,7 +80,7 @@ function firstLine(text: string): string {
 }
 
 function check<T>(r: { data: T | null; error: { message: string } | null }): T {
-  if (r.error) throw new Error(friendly(r.error.message));
+  if (r.error) throw r.error;
   return r.data as T;
 }
 

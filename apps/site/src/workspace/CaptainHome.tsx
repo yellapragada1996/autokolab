@@ -15,6 +15,7 @@ import {
   planLine,
   problemText,
   replyPreview,
+  settledLine,
   shortened,
   timeline,
   withoutPlan,
@@ -24,6 +25,7 @@ import {
   type Row,
   type Turn,
 } from "./captain";
+import { ApproveChange } from "./ApproveChange";
 import { EvidencePanel } from "./EvidencePanel";
 import { agentDot } from "./People";
 import { withTicketLinks } from "./Room";
@@ -36,7 +38,7 @@ import type { Workspace } from "./useWorkspace";
 // The state sentence, who's doing what and the setup checklist live on Overview. Every sentence comes
 // from captain.ts; this file only draws.
 
-export function CaptainHome({ ws, cr }: { ws: Workspace; cr: CaptainRoom }) {
+export function CaptainHome({ ws, cr, me }: { ws: Workspace; cr: CaptainRoom; me: string }) {
   const [pulse, setPulse] = useState<string | null>(null);
   const { startCatchUp } = cr;
   const roomReady = cr.room !== undefined;
@@ -54,17 +56,21 @@ export function CaptainHome({ ws, cr }: { ws: Workspace; cr: CaptainRoom }) {
 
   return (
     <div style={{ flex: 1, width: "100%", maxWidth: 780, margin: "0 auto", display: "flex", flexDirection: "column", paddingTop: 16 }}>
-      <Conversation ws={ws} cr={cr} pulse={pulse} onTarget={toCard} />
+      <Conversation ws={ws} cr={cr} me={me} pulse={pulse} onTarget={toCard} />
     </div>
   );
 }
 
 // ------------------------------------------------------------------ the conversation
 
-function Conversation({ ws, cr, pulse, onTarget }: { ws: Workspace; cr: CaptainRoom; pulse: string | null; onTarget: (el: HTMLElement, key: string) => void }) {
+function Conversation({ ws, cr, me, pulse, onTarget }: { ws: Workspace; cr: CaptainRoom; me: string; pulse: string | null; onTarget: (el: HTMLElement, key: string) => void }) {
   const slug = ws.project.slug;
   const answeredOf = useMemo(() => new Map(cr.answered.map((a) => [a.need.key, a])), [cr.answered]);
-  const entries = useMemo(() => timeline(folded(cr.turns), [...cr.needs, ...cr.answered.map((a) => a.need)], cr.catchUp?.at), [cr.turns, cr.needs, cr.answered, cr.catchUp]);
+  // Captain's answer that closed its own question shows under the question, so not again on its own.
+  const entries = useMemo(
+    () => timeline(folded(cr.turns.filter((t) => !cr.closers.has(t.id))), [...cr.needs, ...cr.answered.map((a) => a.need)], cr.catchUp?.at),
+    [cr.turns, cr.closers, cr.needs, cr.answered, cr.catchUp],
+  );
   const planOf = useMemo(() => new Map(cr.plans.map((p) => [p.turnId, p])), [cr.plans]);
   const noCaptain = !ws.project.lead_agent_id;
   const canPost = !noCaptain && !!cr.room?.me && cr.room.me.role !== "observer";
@@ -129,9 +135,9 @@ function Conversation({ ws, cr, pulse, onTarget }: { ws: Workspace; cr: CaptainR
       let item: ReactNode;
       if (e.kind === "catchup") item = cr.catchUp && <CatchUpMessage ws={ws} c={cr.catchUp.c} at={cr.catchUp.at} needs={cr.needs.length} />;
       else if (e.kind === "card" && e.need.kind === "plan" && planOf.has(e.need.turnId!)) item = <PlanMessage ws={ws} cr={cr} plan={planOf.get(e.need.turnId!)!} need={e.need} pulse={pulse === e.need.key} />;
-      else if (e.kind === "card") item = <NeedMessage ws={ws} cr={cr} need={e.need} answered={answeredOf.get(e.need.key)} pulse={pulse === e.need.key} />;
+      else if (e.kind === "card") item = <NeedMessage ws={ws} cr={cr} me={me} need={e.need} answered={answeredOf.get(e.need.key)} pulse={pulse === e.need.key} />;
       else if (e.row.kind !== "fold" && planOf.has(e.row.id)) item = <PlanMessage ws={ws} cr={cr} plan={planOf.get(e.row.id)!} need={null} pulse={false} />;
-      else item = <RowView ws={ws} row={e.row} />;
+      else item = <RowView ws={ws} row={e.row} settled={e.row.kind === "fold" ? undefined : cr.settled.get(e.row.id)} />;
       return (
         <Fragment key={e.key}>
           {divider}
@@ -216,13 +222,15 @@ function Said({ ws, text }: { ws: Workspace; text: string }) {
   );
 }
 
-function RowView({ ws, row }: { ws: Workspace; row: Row }) {
+/** One row of the conversation. A question of Captain's settled without the person gets one quiet line under it. */
+function RowView({ ws, row, settled }: { ws: Workspace; row: Row; settled?: string }) {
   if (row.kind === "fold") return <QuietFold turns={row.turns} />;
   if (row.kind === "you") return <YouMessage turn={row} ws={ws} />;
   if (row.kind === "problem") return <ProblemRow row={row} />;
   return (
     <CaptainMessage at={row.at}>
       <Said ws={ws} text={withoutPlan(row.body)} />
+      {settled && <Quiet>{settledLine(settled)}</Quiet>}
     </CaptainMessage>
   );
 }
@@ -359,7 +367,7 @@ function replyTo(cr: CaptainRoom, target: ReplyTarget) {
   requestAnimationFrame(() => document.getElementById(COMPOSER)?.focus());
 }
 
-function NeedMessage({ ws, cr, need, answered, pulse }: { ws: Workspace; cr: CaptainRoom; need: Need; answered: Answered | undefined; pulse: boolean }) {
+function NeedMessage({ ws, cr, me, need, answered, pulse }: { ws: Workspace; cr: CaptainRoom; me: string; need: Need; answered: Answered | undefined; pulse: boolean }) {
   const [knowing, setKnowing] = useState(false); // "How do you know?" opened the evidence
   const [answering, setAnswering] = useState(false); // "Answer" opened the one-line field
   const t = need.ticket;
@@ -373,7 +381,7 @@ function NeedMessage({ ws, cr, need, answered, pulse }: { ws: Workspace; cr: Cap
   let actions: ReactNode = null;
   if (answered) {
     actions = (
-      <Quiet green={answered.answer === "yes"}>
+      <Quiet green={answered.answer === "yes" || answered.answer === "approved"}>
         {answeredLine(answered.answer, answered.at)}
         {answered.answer === "yes" && ". It merges by itself once the tests pass."}
       </Quiet>
@@ -397,6 +405,8 @@ function NeedMessage({ ws, cr, need, answered, pulse }: { ws: Workspace; cr: Cap
         )}
       </Actions>
     );
+  } else if (need.kind === "approval" && t) {
+    actions = <ApproveChange t={t} me={me} id={`approve-${need.key}`} onApprove={(sha, note) => void cr.approve(need, sha, note)} />;
   } else if (need.kind === "ticket_question") {
     actions = answering ? (
       <OneLine label={`Answer ${t?.key ?? ""}`} onCancel={() => setAnswering(false)} onSend={(v) => void cr.answerTicket(need, v)} />

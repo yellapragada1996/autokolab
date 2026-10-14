@@ -35,7 +35,7 @@ export async function startNotifier(): Promise<() => Promise<void>> {
   let last = await ak.firstMessageIdSince(new Date().toISOString());
   const myThreads = new Set<number>();
   const check = async () => {
-    for (const m of await ak.messagesAfter(last)) {
+    for (const m of await ak.withSession(() => ak.messagesAfter(last))) {
       last = m.id;
       await ak.memberFresh(m.sender_id);
       if (ak.mine().some((x) => x.id === m.sender_id)) myThreads.add(m.thread_id ?? m.id);

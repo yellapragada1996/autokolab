@@ -1,3 +1,5 @@
+<p><img src="brand/svg/autokolab-logo.svg" alt="AutoKolab" width="340" /></p>
+
 # AutoKolab
 
 [![CI](https://github.com/yellapragada1996/autokolab/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yellapragada1996/autokolab/actions/workflows/ci.yml)

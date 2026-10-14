@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Agent, Decision, Guide, Member, Project, RunUsage, Step, Ticket, TicketEvent } from "../lib/data";
+import { LEAD_BUILT_QUESTION, REVIEW_LIMIT_QUESTION, type Agent, type Decision, type Guide, type Member, type Project, type RunUsage, type Step, type Ticket, type TicketEvent } from "../lib/data";
 import { parse, useRoute } from "../lib/router";
 import type { Profile } from "../lib/session";
 import { starterRules } from "./GuidePage";
@@ -123,6 +123,11 @@ const allTickets: Ticket[] = [
   }),
   // Worth watching (AK-76): finished 45 minutes ago and nobody has reviewed it.
   ticket(17, { title: "Show related products", summary: "showing related products under the basket", status: "review", type: "feature", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/44", started_at: iso(140), updated_at: iso(45) }),
+  // Approving as a person (AK-95): Captain built SH-18, so a person approves it; SH-19's tests are
+  // still running, so it can't be approved yet; Ana worked on SH-20, so someone else has to approve it.
+  ticket(18, { title: "Tidy the order emails", summary: "Order emails show the items and the total in one table", status: "review", type: "feature", parent_id: "t11", assignee_id: LEAD, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/45", started_at: iso(90), updated_at: iso(14), needs_human: LEAD_BUILT_QUESTION, built_by: [LEAD], pr_facts: { ...passing(18), checked_at: iso(15) } }),
+  ticket(19, { title: "Show stock levels", summary: "Product pages say how many are left", status: "review", type: "feature", parent_id: "t13", assignee_id: LEAD, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/46", started_at: iso(70), updated_at: iso(9), needs_human: LEAD_BUILT_QUESTION, built_by: [LEAD], pr_facts: { sha: sha(19), checks: { passed: 31, total: 48, state: "pending" }, files: { total: 2, risky: [] }, additions: 20, deletions: 1, checked_at: iso(9) } }),
+  ticket(20, { title: "Gift wrap at checkout", status: "review", type: "feature", parent_id: "t11", assignee_id: BUILDER, assignee_type: "agent", pr_url: "https://github.com/ana/shop/pull/47", started_at: iso(200), updated_at: iso(7), needs_human: REVIEW_LIMIT_QUESTION, built_by: [BUILDER, ANA], pr_facts: { ...passing(20), checked_at: iso(8) } }),
   ticket(6, { title: "Order history page", status: "backlog", type: "feature", priority: "low", parent_id: "t15" }),
   ticket(7, { title: "Upgrade to React 19", status: "backlog", type: "chore", assignee_id: LEE, assignee_type: "human" }),
   ticket(8, { title: "Product search", status: "done", summary: "Shoppers can search products by name from any page", type: "feature", parent_id: "t13", assignee_id: BUILDER, assignee_type: "agent", completed_at: iso(300) }),
@@ -324,6 +329,10 @@ const demoRoom: DemoRoom = {
   messages: [
     { id: 1, room_id: "room", thread_id: null, sender_id: ANA, to_id: LEAD, kind: "chat", body: "Can Apple Pay be in before Friday?", refs: {}, created_at: iso(60 * 26) },
     { id: 2, room_id: "room", thread_id: 1, sender_id: LEAD, to_id: ANA, kind: "answer", body: "Yes. lee-codex picks up SH-12 tomorrow morning; I'll tell you when it's in review.", refs: {}, created_at: iso(60 * 26 - 3) },
+    // Settled without Ana (AK-100): Captain closed the first itself (question_close); the second closed when SH-14 was done.
+    { id: 2.5, room_id: "room", thread_id: null, sender_id: LEAD, to_id: ANA, kind: "question", body: "lee-codex can't sign in to Codex on Lee's machine. Can you check its login?", refs: {}, created_at: iso(200) },
+    { id: 2.6, room_id: "room", thread_id: 2.5, sender_id: LEAD, to_id: ANA, kind: "answer", body: "lee-codex signed in again by itself after the update.", refs: {}, created_at: iso(150) },
+    { id: 2.7, room_id: "room", thread_id: null, sender_id: LEAD, to_id: ANA, kind: "question", body: "SH-14's tests keep failing on builder's machine. Can you look?", refs: {}, created_at: iso(120) },
     { id: 3, room_id: "room", thread_id: null, sender_id: ANA, to_id: LEAD, kind: "chat", body: "@ana-claude let's add Google sign-in. Plan it on the board.", refs: {}, created_at: iso(60) },
     { id: 4, room_id: "room", thread_id: 3, sender_id: LEAD, to_id: ANA, kind: "status", body: "Started on #3 (branch sh-1-plan-sign-in).", refs: {}, created_at: iso(58) },
     { id: 5, room_id: "room", thread_id: 3, sender_id: LEAD, to_id: ANA, kind: "status", body: "Picked up #3, continuing.", refs: {}, created_at: iso(56) },
@@ -335,7 +344,11 @@ const demoRoom: DemoRoom = {
     { id: 9, room_id: "room", thread_id: null, sender_id: LEAD, to_id: BUILDER, kind: "status", body: "Model change: ana-claude moved builder to opus, high effort: SH-2 touches sign-in. Applies from your next run.", refs: {}, created_at: iso(48) },
     { id: 10, room_id: "room", thread_id: null, sender_id: REVIEWER, to_id: LEAD, kind: "question", body: "@ana-claude for SH-4: Redis or Postgres for sessions? Postgres is simpler, Redis is faster.", refs: {}, created_at: iso(20) },
     { id: 11, room_id: "room", thread_id: 10, sender_id: LEAD, to_id: null, kind: "status", body: "Started on #10 (branch sh-4-sessions).", refs: {}, created_at: iso(19) },
-    { id: 12, room_id: "room", thread_id: 10, sender_id: LEAD, to_id: ANA, kind: "question", body: "@ana that's a product choice: Postgres keeps us on one database (DEC-1). OK to go with Postgres?", refs: {}, created_at: iso(18) },
+    { id: 12, room_id: "room", thread_id: 10, sender_id: LEAD, to_id: ANA, kind: "question", body: "@ana SH-4 is a product choice: Postgres keeps us on one database (DEC-1), Redis is faster. OK to go with Postgres?", refs: {}, created_at: iso(18) },
+    // The same question again (AK-100): with SH-4's own Needs you, all three show as one item.
+    { id: 12.5, room_id: "room", thread_id: null, sender_id: LEAD, to_id: ANA, kind: "question", body: "Still waiting on SH-4: Postgres keeps us on one database (DEC-1), and lee-codex can't go on until it's picked. OK to go with Postgres?", refs: {}, created_at: iso(16) },
+    // A question about no ticket: it waits for a reply or "Not needed any more".
+    { id: 12.7, room_id: "room", thread_id: null, sender_id: LEAD, to_id: ANA, kind: "question", body: "Should Apple Pay wait for Monday's design review, or ship as soon as it works?", refs: {}, created_at: iso(15) },
     { id: 13, room_id: "room", thread_id: 10, sender_id: REVIEWER, to_id: null, kind: "status", body: "Pausing this thread after 4 agent messages in a row. A person can reply to continue.", refs: {}, created_at: iso(17) },
     { id: 14, room_id: "room", thread_id: null, sender_id: BUILDER, to_id: null, kind: "status", body: "Failed on #2.\n\nYou've hit your session limit · resets 11:20pm (Europe/Stockholm)", refs: {}, created_at: iso(12) },
     { id: 15, room_id: "room", thread_id: null, sender_id: REVIEWER, to_id: LEAD, kind: "status", body: "Blocked on #5: SH-3 needs the session table from SH-4, which isn't merged yet.", refs: {}, created_at: iso(6) },
@@ -353,7 +366,7 @@ const demoRoom: DemoRoom = {
   // ?preview=workspace&refuse: every answer is refused, to see the message it leaves.
   refuse: new URLSearchParams(location.search).has("refuse"),
   // ?preview=workspace&reply: opens with the composer replying to Captain's question.
-  replyTo: new URLSearchParams(location.search).has("reply") ? 12 : undefined,
+  replyTo: new URLSearchParams(location.search).has("reply") ? 12.7 : undefined,
 };
 
 demoRoom.room.me = demoRoom.room.members[0];
@@ -406,6 +419,8 @@ export default function DemoWorkspace() {
       childrenOf: (tid) => tickets.filter((t) => t.parent_id === tid),
       demoEvents: demoEmpty ? [] : history,
       demoUsage: demoEmpty ? [] : demoUsage,
+      demoDetails: new Map(tickets.map((t) => [t.id, { steps: steps.get(t.id) ?? [], comments: [], events: demoEvents.get(t.id) ?? [] }])),
+      demoInvites: [{ code: "SHOP2026", project_id: project.id, created_at: iso(60), expires_at: new Date(Date.now() + 7 * 86400_000).toISOString(), max_uses: null, uses: 1, revoked: false }],
     };
   }, []);
   const previewRoute = parse("/p/shop", location.search);

@@ -1,3 +1,4 @@
+import { reportError } from "./lib/errors";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { myProjects, type Project } from "./lib/data";
 import { go, parse, useRoute } from "./lib/router";
@@ -27,15 +28,15 @@ export function App() {
       // A sign-in that comes back with a code this browser can't use (started in another tab or
       // on another address) can leave the auth library waiting forever. Don't wait forever.
       session = (await withTimeout(supabase.auth.getSession(), 8000)).data.session;
-    } catch {
-      return restartSignIn("Sign-in didn't finish. Please try again.");
+    } catch (e) {
+      return restartSignIn(reportError(e, "sign in"));
     }
     if (!session) return setView({ kind: "signed-out", error: oauthError() ?? takeSignInNotice() });
     try {
       const profile = await withTimeout(myProfile(), 15000);
       setView(profile.onboarded ? { kind: "app", profile } : { kind: "welcome", profile });
     } catch (e) {
-      setView({ kind: "signed-out", error: (e as Error).message });
+      setView({ kind: "signed-out", error: reportError(e, "load your projects") });
     }
   }, []);
 
@@ -100,7 +101,7 @@ function Projects({ profile, onSignOut, onEditProfile }: { profile: Profile; onS
       setProjects(await myProjects());
       setErr("");
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "load your projects"));
     }
   }, []);
   useEffect(() => {
@@ -191,7 +192,7 @@ function oauthError(): string | undefined {
   const d = p.get("error_description") ?? h.get("error_description");
   if (!d) return undefined;
   history.replaceState(null, "", location.pathname);
-  return /denied|cancel/i.test(d) ? "GitHub sign-in was cancelled." : `GitHub sign-in failed: ${d}`;
+  return /denied|cancel/i.test(d) ? "GitHub sign-in was cancelled." : reportError(d, "sign in with GitHub");
 }
 
 /** Development only: look at screens without signing in (?preview=signin|welcome|workspace|components). */

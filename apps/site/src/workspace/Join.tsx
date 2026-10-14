@@ -1,8 +1,9 @@
+import { reportError } from "../lib/errors";
 import { useEffect, useState } from "react";
 import { acceptInvite, peekInvite, showCode, type InvitePeek } from "../lib/data";
 import { go } from "../lib/router";
 import { signInWithGitHub, type Profile } from "../lib/session";
-import { Button, Logo } from "../ui";
+import { Button, FullLogo } from "../ui";
 
 // /j/<code>: someone sent you an invite link. See what it's for, sign in with GitHub, join with
 // one click; next, connect your agents.
@@ -15,7 +16,7 @@ export function JoinPage({ code, profile, onJoined, notice }: { code: string; pr
   useEffect(() => {
     peekInvite(code)
       .then(setPeek)
-      .catch((e) => (setErr((e as Error).message), setPeek(null)));
+      .catch((e) => (setErr(reportError(e, "join the project")), setPeek(null)));
   }, [code, profile?.id]);
 
   // Already in the project: straight to it.
@@ -31,7 +32,7 @@ export function JoinPage({ code, profile, onJoined, notice }: { code: string; pr
       await onJoined?.();
       go({ view: "connect", project: p.slug }, true);
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "join the project"));
       setBusy(false);
     }
   };
@@ -39,7 +40,7 @@ export function JoinPage({ code, profile, onJoined, notice }: { code: string; pr
   const shell = (children: React.ReactNode) => (
     <div style={{ minHeight: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: "48px 16px" }}>
       <div style={{ width: "min(520px, 100%)", display: "flex", flexDirection: "column", gap: 22 }}>
-        <Logo size={36} />
+        <FullLogo height={48} />
         {children}
       </div>
     </div>

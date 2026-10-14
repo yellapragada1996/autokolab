@@ -12,8 +12,8 @@ import { NO_REPLY, REVIEW_DIFF_LIMIT, buildPrompt, buildReplyPrompt, buildReview
 import { needsRunner } from "../src/setup/connect.js";
 import { BATCH_MAX_MS, BATCH_WAIT_MS, REPLY_RESUME_MS, Runner, STALE_RUN_SUMMARY, addToQueue, agentTurnsSinceHuman, countWake, isLegacyAnswer, isPauseNotice, isReplyJob, isRunnerNotice, mentionedTickets, pauseNotice, recentReplySession, rememberReplySession, replyAs, replyThread, runCostLine, runOutcome, shouldWake, staleTeammateMessage, startNotice, workSession, type Job, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, LOOK_BUILD, LOOK_NEVER_ASK, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ROOM_QUIET, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
-import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_ASK_ONCE, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, LOOK_BUILD, LOOK_NEVER_ASK, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ROOM_QUIET, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
+import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, reviewNeedsHuman, settledByMerge, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
@@ -355,6 +355,13 @@ describe("prompt", () => {
     expect(defaultRules("main")).toContain(ROOM_QUIET);
     expect(defaultRules("main")).toContain("exactly NO_REPLY");
     expect(leadGuide("Shop", ["ana"])).toContain(ROOM_QUIET);
+  });
+  it("tells Captain to ask once, update an open request, close what's settled and ask an agent before a person (AK-100)", () => {
+    expect(leadGuide("Shop", ["ana"])).toContain(LEAD_ASK_ONCE);
+    expect(LEAD_ASK_ONCE).toMatch(/one channel only.*set needs_human on that ticket.*kind=question.*only when it isn't about any ticket\. Never both\./);
+    expect(LEAD_ASK_ONCE).toMatch(/already have an open request about the same thing.*update it.*instead of asking again/);
+    expect(LEAD_ASK_ONCE).toMatch(/settled without the person, close your request in the same run: question_close.*needs_human=null/);
+    expect(LEAD_ASK_ONCE).toMatch(/Don't ask a person for something an agent can do.*ask that agent/);
   });
   it("asks with wait_s, then falls back to best judgment; NO_REPLY instead of acknowledgements", () => {
     const p = buildPrompt({ ...base, followUp: false });
@@ -1171,6 +1178,29 @@ describe("the lead's auto-merge (AK-30)", () => {
     expect(mergeNeedsHuman("Which colour?", { action: "wait" })).toBeUndefined();
     expect(mergeNeedsHuman("Which colour?", { action: "ask" })).toBeUndefined();
     expect(mergeNeedsHuman(null, { action: "wait" })).toBeUndefined();
+  });
+  it("clears every Needs you of its own that a step settles, and nobody else's (AK-100)", () => {
+    // Approved and green under "ask me": the review question is answered.
+    expect(mergeNeedsHuman(LEAD_BUILT_QUESTION, { action: "ask" })).toBeNull();
+    expect(mergeNeedsHuman(REVIEW_LIMIT_QUESTION, { action: "ask" })).toBeNull();
+    // Still waiting (checks running): left as it is until something settles it.
+    expect(mergeNeedsHuman(LEAD_BUILT_QUESTION, { action: "wait" })).toBeUndefined();
+    // Merged: the runner's merge and review questions go; a person's question stays.
+    expect(settledByMerge(`${MERGE_OK_PREFIX} sql/020_x.sql`)).toBe(true);
+    expect(settledByMerge(NO_CHECKS_QUESTION)).toBe(true);
+    expect(settledByMerge(LEAD_BUILT_QUESTION)).toBe(true);
+    expect(settledByMerge(REVIEW_UNDECIDED_QUESTION)).toBe(true);
+    expect(settledByMerge("Which colour?")).toBe(false);
+    expect(settledByMerge(null)).toBe(false);
+    // A new review settles a failed or undecided one, not the limit.
+    expect(reviewNeedsHuman(REVIEW_UNDECIDED_QUESTION, "review")).toBeNull();
+    expect(reviewNeedsHuman(`${REVIEW_FAILED_PREFIX}: the run failed. Can you look?`, "review")).toBeNull();
+    expect(reviewNeedsHuman(REVIEW_LIMIT_QUESTION, "review")).toBeUndefined();
+    // Another agent was asked to approve: a person isn't asked as well.
+    expect(reviewNeedsHuman(LEAD_BUILT_QUESTION, "asked_reviewer")).toBeNull();
+    expect(reviewNeedsHuman(REVIEW_UNDECIDED_QUESTION, "asked_reviewer")).toBeUndefined();
+    expect(reviewNeedsHuman("Which colour?", "review")).toBeUndefined();
+    expect(reviewNeedsHuman(null, "asked_reviewer")).toBeUndefined();
   });
   it("explains gh failures plainly", () => {
     const where = "on lee's machine";

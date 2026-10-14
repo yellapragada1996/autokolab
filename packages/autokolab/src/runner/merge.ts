@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NOTHING_UNSURE, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, changesScreens, isMergeQuestion, isReviewQuestion, reviewLook, type Comment, type MergePolicy, type PrFacts, type Review, type ReviewerCandidate, type Ticket } from "../core/projects.js";
+import { LEAD_BUILT_QUESTION, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NOTHING_UNSURE, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, changesScreens, isMergeQuestion, isReviewQuestion, reviewLook, type Comment, type MergePolicy, type PrFacts, type Review, type ReviewerCandidate, type Ticket } from "../core/projects.js";
 
 // The lead's approval and its runner's merge (AK-30, DEC-19). The decision is plain code, not a
 // model run: the runner merges a PR only at the commit the lead approved, once every check passed
@@ -291,7 +291,24 @@ export function mergeDecision(policy: MergePolicy, pr: PrInfo, ticket: Pick<Tick
 export function mergeNeedsHuman(current: string | null, d: Pick<MergeDecision, "action" | "question">): string | null | undefined {
   if (d.question) return current === d.question ? undefined : d.question;
   if (isMergeQuestion(current) && (d.action === "wait" || d.action === "ask")) return null;
+  // Approved and green: a review question ("Captain built this…", "couldn't finish reviewing") is answered (AK-100).
+  if (isReviewQuestion(current) && d.action === "ask") return null;
   return undefined;
+}
+
+/** The runner's own questions a merge settles: the ticket is done, so neither its merge nor its review waits on a person (AK-100). */
+export const settledByMerge = (current: string | null): boolean => isMergeQuestion(current) || isReviewQuestion(current);
+
+/**
+ * "Needs you" when the runner moves a review on: null clears one of its review questions this step
+ * settles, undefined leaves it. A new review of a new commit settles a failed or undecided one; asking
+ * another agent to approve settles "Captain built this, so a person or another agent has to approve
+ * it" (an agent can do it, so a person isn't asked). Anyone else's question is left alone (AK-100).
+ */
+export function reviewNeedsHuman(current: string | null, step: "review" | "asked_reviewer"): null | undefined {
+  if (!isReviewQuestion(current)) return undefined;
+  if (step === "review") return current!.startsWith(REVIEW_FAILED_PREFIX) ? null : undefined;
+  return current === LEAD_BUILT_QUESTION ? null : undefined;
 }
 
 /**

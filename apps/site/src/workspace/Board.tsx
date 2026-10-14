@@ -1,3 +1,4 @@
+import { reportError } from "../lib/errors";
 import { useEffect, useMemo, useState } from "react";
 import { updateTicket, type Status, type Ticket, type TicketPatch } from "../lib/data";
 import { onNav } from "../lib/router";
@@ -231,7 +232,7 @@ export function Board({ ws, me, onNew, groupBy }: { ws: Workspace; me: string; o
       await updateTicket(t.id, patch);
       await ws.reload();
     } catch (e) {
-      setErr((e as Error).message);
+      setErr(reportError(e, "move the ticket"));
     }
   };
 

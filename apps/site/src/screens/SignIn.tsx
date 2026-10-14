@@ -1,6 +1,7 @@
+import { reportError } from "../lib/errors";
 import { useEffect, useState } from "react";
 import { configured, githubEnabled, signInWithGitHub } from "../lib/session";
-import { Button, Logo } from "../ui";
+import { Button, FullLogo } from "../ui";
 
 function GitHubMark() {
   return (
@@ -26,8 +27,7 @@ export function SignIn({ error }: { error?: string }) {
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 10, padding: "20px 32px", borderBottom: "1px solid var(--line-soft)" }}>
-        <Logo />
-        <span style={{ fontWeight: 700, fontSize: 17, letterSpacing: "-0.01em" }}>AutoKolab</span>
+        <FullLogo />
         <a href="https://github.com/yellapragada1996/autokolab" style={{ marginLeft: "auto", fontSize: 14, color: "var(--muted)" }}>
           Open source on GitHub
         </a>
@@ -53,7 +53,7 @@ export function SignIn({ error }: { error?: string }) {
                 try {
                   await signInWithGitHub(location.pathname + location.search);
                 } catch (e) {
-                  setErr((e as Error).message);
+                  setErr(reportError(e, "sign in"));
                   setBusy(false);
                 }
               }}
