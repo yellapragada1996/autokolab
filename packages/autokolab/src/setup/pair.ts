@@ -1,6 +1,6 @@
 import { hostname } from "node:os";
 import { profilesOf, readConfigFile, supabaseOrigin, updateConfigFile, type ConfigFile } from "../core/config.js";
-import { keyProblem, saveAgentKey } from "../core/keys.js";
+import { keyProblem, saveAgentKey, type KeyStore } from "../core/keys.js";
 import { connectFromConfig } from "../core/node.js";
 import { isLocalProvider, providerName } from "../core/providers.js";
 import { ensureRunnerConfig } from "../runner/config.js";
@@ -47,6 +47,7 @@ export interface ConnectOptions {
   /** For tests: the network, and the key prompt. */
   fetch?: typeof fetch;
   ask?: (question: string) => Promise<string>;
+  keyStore?: Partial<KeyStore>;
 }
 
 const plain = (m: string) => m.replace(/^.*AUTOKOLAB_[A-Z_]+:\s*/, "");
@@ -225,7 +226,7 @@ async function connectApiAgent(rawCode: string, api: ApiAgentOptions, opts: Conn
 
   if (key) {
     try {
-      saveAgentKey(agent.id, key);
+      saveAgentKey(agent.id, key, opts.keyStore);
     } catch (e) {
       warn(`${agent.name} was added, but its key couldn't be saved (${(e as Error).message}). Add it with \`autokolab key set ${agent.name}\`.`);
     }

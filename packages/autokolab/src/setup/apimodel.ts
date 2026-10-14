@@ -3,7 +3,7 @@ import { closeSync, existsSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { ReadStream, WriteStream } from "node:tty";
 import { dataDir, findProfile, readConfigFile } from "../core/config.js";
-import { keyFile, keyProblem, readAgentKey, removeAgentKey, saveAgentKey, type KeySource } from "../core/keys.js";
+import { keyFile, keyProblem, readAgentKey, removeAgentKey, saveAgentKey, type KeySource, type KeyStore } from "../core/keys.js";
 import { isLocalProvider, LOCAL_PROVIDERS, PROVIDERS, providerName } from "../core/providers.js";
 import { loadRunnerConfig, opencodeProvider, runnerFileFor, type RunnerConfig } from "../runner/config.js";
 import { which } from "./agents.js";
@@ -244,7 +244,7 @@ export function localApiAgent(ref: string): { id: string; name: string; cfg: Run
 const placeOf = (source: KeySource, id: string) => (source === "keychain" ? "in this computer's keychain" : `in ${keyFile(id)}, which only you can read`);
 
 /** `autokolab key set <agent>`: ask (or read --key-env), check with the provider, then save. */
-export async function keySet(ref: string, o: { keyEnv?: string; fetch?: typeof fetch; ask?: (q: string) => Promise<string> } = {}): Promise<void> {
+export async function keySet(ref: string, o: { keyEnv?: string; fetch?: typeof fetch; ask?: (q: string) => Promise<string>; store?: Partial<KeyStore> } = {}): Promise<void> {
   const a = localApiAgent(ref);
   const name = providerName(a.provider);
   if (isLocalProvider(a.provider)) {
@@ -258,12 +258,12 @@ export async function keySet(ref: string, o: { keyEnv?: string; fetch?: typeof f
   if (!r.ok) throw new Error(r.message);
   if (r.note) warn(r.note);
   else ok(`${name} accepted the key.`);
-  const source = saveAgentKey(a.id, key);
+  const source = saveAgentKey(a.id, key, o.store);
   ok(`Saved ${a.name}'s key ${placeOf(source, a.id)}. It's used from the agent's next run.`);
 }
 
 /** `autokolab key check <agent>`: is the saved key still accepted? */
-export async function keyCheck(ref: string, o: { fetch?: typeof fetch } = {}): Promise<void> {
+export async function keyCheck(ref: string, o: { fetch?: typeof fetch; store?: Partial<KeyStore> } = {}): Promise<void> {
   const a = localApiAgent(ref);
   const name = providerName(a.provider);
   if (isLocalProvider(a.provider)) {
@@ -272,7 +272,7 @@ export async function keyCheck(ref: string, o: { fetch?: typeof fetch } = {}): P
     ok(`${name} is running and has ${a.cfg.opencode.model ?? "the model"}. ${a.name} needs no key.`);
     return;
   }
-  const { key } = readAgentKey(a.id);
+  const { key } = readAgentKey(a.id, o.store);
   const r = await checkKey(a.provider, key, { model: a.cfg.opencode.model, again: "command", fetch: o.fetch });
   if (!r.ok) {
     throw new Error(r.rejected ? `${name} didn't accept ${a.name}'s key. Set a new one with \`autokolab key set ${a.name}\`.` : r.message);
@@ -282,8 +282,8 @@ export async function keyCheck(ref: string, o: { fetch?: typeof fetch } = {}): P
 }
 
 /** `autokolab key remove <agent>`: forget the key on this computer. */
-export function keyRemove(ref: string): void {
+export function keyRemove(ref: string, store?: Partial<KeyStore>): void {
   const a = localApiAgent(ref);
-  if (removeAgentKey(a.id)) ok(`Removed ${a.name}'s key from this computer. It can't work until you add one with \`autokolab key set ${a.name}\`.`);
+  if (removeAgentKey(a.id, store)) ok(`Removed ${a.name}'s key from this computer. It can't work until you add one with \`autokolab key set ${a.name}\`.`);
   else info(`${a.name} has no key on this computer.`);
 }

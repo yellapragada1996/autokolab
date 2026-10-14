@@ -215,6 +215,27 @@ Agents that *do* have the tools report their own steps; the runner notices and s
 
 Besides Claude Code and Codex, an agent can run any provider's model through **OpenCode**, an open-source coding agent that already talks to many providers (DEC-20; OpenCode was picked over Aider in DEC-26 because it has MCP tools, JSON output, session resume and a cost per step). In AutoKolab its engine is `opencode`, and its model is written `provider/model`, for example `deepseek/deepseek-flash` (`opencode models <provider>` lists the models OpenCode knows).
 
+**Adding one (CON-25).** You choose the provider, model, name and daily spend on the website, which gives you one line to paste on the computer where the agent will work:
+
+```bash
+curl -fsSL https://autokolab.vercel.app/install.sh | bash -s -- CODE --engine opencode \
+  --provider deepseek --model deepseek-chat --name ana-deepseek --daily-usd 5
+```
+
+`autokolab connect CODE` takes the same options (without them it connects Claude Code and Codex as before). It creates that one agent:
+
+1. installs OpenCode for you if it isn't on the computer (`npm install` into `~/.local/share/autokolab/opencode`, about 190 MB, no sudo);
+2. asks "Paste your DeepSeek API key. It stays on this computer." with nothing shown as you paste (it reads the terminal itself, so it works under `curl … | bash`);
+3. checks the key with one small request to the provider (listing its models). A rejected key stops here, with "DeepSeek didn't accept that key. Check you copied all of it, then run the line again.", and nothing is created or saved;
+4. creates the agent through the website (only its name and `opencode` go there, never the key), saves the key on this computer, writes the agent's runner file with the `[opencode]` section, and starts or restarts the background runner;
+5. ends with the agent's name and model, "Your key is stored on this computer only.", and the People page where it now shows.
+
+Providers to start with: DeepSeek, Gemini (`google`), OpenAI, Anthropic, Mistral, OpenRouter, Groq, xAI and a few more (`core/providers.ts`), plus a **local model through Ollama** (`--provider ollama --model qwen2.5-coder:7b`), which needs no key: the check is that Ollama is running and has the model (it listens on `127.0.0.1:11434`, or `OLLAMA_HOST`; the runner file's `base_url` keeps it).
+
+**In a container or a script**, where nobody can type, put the key in an environment variable and add `--key-env NAME` (only the variable's name is ever shown). Add `--no-service` where there's no launchd or systemd, and run the agent with `autokolab run <name>`.
+
+**Replacing or removing a key**, on the agent's computer only: `autokolab key set <agent>` (asked for hidden, or `--key-env NAME`; checked before it replaces the old one), `autokolab key check <agent>` ("DeepSeek accepted the key", or what's wrong), `autokolab key remove <agent>`. The runner reads the key for each run, so a new key applies from the next run without a restart.
+
 - **How it runs.** The runner starts `opencode run --format json -m <provider/model>` in the ticket's worktree with the prompt on stdin, the same way it starts the other engines. A small config file gives OpenCode the AutoKolab tools and the owner's limits as OpenCode permission rules: no force-push or `--no-verify`, no pushing to protected branches, no reading or changing the forbidden paths, nothing outside the working folder. OpenCode's to-do list becomes the ticket's steps; tokens, turns and cost come from its own figures for every step; later comments continue the same session.
 - **The key stays on the owner's computer.** It's in the macOS keychain (service `autokolab`, account the agent's id), or else in `~/.config/autokolab/keys/<agent id>`, which must be mode 600 (the runner refuses a file others can read). The runner reads it for each run and passes it only to OpenCode's process, through the provider's environment variable (`DEEPSEEK_API_KEY` for DeepSeek, and so on). It's never in a command line, a log, a prompt, a ticket, the room or the server; if it shows up in the output anyway, it's replaced with `[redacted]`. Without a key the agent doesn't start, and says so on the ticket.
 - **A daily spend limit.** `daily_usd` under `[opencode]` in the agent's runner file is how many dollars it may spend per day (0: no limit). The runner adds up the cost OpenCode reports for each run; once the day's total reaches the limit it starts no new work and says once: "I've spent today's $5 limit on DeepSeek. I'll carry on tomorrow." It starts again after local midnight. If a provider reports no cost, the limit can't be enforced, and the runner's log says so.
@@ -369,7 +390,7 @@ autokolab/                      (github.com/yellapragada1996/autokolab)
 
 ### Commands (`autokolab …`)
 
-`open` (default: opens the local app) · `init` · `invite` · `join` · `setup` · `rename` · `status` · `whoami` · `rooms` · `members` · `post` · `read` · `watch` · `board` · `work` · `run` (start runners) · `service install / uninstall / status / restart` · `update` (update now; `--off` / `--on` for automatic updates) · `mcp` (started by Claude Code / Codex) · `team remove`.
+`open` (default: opens the local app) · `init` · `invite` · `join` · `setup` · `rename` · `status` · `whoami` · `rooms` · `members` · `post` · `read` · `watch` · `board` · `work` · `run` (start runners) · `service install / uninstall / status / restart` · `update` (update now; `--off` / `--on` for automatic updates) · `connect CODE` (the website's line; `--engine opencode --provider … --model … --name … --daily-usd … [--key-env NAME] [--no-service]` adds an API-model agent) · `key set / check / remove <agent>` (an API-model agent's key on this computer) · `mcp` (started by Claude Code / Codex) · `team remove`.
 
 ### Technology
 
