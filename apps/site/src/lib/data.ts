@@ -165,6 +165,8 @@ export interface Ticket {
   pr_facts?: PrFacts | null;
   /** Everyone who worked on it; none of them can approve it (schema 17, narrowed by 21; absent before 17). */
   built_by?: string[] | null;
+  /** The repo paths or globs it touches; empty means no check (schema 26; absent before it). */
+  areas?: string[] | null;
 }
 
 /** A snapshot of the PR at one commit: its tests and how big the change is (AK-57). */

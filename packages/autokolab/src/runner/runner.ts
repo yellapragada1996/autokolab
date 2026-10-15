@@ -502,6 +502,8 @@ export class Runner {
   private checkingReviews = false;
   private reviewCheckedAt = new Map<string, { at: number; updated: string }>();
   private limitWait: LimitWait | null = null;
+  /** Ready tickets waiting for another one with the same files (AK-126), said once each. */
+  private areaWaits = new Map<string, string>();
   private awake: KeepAwake;
 
   constructor(
@@ -1525,9 +1527,17 @@ export class Runner {
       const ticket = resume ? tickets.find((t) => t.id === resume) : undefined;
       if (ticket) return { project, ticket, comments: [] };
     }
-    for (const project of this.projects) {
-      const ticket = await project.claimNext();
-      if (ticket) return { project, ticket, comments: [] };
+    const waits = new Map<string, string>();
+    try {
+      for (const project of this.projects) {
+        const ticket = await project.claimNext((t, text) => {
+          waits.set(t.id, text);
+          if (this.areaWaits.get(t.id) !== text) this.log(`${t.key}: ${text}.`);
+        });
+        if (ticket) return { project, ticket, comments: [] };
+      }
+    } finally {
+      this.areaWaits = waits;
     }
     return null;
   }
