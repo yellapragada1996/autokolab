@@ -1,4 +1,4 @@
-import { gh, plainGhError } from "./merge.js";
+import { gh, plainGhError, type BaseMerge } from "./merge.js";
 import { trustedGit } from "./repos.js";
 
 // Delivering an agent's work when the agent can't (AK-46). Some agents run in a sandbox that can't
@@ -168,6 +168,44 @@ export function worktreeFacts(io: ShipIo, path: string, base: string, branch?: s
   return { dirty, ahead, behind: 0 };
 }
 
+/**
+ * For a PR sent back because it conflicts with its base (AK-124): merge the base branch as it is on
+ * GitHub into the worktree, before the builder's run. An agent whose sandbox can't write the Git
+ * folder can't start a merge itself, and fixing the files alone wouldn't make a merge commit; this
+ * way it only fixes the files and the runner's commit finishes the merge. A clean merge is
+ * committed at once. Anything unsaved, or a merge already under way, is left alone.
+ */
+export function startBaseMerge(io: ShipIo, path: string, base: string): BaseMerge {
+  if (io.git(path, "status", "--porcelain") !== "") return { skipped: "there are unsaved changes" };
+  if (hasRef(io, path, "MERGE_HEAD")) return { skipped: "a merge is already under way" };
+  io.git(path, "fetch", "-q", "--no-tags", "origin", `+refs/heads/${base}:refs/remotes/origin/${base}`);
+  try {
+    io.git(path, "merge-base", "--is-ancestor", `origin/${base}`, "HEAD");
+    return { skipped: `the branch already has ${base}` };
+  } catch {
+    // Not in yet: merge it.
+  }
+  try {
+    io.git(path, "merge", "--no-edit", "-q", `origin/${base}`);
+    return { merged: true };
+  } catch (e) {
+    const conflicts = io.git(path, "diff", "--name-only", "--diff-filter=U").split("\n").filter(Boolean);
+    if (!conflicts.length) throw e;
+    return { conflicts };
+  }
+}
+
+/** Files of an unfinished merge that still have conflict markers: committing them would finish the merge broken. */
+function conflictMarkers(io: ShipIo, path: string): string[] {
+  const unmerged = [...new Set(io.git(path, "diff", "--name-only", "--diff-filter=U").split("\n").filter(Boolean))];
+  if (!unmerged.length) return [];
+  try {
+    return io.git(path, "grep", "-l", "-E", "^(<<<<<<<|>>>>>>>)( |$)", "--", ...unmerged).split("\n").filter(Boolean);
+  } catch {
+    return []; // git grep found none
+  }
+}
+
 export interface ShipJob {
   path: string;
   repo: string;
@@ -207,6 +245,8 @@ export function ship(io: ShipIo, job: ShipJob): ShipResult {
         // Checked before anything is staged, so a refusal leaves the folder exactly as it was.
         const secret = changedPaths(io.git(job.path, "status", "--porcelain", "-z", "--untracked-files=all")).filter(looksPrivate);
         if (secret.length) throw new Error(`These look like local secrets, so I didn't commit anything: ${shown(secret)}. Remove them or add them to .gitignore.`);
+        const markers = conflictMarkers(io, job.path);
+        if (markers.length) throw new Error(`These files still have merge conflict markers, so I didn't commit anything: ${shown(markers)}.`);
         io.git(job.path, "add", "-A");
         if (io.git(job.path, "diff", "--cached", "--name-only")) io.git(job.path, "commit", "-q", "-m", job.title);
       } else if (step === "push") {

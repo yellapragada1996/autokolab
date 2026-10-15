@@ -836,6 +836,11 @@ export class ProjectView {
     return check<Ticket>(r);
   }
 
+  /** Take back a ticket's approval, through approve_ticket with no commit (AK-124): its PR needs a new one. */
+  async withdrawApproval(ticketId: string): Promise<void> {
+    check(await this.sb.rpc("approve_ticket", { p_ticket: ticketId, p_sha: null }));
+  }
+
   /**
    * For the lead: record what GitHub says about a ticket's PR, through record_pr_facts (schema 18).
    * Returns false when the database doesn't have it yet; it isn't asked again until the next reload.

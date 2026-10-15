@@ -62,7 +62,7 @@ export function checkResult(c: PrCheck): CheckResult {
   return c.conclusion === "SUCCESS" ? "success" : "failure";
 }
 
-export type MergeAction = "wait" | "ask" | "needs_ok" | "merge";
+export type MergeAction = "wait" | "ask" | "needs_ok" | "merge" | "conflict";
 
 export interface MergeDecision {
   action: MergeAction;
@@ -124,7 +124,7 @@ export function samePrFacts(stored: PrFacts | null | undefined, next: PrFacts): 
 
 // ------------------------------------------------------------------ automatic reviews (AK-59)
 
-export type ReviewAction = "wait" | "tests_failed" | "review" | "ask_worker" | "no_checks" | "limit";
+export type ReviewAction = "wait" | "tests_failed" | "conflict" | "review" | "ask_worker" | "no_checks" | "limit";
 
 export interface ReviewDecision {
   action: ReviewAction;
@@ -235,6 +235,8 @@ export function reviewDecision(
   if (handled?.sha.toLowerCase() === sha) return d("wait", `${short(sha)} was already handled`);
   // Someone is already waiting on a person here; a review now would talk over them.
   if (ticket.needs_human && !isMergeQuestion(ticket.needs_human) && !isReviewQuestion(ticket.needs_human)) return d("wait", "it has a question for a person");
+  // Before the checks: GitHub often runs none on a PR it can't merge, and a review would be wasted (AK-124).
+  if (pr.mergeable === "CONFLICTING") return d("conflict", "the PR has conflicts");
   const checks = pr.statusCheckRollup ?? [];
   if (!checks.length) {
     // A PR opened seconds ago has no checks yet either, so give GitHub time before saying so.
@@ -288,6 +290,60 @@ export function testsFailedComment(prUrl: string, sha: string, failed: string[])
   return `Tests didn't pass on PR #${prNumber(prUrl)} at commit ${short(sha)}: ${shortList(failed)}. It needs a fix and a new push; I've moved it back to In progress. Captain reviews again once the tests pass.`;
 }
 
+// ------------------------------------------------------------------ conflicts (AK-124)
+
+/** How many times a PR that conflicts with its base goes back to its builder before a person is asked. */
+export const MAX_CONFLICT_SEND_BACKS = 2;
+
+/** What the lead's runner did about a ticket's conflicts, kept across restarts: on which PR, how often, and the last commit. */
+export interface ConflictRecord {
+  pr: string;
+  sentBack: number;
+  sha: string;
+}
+
+export type ConflictAction = "send_back" | "ask" | "wait";
+
+/**
+ * A PR conflicts with its base at `sha`: send it back to its builder, or after MAX_CONFLICT_SEND_BACKS
+ * send-backs of the same PR ask a person. A commit already handled waits. A new PR starts over.
+ */
+export function conflictDecision(rec: ConflictRecord | null | undefined, prUrl: string, sha: string, max = MAX_CONFLICT_SEND_BACKS): { action: ConflictAction; next: ConflictRecord } {
+  const s = sha.toLowerCase();
+  const same = rec?.pr === prUrl ? rec : undefined;
+  if (same?.sha.toLowerCase() === s) return { action: "wait", next: same };
+  const sentBack = same?.sentBack ?? 0;
+  if (sentBack >= max) return { action: "ask", next: { pr: prUrl, sentBack, sha: s } };
+  return { action: "send_back", next: { pr: prUrl, sentBack: sentBack + 1, sha: s } };
+}
+
+export function conflictComment(prUrl: string, base: string, sentBack: number, max = MAX_CONFLICT_SEND_BACKS): string {
+  return `PR #${prNumber(prUrl)} conflicts with ${base}; merge ${base} into the branch, fix the conflicts, run the tests and push. I've moved it back to In progress (send-back ${sentBack} of ${max}). If you can't resolve it, set Needs you and say why. Captain reviews the new commit once it's pushed.`;
+}
+
+/** The base branch a send-back comment names, or null when the comment isn't one. */
+export function conflictSendBackBase(body: string): string | null {
+  const m = body.match(/^PR #\d+ conflicts with ([\w./-]+); merge \1 into the branch/);
+  return m && !m[1]!.startsWith("-") ? m[1]! : null;
+}
+
+export function conflictQuestion(prUrl: string, base: string, max = MAX_CONFLICT_SEND_BACKS): string {
+  return `${MERGE_FAILED_PREFIX}: PR #${prNumber(prUrl)} still conflicts with ${base} after ${max} send-backs to its builder. Can you resolve it, or tell the builder how?`;
+}
+
+export function isConflictQuestion(text: string | null | undefined): boolean {
+  return !!text && text.startsWith(`${MERGE_FAILED_PREFIX}: PR #`) && text.includes(" send-backs to its builder.");
+}
+
+/** What the builder's run is told after its runner started merging the base branch in (AK-124). */
+export function baseMergeNote(base: string, r: BaseMerge): string | null {
+  if ("skipped" in r) return null;
+  if ("merged" in r) return `${base} merged into this branch cleanly, as a new commit. Run the tests, fix anything that broke, and push.`;
+  return `I started merging ${base} into this branch. These files have conflicts: ${shortList(r.conflicts, 10)}. Fix them and remove the conflict markers, run the tests, then commit (that finishes the merge) and push. If you can't commit or push from where you run, leave the files fixed and end with status: review; the runner commits and pushes.`;
+}
+
+export type BaseMerge = { merged: true } | { conflicts: string[] } | { skipped: string };
+
 export function askReviewMessage(key: string, title: string, prUrl: string, sha: string, doneMeans: string[], files: string[] = [], base = "the default branch"): string {
   const done = doneMeans.length ? doneMeans.map((x) => `- ${x}`).join("\n") : "(none written)";
   const look = changesScreens(files) ? `\n\n${reviewLook("a checkout of that commit", base)}` : "";
@@ -327,7 +383,8 @@ export function mergeDecision(policy: MergePolicy, pr: PrInfo, ticket: Pick<Tick
   }
   if (!approved) return wait("not approved");
   if (pr.headRefOid.toLowerCase() !== approved) return wait(`the PR moved to ${short(pr.headRefOid)} after the lead approved ${short(approved)}; it needs a new approval`);
-  if (pr.mergeable === "CONFLICTING") return wait("the PR has conflicts", `${MERGE_FAILED_PREFIX}: the PR has conflicts with its base branch. Merge the base branch into it, then the lead approves the new commit.`);
+  // Its builder fixes it (AK-124): see conflictDecision.
+  if (pr.mergeable === "CONFLICTING") return { action: "conflict", why: "the PR has conflicts", risky };
   if (pr.mergeable !== "MERGEABLE") return wait("GitHub hasn't worked out yet whether it can merge");
   const checks = pr.statusCheckRollup ?? [];
   if (!checks.length) return wait("no checks ran", NO_CHECKS_QUESTION);
@@ -449,13 +506,16 @@ export function mergedComment(sha: string, policy: MergePolicy): string {
   return `Merged automatically: tests passed, lead approved commit ${short(sha)} (setting: ${MERGE_POLICY_LABEL[policy]}).`;
 }
 
+/** What plainGhError says when the PR can't merge for conflicts: its builder is asked to fix it (AK-124). */
+export const PR_CONFLICTS = "the PR has conflicts with its base branch.";
+
 /** gh's error, in plain words. `where`: "on raghavendra's machine". */
 export function plainGhError(stderr: string, where: string): string {
   const s = stderr.trim();
   if (/ENOENT/.test(s)) return `gh isn't installed ${where}.`;
   if (/auth login|not logged|authentication/i.test(s)) return `gh ${where} isn't signed in to GitHub (run \`gh auth login\`).`;
   if (/permission|forbidden|403|must have (write|admin)|not authorized/i.test(s)) return `the GitHub account gh uses ${where} can't merge in this repo (it needs write access).`;
-  if (/conflict|not mergeable/i.test(s)) return "the PR has conflicts with its base branch.";
+  if (/conflict|not mergeable/i.test(s)) return PR_CONFLICTS;
   if (/head.*(changed|modified|match)|expected head/i.test(s)) return "the PR got a new commit just before merging; the lead needs to approve it again.";
   return s.split("\n").find((l) => l.trim())?.trim().slice(0, 300) || "gh failed without saying why.";
 }
