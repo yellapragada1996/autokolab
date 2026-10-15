@@ -100,6 +100,18 @@ export function runFolder(now = new Date(), env = process.env, home = homedir())
   return join(state, "looks", now.toISOString().slice(0, 19).replace(/:/g, "-"));
 }
 
+/**
+ * The ports an agent's run holds (AK-125), to try in order, or none outside a run. The first is
+ * the dev server's, so it comes last.
+ */
+export function blockPorts(env = process.env) {
+  const first = Number(env.AUTOKOLAB_PORT);
+  const count = Number(env.AUTOKOLAB_PORT_COUNT) || 10;
+  if (!Number.isInteger(first) || first < 1 || first + count > 65536) return [];
+  const ports = Array.from({ length: count }, (_, i) => first + i);
+  return [...ports.slice(1), first];
+}
+
 /** Phone-shaped below 600 wide, laptop-shaped above. */
 export function heightFor(width) {
   return width < 600 ? 844 : 900;
@@ -154,15 +166,29 @@ export function verdict(looks) {
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const siteDir = join(root, "apps", "site");
 
-function freePort() {
+function listen(port) {
   return new Promise((resolve, reject) => {
     const s = createServer();
     s.once("error", reject);
-    s.listen(0, "127.0.0.1", () => {
+    s.listen(port, "127.0.0.1", () => {
       const { port } = s.address();
       s.close(() => resolve(port));
     });
   });
+}
+
+/** A free port: inside the run's own block when there is one, so other runs' ports stay theirs. */
+async function freePort() {
+  const block = blockPorts();
+  for (const port of block) {
+    try {
+      return await listen(port);
+    } catch {
+      /* taken: try the next */
+    }
+  }
+  if (block.length) throw new CouldNotLook(`Every port in this run's block (${block[block.length - 1]} and the ${block.length - 1} after it) is taken.`);
+  return listen(0);
 }
 
 async function answers(url) {

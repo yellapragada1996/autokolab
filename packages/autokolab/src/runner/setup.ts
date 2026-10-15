@@ -38,6 +38,8 @@ export interface SetupOptions {
   /** Each line the script prints. */
   onOutput: (line: string) => void;
   signal?: AbortSignal;
+  /** Added to the script's environment: the run's ticket and ports (AK-125). */
+  env?: Record<string, string>;
 }
 
 const hash = (script: string) => createHash("sha256").update(script).digest("hex");
@@ -64,7 +66,7 @@ export async function runSetup(script: string | null, opts: SetupOptions): Promi
       if (l.trim()) last = l.trim();
     };
     // Its own process group, so a time limit or a pause stops what it started (npm and its children) too.
-    const child = spawn("sh", [file], { cwd: opts.cwd, env: process.env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn("sh", [file], { cwd: opts.cwd, env: { ...process.env, ...opts.env }, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     let stopped: string | null = null;
     const stop = (why: string) => {
       if (stopped) return;

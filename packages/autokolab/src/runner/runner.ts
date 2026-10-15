@@ -17,6 +17,7 @@ import { readAgentKey } from "../core/keys.js";
 import { PR_CONFLICTS, askReviewMessage, baseMergeNote, conflictComment, conflictDecision, conflictQuestion, conflictSendBackBase, isConflictQuestion, checkResult, afterMergeFailure, diffLines, earlierReview, ghPrDiff, ghPrMerge, ghPrViewAsync, lightReview, mergeDecision, mergedAt, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prLines, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewFinding, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type ConflictRecord, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyMessage } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, fetchBranch, startBaseMerge, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
+import { claimPorts, type PortBlock } from "./ports.js";
 import { SETUP_SCRIPT, runSetup, setupScript, type SetupResult } from "./setup.js";
 import { checkoutCommit, currentBranch, diffSince, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
 
@@ -633,9 +634,38 @@ export class Runner {
     return engineInvocation(this.cfg, mcp, resume, cwd, choice, () => readAgentKey(this.cfg.agent_id).key, reply);
   }
 
-  /** Runs the engine; the result's cost is this run's own, not the session's so far (AK-115). */
-  private async runAgent(opts: Parameters<typeof runEngine>[0]): Promise<EngineRun> {
-    const run = await runEngine(opts);
+  /**
+   * Hold a block of ports for a run (AK-125). Null when none is free or the holds can't be read:
+   * the run goes ahead without them.
+   */
+  private async holdPorts(ticket: string | null): Promise<PortBlock | null> {
+    try {
+      const block = await claimPorts(ticket);
+      if (!block) this.log(`No free block of ports for ${ticket ?? "this run"}; it runs without AUTOKOLAB_PORT.`);
+      return block;
+    } catch (e) {
+      this.log(`Couldn't hold ports for ${ticket ?? "this run"}: ${(e as Error).message}`);
+      return null;
+    }
+  }
+
+  private async letGoOfPorts(block: PortBlock | null): Promise<void> {
+    await block?.release().catch((e) => this.log(`Couldn't let go of ports ${block.port}+: ${(e as Error).message}`));
+  }
+
+  /**
+   * Runs the engine with its own block of ports and, for a ticket, its key in the environment
+   * (AK-125). The result's cost is this run's own, not the session's so far (AK-115).
+   */
+  private async runAgent(opts: Parameters<typeof runEngine>[0], ticket: string | null = null): Promise<EngineRun> {
+    const ports = await this.holdPorts(ticket);
+    let run: EngineRun;
+    try {
+      const env = ports?.env ?? (ticket ? { AUTOKOLAB_TICKET: ticket } : {});
+      run = await runEngine({ ...opts, inv: { ...opts.inv, env: { ...env, ...opts.inv.env } } });
+    } finally {
+      await this.letGoOfPorts(ports);
+    }
     if (this.cfg.engine !== "claude") return run;
     const total = run.usage?.costUsd ?? null;
     const known = this.sessionCosts();
@@ -1870,13 +1900,20 @@ export class Runner {
         await this.setStatus("planning", "Getting the workspace ready", t.id);
         this.log(`Running ${SETUP_SCRIPT} for ${t.key} (output in ${logFile}).`);
       }
-      r = await runSetup(script, {
-        gitDir,
-        cwd: wt.path,
-        minutes: this.cfg.limits.setup_minutes,
-        onOutput: (line) => appendFileSync(logFile, `${line}\n`),
-        signal: abort.signal,
-      });
+      // The script gets the same variables as the agent's run (AK-125), with a block of its own.
+      const ports = script?.trim() ? await this.holdPorts(t.key) : null;
+      try {
+        r = await runSetup(script, {
+          gitDir,
+          cwd: wt.path,
+          minutes: this.cfg.limits.setup_minutes,
+          onOutput: (line) => appendFileSync(logFile, `${line}\n`),
+          signal: abort.signal,
+          env: ports?.env ?? { AUTOKOLAB_TICKET: t.key },
+        });
+      } finally {
+        await this.letGoOfPorts(ports);
+      }
     } finally {
       this.current = null;
     }
@@ -1987,7 +2024,7 @@ export class Runner {
           sawPlan = true;
           if (!run.reportsSteps) pendingPlan = plan;
         },
-      });
+      }, t.key);
     } finally {
       for (const x of timers) clearInterval(x);
       if (!result?.reportsSteps) flushPlan();
@@ -2197,7 +2234,7 @@ export class Runner {
     let result!: EngineRun;
     const startedAt = Date.now();
     try {
-      result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
+      result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) }, t.key);
     } finally {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000, result);
@@ -2300,7 +2337,7 @@ export class Runner {
     let result!: EngineRun;
     const startedAt = Date.now();
     try {
-      result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
+      result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) }, t.key);
     } finally {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000, result);
