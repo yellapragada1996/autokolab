@@ -31,7 +31,7 @@ vi.mock("react", () => ({
   },
 }));
 
-import { useFullTicket } from "./useFullTicket";
+import { fullTicketView, needsFullTicket, useFullTicket } from "./useFullTicket";
 import { ticket } from "./fixtures";
 
 function render(listed: Ticket | undefined, demo = false) {
@@ -72,7 +72,7 @@ describe("an open ticket across workspace refreshes", () => {
   });
 
   it("keeps the previous full record mounted while its changed revision loads", async () => {
-    const listed = ticket({ key: "SH-1", description: undefined });
+    const listed = ticket({ key: "SH-1", description: undefined, done_means: undefined });
     const full = { ...listed, description: "The original brief", done_means: ["Existing check"] };
     readTicket.mockResolvedValueOnce(full);
     render(listed);
@@ -80,8 +80,8 @@ describe("an open ticket across workspace refreshes", () => {
     const pending = deferred();
     readTicket.mockReturnValueOnce(pending.promise);
     const changed = { ...listed, status: "review" as const, updated_at: "2026-10-15T22:00:00Z" };
-    expect(render(changed)).toMatchObject({ loading: false, ticket: full });
-    expect(render({ ...changed }).ticket).toBe(full);
+    expect(render(changed)).toMatchObject({ loading: false, ticket: { ...full, status: changed.status, updated_at: changed.updated_at } });
+    expect(render({ ...changed }).ticket?.done_means).toBe(full.done_means);
     expect(readTicket).toHaveBeenCalledTimes(2);
     const fresh = { ...full, status: changed.status, updated_at: changed.updated_at, description: "The updated brief" };
     pending.resolve(fresh);
@@ -90,7 +90,7 @@ describe("an open ticket across workspace refreshes", () => {
   });
 
   it("keeps cached content on a failed background read and reports the failure", async () => {
-    const listed = ticket({ key: "SH-1", description: undefined });
+    const listed = ticket({ key: "SH-1", description: undefined, done_means: undefined });
     const full = { ...listed, description: "The brief" };
     readTicket.mockResolvedValueOnce(full);
     render(listed);
@@ -99,12 +99,12 @@ describe("an open ticket across workspace refreshes", () => {
     readTicket.mockRejectedValueOnce(new Error("Temporarily offline"));
     render(changed);
     await vi.waitFor(() => expect(render(changed).error).toBe("Temporarily offline"));
-    expect(render(changed)).toMatchObject({ ticket: full, loading: false });
+    expect(render(changed)).toMatchObject({ ticket: { ...full, updated_at: changed.updated_at }, loading: false });
   });
 
   it("loads a different ticket without showing the previous one or accepting its late response", async () => {
-    const first = ticket({ key: "SH-1", description: undefined });
-    const second = ticket({ key: "SH-2", description: undefined });
+    const first = ticket({ key: "SH-1", description: undefined, done_means: undefined });
+    const second = ticket({ key: "SH-2", description: undefined, done_means: undefined });
     const pending = deferred();
     readTicket.mockReturnValueOnce(pending.promise);
     expect(render(first).loading).toBe(true);
@@ -118,7 +118,7 @@ describe("an open ticket across workspace refreshes", () => {
   });
 
   it("keeps the newest revision when background requests finish out of order", async () => {
-    const listed = ticket({ key: "SH-1", description: undefined });
+    const listed = ticket({ key: "SH-1", description: undefined, done_means: undefined });
     const old = deferred();
     readTicket.mockReturnValueOnce(old.promise);
     render(listed);
@@ -139,5 +139,34 @@ describe("an open ticket across workspace refreshes", () => {
     expect(render(preview, true)).toMatchObject({ ticket: preview, loading: false });
     expect(render(undefined)).toMatchObject({ ticket: undefined, loading: false });
     expect(readTicket).not.toHaveBeenCalled();
+  });
+});
+
+describe("full ticket view", () => {
+  it("keeps an open ticket loaded when the workspace returns a new list object", () => {
+    const full = ticket({ key: "SH-1", description: "Context", done_means: ["Works"] });
+    const listed = { ...full, description: undefined, done_means: undefined };
+    const loaded = { id: full.id, updatedAt: full.updated_at, ticket: full };
+
+    expect(fullTicketView(listed, null, false).loading).toBe(true);
+    const first = fullTicketView(listed, loaded, false);
+    expect(first).toMatchObject({ loading: false, ticket: { description: "Context", done_means: ["Works"] } });
+
+    // A workspace reload creates a new row even when this ticket has not changed.
+    const afterReload = fullTicketView({ ...listed }, loaded, false);
+    expect(afterReload).toMatchObject({ loading: false, ticket: { description: "Context", done_means: ["Works"] } });
+    expect(needsFullTicket({ ...listed }, loaded, false)).toBe(false);
+
+    // A real ticket change updates the visible status while the full record refetches.
+    const changedRow = { ...listed, status: "review" as const, updated_at: "2026-10-10T09:00:00Z" };
+    expect(needsFullTicket(changedRow, loaded, false)).toBe(true);
+    const changed = fullTicketView(changedRow, loaded, false);
+    expect(changed).toMatchObject({ loading: false, ticket: { status: "review", description: "Context" } });
+  });
+
+  it("shows loading only when no full record exists for the selected ticket", () => {
+    const first = ticket({ key: "SH-1" });
+    const second = ticket({ key: "SH-2", description: undefined, done_means: undefined });
+    expect(fullTicketView(second, { id: first.id, updatedAt: first.updated_at, ticket: first }, false).loading).toBe(true);
   });
 });
