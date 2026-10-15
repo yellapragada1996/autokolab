@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AutoKolab, SIGN_IN_LOST } from "../src/core/client.js";
+import { type AutoKolab, SIGN_IN_LOST } from "../src/core/client.js";
+import { nodeConnect } from "../src/core/node.js";
 import { formatToken } from "../src/core/token.js";
 
 // AK-101: agents lost their AutoKolab tools about once an hour. A fake Supabase (auth + tables)
@@ -90,7 +91,8 @@ async function membersCall(ak: AutoKolab): Promise<number> {
 
 describe("AK-101: the agent's sign-in survives the hour", () => {
   let fake: ReturnType<typeof fakeSupabase>;
-  const connect = () => AutoKolab.connect({ url: URL_, anonKey: KEY, token: TOKEN });
+  // Through nodeConnect, as the helper does, so Node 20 (no built-in WebSocket) gets `ws` (AK-105).
+  const connect = () => nodeConnect({ url: URL_, anonKey: KEY, token: TOKEN });
   const anHourLater = () => vi.setSystemTime(Date.now() + 2 * HOUR);
 
   beforeEach(() => {

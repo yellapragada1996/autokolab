@@ -567,8 +567,9 @@ export async function runEngine(opts: {
     }
     run.finalText = scrub(run.finalText);
   } finally {
-    log.end();
     rmSync(inv.tempDir, { recursive: true, force: true });
+    // Wait for the log to reach the disk, so it's complete once the run is.
+    await new Promise<void>((done) => log.end(() => done()));
   }
   return run;
 }
