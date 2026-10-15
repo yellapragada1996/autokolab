@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { hostname } from "node:os";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
@@ -11,7 +12,7 @@ import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { chooseModel, chooseReplyModel, engineInvocation, engineLabel, noUsage, runEngine, type EngineInvocation, type EngineRun, type McpLaunch, type ModelChoice, type PlanStep, type RunUsage } from "./engines.js";
 import { installHook } from "./githook.js";
-import { overSpend, spendNotice, usageLimit, usageReport } from "./limit.js";
+import { machineReport, overSpend, spendNotice, usageLimit, usageReport } from "./limit.js";
 import { readAgentKey } from "../core/keys.js";
 import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyMessage } from "./prompt.js";
@@ -591,6 +592,7 @@ export class Runner {
   private usageSent = "";
   private async reportUsage(): Promise<void> {
     if (!this.isAgentRow || !this.projects.length) return;
+    await this.reportMachine();
     const report = usageReport(this.usedToday(), this.cfg.limits.max_hours_per_day, this.limitWait?.until ?? null);
     const sent = JSON.stringify(report);
     if (sent === this.usageSent) return;
@@ -598,6 +600,22 @@ export class Runner {
       if (await this.projects[0].reportUsage(report)) this.usageSent = sent;
     } catch (e) {
       this.log(`Couldn't report my usage: ${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * Tell the team which computer this is and the active daily dollar limit (AK-112), only when it
+   * changed. Never stops anything: a database before schema 24 just doesn't get it.
+   */
+  private machineSent = "";
+  private async reportMachine(): Promise<void> {
+    const report = machineReport(hostname(), this.cfg.engine, this.cfg.opencode?.daily_usd ?? 0);
+    const sent = JSON.stringify(report);
+    if (sent === this.machineSent) return;
+    try {
+      if (await this.projects[0].reportMachine(report)) this.machineSent = sent;
+    } catch (e) {
+      this.log(`Couldn't report my computer: ${(e as Error).message}`);
     }
   }
 

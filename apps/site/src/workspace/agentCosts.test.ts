@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunUsage } from "../lib/data";
 import { BIRCH, ME, workspace } from "./fixtures";
-import { costText, costToday } from "./agentCosts";
+import { costText, costToday, reportedLimit, spendText } from "./agentCosts";
 
 const ws = workspace([]);
 const a = ws.agentOf(BIRCH)!;
@@ -51,5 +51,31 @@ describe("API spend today", () => {
   });
   it("does not turn subscription costs into API spend", () => {
     expect(costToday(ws, { ...a, vendor: "codex" }, [run("2026-10-14T01:00:00Z", 2)], now)).toBeNull();
+  });
+});
+
+describe("API spend against the reported daily limit (AK-112)", () => {
+  const spent = (usd: number) => ({ usd, missing: false, runs: 1 });
+  it("shows today's spend against the limit its runner reported", () => {
+    expect(spendText(spent(1.2), 5)).toBe("$1.20 of $5 today");
+    expect(spendText(spent(1.2), 2.5)).toBe("$1.20 of $2.50 today");
+    expect(spendText(null, 5)).toBe("$0.00 of $5 today");
+    expect(spendText(spent(1.2), 0)).toBe("$1.20 today · no daily limit");
+  });
+  it("shows the limit alone when some run today reported no cost", () => {
+    expect(spendText({ usd: null, missing: true, runs: 2 }, 5)).toBe("$5 daily limit");
+    expect(spendText({ usd: null, missing: true, runs: 2 }, 0)).toBe("No daily limit");
+  });
+  it("keeps the honest fallback when an older helper or server reports no limit", () => {
+    expect(spendText(spent(1.2), null)).toBe("$1.20 today · daily limit set on its computer");
+    expect(spendText(null, null)).toBeNull();
+    expect(reportedLimit({ vendor: "opencode" })).toBeNull();
+    expect(reportedLimit({ vendor: "opencode", daily_usd: null })).toBeNull();
+  });
+  it("reads the limit only for API-model agents, as a number", () => {
+    expect(reportedLimit({ vendor: "opencode", daily_usd: 5 })).toBe(5);
+    expect(reportedLimit({ vendor: "opencode", daily_usd: "2.50" })).toBe(2.5);
+    expect(reportedLimit({ vendor: "opencode", daily_usd: "nonsense" })).toBeNull();
+    expect(reportedLimit({ vendor: "claude", daily_usd: 5 })).toBeNull();
   });
 });

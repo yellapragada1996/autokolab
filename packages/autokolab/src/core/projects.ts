@@ -67,6 +67,17 @@ export interface UsageReport {
   waiting_until: string | null;
 }
 
+/**
+ * Which computer an agent runs on and, for an API-model agent, its active daily dollar limit
+ * (schema 24). Non-secret values only: never a key or the settings file.
+ */
+export interface MachineReport {
+  /** The computer's name; null when it isn't a plain hostname. */
+  machine: string | null;
+  /** daily_usd from the runner's settings, 0 for no limit; null for agents that don't spend dollars. */
+  daily_usd: number | null;
+}
+
 /** Why the runner started its agent: to build a ticket, review one, reply in the room, or look at a worker's question. */
 export type RunKind = "build" | "review" | "reply" | "question";
 
@@ -334,6 +345,8 @@ export class ProjectView {
   private prFactsMissing = false;
   /** The database has no report_usage yet (before schema 19). */
   private usageMissing = false;
+  /** The database has no report_machine yet (before schema 24). */
+  private machineMissing = false;
   /** The database has no record_run_usage yet (before schema 20). */
   private runUsageMissing = false;
 
@@ -712,6 +725,22 @@ export class ProjectView {
     const e = r.error;
     if (e && !e.message.includes("AUTOKOLAB_") && (e.code === "PGRST202" || missingColumn(e) || /report_usage/.test(e.message))) {
       this.usageMissing = true;
+      return false;
+    }
+    check(r);
+    return true;
+  }
+
+  /**
+   * This agent's computer name and daily dollar limit, through report_machine (schema 24). Returns
+   * false when the database doesn't have it yet; it isn't asked again until the next reload.
+   */
+  async reportMachine(m: MachineReport): Promise<boolean> {
+    if (this.machineMissing) return false;
+    const r = await this.sb.rpc("report_machine", { p_machine: m.machine, p_daily_usd: m.daily_usd });
+    const e = r.error;
+    if (e && !e.message.includes("AUTOKOLAB_") && (e.code === "PGRST202" || missingColumn(e) || /report_machine/.test(e.message))) {
+      this.machineMissing = true;
       return false;
     }
     check(r);

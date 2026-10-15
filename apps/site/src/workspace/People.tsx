@@ -7,7 +7,7 @@ import { AgentAvatar, Button, PersonAvatar, StatusPill } from "../ui";
 import { ago, KeyText, LeadBadge } from "./bits";
 import { agentDot, agentOnline } from "./story";
 import { providerModel } from "./agentOptions";
-import { costText } from "./agentCosts";
+import { reportedLimit, spendText } from "./agentCosts";
 import { useAgentCosts } from "./useAgentCosts";
 import type { Workspace } from "./useWorkspace";
 
@@ -115,9 +115,10 @@ export function People({ ws, me, onProjectChanged, onAddAgent }: { ws: Workspace
                 </span>
                 <span style={{ fontSize: 13, color: "var(--faint)" }}>
                   {VENDOR_LABEL[a.vendor] ?? a.vendor} · {a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : a.owner_label ? `${a.owner_label}'s` : "shared"}
+                  {a.machine && ` · on ${a.machine}`}
                   {a.last_seen_at ? ` · seen ${ago(a.last_seen_at)}` : " · not connected yet"}
                 </span>
-                <>{a.vendor === "opencode" ? <ApiAgentDetails ws={ws} agent={a} mine={a.owner_profile_id === me} spend={costText(costs.get(a.id))} missing={costs.get(a.id)?.missing ?? false} /> : <AgentModel ws={ws} agent={a} mine={a.owner_profile_id === me} />}</>
+                <>{a.vendor === "opencode" ? <ApiAgentDetails ws={ws} agent={a} mine={a.owner_profile_id === me} spend={spendText(costs.get(a.id), reportedLimit(a))} missing={costs.get(a.id)?.missing ?? false} /> : <AgentModel ws={ws} agent={a} mine={a.owner_profile_id === me} />}</>
               </span>
               <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
                 {isOwner && (
@@ -520,17 +521,18 @@ function ApiAgentDetails({ ws, agent: a, mine, spend, missing }: { ws: Workspace
   const [action, setAction] = useState<string | null>(null);
   const local = (a.effective_model ?? a.model)?.startsWith("ollama/");
   const settings = `~/.config/autokolab/runners/${a.display_name}.toml`;
+  const there = a.machine ? `On ${a.machine}` : "On that computer";
   return <span style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6, fontSize: 13, color: "var(--text-muted)" }}>
     <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>{providerModel(a.effective_model ?? a.model)} <StatusPill tone="neutral">{local ? "Local model" : "Pay-per-use"}</StatusPill></span>
-    {!local && <span>Key stored on {a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : "its owner's"} computer.</span>}
-    {spend && <span>{spend} · daily limit set on its computer</span>}
+    {!local && <span>Key stored on {a.machine ?? `${a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : "its owner's"} computer`}.</span>}
+    {spend && <span>{spend}</span>}
     {missing && <span>Cost isn't reported for this model, so the daily limit can't be enforced.</span>}
     {mine && <>
       <span style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {["Change model", ...local ? [] : ["Change daily limit"], "Pause", "Remove"].map((label) => <Button key={label} variant="ghost" size="sm" onClick={() => setAction(action === label ? null : label)} aria-expanded={action === label}>{label}</Button>)}
       </span>
       {action && <span style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 8, lineHeight: 1.6, overflowWrap: "anywhere" }}>
-        {action === "Change model" ? <>On that computer, edit <code>{settings}</code>. Under <code>[opencode]</code>, change <code>model</code> to the model name from your provider. Restart its runner. To replace its key, run <code>autokolab key set {a.display_name}</code>.</> : action === "Change daily limit" ? <>On that computer, edit <code>{settings}</code>. Under <code>[opencode]</code>, set <code>daily_usd = 5</code> to your dollar limit (0 means no limit), then restart its runner.</> : action === "Pause" ? <>Run <code>autokolab pause {a.display_name}</code> in a terminal. To start it again, run <code>autokolab resume {a.display_name}</code>.</> : <>On that computer, run <code>autokolab pause {a.display_name}</code>{!local && <> and <code>autokolab key remove {a.display_name}</code></>}. Ask the project owner to run <code>autokolab remove {a.display_name}</code> to remove it from the team.</>}
+        {action === "Change model" ? <>{there},edit <code>{settings}</code>. Under <code>[opencode]</code>, change <code>model</code> to the model name from your provider. Restart its runner. To replace its key, run <code>autokolab key set {a.display_name}</code>.</> : action === "Change daily limit" ? <>{there},edit <code>{settings}</code>. Under <code>[opencode]</code>, set <code>daily_usd = 5</code> to your dollar limit (0 means no limit), then restart its runner.</> : action === "Pause" ? <>Run <code>autokolab pause {a.display_name}</code> in a terminal. To start it again, run <code>autokolab resume {a.display_name}</code>.</> : <>{there},run <code>autokolab pause {a.display_name}</code>{!local && <> and <code>autokolab key remove {a.display_name}</code></>}. Ask the project owner to run <code>autokolab remove {a.display_name}</code> to remove it from the team.</>}
       </span>}
     </>}
   </span>;
