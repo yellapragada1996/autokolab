@@ -1313,8 +1313,9 @@ const ENV_STOPS: { kind: EnvStopKind; test: RegExp }[] = [
   },
   {
     kind: "no-auth",
-    // A GitHub sign-in failure that names the tool or the service, never an ordinary idea of login.
-    test: /(?:gh|git|github)\b[^\n]{0,40}(?:isn'?t|is not|not) (?:signed in|logged in|authenticated)|(?:isn'?t|is not|not) (?:signed in|logged in|authenticated)[^\n]{0,40}(?:github|gh\b|git\b)|permission denied \(publickey\)|authentication failed|could not read from remote repository: terminal prompts disabled/i,
+    // The tool's own sign-in wording, never an ordinary idea of "not signed in" (people sign in with
+    // GitHub, DEC-7): gh's own prompts, git's https/SSH auth failures.
+    test: /gh auth login|you are not logged into any GitHub hosts|fatal: authentication failed for 'https?:\/\/|permission denied \(publickey\)/i,
   },
   {
     kind: "setup-failed",
@@ -1343,7 +1344,7 @@ export function envStopKind(question: string | null | undefined): EnvStopKind | 
 const ENV_STOP_FIX: Record<EnvStopKind, string> = {
   "read-only-git": "computer can't write to git",
   "no-network": "computer can't reach GitHub",
-  "no-auth": "computer isn't signed in to GitHub",
+  "no-auth": "computer isn't signed in to GitHub (run `gh auth login`)",
   "missing-tool": "computer is missing a tool the agent needs",
   "setup-failed": "repo's setup script failed",
   "no-browser": "computer can't start a browser the agent needs",

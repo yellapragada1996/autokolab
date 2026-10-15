@@ -554,10 +554,15 @@ describe("holding a build on a failed preflight (AK-153)", () => {
           return t;
         },
         ticket: async () => t,
+        newComments: async () => [],
+        ticketsLight: async () => [],
+        claimNext: async () => null,
+        boardFresh: () => true,
       };
       const ak = { me: { id: "worker", name: "a-codex", paused: false }, ownerName: () => "ana" } as unknown as ConstructorParameters<typeof Runner>[0];
       const r = new Runner(ak, cfgFor());
       r["projects"] = [project as never];
+      r["projectsLoadedAt"] = Date.now();
       await fn(r, t, { comments, updates });
     } finally {
       if (oldState === undefined) delete process.env.XDG_STATE_HOME;
@@ -576,7 +581,8 @@ describe("holding a build on a failed preflight (AK-153)", () => {
       expect(held.t1).toMatchObject({ project: "p", key: "AK-1", kind: "env_git" });
       expect(held.t1!.until).toBeGreaterThan(Date.now());
 
-      // The same failure of the same kind doesn't write a second Needs you.
+      // Even when the lead's own runner has rewritten the Needs you with envStopQuestion, it's ours.
+      (t as { needs_human: string | null }).needs_human = envStopQuestion("a-codex", "ana", "read-only-git");
       await r["holdPreflight"](r["projects"][0], t, { ok: false, kind: "env_git", why: "fatal: Read-only file system" });
       expect(seen.comments).toHaveLength(1);
       expect(seen.updates).toHaveLength(1);
@@ -595,14 +601,39 @@ describe("holding a build on a failed preflight (AK-153)", () => {
 
   it("clears the Needs you and the hold once the preflight passes", async () => {
     await withState(async (r, t, seen) => {
-      const question = preflightQuestion("a-codex", "ana", "env_git");
+      const stop = envStopQuestion("a-codex", "ana", "read-only-git");
       const st = r["ticketState"]();
-      st.preflight = { t1: { project: "p", key: "AK-1", until: Date.now() + 1000, kind: "env_git", question } };
+      st.preflight = { t1: { project: "p", key: "AK-1", until: Date.now() + 1000, kind: "env_git", question: stop } };
       r["saveTicketState"](st);
-      (t as { needs_human: string | null }).needs_human = question;
+      // The parenthesised detail is what the lead's rewrite would produce: still cleared.
+      (t as { needs_human: string | null }).needs_human = `${stop} Comment for details.`;
       await r["clearPreflight"](r["projects"][0], t);
       expect(r["ticketState"]().preflight).toEqual({});
       expect(seen.updates.at(-1)).toEqual({ needs_human: null });
+    });
+  });
+
+  it("doesn't claim new Ready tickets while a machine-wide preflight is failing", async () => {
+    await withState(async (r) => {
+      r["boardScannedAt"] = 0;
+      let claimed = false;
+      (r["projects"][0] as unknown as { claimNext: () => Promise<null> }).claimNext = async () => {
+        claimed = true;
+        return null;
+      };
+      const st = r["ticketState"]();
+      st.preflight = { t9: { project: "p", key: "AK-9", until: Date.now() + 60_000, kind: "env_network", question: "q" } };
+      r["saveTicketState"](st);
+      expect(await r["nextTicket"]()).toBeNull();
+      expect(claimed).toBe(false);
+
+      // Once the hold is gone, the board is claimed as usual again.
+      const st2 = r["ticketState"]();
+      st2.preflight = {};
+      r["saveTicketState"](st2);
+      r["boardScannedAt"] = 0;
+      expect(await r["nextTicket"]()).toBeNull(); // no Ready ticket, but the claim was attempted
+      expect(claimed).toBe(true);
     });
   });
 
@@ -711,7 +742,7 @@ describe("tickets", () => {
     expect(envStopKind(".git/FETCH_HEAD: Permission denied")).toBe("read-only-git");
     expect(envStopKind("Couldn't reach GitHub: could not resolve host github.com")).toBe("no-network");
     expect(envStopKind("fatal: could not read from remote repository")).toBe("no-network");
-    expect(envStopKind("gh isn't signed in to GitHub")).toBe("no-auth");
+    expect(envStopKind("You are not logged into any GitHub hosts. Run gh auth login to authenticate.")).toBe("no-auth");
     expect(envStopKind("fatal: Authentication failed for 'https://github.com/a/b/'")).toBe("no-auth");
     expect(envStopKind("Permission denied (publickey).")).toBe("no-auth");
     expect(envStopKind("The repo setup script failed")).toBe("setup-failed");
@@ -731,6 +762,9 @@ describe("tickets", () => {
     expect(envStopKind("The checkout page shows 'Failed to fetch' when offline mode is on. Should I add a retry?")).toBeNull();
     expect(envStopKind("Login fails with connection refused because Postgres isn't running locally; should I use the test container?")).toBeNull();
     expect(envStopKind("Should the share link work when no browser is installed, e.g. from the CLI?")).toBeNull();
+    // People sign in with GitHub (DEC-7), so these are ordinary product questions, not machine stops.
+    expect(envStopKind("After Sign in with GitHub the user is not signed in, should I show a banner?")).toBeNull();
+    expect(envStopKind("Supabase authentication failed in the test; should I retry it?")).toBeNull();
   });
   it("names the machine fix for its owner, and the tool when it can (AK-149)", () => {
     expect(envStopQuestion("jamesblack-codex", "jamesblack", "read-only-git")).toBe("jamesblack-codex's computer can't write to git; jamesblack needs to fix its settings.");

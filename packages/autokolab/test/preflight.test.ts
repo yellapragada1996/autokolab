@@ -3,15 +3,17 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { envStopKind } from "../src/core/projects.js";
+import { envStopKind, envStopQuestion } from "../src/core/projects.js";
 import { trustedGit, worktreeGitDir } from "../src/runner/repos.js";
 import {
   PREFLIGHT_PASS_TTL_MS,
   PREFLIGHT_RETRY_MS,
   PreflightCache,
   checkPreflight,
+  isPreflightQuestion,
   preflightDue,
   preflightQuestion,
+  preflightStopKind,
   type PreflightHold,
   type PreflightIo,
   type PreflightKind,
@@ -84,18 +86,25 @@ describe("the preflight before a build starts (AK-153)", () => {
     expect(checked).toBe(false);
   });
 
-  it("writes one plain sentence per failure class for the machine's owner", () => {
+  it("writes exactly the AK-149 sentence for the machine's owner, one per class", () => {
     const kinds: PreflightKind[] = ["env_git", "env_network", "env_auth", "env_setup"];
     for (const kind of kinds) {
+      const stop = preflightStopKind(kind);
       const q = preflightQuestion("a-codex", "ana", kind);
-      expect(q).toMatch(/^a-codex's .+; ana needs to fix its settings, and I'll retry\.$/);
-      // Recognised again by the AK-149 stop detector, so the lead never triages it.
-      expect(envStopKind(q), kind).not.toBeNull();
+      // The lead's own runner writes this same sentence, so its rewrite changes nothing.
+      expect(q).toBe(envStopQuestion("a-codex", "ana", stop));
+      expect(q).toMatch(/^a-codex's .+; ana needs to fix its settings\.$/);
+      expect(envStopKind(q)).toBe(stop);
+      expect(isPreflightQuestion(q, kind)).toBe(true);
     }
     expect(preflightQuestion("a-codex", "ana", "env_git")).toContain("can't write to git");
     expect(preflightQuestion("a-codex", "ana", "env_network")).toContain("can't reach GitHub");
-    expect(preflightQuestion("a-codex", "ana", "env_auth")).toContain("gh isn't signed in");
+    expect(preflightQuestion("a-codex", "ana", "env_auth")).toContain("gh auth login");
     expect(preflightQuestion("a-codex", "ana", "env_setup")).toContain("setup script failed");
+    // A Needs you of a different stop, or an ordinary question, isn't ours.
+    expect(isPreflightQuestion(envStopQuestion("a-codex", "ana", "no-network"), "env_git")).toBe(false);
+    expect(isPreflightQuestion("Redis or Postgres?", "env_git")).toBe(false);
+    expect(isPreflightQuestion(null, "env_auth")).toBe(false);
   });
 });
 

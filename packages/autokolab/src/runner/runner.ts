@@ -22,7 +22,7 @@ import { SHIP_FAILED_PREFIX, fetchBranch, startBaseMerge, movesToReview, ship, s
 import { claimPorts, type PortBlock } from "./ports.js";
 import { SETUP_SCRIPT, runSetup, setupScript, type SetupResult } from "./setup.js";
 import { checkoutCommit, currentBranch, diffSince, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, trustedGit, worktreeGitDir, type Worktree } from "./repos.js";
-import { PREFLIGHT_GIT_TIMEOUT_MS, PREFLIGHT_RETRY_MS, PreflightCache, checkPreflight, preflightDue, preflightQuestion, type PreflightFailure, type PreflightHold } from "./preflight.js";
+import { PREFLIGHT_GIT_TIMEOUT_MS, PREFLIGHT_RETRY_MS, PreflightCache, checkPreflight, isPreflightQuestion, preflightDue, preflightQuestion, type PreflightFailure, type PreflightHold, type PreflightKind } from "./preflight.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
 // teammate asks it something, starts the agent headless in that thread's own worktree. It also
@@ -485,6 +485,8 @@ type CurrentRun = { what: string; abort: AbortController; ticket?: { id: string;
 const PROJECTS_RELOAD_MS = 5 * 60_000;
 /** How often the lead's runner looks at each approved PR. */
 const MERGE_CHECK_MS = 60_000;
+/** Preflight failures that would stop every new ticket too, so claiming more only sweeps the board (AK-153). */
+const MACHINE_WIDE_PREFLIGHT: PreflightKind[] = ["env_network", "env_auth", "env_git"];
 
 export class Runner {
   private queue: Job[] = [];
@@ -539,6 +541,8 @@ export class Runner {
   private awake: KeepAwake;
   /** Worktrees whose preflight passed recently, so a follow-up run skips the checks (AK-153). */
   private preflightCache = new PreflightCache();
+  /** Whether the "not claiming new tickets while a preflight fails" line has been logged (AK-153). */
+  private preflightSweepLogged = false;
 
   constructor(
     private ak: AutoKolab,
@@ -1595,6 +1599,17 @@ export class Runner {
       const ticket = resume ? tickets.find((t) => t.id === resume) : undefined;
       if (ticket) return this.startJob(project, ticket, []);
     }
+    // A machine-wide preflight failure (no network, no gh sign-in, a read-only clone) would fail
+    // every new ticket the same way, so don't claim them until a retry passes (AK-153).
+    const sweeping = Object.values(st.preflight ?? {}).map((h) => h.kind).filter((k) => MACHINE_WIDE_PREFLIGHT.includes(k));
+    if (sweeping.length) {
+      if (!this.preflightSweepLogged) {
+        this.preflightSweepLogged = true;
+        this.log(`Not claiming new tickets while a preflight is failing (${[...new Set(sweeping)].join(", ")}).`);
+      }
+      return null;
+    }
+    this.preflightSweepLogged = false;
     const waits = new Map<string, string>();
     try {
       for (const project of this.projects) {
@@ -2130,7 +2145,9 @@ export class Runner {
     const holds = st.preflight ?? {};
     const question = preflightQuestion(this.ak.me.name, this.ak.ownerName(this.ak.me), pre.kind);
     const why = redactSecrets(pre.why).slice(0, 300);
-    if (t.needs_human !== question) {
+    // Any Needs you of this same stop kind counts as ours (the lead's own runner writes the same
+    // sentence, AK-149), so a repeated failure doesn't ask the owner twice.
+    if (!isPreflightQuestion(t.needs_human, pre.kind)) {
       await p.comment(t.key, `I couldn't start: ${why}\n\nThe runner won't start my model until this works; it retries every 10 minutes.`).catch(() => undefined);
       await p.update(t.key, { needs_human: question }).catch((e) => this.log(`Couldn't update ${t.key}: ${(e as Error).message}`));
     }
@@ -2150,7 +2167,7 @@ export class Runner {
     const { [t.id]: _, ...rest } = st.preflight!;
     st.preflight = rest;
     this.saveTicketState(st);
-    if (t.needs_human === held.question) await p.update(t.key, { needs_human: null }).catch((e) => this.log(`Couldn't update ${t.key}: ${(e as Error).message}`));
+    if (isPreflightQuestion(t.needs_human, held.kind)) await p.update(t.key, { needs_human: null }).catch((e) => this.log(`Couldn't update ${t.key}: ${(e as Error).message}`));
   }
 
   /**

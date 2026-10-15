@@ -1,3 +1,5 @@
+import { envStopKind, envStopQuestion, type EnvStopKind } from "../core/projects.js";
+
 // Before a build run starts its model, the runner proves it can deliver the work (AK-153): the
 // worktree's Git folder is writable, this machine can reach GitHub, `gh` is signed in when it's the
 // tool that opens pull requests, and the repo's setup script (AK-123) succeeded. An agent that can't
@@ -74,16 +76,30 @@ export function checkPreflight(io: PreflightIo, cwd: string, setupFailed?: strin
   return { ok: true };
 }
 
-const PREFLIGHT_FIX: Record<PreflightKind, string> = {
-  env_git: "computer can't write to git",
-  env_network: "computer can't reach GitHub",
-  env_auth: "gh isn't signed in to GitHub",
-  env_setup: "repo setup script failed",
+const PREFLIGHT_STOP: Record<PreflightKind, EnvStopKind> = {
+  env_git: "read-only-git",
+  env_network: "no-network",
+  env_auth: "no-auth",
+  env_setup: "setup-failed",
 };
 
-/** One plain sentence for "Needs you", for the machine's owner (as AK-149 writes them). */
+/** The AK-149 stop kind a preflight failure is, so its sentence is the one the lead would write too. */
+export function preflightStopKind(kind: PreflightKind): EnvStopKind {
+  return PREFLIGHT_STOP[kind];
+}
+
+/**
+ * One plain sentence for "Needs you", for the machine's owner. It's exactly the sentence the lead's
+ * own runner writes for this stop (AK-149), so its rewrite changes nothing and the ticket clears
+ * cleanly once the preflight passes (AK-153).
+ */
 export function preflightQuestion(agent: string, owner: string, kind: PreflightKind): string {
-  return `${agent}'s ${PREFLIGHT_FIX[kind]}; ${owner} needs to fix its settings, and I'll retry.`;
+  return envStopQuestion(agent, owner, PREFLIGHT_STOP[kind]);
+}
+
+/** Whether a ticket's "Needs you" is this preflight's own stop, whatever exact words it uses. */
+export function isPreflightQuestion(question: string | null | undefined, kind: PreflightKind): boolean {
+  return envStopKind(question) === PREFLIGHT_STOP[kind];
 }
 
 /** A build held back by a failing preflight: retried at `until` without starting the model (AK-153). */
