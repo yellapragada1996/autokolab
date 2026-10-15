@@ -1311,6 +1311,14 @@ export class Runner {
           return null;
         });
         if (!tj) break;
+        // Limits and room messages may change while the claim is in flight. Keep the claim for
+        // later rather than launching an extra slot after the daily step-down.
+        if (this.slots.size >= this.parallelLimit() || this.queue.length) {
+          const st = this.ticketState();
+          (st.pendingBuilds ??= {})[tj.ticket.id] = { project: tj.project.project.slug, key: tj.ticket.key, comments: tj.comments };
+          this.saveTicketState(st);
+          break;
+        }
         // Reserve before launching: nextTicket must never select a running ticket twice.
         this.startBuild(tj);
       }

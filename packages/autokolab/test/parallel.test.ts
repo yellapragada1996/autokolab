@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseRunnerConfig } from "../src/runner/config.js";
 import { writeConfigFile } from "../src/core/config.js";
 import { Runner } from "../src/runner/runner.js";
-import { withCloneLock } from "../src/runner/repos.js";
+import { clonePath, withCloneLock, withRepoLock } from "../src/runner/repos.js";
 
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
 const config = (n = 1) => parseRunnerConfig(`agent_id = "${AID}"\nengine = "codex"\nkeep_awake = false\nmax_parallel = ${n}`, "worker");
@@ -65,6 +65,16 @@ describe("parallel builds", () => {
     gates.forEach((g) => g.resolve()); await drain();
     expect(r.slots.size).toBe(0);
     expect(r.holdIfIdle()).toBe(true);
+  });
+  it("does not launch an extra build when usage reaches 80% while claiming it", async () => {
+    const { r, job } = setup(3);
+    r.slots.set("t1", { job: job(1), abort: new AbortController() });
+    r.nextTicket = vi.fn(async () => { r.addUsage(8640); return job(2); });
+    r.executeTicket = vi.fn();
+    await r.work();
+    expect(r.executeTicket).not.toHaveBeenCalled();
+    expect(r.ticketState().pendingBuilds.t2.key).toBe("AK-2");
+    r.slots.clear();
   });
   it("keeps Captain and room work serial, and lets a queued reply drain builds first", async () => {
     const { r, job } = setup(3);
@@ -283,6 +293,17 @@ describe("clone lock", () => {
     await expect(waiting).rejects.toThrow(/stopped while waiting/);
     expect(git).not.toHaveBeenCalled();
     gate.resolve(); await holder;
+  });
+  it("locks the managed clone when a configured checkout has disappeared", async () => {
+    const repo = "owner/missing";
+    writeConfigFile({ repos: { [repo]: join(root, "deleted-checkout") } });
+    const gate = deferred();
+    const holder = withCloneLock(clonePath(repo), () => gate.promise);
+    const enter = vi.fn();
+    const waiter = withRepoLock(repo, enter);
+    await drain(); expect(enter).not.toHaveBeenCalled();
+    gate.resolve(); await holder; await waiter;
+    expect(enter).toHaveBeenCalledTimes(1);
   });
   it("reclaims a lock left by a dead helper", async () => {
     const clone = join(root, "repo"); const lock = `${clone}.autokolab-lock`;

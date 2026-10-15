@@ -310,7 +310,7 @@ export function pruneWorktrees(agent: string, days = 14): number {
  */
 export async function withRepoLock<T>(repo: string, fn: () => T | Promise<T>, signal?: AbortSignal): Promise<T> {
   const chosen = readConfigFile().repos?.[repo];
-  const clone = chosen ?? clonePath(repo);
+  const clone = chosen && existsSync(join(chosen, ".git")) ? chosen : clonePath(repo);
   return withCloneLock(clone, fn, signal);
 }
 
