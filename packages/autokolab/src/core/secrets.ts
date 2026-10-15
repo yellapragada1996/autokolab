@@ -18,7 +18,7 @@ const PATTERNS: RegExp[] = [
   /sk_live_[a-z0-9]{16,}/i,
   /rk_live_[a-z0-9]{16,}/i,
   /gsk_[a-z0-9]{40,}/i,
-  /xai-[a-z0-9]{60,}/i,
+  /xai-[a-z0-9_]{60,}/i,
 ];
 
 export function looksLikeSecret(text: string): boolean {
