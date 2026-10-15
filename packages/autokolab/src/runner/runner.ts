@@ -1480,7 +1480,7 @@ export class Runner {
     if (project) {
       for (const key of mentionedTickets(shown, project.project.ticket_prefix)) {
         try {
-          tickets.push(await project.ticketText(key));
+          tickets.push(await project.ticketMention(key));
         } catch (e) {
           this.log(`Couldn't read ${key} for a reply: ${(e as Error).message}`);
         }
@@ -1550,7 +1550,12 @@ export class Runner {
   private async loadProjects(strict = false): Promise<void> {
     this.projectsLoadedAt = Date.now();
     const views = strict ? await ProjectView.all(this.ak.sb, this.ak.me.id) : await ProjectView.all(this.ak.sb, this.ak.me.id).catch(() => [] as ProjectView[]);
-    const known = new Set(this.projects.map((p) => p.project.id));
+    const previous = new Map(this.projects.map((p) => [p.project.id, p]));
+    for (const view of views) {
+      const old = previous.get(view.project.id);
+      if (old) view.inheritBriefCache(old);
+    }
+    const known = new Set(previous.keys());
     const changed = views.length !== this.projects.length || views.some((v) => !known.has(v.project.id));
     this.projects = views;
     // Every read a project makes reports its size, for the once-every-10-minutes log (AK-146).
@@ -1565,6 +1570,9 @@ export class Runner {
         for (const p of this.projects) p.invalidateLight();
         void this.checkReviews();
         void this.work();
+      }, (part) => {
+        this.efficiency.add("realtime_events");
+        for (const p of this.projects) if (p.project.id === v.project.id) p.invalidateBriefCache(part);
       }),
     );
     // First run on this machine: comments from before don't start work.
@@ -2179,13 +2187,14 @@ export class Runner {
     const sentBackTo = conflictSendBack(job.comments, p.project.lead_agent_id);
     const merging = this.mergeBaseForSendBack(t, worktree, sentBackTo);
     const commentsText = asked ? [...job.comments.map((c) => `${p.authorLabel(c)}: ${c.body}`), ...(notes.length ? [notesText(notes)] : []), ...(merging ? [`Runner: ${merging}`] : [])].join("\n\n") : null;
+    const briefing = resume && commentsText ? { brief: "", ticket: "" } : await p.buildBrief(t.key);
     const prompt = buildTicketPrompt({
       myName: ak.me.name,
       ownerName: ak.ownerName(ak.me),
       projectName: p.project.name,
       key: t.key,
-      brief: resume && commentsText ? "" : await p.brief(),
-      ticket: resume && commentsText ? "" : await p.ticketText(t.key),
+      brief: briefing.brief,
+      ticket: briefing.ticket,
       cfg,
       worktree,
       followUp: Boolean(resume),
@@ -2532,7 +2541,7 @@ export class Runner {
       risky: riskyFiles(pr),
       diff: redactSecrets(diff),
       ...(earlier ? { earlier } : {}),
-      decisions: (await p.decisions()).filter((d) => !d.superseded_by).map((d) => `${d.key}: ${d.title}`),
+      decisions: await p.reviewDecisions(t),
       repoPath: worktree.path,
       base: p.project.default_branch || worktree.base,
     });

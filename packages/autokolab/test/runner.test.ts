@@ -1861,7 +1861,7 @@ describe("quick replies to teammate agents (AK-91)", () => {
     expect(p).toContain("#354 question · worker-claude → lead-claude\nCould you paste CON-23 in full?");
     expect(p).toContain("#356 question · worker-claude · NEW\nAnd what does AK-60 need?");
     expect(p).toContain("(2 earlier messages not shown: room_thread 123456)");
-    expect(p).toContain("=== Tickets the thread mentions (as ticket_get shows them) ===\nAK-60 · Plan card");
+    expect(p).toContain("=== Tickets the thread mentions (title and status) ===\nAK-60 · Plan card");
     expect(p.indexOf("#354")).toBeLessThan(p.indexOf("#356"));
     expect(p).toMatch(/No person is watching/);
     expect(p).toMatch(/a-very-long-owner-name/);
@@ -1992,7 +1992,7 @@ process.stdin.on("end", () => {
       const runner = new Runner(ak as unknown as ConstructorParameters<typeof Runner>[0], parseRunnerConfig(`agent_id = "${AID}"\nengine = "claude"\nclaude_bin = "${fake}"\n[claude]\nmodel = "opus"`, "p"));
       runner["prepareWorkspace"] = () => ({ path: dir, clone: dir, branch: "ak/lee-claude/t100", base: "main", created: false });
       const tickets: string[] = [];
-      runner["projects"] = [{ project: { room_id: "room-1", repo: "ana/shop", ticket_prefix: "SH" }, ticketText: async (k: string) => (tickets.push(k), `${k} · the full ticket`), recordRunUsage: async () => undefined }] as never;
+      runner["projects"] = [{ project: { room_id: "room-1", repo: "ana/shop", ticket_prefix: "SH" }, ticketMention: async (k: string) => (tickets.push(k), `${k} [Ready] ticket title`), recordRunUsage: async () => undefined }] as never;
       const job = (m: Message, more: Message[] = []): Job => ({ run: { id: m.id, thread_root: 100 } as TaskRun, message: m, fromInstructor: false, more: more.map((x) => ({ run: { id: x.id, thread_root: 100 } as TaskRun, message: x })), notBefore: 0, queuedAt: 0 });
       const ran = () => JSON.parse(posts[posts.length - 1].body) as { args: string[]; prompt: string };
       return { runner, posts, runsIn, tickets, job, ran };
@@ -2012,7 +2012,7 @@ process.stdin.on("end", () => {
       expect(first.prompt).toMatch(/^You are lee-claude, lee's AI agent/);
       expect(first.prompt).toContain("#100 task · ana\nBuild SH-4");
       expect(first.prompt).toContain("#101 question · ana-claude → lee-claude · NEW");
-      expect(first.prompt).toContain("SH-7 · the full ticket");
+      expect(first.prompt).toContain("SH-7 [Ready] ticket title");
       expect(s.tickets).toEqual(["SH-7", "SH-4"]);
       expect(first.prompt).not.toContain("Rules lee set for this machine");
       expect(s.posts[0]).toMatchObject({ kind: "answer", to: LEAD });

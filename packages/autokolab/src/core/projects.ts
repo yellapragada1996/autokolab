@@ -190,12 +190,12 @@ export interface Ticket {
 export type TicketLight = Pick<
   Ticket,
   | "id" | "project_id" | "number" | "key" | "title" | "type" | "priority" | "status"
-  | "assignee_id" | "sort_order" | "areas" | "needs_human" | "approved_sha" | "pr_url" | "branch" | "updated_at"
+  | "assignee_id" | "parent_id" | "sort_order" | "areas" | "needs_human" | "approved_sha" | "pr_url" | "branch" | "updated_at"
 >;
 
 /** The columns ticketsLight reads; keep in step with TicketLight (AK-146). */
 export const LIGHT_COLUMNS =
-  "id, project_id, number, key, title, type, priority, status, assignee_id, sort_order, areas, needs_human, approved_sha, pr_url, branch, updated_at";
+  "id, project_id, number, key, title, type, priority, status, assignee_id, parent_id, sort_order, areas, needs_human, approved_sha, pr_url, branch, updated_at";
 /** How long the runner trusts a cached light list without a realtime change (AK-146). */
 export const LIGHT_TTL_MS = 5 * 60_000;
 
@@ -292,7 +292,7 @@ interface Decision {
 const DECISION_REF = /\b(?:DEC|CON)-\d+\b/gi;
 export const TICKET_DECISIONS_LIMIT = 12_000;
 
-function decisionText(d: Decision, byId: Map<string, Decision>, tickets: Map<string, Ticket>): string {
+function decisionText(d: Decision, byId: Map<string, Decision>, tickets: Map<string, Pick<Ticket, "key">>): string {
   const replacement = d.superseded_by ? byId.get(d.superseded_by) : undefined;
   const first = replacement ? `Replaced by ${replacement.key}.\n` : d.superseded_by ? "Replaced by another decision.\n" : "";
   const source = d.ticket_id ? tickets.get(d.ticket_id)?.key : undefined;
@@ -441,6 +441,8 @@ export class ProjectView {
   private lightStale = false;
   /** The database is older than schema 26 and has no `areas`: read the full list instead (AK-146). */
   private lightFull = false;
+  private guideCache: { at: number; value: Guide } | null = null;
+  private decisionsCache: { at: number; value: Decision[] } | null = null;
   /** The runner's rough byte counter, for its once-every-10-minutes log (AK-146). */
   onDownload?: (bytes: number) => void;
 
@@ -623,6 +625,31 @@ export class ProjectView {
   /** Realtime saw a change to tickets, comments or links: forget the cached board (AK-146). */
   invalidateLight(): void {
     this.lightStale = true;
+  }
+
+  /** Keep briefing data across the runner's periodic ProjectView refresh. */
+  inheritBriefCache(previous: ProjectView): void {
+    this.guideCache = previous.guideCache;
+    this.decisionsCache = previous.decisionsCache;
+  }
+
+  invalidateBriefCache(part: "guide" | "decisions"): void {
+    if (part === "guide") this.guideCache = null;
+    else this.decisionsCache = null;
+  }
+
+  private async briefingGuide(): Promise<Guide> {
+    if (this.guideCache && Date.now() - this.guideCache.at < 60 * 60_000) return this.guideCache.value;
+    const value = await this.guide();
+    this.guideCache = { at: Date.now(), value };
+    return value;
+  }
+
+  private async briefingDecisions(): Promise<Decision[]> {
+    if (this.decisionsCache && Date.now() - this.decisionsCache.at < 60 * 60_000) return this.decisionsCache.value;
+    const value = await this.decisions();
+    this.decisionsCache = { at: Date.now(), value };
+    return value;
   }
 
   /** Add a rough response size to the runner's byte counter (AK-146). Never fails a read. */
@@ -845,6 +872,7 @@ export class ProjectView {
     const current = (await this.guide())[part];
     const value = mode === "append" && current.trim() ? `${current.trimEnd()}\n\n${text}` : text;
     check(await this.sb.from("project_guides").update({ [part]: value }).eq("project_id", this.project.id));
+    this.invalidateBriefCache("guide");
   }
 
   async decisions(): Promise<Decision[]> {
@@ -854,7 +882,7 @@ export class ProjectView {
   /** Full decisions by key, including older decisions replaced by another one. */
   async decisionGet(keys: string[]): Promise<string> {
     const decisions = await this.decisions();
-    const tickets = await this.tickets();
+    const tickets = await this.ticketsLight();
     const byKey = new Map(decisions.map((d) => [d.key.toUpperCase(), d]));
     const byId = new Map(decisions.map((d) => [d.id, d]));
     const ticketById = new Map(tickets.map((t) => [t.id, t]));
@@ -868,7 +896,9 @@ export class ProjectView {
   async addDecision(title: string, body: string, kind: "decision" | "contract" = "decision", ticket?: string): Promise<Decision> {
     this.noSecrets(title, body);
     const t = ticket ? await this.ticket(ticket) : null;
-    return check(await this.sb.rpc("create_decision", { p_project: this.project.id, p_title: title, p_body: body, p_kind: kind, p_ticket: t?.id ?? null }));
+    const result = check<Decision>(await this.sb.rpc("create_decision", { p_project: this.project.id, p_title: title, p_body: body, p_kind: kind, p_ticket: t?.id ?? null }));
+    this.invalidateBriefCache("decisions");
+    return result;
   }
 
   /**
@@ -1095,12 +1125,14 @@ export class ProjectView {
     return `${this.nameOf(c.author_id)} (${authorKind(c, this.leadId)})`;
   }
 
-  onChange(cb: () => void): RealtimeChannel {
+  onChange(cb: () => void, onBriefChange?: (part: "guide" | "decisions") => void): RealtimeChannel {
     const ch = this.sb.channel(`project-${this.project.id}-${Math.random().toString(36).slice(2)}`);
     ch.on("postgres_changes" as never, { event: "*", schema: "public", table: "tickets", filter: `project_id=eq.${this.project.id}` }, cb);
     ch.on("postgres_changes" as never, { event: "INSERT", schema: "public", table: "ticket_comments" }, cb);
     // Links change which tickets can start, so the cached board is stale too (AK-146).
     ch.on("postgres_changes" as never, { event: "*", schema: "public", table: "ticket_links" }, cb);
+    ch.on("postgres_changes" as never, { event: "*", schema: "public", table: "project_guides", filter: `project_id=eq.${this.project.id}` }, () => { this.invalidateBriefCache("guide"); onBriefChange?.("guide"); });
+    ch.on("postgres_changes" as never, { event: "*", schema: "public", table: "decisions", filter: `project_id=eq.${this.project.id}` }, () => { this.invalidateBriefCache("decisions"); onBriefChange?.("decisions"); });
     return ch.subscribe();
   }
 
@@ -1108,14 +1140,14 @@ export class ProjectView {
 
   /** Everything an agent should know before working here: guide, rules, decisions, the board. */
   async brief(): Promise<string> {
-    const [g, decisions, tickets, links] = await Promise.all([this.guide(), this.decisions(), this.tickets(), this.links()]);
+    const [g, decisions, tickets, links] = await Promise.all([this.briefingGuide(), this.briefingDecisions(), this.ticketsLight(), this.links()]);
     const p = this.project;
     const live = decisions.filter((d) => !d.superseded_by);
     const open = tickets.filter((t) => !["done", "canceled"].includes(t.status));
     const counts = (["backlog", "ready", "in_progress", "review", "done"] as Status[]).map((s) => `${STATUS_LABEL[s]} ${tickets.filter((t) => t.status === s).length}`).join(" · ");
     const mine = open.filter((t) => t.assignee_id === this.meId);
-    const blockers = (t: Ticket) => links.filter((l) => l.ticket_id === t.id).map((l) => tickets.find((x) => x.id === l.blocked_by)).filter((x): x is Ticket => !!x && !["done", "canceled"].includes(x.status));
-    const line = (t: Ticket) => {
+    const blockers = (t: TicketLight) => links.filter((l) => l.ticket_id === t.id).map((l) => tickets.find((x) => x.id === l.blocked_by)).filter((x): x is TicketLight => !!x && !["done", "canceled"].includes(x.status));
+    const line = (t: TicketLight) => {
       const b = blockers(t);
       const same = t.status === "ready" ? areaWaitText(areaWaits(t, tickets)) : null;
       return `- ${t.key} [${STATUS_LABEL[t.status]}${t.priority !== "none" ? `, ${t.priority}` : ""}] ${t.title} · ${t.assignee_id ? this.nameOf(t.assignee_id) : "unassigned"}${t.needs_human ? " · NEEDS A PERSON" : ""}${b.length ? ` · waiting on ${b.map((x) => x.key).join(", ")}` : ""}${same ? ` · ${same}` : ""}`;
@@ -1162,16 +1194,48 @@ export class ProjectView {
     ].join("\n");
   }
 
+  /** A build run gets the rules and nearby work; the full ticket supplies its own decisions. */
+  async buildBrief(ref: string): Promise<{ brief: string; ticket: string }> {
+    const [guide, tickets] = await Promise.all([this.briefingGuide(), this.ticketsLight()]);
+    const ticket = await this.ticketText(ref, tickets, true);
+    const open = tickets.filter((t) => t.key !== this.key(ref) && !["done", "canceled"].includes(t.status));
+    const other = open.map((t) => `${t.key} [${STATUS_LABEL[t.status]}] ${t.title}`).join("; ");
+    const lead = this.leadId ? this.nameOf(this.leadId) : null;
+    return {
+      brief: [
+        `# ${this.project.name} · ${this.project.repo ?? "no repo"}`,
+        ...(this.iAmLead ? ["You are Captain. Work this assigned ticket; project_brief has the full coordination rules if needed."] : lead ? [`Captain: ${lead}. Ask Captain in the room when the ticket is unclear.`] : []),
+        "## Rules", guide.rules.trim() || defaultRules(this.project.default_branch),
+        "## Other open tickets", other || "(none)",
+        "Read project_brief or decision_get when you need more project context.",
+      ].join("\n\n"),
+      ticket,
+    };
+  }
+
+  /** A reply only needs a mentioned ticket's identity; ticket_get remains available. */
+  async ticketMention(ref: string): Promise<string> {
+    const t = (await this.ticketsLight()).find((row) => row.key === this.key(ref));
+    return t ? `${t.key} [${STATUS_LABEL[t.status]}] ${t.title}` : `No ticket ${this.key(ref)} in ${this.project.name}.`;
+  }
+
+  /** A review gets only the decisions and contracts named in its ticket. */
+  async reviewDecisions(ticket: Pick<Ticket, "title" | "description" | "done_means">): Promise<string[]> {
+    const keys = new Set([...`${ticket.title}\n${ticket.description}\n${ticket.done_means.join("\n")}`.matchAll(DECISION_REF)].map((m) => m[0].toUpperCase()));
+    if (!keys.size) return [];
+    return (await this.briefingDecisions()).filter((d) => keys.has(d.key.toUpperCase())).map((d) => `${d.key}: ${d.title}\n${d.body}`);
+  }
+
   /** One ticket in full: fields, description, done means, steps, blockers and the conversation. */
-  async ticketText(ref: string): Promise<string> {
+  async ticketText(ref: string, light?: TicketLight[], cachedDecisions = false): Promise<string> {
     const t = await this.ticket(ref);
-    const [steps, comments, all, links, decisions] = await Promise.all([this.steps(t.id), this.comments(t.id), this.tickets(), this.links(), this.decisions()]);
+    const [steps, comments, all, links, decisions] = await Promise.all([this.steps(t.id), this.comments(t.id), light ?? this.ticketsLight(), this.links(), cachedDecisions ? this.briefingDecisions() : this.decisions()]);
     const byId = new Map(all.map((x) => [x.id, x]));
     const parent = t.parent_id ? byId.get(t.parent_id) : undefined;
-    const blockedBy = links.filter((l) => l.ticket_id === t.id).map((l) => byId.get(l.blocked_by)).filter((x): x is Ticket => !!x);
-    const unblocks = links.filter((l) => l.blocked_by === t.id).map((l) => byId.get(l.ticket_id)).filter((x): x is Ticket => !!x);
+    const blockedBy = links.filter((l) => l.ticket_id === t.id).map((l) => byId.get(l.blocked_by)).filter((x): x is TicketLight => !!x);
+    const unblocks = links.filter((l) => l.blocked_by === t.id).map((l) => byId.get(l.ticket_id)).filter((x): x is TicketLight => !!x);
     const children = all.filter((x) => x.parent_id === t.id);
-    const ref2 = (x: Ticket) => `${x.key} (${STATUS_LABEL[x.status]}) ${x.title}`;
+    const ref2 = (x: TicketLight) => `${x.key} (${STATUS_LABEL[x.status]}) ${x.title}`;
     const mentions = [t.title, t.description, ...t.done_means, ...comments.map((c) => c.body)].join("\n");
     const keys = [...new Set([...mentions.matchAll(DECISION_REF)].map((m) => m[0].toUpperCase()))];
     const byKey = new Map(decisions.map((d) => [d.key.toUpperCase(), d]));
