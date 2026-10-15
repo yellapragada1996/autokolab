@@ -57,6 +57,7 @@ describe("secret detection", () => {
     "sk_live_abcdefghijklmnop",
     `gsk_${"a1B2".repeat(13)}`,
     `xai-${"a1B2".repeat(20)}`,
+    `xai-${"a_1B".repeat(20)}`,
   ];
   it.each(bad)("flags %s", (s) => expect(looksLikeSecret(`use ${s} please`)).toBe(true));
   it("leaves normal text alone", () => {

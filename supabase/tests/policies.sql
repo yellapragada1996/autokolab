@@ -1092,7 +1092,7 @@ select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from
   'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U',
   'ak1.3f1c2a9e-1b2c-4d5e-8f90-123456789abc.xxxxxxxxxxxxxxxxxxxxxxxx',
   'sb_secret_abcdefghijklmnopqrstuvwxyz', 'akinv_abcdefghijklmnopqrstuvwxyz',
-  'gsk_' || repeat('a1B2', 13), 'xai-' || repeat('a1B2', 20)]) s;
+  'gsk_' || repeat('a1B2', 13), 'xai-' || repeat('a1B2', 20), 'xai-' || repeat('a_1B', 20)]) s;
 select pg_temp.expect(not public.looks_like_secret(s), 'not a secret: ' || s) from unnest(array[
   'Fix the zones API', 'See PR #12, branch zones-api', 'sk-learn is a library', 'commit 3f1c2a9e1b2c',
   'gsk_ prefix means Groq', 'the xai-sdk package']) s;
