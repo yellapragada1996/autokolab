@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { LEAD_BUILT_QUESTION, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_OK_PREFIX, MERGE_POLICY_LABEL, NOTHING_UNSURE, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, changesScreens, isMergeQuestion, isReviewQuestion, reviewLook, type Comment, type MergePolicy, type PrFacts, type Review, type ReviewerCandidate, type Ticket } from "../core/projects.js";
 
 // The lead's approval and its runner's merge (AK-30, DEC-19). The decision is plain code, not a
@@ -404,16 +404,73 @@ export function plainGhError(stderr: string, where: string): string {
 // ------------------------------------------------------------------ gh
 
 const GH_ENV = { ...process.env, GH_PROMPT_DISABLED: "1", GIT_TERMINAL_PROMPT: "0" };
+const GH_TIMEOUT_MS = 60_000;
 
-export function gh(args: string[], maxBuffer = 1024 * 1024): { ok: boolean; out: string; err: string } {
-  const r = spawnSync("gh", args, { encoding: "utf8", env: GH_ENV, timeout: 60_000, maxBuffer, stdio: ["ignore", "pipe", "pipe"] });
-  if (r.error) return { ok: false, out: "", err: `gh: ${r.error.message}` };
-  return { ok: r.status === 0, out: r.stdout ?? "", err: r.stderr ?? "" };
+/** What a gh call gave back. `timedOut`: it was stopped or ended without an exit status, so it may have done its work anyway. */
+export interface GhResult {
+  ok: boolean;
+  out: string;
+  err: string;
+  timedOut?: boolean;
+}
+
+export function gh(args: string[], maxBuffer = 1024 * 1024): GhResult {
+  const r = spawnSync("gh", args, { encoding: "utf8", env: GH_ENV, timeout: GH_TIMEOUT_MS, maxBuffer, stdio: ["ignore", "pipe", "pipe"] });
+  const timedOut = (r.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT" || (!r.error && r.status === null);
+  if (r.error) return { ok: false, out: "", err: `gh: ${r.error.message}`, timedOut };
+  return { ok: r.status === 0, out: r.stdout ?? "", err: r.stderr ?? "", timedOut };
+}
+
+/**
+ * Runs a command without blocking the runner (AK-119): a slow gh, or a machine that slept mid-call,
+ * no longer holds up reading the room. Stopped after `timeout` ms.
+ */
+export function runAsync(bin: string, args: string[], opts: { timeout?: number; maxBuffer?: number; env?: NodeJS.ProcessEnv } = {}): Promise<GhResult> {
+  const { timeout = GH_TIMEOUT_MS, maxBuffer = 1024 * 1024, env = process.env } = opts;
+  return new Promise((resolve) => {
+    let out = "", err = "", killed = false, done = false;
+    const finish = (r: GhResult) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve(r);
+    };
+    const child = spawn(bin, args, { env, stdio: ["ignore", "pipe", "pipe"] });
+    const stop = () => {
+      killed = true;
+      child.kill("SIGTERM");
+    };
+    const timer = setTimeout(stop, timeout);
+    child.stdout.setEncoding("utf8").on("data", (s: string) => {
+      out += s;
+      if (out.length > maxBuffer) stop();
+    });
+    child.stderr.setEncoding("utf8").on("data", (s: string) => {
+      err += s;
+    });
+    child.on("error", (e) => finish({ ok: false, out: "", err: `${bin}: ${e.message}`, timedOut: false }));
+    child.on("close", (code) => {
+      if (killed && out.length > maxBuffer) return finish({ ok: false, out: "", err: `${bin}: output too long`, timedOut: false });
+      if (killed || code === null) return finish({ ok: false, out, err: err || `${bin}: timed out after ${Math.round(timeout / 1000)}s`, timedOut: true });
+      finish({ ok: code === 0, out, err, timedOut: false });
+    });
+  });
+}
+
+export function ghAsync(args: string[], maxBuffer = 1024 * 1024): Promise<GhResult> {
+  return runAsync("gh", args, { maxBuffer, env: GH_ENV });
 }
 
 /** `gh pr view <url> --json <fields>`. Throws gh's error as is (pass it through plainGhError). */
 export function ghPrView<T = PrInfo>(url: string, fields = MERGE_FIELDS): T {
   const r = gh(["pr", "view", url, "--json", fields]);
+  if (!r.ok) throw new Error(r.err || "gh pr view failed");
+  return JSON.parse(r.out) as T;
+}
+
+/** ghPrView without blocking the runner. */
+export async function ghPrViewAsync<T = PrInfo>(url: string, fields = MERGE_FIELDS): Promise<T> {
+  const r = await ghAsync(["pr", "view", url, "--json", fields]);
   if (!r.ok) throw new Error(r.err || "gh pr view failed");
   return JSON.parse(r.out) as T;
 }
@@ -425,8 +482,27 @@ export function ghPrDiff(url: string): string {
   return r.out;
 }
 
-/** A merge commit, only if the PR's head is still the approved commit. */
-export function ghPrMerge(url: string, sha: string): { ok: true } | { ok: false; error: string } {
-  const r = gh(["pr", "merge", url, "--merge", "--match-head-commit", sha]);
-  return r.ok ? { ok: true } : { ok: false, error: r.err || r.out || "gh pr merge failed" };
+/** A merge commit, only if the PR's head is still the approved commit. Doesn't block the runner. */
+export async function ghPrMerge(url: string, sha: string): Promise<{ ok: true } | { ok: false; error: string; timedOut: boolean }> {
+  const r = await ghAsync(["pr", "merge", url, "--merge", "--match-head-commit", sha]);
+  return r.ok ? { ok: true } : { ok: false, error: r.err || r.out || "gh pr merge failed", timedOut: !!r.timedOut };
+}
+
+/** The PR is merged, and at the approved commit. */
+export function mergedAt(pr: Pick<PrInfo, "state" | "headRefOid"> | null | undefined, sha: string): boolean {
+  return pr?.state === "MERGED" && pr.headRefOid.toLowerCase() === sha.toLowerCase();
+}
+
+export type MergeFailure = { result: "merged" } | { result: "retry" } | { result: "failed" };
+
+/**
+ * After `gh pr merge` failed or timed out (AK-119): what the PR's state says happened. `after` is
+ * the PR read again (null if that failed too); `retried` says this commit's merge already timed out
+ * once. Merged at the approved commit counts as merged, whatever gh said. A timeout is tried once
+ * more on the next look before a person is asked; anything else is a real failure.
+ */
+export function afterMergeFailure(failure: { timedOut: boolean }, after: Pick<PrInfo, "state" | "headRefOid"> | null, sha: string, retried: boolean): MergeFailure {
+  if (mergedAt(after, sha)) return { result: "merged" };
+  if (failure.timedOut && !retried) return { result: "retry" };
+  return { result: "failed" };
 }

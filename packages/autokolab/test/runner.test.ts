@@ -13,7 +13,7 @@ import { needsRunner } from "../src/setup/connect.js";
 import { BATCH_MAX_MS, BATCH_WAIT_MS, REPLY_RESUME_MS, Runner, STALE_RUN_SUMMARY, addToQueue, agentTurnsSinceHuman, countWake, isLegacyAnswer, isPauseNotice, isReplyJob, isRunnerNotice, mentionedTickets, pauseNotice, recentReplySession, rememberReplySession, replyAs, replyThread, runCostLine, runOutcome, shouldWake, staleTeammateMessage, startNotice, workSession, type Job, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
 import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_ASK_ONCE, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, LOOK_BUILD, LOOK_NEVER_ASK, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ROOM_QUIET, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
-import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, reviewNeedsHuman, settledByMerge, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
+import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, afterMergeFailure, mergedAt, runAsync, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, reviewNeedsHuman, settledByMerge, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
@@ -978,6 +978,48 @@ describe("pre-push guard", () => {
 
     // A person: AUTOKOLAB_RUNNER cleared explicitly, even when an agent runs the tests.
     expect(push(ws, { AUTOKOLAB_RUNNER: "" }, "--force", "origin", "feature").status).toBe(0);
+  });
+});
+
+describe("a merge call that fails or times out (AK-119)", () => {
+  const SHA = "c".repeat(40);
+  const node = process.execPath;
+
+  it("counts a timed-out call that merged anyway as merged, so the ticket goes to Done without a question", () => {
+    expect(afterMergeFailure({ timedOut: true }, { state: "MERGED", headRefOid: SHA.toUpperCase() }, SHA, false)).toEqual({ result: "merged" });
+    expect(afterMergeFailure({ timedOut: true }, { state: "MERGED", headRefOid: SHA }, SHA, true)).toEqual({ result: "merged" });
+    // A failed call too, whatever gh said.
+    expect(afterMergeFailure({ timedOut: false }, { state: "MERGED", headRefOid: SHA }, SHA, false)).toEqual({ result: "merged" });
+    expect(mergedAt({ state: "MERGED", headRefOid: SHA }, SHA)).toBe(true);
+  });
+
+  it("tries a timeout that didn't merge once more before asking a person", () => {
+    expect(afterMergeFailure({ timedOut: true }, { state: "OPEN", headRefOid: SHA }, SHA, false)).toEqual({ result: "retry" });
+    // Couldn't even read the PR: still a retry, not a question.
+    expect(afterMergeFailure({ timedOut: true }, null, SHA, false)).toEqual({ result: "retry" });
+    // The second timeout for the same commit is reported.
+    expect(afterMergeFailure({ timedOut: true }, { state: "OPEN", headRefOid: SHA }, SHA, true)).toEqual({ result: "failed" });
+  });
+
+  it("still reports a real failure, like a conflict", () => {
+    expect(afterMergeFailure({ timedOut: false }, { state: "OPEN", headRefOid: SHA }, SHA, false)).toEqual({ result: "failed" });
+    expect(afterMergeFailure({ timedOut: false }, null, SHA, false)).toEqual({ result: "failed" });
+    // Merged at another commit isn't the approved work.
+    expect(afterMergeFailure({ timedOut: false }, { state: "MERGED", headRefOid: "d".repeat(40) }, SHA, false)).toEqual({ result: "failed" });
+    expect(mergedAt({ state: "CLOSED", headRefOid: SHA }, SHA)).toBe(false);
+    expect(mergedAt(null, SHA)).toBe(false);
+  });
+
+  it("runs commands without blocking and tells a timeout from a failure", async () => {
+    let ticked = false;
+    const tick = setTimeout(() => (ticked = true), 20);
+    const slow = await runAsync(node, ["-e", "setTimeout(() => {}, 5000)"], { timeout: 200 });
+    clearTimeout(tick);
+    expect(ticked).toBe(true);
+    expect(slow).toMatchObject({ ok: false, timedOut: true });
+    expect(await runAsync(node, ["-e", "process.stderr.write('Pull request is not mergeable'); process.exit(1)"])).toEqual({ ok: false, out: "", err: "Pull request is not mergeable", timedOut: false });
+    expect(await runAsync(node, ["-e", "process.stdout.write('{}')"])).toEqual({ ok: true, out: "{}", err: "", timedOut: false });
+    expect(await runAsync("autokolab-no-such-command", [])).toMatchObject({ ok: false, timedOut: false, err: expect.stringContaining("ENOENT") });
   });
 });
 
