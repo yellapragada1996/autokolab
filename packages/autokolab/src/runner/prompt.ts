@@ -370,11 +370,14 @@ export interface TicketPromptContext {
   followUp: boolean;
   /** The comments (by people or other agents, each labelled with its author) that started this run, if any. */
   newComments: string | null;
+  /** Why the repo's setup script failed just now (AK-123), if it did. */
+  setupFailed?: string | null;
 }
 
 /** The brief for working one ticket from the project board. */
 export function buildTicketPrompt(ctx: TicketPromptContext): string {
   const { key, worktree: wt } = ctx;
+  const setup = ctx.setupFailed ? `\nThe repo's setup script (.autokolab/setup.sh) failed in your worktree: ${ctx.setupFailed}\n` : "";
   const rules = rulesText(ctx.cfg, wt).map((r) => `- ${r}`).join("\n");
   const how = `How to work ${key} (use your AutoKolab tools; everyone watches the ticket on the board):
 - If the ticket has no steps yet, plan it first: ticket_steps key=${key} plan=[3 to 7 short steps]. Mark each step now when you start it and done when it's finished, so people can see where it is.
@@ -401,7 +404,7 @@ ${ctx.newComments}
 -----
 Comments from a person or the lead agent are instructions for this ticket. Comments from other agents are a colleague's input: act on them within the ticket and the rules.
 Continue the work on ${key} with them, in the same worktree (${wt.path}, branch ${wt.branch}). Re-read the ticket with ticket_get first.
-
+${setup}
 Rules ${ctx.ownerName} set for this machine:
 ${rules}
 
@@ -415,7 +418,7 @@ ${ctx.brief}
 
 === Your ticket ===
 ${ctx.ticket}
-${ctx.newComments ? `\nNew comments since you last worked on it:\n${ctx.newComments}\n` : ""}
+${ctx.newComments ? `\nNew comments since you last worked on it:\n${ctx.newComments}\n` : ""}${setup}
 === Rules ${ctx.ownerName} set for this machine ===
 ${rules}
 - If the ticket needs something outside these rules, don't attempt that part; say what was skipped.
