@@ -24,11 +24,12 @@ export function SheetLink({ ticketKey, part = "summary", children, style }: { ti
 
 export function EvidencePanel({ ws, ticket, id }: { ws: Workspace; ticket: Ticket; id?: string }) {
   const full = useFullTicket(ticket, !!ws.demoDetails);
-  if (full.error) return <p role="alert">{full.error}</p>;
+  if (full.error && full.loading) return <p role="alert">{full.error}</p>;
   if (full.loading) return <p>Loading the evidence…</p>;
   const rows = evidence(ws, full.ticket!);
   return (
     <div id={id} className="ak-enter" style={{ borderRadius: "var(--radius-lg)", background: "var(--surface-sunken)", border: "1px solid var(--border-subtle)", minWidth: 0, overflow: "hidden" }}>
+      {full.error && <p role="alert">{full.error}</p>}
       <ul aria-label={`How I know about ${ticket.key}`} style={{ listStyle: "none", margin: 0, padding: 0 }}>
         {rows.map((r, i) => (
           <li key={r.kind} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "12px 14px", borderTop: i ? "1px solid var(--border-subtle)" : 0, minWidth: 0, flexWrap: "wrap" }}>

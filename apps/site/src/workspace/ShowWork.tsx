@@ -94,7 +94,8 @@ export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Wor
           </div>
           <button className="ak-show-close" type="button" onClick={closeShow} aria-label="Close Show the work">×</button>
         </header>
-        {recordError ? <p role="alert">{recordError}</p> : loading ? <p>Loading the ticket…</p> : !ticket ? <p style={{ padding: "22px 26px", fontSize: 14 }}>No ticket {ticketKey} in this project.</p> : <>
+        {recordError && loading ? <p role="alert">{recordError}</p> : loading ? <p>Loading the ticket…</p> : !ticket ? <p style={{ padding: "22px 26px", fontSize: 14 }}>No ticket {ticketKey} in this project.</p> : <>
+          {recordError && <p role="alert">{recordError}</p>}
           <div className="ak-show-tabs" role="tablist" aria-label="Show the work sections">
             {PARTS.map((tab, i) => <button key={tab.id} ref={(el) => { tabs.current[i] = el; }} type="button" role="tab" id={`ak-show-tab-${tab.id}`} aria-controls="ak-show-panel" aria-selected={part === tab.id} tabIndex={part === tab.id ? 0 : -1} onClick={() => select(tab.id)} onKeyDown={(e) => arrow(e, i)}>{tab.label}</button>)}
           </div>

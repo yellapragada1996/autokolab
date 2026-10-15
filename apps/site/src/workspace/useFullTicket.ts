@@ -2,23 +2,26 @@ import { useEffect, useState } from "react";
 import { ticketRecord, type Ticket } from "../lib/data";
 import { reportError } from "../lib/errors";
 
-/** Detail views read one full ticket, independently of agent presence updates. */
+/** Keep the open record mounted while its own revision refreshes in the background. */
 export function useFullTicket(listed: Ticket | undefined, demo = false) {
-  const [loaded, setLoaded] = useState<{ source: Ticket; ticket: Ticket } | null>(null);
-  const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState<Ticket | null>(null);
+  const [failure, setFailure] = useState<{ id: string; message: string } | null>(null);
+  const id = listed?.id;
+  const updatedAt = listed?.updated_at;
   const complete = demo || listed?.description !== undefined;
   useEffect(() => {
-    setError("");
-    if (!listed || complete) return;
+    setFailure(null);
+    if (!id || complete) return;
     let live = true;
-    void ticketRecord(listed.id)
-      .then((ticket) => { if (live) setLoaded({ source: listed, ticket }); })
-      .catch((e) => { if (live) setError(reportError(e, "load the ticket")); });
+    void ticketRecord(id)
+      .then((ticket) => { if (live) setLoaded(ticket); })
+      .catch((e) => { if (live) setFailure({ id, message: reportError(e, "load the ticket") }); });
     return () => { live = false; };
-  }, [listed, complete]);
+  }, [id, updatedAt, complete]);
+  const cached = loaded?.id === id ? loaded : null;
   return {
-    ticket: complete ? listed : loaded && loaded.source === listed ? loaded.ticket : listed,
-    loading: !!listed && !complete && loaded?.source !== listed,
-    error,
+    ticket: complete ? listed : cached ?? listed,
+    loading: !!listed && !complete && !cached,
+    error: failure && failure.id === id ? failure.message : "",
   };
 }

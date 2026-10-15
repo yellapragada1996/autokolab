@@ -68,7 +68,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
     );
   }
 
-  if (recordError) return <p role="alert">{recordError}</p>;
+  if (recordError && loading) return <p role="alert">{recordError}</p>;
   if (loading) return <p>Loading the ticket…</p>;
 
   const save = async (patch: TicketPatch) => {
@@ -139,7 +139,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
               )}
             </div>
           )}
-          {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
+          {(err || recordError) && <p role="alert" style={{ color: "var(--danger)", fontSize: 14 }}>{err || recordError}</p>}
 
           {t.summary && (
             <Panel title="What changed">
@@ -351,7 +351,7 @@ function EditableTitle({ value, onSave }: { value: string; onSave: (v: string) =
 function EditableText({ value, onSave, placeholder }: { value: string; onSave: (v: string) => void; placeholder: string }) {
   const [editing, setEditing] = useState(false);
   const [v, setV] = useState(value);
-  useEffect(() => setV(value), [value]);
+  useEffect(() => { if (!editing) setV(value); }, [value, editing]);
   if (!editing) {
     return (
       <div style={{ padding: "12px 14px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line-soft)", cursor: "text" }} onClick={() => setEditing(true)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setEditing(true)} aria-label="Edit description">
@@ -377,7 +377,7 @@ function EditableText({ value, onSave, placeholder }: { value: string; onSave: (
 function ListEditor({ items, onSave, placeholder }: { items: string[]; onSave: (v: string[]) => void; placeholder: string }) {
   const [editing, setEditing] = useState(false);
   const [v, setV] = useState(items.join("\n"));
-  useEffect(() => setV(items.join("\n")), [items]);
+  useEffect(() => { if (!editing) setV(items.join("\n")); }, [items, editing]);
   if (!editing) {
     return (
       <div onClick={() => setEditing(true)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setEditing(true)} style={{ cursor: "text", display: "grid", gap: 6 }}>

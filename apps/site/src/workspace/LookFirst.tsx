@@ -102,7 +102,7 @@ export function LookFirst({ ws, cr, me, ticketKey, covered }: { ws: Workspace; c
   }, [key]);
 
   let body: ReactNode;
-  if (full.error || full.loading) {
+  if (full.loading) {
     body = <><CloseRow onClose={close} /><p id={TITLE} role={full.error ? "alert" : undefined}>{full.error || "Loading the evidence…"}</p></>;
   } else if (okd) {
     body = (
@@ -236,6 +236,7 @@ export function LookFirst({ ws, cr, me, ticketKey, covered }: { ws: Workspace; c
       }}
     >
       <section ref={panel} className="ak-look" role="dialog" aria-modal="true" aria-labelledby={TITLE} tabIndex={-1}>
+        {!full.loading && full.error && <p role="alert">{full.error}</p>}
         {body}
       </section>
     </div>
