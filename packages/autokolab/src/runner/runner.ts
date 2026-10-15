@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type RanWith, type RunKind, type RunUsageRow, type Ticket } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunUsageRow, type Ticket } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -14,10 +14,10 @@ import { chooseModel, chooseReplyModel, chooseReviewModel,engineInvocation, engi
 import { installHook } from "./githook.js";
 import { machineReport, overSpend, spendNotice, usageLimit, usageReport } from "./limit.js";
 import { readAgentKey } from "../core/keys.js";
-import { askReviewMessage, checkResult, diffLines, earlierReview, ghPrDiff, lightReview, prLines, reviewFinding, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
+import { askReviewMessage, checkResult, afterMergeFailure, diffLines, earlierReview, ghPrDiff, ghPrMerge, ghPrViewAsync, lightReview, mergeDecision, mergedAt, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prLines, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewFinding, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyMessage } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, fetchBranch, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
-import { checkoutCommit, currentBranch, diffSince,ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
+import { checkoutCommit, currentBranch, diffSince, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
 // teammate asks it something, starts the agent headless in that thread's own worktree. It also
@@ -438,9 +438,10 @@ interface TicketState {
   /**
    * For a lead: what its runner last did about merging each approved ticket (AK-30). `sig` stops it
    * repeating itself; `failedAt` is the ticket's updated_at after a failed merge, so it doesn't
-   * retry until the ticket changes.
+   * retry until the ticket changes; `timedOut` is the commit whose merge call already timed out
+   * once, so the next timeout asks a person (AK-119).
    */
-  merges?: Record<string, { sig: string; failedAt?: string }>;
+  merges?: Record<string, { sig: string; failedAt?: string; timedOut?: string }>;
   /** For a lead: the last commit of each ticket waiting for review that it handled, and how (AK-59). */
   reviews?: Record<string, ReviewRecord>;
   /** Per ticket id: teammates' requests waiting for the ticket's next build run (AK-116). */
@@ -1547,7 +1548,7 @@ export class Runner {
           this.reviewCheckedAt.set(t.id, { at: Date.now(), updated: t.updated_at });
           let pr: PrInfo;
           try {
-            pr = ghPrView<PrInfo>(t.pr_url!);
+            pr = await ghPrViewAsync<PrInfo>(t.pr_url!);
           } catch (e) {
             this.log(`${t.key} review: couldn't check the PR: ${plainGhError((e as Error).message, `on ${this.ak.ownerName(this.ak.me)}'s machine`)}`);
             continue;
@@ -1689,7 +1690,9 @@ export class Runner {
     const policy = await p.mergePolicy();
     let d: MergeDecision;
     try {
-      const pr = ghPrView<PrInfo>(url);
+      const pr = await ghPrViewAsync<PrInfo>(url);
+      // An earlier merge call that timed out went through after all (AK-119).
+      if (mergedAt(pr, sha)) return this.mergeDone(p, t, url, sha, policy);
       d = mergeDecision(policy, pr, t, p.project.default_branch || "main");
       await this.recordPrFacts(p, t, pr);
     } catch (e) {
@@ -1698,9 +1701,9 @@ export class Runner {
     }
     const sig = `${sha}|${d.action}|${d.question ?? d.why}`;
     if (d.action !== "merge" && rec?.sig === sig) return;
-    const remember = (failedAt?: string) => {
+    const remember = (failedAt?: string, timedOut?: string) => {
       const st = this.ticketState();
-      st.merges = { ...(st.merges ?? {}), [t.id]: { sig, ...(failedAt ? { failedAt } : {}) } };
+      st.merges = { ...(st.merges ?? {}), [t.id]: { sig, ...(failedAt ? { failedAt } : {}), ...(timedOut ? { timedOut } : {}) } };
       this.saveTicketState(st);
     };
     this.log(`${t.key} merge: ${d.action} · ${d.why}.`);
@@ -1721,17 +1724,36 @@ export class Runner {
       remember();
       return;
     }
-    const merged = ghPrMerge(url, sha);
+    const merged = await ghPrMerge(url, sha);
     if (!merged.ok) {
       const why = plainGhError(merged.error, where);
+      // gh can fail or time out after GitHub merged it (a Mac asleep mid-call), so look before saying so (AK-119).
+      const after = await ghPrViewAsync<PrInfo>(url, "state,headRefOid").catch(() => null);
+      const next = afterMergeFailure(merged, after, sha, rec?.timedOut?.toLowerCase() === sha.toLowerCase());
+      if (next.result === "merged") {
+        this.log(`${t.key} merge: gh said "${why}", but the PR merged at ${sha.slice(0, 7)}.`);
+        return this.mergeDone(p, t, url, sha, policy);
+      }
+      if (next.result === "retry") {
+        this.log(`${t.key} merge: timed out and not merged yet · trying again on the next look.`);
+        remember(undefined, sha);
+        return;
+      }
       this.log(`${t.key} merge: failed · ${why}`);
-      const after = await p.update(t.key, { needs_human: `${MERGE_FAILED_PREFIX} PR #${prNumber(url)}: ${why}`.slice(0, 1000) });
-      remember(after.updated_at);
+      const updated = await p.update(t.key, { needs_human: `${MERGE_FAILED_PREFIX} PR #${prNumber(url)}: ${why}`.slice(0, 1000) });
+      remember(updated.updated_at);
       return;
     }
+    await this.mergeDone(p, t, url, sha, policy);
+  }
+
+  /** The PR merged at the approved commit: the ticket is Done, and the runner's merge and review questions are settled. */
+  private async mergeDone(p: ProjectView, t: Ticket, url: string, sha: string, policy: MergePolicy): Promise<void> {
     await p.update(t.key, { status: "done", ...(settledByMerge(t.needs_human) ? { needs_human: null } : {}) });
     await p.comment(t.key, mergedComment(sha, policy)).catch((e) => this.log(`Couldn't comment on ${t.key}: ${(e as Error).message}`));
-    remember();
+    const st = this.ticketState();
+    st.merges = { ...(st.merges ?? {}), [t.id]: { sig: `${sha}|merged|` } };
+    this.saveTicketState(st);
     this.log(`${t.key} merge: merged PR #${prNumber(url)} at ${sha.slice(0, 7)}.`);
   }
 
