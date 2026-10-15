@@ -1096,10 +1096,10 @@ describe("the lead's auto-merge (AK-30)", () => {
     expect(moved.why).toMatch(/moved to bbbbbbb after the lead approved aaaaaaa; it needs a new approval/);
     expect(mergeDecision("auto_all", pr({ headRefOid: SHA.toUpperCase() }), approved, "main").action).toBe("merge");
   });
-  it("asks a person about conflicts, and waits while GitHub works out mergeability", () => {
+  it("sends conflicts back to the builder without asking a person (AK-124), and waits while GitHub works out mergeability", () => {
     const c = mergeDecision("auto_all", pr({ mergeable: "CONFLICTING" }), approved, "main");
-    expect(c.action).toBe("wait");
-    expect(c.question).toMatch(new RegExp(`^${MERGE_FAILED_PREFIX}: the PR has conflicts`));
+    expect(c.action).toBe("conflict");
+    expect(c.question).toBeUndefined();
     expect(mergeDecision("auto_all", pr({ mergeable: "UNKNOWN" }), approved, "main")).toMatchObject({ action: "wait", question: undefined });
   });
   it("waits with a plain question when no checks ran", () => {

@@ -14,9 +14,9 @@ import { chooseModel, chooseReplyModel, chooseReviewModel,engineInvocation, engi
 import { installHook } from "./githook.js";
 import { machineReport, overSpend, spendNotice, usageLimit, usageReport } from "./limit.js";
 import { readAgentKey } from "../core/keys.js";
-import { askReviewMessage, checkResult, afterMergeFailure, diffLines, earlierReview, ghPrDiff, ghPrMerge, ghPrViewAsync, lightReview, mergeDecision, mergedAt, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prLines, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewFinding, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
+import { PR_CONFLICTS, askReviewMessage, baseMergeNote, conflictComment, conflictDecision, conflictQuestion, conflictSendBackBase, isConflictQuestion, checkResult, afterMergeFailure, diffLines, earlierReview, ghPrDiff, ghPrMerge, ghPrViewAsync, lightReview, mergeDecision, mergedAt, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prLines, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewFinding, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type ConflictRecord, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyMessage } from "./prompt.js";
-import { SHIP_FAILED_PREFIX, fetchBranch, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
+import { SHIP_FAILED_PREFIX, fetchBranch, startBaseMerge, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
 import { SETUP_SCRIPT, runSetup, setupScript, type SetupResult } from "./setup.js";
 import { checkoutCommit, currentBranch, diffSince, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
 
@@ -445,6 +445,8 @@ interface TicketState {
   merges?: Record<string, { sig: string; failedAt?: string; timedOut?: string }>;
   /** For a lead: the last commit of each ticket waiting for review that it handled, and how (AK-59). */
   reviews?: Record<string, ReviewRecord>;
+  /** For a lead: how often each ticket's PR went back to its builder for conflicts with its base (AK-124). */
+  conflicts?: Record<string, ConflictRecord>;
   /** Per ticket id: teammates' requests waiting for the ticket's next build run (AK-116). */
   notes?: Record<string, TicketNote[]>;
 }
@@ -1596,8 +1598,9 @@ export class Runner {
     if (d.action === "wait") return;
     this.log(`${t.key} review: ${d.action} · ${d.why}.`);
     if (d.action === "review") {
-      // A new commit gets a new review: the old one's "couldn't finish reviewing" no longer waits on anyone.
-      if (reviewNeedsHuman(t.needs_human, "review") === null) {
+      // A new commit gets a new review: the old one's "couldn't finish reviewing" no longer waits on anyone,
+      // and a commit that merges cleanly settles "still conflicts" (AK-124).
+      if (reviewNeedsHuman(t.needs_human, "review") === null || isConflictQuestion(t.needs_human)) {
         await p.update(t.key, { needs_human: null });
         t = { ...t, needs_human: null };
       }
@@ -1608,6 +1611,7 @@ export class Runner {
     this.rememberReview(t.id, { sha: d.sha, action: d.action, reviews: rec?.reviews ?? 0 });
     const url = t.pr_url!;
     if (d.action === "limit") return ask(REVIEW_LIMIT_QUESTION);
+    if (d.action === "conflict") return this.conflictFound(p, t, d.sha, pr.baseRefName || p.project.default_branch || "main");
     if (d.action === "tests_failed") {
       await p.comment(t.key, testsFailedComment(url, d.sha, d.failed ?? []));
       const stale = isMergeQuestion(t.needs_human) || isReviewQuestion(t.needs_human);
@@ -1708,7 +1712,12 @@ export class Runner {
       this.saveTicketState(st);
     };
     this.log(`${t.key} merge: ${d.action} · ${d.why}.`);
+    const base = p.project.default_branch || "main";
 
+    if (d.action === "conflict") {
+      remember();
+      return this.conflictFound(p, t, sha, base);
+    }
     if (d.action !== "merge") {
       const needs = mergeNeedsHuman(t.needs_human, d);
       if (needs !== undefined) await p.update(t.key, { needs_human: needs });
@@ -1741,11 +1750,43 @@ export class Runner {
         return;
       }
       this.log(`${t.key} merge: failed · ${why}`);
+      // main moved between the look and the merge: the builder fixes it, like a conflict seen before.
+      if (why === PR_CONFLICTS) {
+        remember();
+        return this.conflictFound(p, t, sha, base);
+      }
       const updated = await p.update(t.key, { needs_human: `${MERGE_FAILED_PREFIX} PR #${prNumber(url)}: ${why}`.slice(0, 1000) });
       remember(updated.updated_at);
       return;
     }
     await this.mergeDone(p, t, url, sha, policy);
+  }
+
+  /**
+   * The ticket's PR conflicts with `base` at `sha` (AK-124): like failing tests, it goes back to its
+   * builder with a comment and In progress, and the approval is taken back, since the fix is a new
+   * commit that needs its own. After MAX_CONFLICT_SEND_BACKS send-backs of the same PR, a person is asked.
+   */
+  private async conflictFound(p: ProjectView, t: Ticket, sha: string, base: string): Promise<void> {
+    const url = t.pr_url!;
+    const st = this.ticketState();
+    const c = conflictDecision(st.conflicts?.[t.id], url, sha);
+    if (c.action === "wait") return;
+    st.conflicts = { ...(st.conflicts ?? {}), [t.id]: c.next };
+    this.saveTicketState(st);
+    if (c.action === "ask") {
+      this.log(`${t.key}: PR #${prNumber(url)} still conflicts after ${c.next.sentBack} send-backs · asking a person.`);
+      const q = conflictQuestion(url, base);
+      if (t.needs_human !== q) await p.update(t.key, { needs_human: q });
+      return;
+    }
+    this.log(`${t.key}: PR #${prNumber(url)} conflicts with ${base} · sent back to its builder (${c.next.sentBack}).`);
+    if (t.approved_sha) {
+      await p.withdrawApproval(t.id).catch((e) => this.log(`${t.key}: couldn't take back the approval: ${(e as Error).message}`));
+    }
+    await p.comment(t.key, conflictComment(url, base, c.next.sentBack));
+    const stale = isMergeQuestion(t.needs_human) || isReviewQuestion(t.needs_human);
+    await p.update(t.key, { status: "in_progress", ...(stale ? { needs_human: null } : {}) });
   }
 
   /** The PR merged at the approved commit: the ticket is Done, and the runner's merge and review questions are settled. */
@@ -1754,6 +1795,10 @@ export class Runner {
     await p.comment(t.key, mergedComment(sha, policy)).catch((e) => this.log(`Couldn't comment on ${t.key}: ${(e as Error).message}`));
     const st = this.ticketState();
     st.merges = { ...(st.merges ?? {}), [t.id]: { sig: `${sha}|merged|` } };
+    if (st.conflicts?.[t.id]) {
+      const { [t.id]: _, ...rest } = st.conflicts;
+      st.conflicts = rest;
+    }
     this.saveTicketState(st);
     this.log(`${t.key} merge: merged PR #${prNumber(url)} at ${sha.slice(0, 7)}.`);
   }
@@ -1879,7 +1924,8 @@ export class Runner {
 
     await p.loadNames();
     const resume = st.sessions[t.id] ?? null;
-    const commentsText = asked ? [...job.comments.map((c) => `${p.authorLabel(c)}: ${c.body}`), ...(notes.length ? [notesText(notes)] : [])].join("\n\n") : null;
+    const merging = this.mergeBaseForSendBack(t, worktree, job.comments, p.project.lead_agent_id);
+    const commentsText = asked ? [...job.comments.map((c) => `${p.authorLabel(c)}: ${c.body}`), ...(notes.length ? [notesText(notes)] : []), ...(merging ? [`Runner: ${merging}`] : [])].join("\n\n") : null;
     const prompt = buildTicketPrompt({
       myName: ak.me.name,
       ownerName: ak.ownerName(ak.me),
@@ -2020,6 +2066,27 @@ export class Runner {
     await this.setStatus(ak.me.paused ? "paused" : "idle");
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
     this.log(`${t.key} ${outcome}.${result.costUsd !== undefined ? ` (estimated API cost $${result.costUsd.toFixed(2)})` : ""}`);
+  }
+
+  /**
+   * Captain sent this ticket back because its PR conflicts with its base (AK-124): merge the base in
+   * before the run, so an agent that can't write the Git folder can still resolve it (AK-66 delivers
+   * the result). Returns what the agent is told, or null when there's nothing to say.
+   */
+  private mergeBaseForSendBack(t: Ticket, worktree: Worktree, comments: Comment[], leadId: string | null): string | null {
+    const sendBack = [...comments].reverse().find((c) => c.author_id === leadId && conflictSendBackBase(c.body));
+    const base = sendBack && conflictSendBackBase(sendBack.body);
+    if (!base) return null;
+    const gitDir = worktreeGitDir(worktree.clone, worktree.path);
+    if (!gitDir) return null;
+    try {
+      const r = startBaseMerge(trustedIo(gitDir), worktree.path, base);
+      this.log(`${t.key}: merging ${base} in for the conflict send-back: ${"skipped" in r ? `skipped, ${r.skipped}` : "merged" in r ? "merged cleanly" : `${r.conflicts.length} files conflict`}.`);
+      return baseMergeNote(base, r);
+    } catch (e) {
+      this.log(`${t.key}: couldn't merge ${base} in for the agent: ${(e as Error).message.slice(0, 300)}`);
+      return null;
+    }
   }
 
   /**
