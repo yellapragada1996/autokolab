@@ -899,7 +899,7 @@ describe("pre-push guard", () => {
   const push = (cwd: string, env: Record<string, string>, ...args: string[]) =>
     spawnSync("git", ["push", ...args], { cwd, encoding: "utf8", env: { ...human, ...env } });
 
-  it.each(["chosen", "managed"])("installs the runner's hook in the %s clone", (source) => {
+  it.each(["chosen", "managed"])("installs the runner's hook in the %s clone", async (source) => {
     const root = mkdtempSync(join(tmpdir(), "ak-hook-clone-"));
     const oldConfig = process.env.XDG_CONFIG_HOME;
     const oldData = process.env.XDG_DATA_HOME;
@@ -927,7 +927,7 @@ describe("pre-push guard", () => {
 
       const ak = { me: { name: "lee-codex" }, roomById: () => ({ repo }) } as unknown as ConstructorParameters<typeof Runner>[0];
       const runner = new Runner(ak, cfgFor());
-      const worktree = runner["prepareWorkspace"]({ room_id: "room" } as Message, 50);
+      const worktree = await runner["prepareWorkspace"]({ room_id: "room" } as Message, 50);
       expect(worktree.clone).toBe(clone);
       expect(readFileSync(join(clone, ".git", "hooks", "pre-push"), "utf8")).toContain("# autokolab-pre-push");
       if (source === "chosen") expect(existsSync(clonePath(repo))).toBe(false);
@@ -1510,6 +1510,7 @@ describe("Captain reviews by itself (AK-59)", () => {
       expect(queued(s.runner)).toBe(1);
       // executeReview records the commit before the model runs.
       s.runner["rememberReview"](t.id, { sha: SHA, action: "review", reviews: 1 });
+      await s.runner["stateWrites"];
       const again = s.make();
       await check(again, s.project, t, pr());
       expect(queued(again)).toBe(0);

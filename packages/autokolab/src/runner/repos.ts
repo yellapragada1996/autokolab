@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { dataDir, readConfigFile } from "../core/config.js";
 import { which } from "../setup/agents.js";
@@ -301,4 +301,45 @@ export function pruneWorktrees(agent: string, days = 14): number {
     }
   }
   return removed;
+}
+
+/**
+ * Serialize clone changes across slots AND helper processes on this computer. Git's own locks
+ * protect individual commands, but fetch + branch lookup + worktree add must stay together.
+ * A live holder never expires during a slow fetch. A dead process's lock can be reclaimed.
+ */
+export async function withRepoLock<T>(repo: string, fn: () => T | Promise<T>): Promise<T> {
+  const chosen = readConfigFile().repos?.[repo];
+  const clone = chosen ?? clonePath(repo);
+  return withCloneLock(clone, fn);
+}
+
+export async function withCloneLock<T>(clone: string, fn: () => T | Promise<T>): Promise<T> {
+  // Outside .git so creating the clone itself is protected too.
+  const lock = `${real(clone)}.autokolab-lock`;
+  mkdirSync(dirname(lock), { recursive: true });
+  const deadline = Date.now() + 5 * 60_000;
+  for (;;) {
+    try {
+      mkdirSync(lock);
+      writeFileSync(join(lock, "pid"), String(process.pid));
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      try {
+        const pid = Number(readFileSync(join(lock, "pid"), "utf8"));
+        if (Number.isInteger(pid) && pid > 0) {
+          try { process.kill(pid, 0); }
+          catch (err) { if ((err as NodeJS.ErrnoException).code === "ESRCH") rmSync(lock, { recursive: true, force: true }); }
+        }
+      } catch {
+        // Allow the holder to finish creating its pid file. Reclaim a crash in that small window.
+        try { if (Date.now() - statSync(lock).mtimeMs > 30_000) rmSync(lock, { recursive: true, force: true }); } catch { /* released */ }
+      }
+      if (Date.now() > deadline) throw new Error("Another run kept this repo busy for five minutes. Try again shortly.");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+  try { return await fn(); }
+  finally { rmSync(lock, { recursive: true, force: true }); }
 }

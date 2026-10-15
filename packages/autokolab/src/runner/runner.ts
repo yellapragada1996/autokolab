@@ -1,9 +1,11 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
 import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, reportAgentStatus, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type Ticket } from "../core/projects.js";
+import { areasOverlap } from "../core/areas.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -20,14 +22,14 @@ import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReplyPrompt, buildReviewPro
 import { SHIP_FAILED_PREFIX, fetchBranch, startBaseMerge, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
 import { claimPorts, type PortBlock } from "./ports.js";
 import { SETUP_SCRIPT, runSetup, setupScript, type SetupResult } from "./setup.js";
-import { checkoutCommit, currentBranch, diffSince, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
+import { withRepoLock, checkoutCommit, currentBranch, diffSince, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
 // teammate asks it something, starts the agent headless in that thread's own worktree. It also
 // works the project board: tickets assigned to it in Ready, and comments on its open tickets. A
 // project's lead also answers workers' questions on their tickets ("Needs you") and reviews workers'
-// PRs once their tests pass. One task at a time per agent: room messages first, then the lead's
-// triage, then its reviews, then its own tickets.
+// PRs once their tests pass. Room work, triage and reviews stay serial. Workers may fill up to
+// three build slots, with a separate session, worktree and cancellation signal for each ticket.
 
 /** Kinds addressed to everyone that continue work in a thread this agent is already on. */
 const THREAD_KINDS: MessageKind[] = ["task", "chat", "answer", "review", "decision"];
@@ -451,6 +453,10 @@ interface LimitWait {
  */
 interface TicketState {
   sessions: Record<string, string>;
+  /** Builds to continue after pause, a shared limit, or a runner restart. */
+  pendingBuilds?: Record<string, { project: string; key: string; comments: Comment[] }>;
+  /** A subscription wait reduces parallelism until the next local day, even after a restart. */
+  steppedDownDay?: string;
   seen: Record<string, number>;
   triaged?: Record<string, string>;
   /**
@@ -470,6 +476,12 @@ interface TicketState {
 
 type CurrentRun = { what: string; abort: AbortController; ticket?: { id: string; key: string; projectId: string } };
 
+interface BuildSlot {
+  job: TicketJob;
+  abort: AbortController;
+  current: CurrentRun | null;
+}
+
 const PROJECTS_RELOAD_MS = 5 * 60_000;
 /** How often the lead's runner looks at each approved PR. */
 const MERGE_CHECK_MS = 60_000;
@@ -482,20 +494,29 @@ export class Runner {
   private lastSeenId = 0;
   /** When this runner started: teammate messages from before it don't start work. */
   private readonly startedAt = Date.now();
-  /** The run in progress: a room instruction or a ticket. The computer stays awake while there is one. */
+  /** Serial room/review work and the worker's independent build slots. */
   private currentRun: CurrentRun | null = null;
+  private slots = new Map<string, BuildSlot>();
+  private slotContext = new AsyncLocalStorage<BuildSlot>();
   private releaseAwake: (() => void) | null = null;
   private get current(): CurrentRun | null {
-    return this.currentRun;
+    return this.slotContext?.getStore()?.current ?? this.currentRun;
   }
   private set current(run: CurrentRun | null) {
-    if (run && !this.releaseAwake) this.releaseAwake = this.awake.hold();
-    if (!run && this.releaseAwake) {
-      this.releaseAwake();
-      this.releaseAwake = null;
+    const slot = this.slotContext?.getStore();
+    if (slot) {
+      slot.current = run;
+      if (run) {
+        if (slot.abort.signal.aborted) run.abort.abort();
+        else slot.abort.signal.addEventListener("abort", () => run.abort.abort(), { once: true });
+      }
+    } else {
+      if (run && !this.releaseAwake) this.releaseAwake = this.awake.hold();
+      if (!run && this.releaseAwake) { this.releaseAwake(); this.releaseAwake = null; }
+      this.currentRun = run;
     }
-    this.currentRun = run;
   }
+  private runningTime = new Map<symbol, number>();
   private stopping = false;
   /** The updater holds new runs while it pulls and builds (AK-31). */
   private held = false;
@@ -571,6 +592,7 @@ export class Runner {
       }),
     );
     this.timers.push(setInterval(() => this.poll(), POLL_MS));
+    this.timers.push(setInterval(() => this.checkRunningLimits(), 1000));
     // Merging approved PRs is plain code, not a model run, so it has its own timer and goes on
     // while a task is running.
     this.timers.push(
@@ -604,7 +626,7 @@ export class Runner {
     return join(stateDir(), "usage", `${this.ak.me.id}.json`);
   }
 
-  private usedToday(): number {
+  private completedToday(): number {
     try {
       const u = JSON.parse(readFileSync(this.usagePath(), "utf8")) as { date: string; seconds: number };
       return u.date === today() ? u.seconds : 0;
@@ -613,9 +635,28 @@ export class Runner {
     }
   }
 
+  private usedToday(): number {
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const now = Date.now();
+    return this.completedToday() + [...this.runningTime?.values() ?? []].reduce((sum, start) => sum + (now - Math.max(start, midnight.getTime())) / 1000, 0);
+  }
+
+  private parallelLimit(): number {
+    return this.projects.some((p) => p.iAmLead) || this.ticketState().steppedDownDay === today() ||
+      this.usedToday() >= this.cfg.limits.max_hours_per_day * 3600 * 0.8 ? 1 : (this.cfg.max_parallel ?? 1);
+  }
+
+  private checkRunningLimits(): void {
+    if (!this.overLimit()) return;
+    for (const slot of this.slots.values()) slot.abort.abort();
+    this.currentRun?.abort.abort();
+    this.workLater(60_000);
+  }
+
   private addUsage(seconds: number, run?: EngineRun): void {
     mkdirSync(join(stateDir(), "usage"), { recursive: true });
-    writeFileSync(this.usagePath(), JSON.stringify({ date: today(), seconds: this.usedToday() + seconds }));
+    writeFileSync(this.usagePath(), JSON.stringify({ date: today(), seconds: this.completedToday() + seconds }));
     if (run) this.addSpend(run);
     void this.reportUsage();
   }
@@ -693,11 +734,18 @@ export class Runner {
    */
   private async runAgent(opts: Parameters<typeof runEngine>[0], ticket: string | null = null): Promise<EngineRun> {
     const ports = await this.holdPorts(ticket);
-    let run: EngineRun;
+    const meter = Symbol();
+    const startedAt = Date.now();
+    (this.runningTime ??= new Map()).set(meter, startedAt);
+    let run!: EngineRun;
     try {
       const env = ports?.env ?? (ticket ? { AUTOKOLAB_TICKET: ticket } : {});
       run = await runEngine({ ...opts, inv: { ...opts.inv, env: { ...env, ...opts.inv.env } } });
     } finally {
+      this.runningTime.delete(meter);
+      const midnight = new Date();
+      midnight.setHours(0, 0, 0, 0);
+      this.addUsage((Date.now() - Math.max(startedAt, midnight.getTime())) / 1000, run);
       await this.letGoOfPorts(ports);
     }
     if (this.cfg.engine !== "claude") return run;
@@ -740,7 +788,7 @@ export class Runner {
    */
   private usageSent = "";
   private async reportUsage(): Promise<void> {
-    if (!this.isAgentRow || !this.projects.length) return;
+    if (!this.isAgentRow || !this.projects?.length) return;
     await this.reportMachine();
     const report = usageReport(this.usedToday(), this.cfg.limits.max_hours_per_day, this.limitWait?.until ?? null);
     const sent = JSON.stringify(report);
@@ -819,7 +867,14 @@ export class Runner {
       ...(kind === "review" ? { pr: (job as ReviewJob).pr, sha: (job as ReviewJob).sha } : {}),
       ...(messageId ? { messageId } : {}),
     };
+    // One subscription is shared by every session. Save retries before stopping the others.
+    const st = this.ticketState();
+    st.steppedDownDay = today();
+    this.saveTicketState(st);
     this.saveLimitWait(wait);
+    for (const slot of this.slots.values()) slot.abort.abort();
+    this.currentRun?.abort.abort();
+    this.workLater(Math.max(0, Date.parse(wait.until) - Date.now()));
     await this.setStatus(this.ak.me.paused ? "paused" : "idle", this.ak.me.paused ? null : this.waitNote(), target?.id ?? null);
     await this.ak.heartbeat(this.stateNow()).catch(() => undefined);
     // A renewed limit within an hour extends the wait without repeating the notice.
@@ -865,7 +920,7 @@ export class Runner {
     const marker = join(stateDir(), "introduced", this.ak.me.id);
     if (existsSync(marker)) return;
     const room = this.ak.rooms().find((r) => r.repo);
-    if (!room || this.held || this.limitWait) return;
+    if (!room || this.held || this.limitWait || this.busy || this.slots.size) return;
     this.greeting = true;
     const release = this.awake.hold();
     try {
@@ -873,11 +928,12 @@ export class Runner {
     } finally {
       release();
       this.greeting = false;
+      void this.work();
     }
   }
 
   private async sayHello(room: Room, marker: string): Promise<void> {
-    const clone = ensureClone(room.repo!);
+    const clone = await withRepoLock(room.repo!, () => ensureClone(room.repo!));
     const prompt =
       `You are ${this.ak.me.name}, ${this.ak.ownerName(this.ak.me)}'s AI agent, and you just joined the team working on github.com/${room.repo}. ` +
       `Don't change any files. Read the README and look around the repo for a minute, then write a short hello for the team (3 to 5 sentences): ` +
@@ -886,7 +942,6 @@ export class Runner {
     const choice = await this.modelChoice();
     const inv = this.invocation(mcp, null, clone, choice);
     const result = await this.runAgent({ cfg: this.cfg, inv, cwd: clone, prompt, logFile: join(this.logDir, `${room.name}-hello.log`), signal: new AbortController().signal, onModel: this.reportModel(choice) });
-    this.addSpend(result);
     const text = redactSecrets(result.finalText.trim()).slice(0, 4000);
     if (result.isError || !text) throw new Error(text || "no reply");
     await this.ak.room(room).post({ kind: "chat", body: text });
@@ -913,7 +968,7 @@ export class Runner {
   }
 
   private stateNow() {
-    return this.ak.me.paused ? ("paused" as const) : this.current ? ("working" as const) : ("idle" as const);
+    return this.ak.me.paused ? ("paused" as const) : this.currentRun || this.slots.size ? ("working" as const) : ("idle" as const);
   }
 
   private async recoverInterruptedRuns(): Promise<void> {
@@ -1054,7 +1109,8 @@ export class Runner {
    * to that build run's next wake-up, instead of a reply run of its own (AK-116).
    */
   private async handToBuildRun(m: Message, run: TaskRun): Promise<boolean> {
-    const t = this.current?.ticket;
+    const t = [...this.slots.values()].map((s) => ({ id: s.job.ticket.id, key: s.job.ticket.key, projectId: s.job.project.project.id }))
+      .find((t) => mentionedTickets([m], t.key.split("-")[0], 20).includes(t.key)) ?? this.currentRun?.ticket;
     if (!t || this.ak.isHuman(m.sender_id) || !HANDOVER_KINDS.includes(m.kind)) return false;
     const room = this.ak.roomById(m.room_id);
     const p = room ? this.roomProject(room) : undefined;
@@ -1112,17 +1168,18 @@ export class Runner {
 
   private async onPauseChange(paused: boolean): Promise<void> {
     await this.ak.heartbeat(this.stateNow()).catch(() => undefined);
-    if (!this.current) await this.setStatus(paused ? "paused" : "idle", !paused && this.limitWait ? this.waitNote() : null);
-    if (paused && this.current) {
-      this.log("Paused by owner: stopping the current task.");
-      this.current.abort.abort();
+    if (!this.currentRun && !this.slots.size) await this.setStatus(paused ? "paused" : "idle", !paused && this.limitWait ? this.waitNote() : null);
+    if (paused) {
+      this.log("Paused by owner: stopping every run.");
+      this.currentRun?.abort.abort();
+      for (const slot of this.slots.values()) slot.abort.abort();
     }
     if (!paused) void this.work();
   }
 
   /** For the updater: if no run is in progress, hold new ones until release() and say yes. */
   holdIfIdle(): boolean {
-    if (this.busy || this.current || this.greeting) return false;
+    if (this.busy || this.currentRun || this.slots.size || this.greeting) return false;
     this.held = true;
     return true;
   }
@@ -1137,10 +1194,12 @@ export class Runner {
   }
 
   private async work(): Promise<void> {
-    if (this.busy || this.held) return;
+    if (this.slotContext?.getStore()) return this.slotContext.exit(() => this.work());
+    if (this.busy || this.held || this.greeting) return;
     this.busy = true;
     try {
       if (this.limitWait && Date.now() < Date.parse(this.limitWait.until)) return;
+      if (this.slots.size && (this.queue.length || this.limitWait)) return;
       if (this.limitWait?.kind === "message" && !this.queue.length && Date.now() >= Date.parse(this.limitWait.until)) this.saveLimitWait(null);
       if (this.limitWait && !this.ak.me.paused && !this.stopping && !this.overLimit() && this.limitWait.kind !== "message") {
         const wait = this.limitWait;
@@ -1170,7 +1229,10 @@ export class Runner {
               await this.setStatus("idle");
             } else {
               try {
-                if (wait.kind === "ticket") await this.executeTicket({ project, ticket, comments: wait.comments ?? [] });
+                if (wait.kind === "ticket") {
+                  this.saveLimitWait(null);
+                  this.startBuild({ project, ticket, comments: wait.comments ?? [] });
+                }
                 else if (wait.kind === "triage") await this.executeTriage({ project, ticket });
                 else if (wait.pr && wait.sha) await this.executeReview({ project, ticket, pr: wait.pr, sha: wait.sha });
                 else this.saveLimitWait(null);
@@ -1213,7 +1275,8 @@ export class Runner {
       }
       // Then the board: workers' questions (for a lead), follow-ups on its tickets, the next Ready ticket.
       while (!this.queue.length && !this.ak.me.paused && !this.stopping && !this.overLimit() && !this.limitWait) {
-        const q = await this.nextQuestion().catch((e) => {
+        if (this.slots.size >= this.parallelLimit()) break;
+        const q = this.slots.size ? null : await this.nextQuestion().catch((e) => {
           this.log(`Couldn't check workers' questions: ${(e as Error).message}`);
           return null;
         });
@@ -1221,7 +1284,7 @@ export class Runner {
           await this.executeTriage(q).catch((e) => this.log(`Couldn't look at ${q.ticket.key}'s question: ${(e as Error).message}`));
           continue;
         }
-        const rj = this.nextReview();
+        const rj = this.slots.size ? null : this.nextReview();
         if (rj) {
           await this.executeReview(rj).catch((e) => this.log(`Couldn't review ${rj.ticket.key}: ${(e as Error).message}`));
           continue;
@@ -1231,12 +1294,8 @@ export class Runner {
           return null;
         });
         if (!tj) break;
-        await this.executeTicket(tj).catch(async (e) => {
-          const msg = (e as Error).message;
-          this.log(`${tj.ticket.key} failed to start: ${msg}`);
-          await tj.project.update(tj.ticket.key, { needs_human: `I couldn't start: ${msg}`.slice(0, 1000) }).catch(() => undefined);
-          await this.setStatus("blocked", `Couldn't start ${tj.ticket.key}`, tj.ticket.id);
-        });
+        // Reserve before launching: nextTicket must never select a running ticket twice.
+        this.startBuild(tj);
       }
       if (!this.queue.length && !this.ak.me.paused && !this.stopping && this.overSpend()) await this.noteSpendLimit();
     } catch (e) {
@@ -1246,25 +1305,56 @@ export class Runner {
     }
   }
 
+  private startBuild(job: TicketJob): void {
+    const slot: BuildSlot = { job, abort: new AbortController(), current: null };
+    this.slots.set(job.ticket.id, slot);
+    const state = this.ticketState();
+    (state.pendingBuilds ??= {})[job.ticket.id] = { project: job.project.project.slug, key: job.ticket.key, comments: job.comments };
+    this.saveTicketState(state);
+    const release = this.awake.hold();
+    void this.slotContext.run(slot, async () => {
+      try {
+        await this.executeTicket(job);
+      } catch (e) {
+        const msg = (e as Error).message;
+        this.log(`${job.ticket.key} failed to start: ${msg}`);
+        if (!slot.abort.signal.aborted) await job.project.update(job.ticket.key, { needs_human: `I couldn't start: ${msg}`.slice(0, 1000) }).catch(() => undefined);
+      } finally {
+        if (!slot.abort.signal.aborted && !this.limitWait) {
+          const st = this.ticketState();
+          delete st.pendingBuilds?.[job.ticket.id];
+          this.saveTicketState(st);
+        }
+        this.slots.delete(job.ticket.id);
+        release();
+        await this.setStatus(this.ak.me.paused ? "paused" : "idle", this.limitWait ? this.waitNote() : null);
+        this.workLater(0);
+      }
+    }).catch((e) => this.log(`Couldn't finish ${job.ticket.key}: ${(e as Error).message}`));
+  }
+
   private workTimer: NodeJS.Timeout | null = null;
   private workLater(ms: number): void {
     if (this.workTimer) clearTimeout(this.workTimer);
     this.workTimer = setTimeout(() => {
       this.workTimer = null;
-      void this.work();
+      this.slotContext.exit(() => void this.work());
     }, Math.max(ms, 0) + 50);
     this.workTimer.unref();
   }
 
-  private prepareWorkspace(m: Message, threadRoot: number): Worktree {
+  private async prepareWorkspace(m: Message, threadRoot: number): Promise<Worktree> {
     const room = this.ak.roomById(m.room_id);
     if (!room?.repo) throw new Error(`room ${room?.name ?? m.room_id} isn't linked to a GitHub repo.`);
-    const clone = ensureClone(room.repo);
-    if (!this.hooked.has(room.repo)) {
+    const repo = room.repo;
+    return withRepoLock(repo, () => {
+    const clone = ensureClone(repo);
+    if (!this.hooked.has(repo)) {
       installHook(clone, this.cfg.limits.protected_branches);
-      this.hooked.add(room.repo);
+      this.hooked.add(repo);
     }
-    return ensureWorktree(this.ak.me.name, room.repo, threadRoot);
+    return ensureWorktree(this.ak.me.name, repo, threadRoot);
+    });
   }
 
   private async execute(job: Job): Promise<void> {
@@ -1272,7 +1362,7 @@ export class Runner {
     const { run, message: m } = job;
     const room = ak.roomById(m.room_id)!;
     const sender = (await ak.memberFresh(m.sender_id))!;
-    const worktree = this.prepareWorkspace(m, run.thread_root);
+    const worktree = await this.prepareWorkspace(m, run.thread_root);
     // Another agent's question, answer or chat gets a quick reply run: a slim prompt, its own short
     // session (never a long work session), and the reply model (AK-91). For a follower, so does any
     // agent's message about its own open ticket, which that ticket's build run does (AK-116).
@@ -1338,7 +1428,7 @@ export class Runner {
       result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
     } finally {
       this.current = null;
-      this.addUsage((Date.now() - startedAt) / 1000, result);
+
     }
     this.recordRun(this.projects.find((p) => this.projectRoom(p)?.id === room.id), "reply", null, result, startedAt);
     this.log(runCostLine(isReply ? "Reply" : "Work", ids, prompt.length, result.model ?? choice.model ?? "", choice.effort, result.usage ?? noUsage()));
@@ -1502,25 +1592,46 @@ export class Runner {
     return join(stateDir(), "tickets", `${this.ak.me.id}.json`);
   }
 
+  private savedTickets?: TicketState;
+  private stateWrites: Promise<void> = Promise.resolve();
+
   private ticketState(): TicketState {
+    if (this.savedTickets) return this.savedTickets;
     try {
-      return { sessions: {}, seen: {}, ...(JSON.parse(readFileSync(this.ticketStatePath(), "utf8")) as Partial<TicketState>) };
+      return this.savedTickets = { sessions: {}, seen: {}, ...(JSON.parse(readFileSync(this.ticketStatePath(), "utf8")) as Partial<TicketState>) };
     } catch {
-      return { sessions: {}, seen: {} };
+      return this.savedTickets = { sessions: {}, seen: {} };
     }
   }
 
   private saveTicketState(st: TicketState): void {
-    mkdirSync(join(stateDir(), "tickets"), { recursive: true });
-    writeFileSync(this.ticketStatePath(), JSON.stringify(st, null, 2));
+    this.savedTickets = st;
+    this.stateWrites = this.stateWrites.then(() => {
+      mkdirSync(join(stateDir(), "tickets"), { recursive: true });
+      const file = this.ticketStatePath();
+      writeFileSync(`${file}.tmp`, JSON.stringify(this.savedTickets, null, 2));
+      renameSync(`${file}.tmp`, file);
+    }).catch((e) => this.log(`Couldn't save ticket state: ${(e as Error).message}`));
   }
 
   private async nextTicket(): Promise<TicketJob | null> {
     if (Date.now() - this.projectsLoadedAt > PROJECTS_RELOAD_MS) await this.loadProjects();
     if (!this.projects.length) return null;
     const st = this.ticketState();
+    const available = (ticket: Ticket, project: ProjectView) => !this.slots.has(ticket.id) &&
+      ![...this.slots.values()].some((s) => s.job.project.project.repo === project.project.repo && areasOverlap(ticket.areas, s.job.ticket.areas));
+    for (const [id, pending] of Object.entries(st.pendingBuilds ?? {})) {
+      if (this.slots.has(id)) continue;
+      const project = this.projects.find((p) => p.project.slug === pending.project);
+      const ticket = project ? await project.ticket(pending.key).catch((e: Error) => { if (/^No ticket /.test(e.message)) return null; throw e; }) : null;
+      if (!ticket || ticket.assignee_id !== this.ak.me.id || !["in_progress", "review"].includes(ticket.status)) {
+        delete st.pendingBuilds![id];
+        this.saveTicketState(st);
+      } else if (!ticket.needs_human && available(ticket, project!)) return { project: project!, ticket, comments: pending.comments };
+    }
     for (const project of this.projects) {
       for (const { ticket, comments, looping } of await project.newComments(st.seen)) {
+        if (!available(ticket, project)) continue;
         if (!looping) return { project, ticket, comments };
         // Agents keep answering each other here: stop resuming and hand it to a person.
         st.seen[ticket.id] = comments[comments.length - 1].id;
@@ -1535,7 +1646,7 @@ export class Runner {
     for (const project of this.projects) {
       if (!Object.keys(st.notes ?? {}).length) break;
       const tickets = await project.tickets();
-      const { resume, drop } = notesToAct(st.notes!, tickets, this.ak.me.id);
+      const { resume, drop } = notesToAct(st.notes!, tickets.filter((t) => available(t, project)), this.ak.me.id);
       if (drop.length) {
         for (const id of drop) delete st.notes![id];
         this.saveTicketState(st);
@@ -1881,7 +1992,15 @@ export class Runner {
   /** What this agent is doing, for the board and People. Quietly does nothing for v1-only agents. */
   private setStatus(status: AgentStatus, note: string | null = null, ticketId: string | null = null, projectId?: string): Promise<void> {
     return this.inOrder(async () => {
-      if (!this.isAgentRow || !this.projects.length) return;
+      if (!this.isAgentRow || !this.projects?.length) return;
+      const active = [...this.slots?.values() ?? []].filter((s) => !s.abort.signal.aborted);
+      if (active.length && !this.ak.me.paused && !this.limitWait) {
+        const selected = active.find((s) => s.job.ticket.id === ticketId) ?? active[0];
+        if (ticketId !== selected.job.ticket.id) note = null;
+        ticketId = selected.job.ticket.id;
+        projectId = selected.job.project.project.id;
+        status = "building";
+      }
       try {
         const ticket = ticketId ? await this.ak.sb.from("tickets").select("project_id").eq("id", ticketId).maybeSingle() : null;
         const id = projectId ?? ticket?.data?.project_id;
@@ -1911,7 +2030,7 @@ export class Runner {
     const ran: RanWith = { model: choice.model ?? "", effort: choice.effort ?? "" };
     const report = (r: RanWith) =>
       void this.inOrder(async () => {
-        if (!this.isAgentRow || !this.projects.length) return;
+        if (!this.isAgentRow || !this.projects?.length) return;
         try {
           const { data, error } = await this.ak.sb.from("agents").select("*").eq("id", this.ak.me.id).maybeSingle();
           if (error) throw new Error(error.message);
@@ -1930,7 +2049,7 @@ export class Runner {
 
   /** Keep "last seen" fresh without changing what the agent said it's doing. */
   private async touchAgent(): Promise<void> {
-    if (!this.isAgentRow || !this.projects.length) return;
+    if (!this.isAgentRow || !this.projects?.length) return;
     await this.inOrder(async () => {
       const { data } = await this.ak.sb.from("agents").select("*").eq("id", this.ak.me.id).maybeSingle();
       if (!data) return;
@@ -1992,6 +2111,7 @@ export class Runner {
     const { ak, cfg } = this;
     const { project: p } = job;
     let t = job.ticket;
+    if (this.slotContext.getStore()?.abort.signal.aborted) return;
     const repo = p.project.repo;
     if (!repo) throw new Error(`${p.project.name} isn't linked to a GitHub repo yet (set it on autokolab.com).`);
 
@@ -2002,12 +2122,15 @@ export class Runner {
     this.saveTicketState(st);
     const asked = job.comments.length > 0 || notes.length > 0;
 
+    const worktree = await withRepoLock(repo, () => {
     const clone = ensureClone(repo);
     if (!this.hooked.has(repo)) {
       installHook(clone, cfg.limits.protected_branches);
       this.hooked.add(repo);
     }
     const worktree = ensureTicketWorktree(ak.me.name, repo, t.key, t.branch ?? ticketBranch(t.key, t.title));
+      return worktree;
+    });
     if (t.branch !== worktree.branch) t = await p.update(t.key, { branch: worktree.branch });
     const setup = await this.setUpWorktree(p, t, worktree);
     if (setup.stopped) {
@@ -2017,10 +2140,11 @@ export class Runner {
       return;
     }
 
+    if (this.slotContext?.getStore()?.abort.signal.aborted) return;
     await p.loadNames();
     const resume = st.sessions[t.id] ?? null;
     const sentBackTo = conflictSendBack(job.comments, p.project.lead_agent_id);
-    const merging = this.mergeBaseForSendBack(t, worktree, sentBackTo);
+    const merging = await withRepoLock(repo, () => this.mergeBaseForSendBack(t, worktree, sentBackTo));
     const commentsText = asked ? [...job.comments.map((c) => `${p.authorLabel(c)}: ${c.body}`), ...(notes.length ? [notesText(notes)] : []), ...(merging ? [`Runner: ${merging}`] : [])].join("\n\n") : null;
     const prompt = buildTicketPrompt({
       myName: ak.me.name,
@@ -2090,7 +2214,7 @@ export class Runner {
       else pendingPlan = null;
       await syncing;
       this.current = null;
-      this.addUsage((Date.now() - startedAt) / 1000, result);
+
     }
     this.recordRun(p, "build", t.id, result, startedAt, sentBackTo ? "conflict_fix" : null);
 
@@ -2102,7 +2226,7 @@ export class Runner {
 
     const raw = redactSecrets(result.finalText.trim()).slice(0, 12000);
     if (await this.waitForUsage(result, "ticket", job)) return;
-    if (this.limitWait?.kind === "ticket") this.saveLimitWait(null);
+    if (result.aborted && (this.limitWait || this.overLimit())) return;
     if (notes.length) this.dropNotes(t.id, notes);
     const o = parseOutcome(raw);
     const text = o.body;
@@ -2136,7 +2260,7 @@ export class Runner {
       let deliveryFailed = false;
       if (o.status === "review") {
         const existing = pr || after.pr_url || undefined;
-        const shipped = this.deliver(t, worktree, repo, o.summary, text, existing);
+        const shipped = await withRepoLock(repo, () => this.deliver(t, worktree, repo, o.summary, text, existing));
         if ("pr" in shipped) {
           pr = shipped.pr;
           if (existing && shipped.commit) await p.comment(t.key, `Pushed the follow-up work (${shipped.commit}) to ${shipped.pr}.`).catch(() => undefined);
@@ -2260,6 +2384,7 @@ export class Runner {
 
     const repo = p.project.repo;
     if (!repo) return;
+    const worktree = await withRepoLock(repo, () => {
     const clone = ensureClone(repo);
     if (!this.hooked.has(repo)) {
       installHook(clone, cfg.limits.protected_branches);
@@ -2267,6 +2392,8 @@ export class Runner {
     }
     // Its own worktree to read the code in, never its person's checkout.
     const worktree = ensureTicketWorktree(ak.me.name, repo, "triage", `ak/${ak.me.name}/triage`);
+      return worktree;
+    });
     await p.loadNames();
     const prompt = buildTriagePrompt({
       myName: ak.me.name,
@@ -2294,7 +2421,7 @@ export class Runner {
       result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) }, t.key);
     } finally {
       this.current = null;
-      this.addUsage((Date.now() - startedAt) / 1000, result);
+
     }
     this.recordRun(p, "question", t.id, result, startedAt);
     if (await this.waitForUsage(result, "triage", job)) {
@@ -2329,6 +2456,7 @@ export class Runner {
     if (!repo) return;
     const url = t.pr_url!;
     const where = `on ${ak.ownerName(ak.me)}'s machine`;
+    const worktree = await withRepoLock(repo, () => {
     const clone = ensureClone(repo);
     if (!this.hooked.has(repo)) {
       installHook(clone, cfg.limits.protected_branches);
@@ -2337,6 +2465,8 @@ export class Runner {
     // Its own worktree at exactly this commit, never its person's checkout.
     const worktree = ensureTicketWorktree(ak.me.name, repo, "review", `ak/${ak.me.name}/review`);
     checkoutCommit(worktree, sha, prNumber(url));
+      return worktree;
+    });
     // AK-117: after a send-back, only the new commits are reviewed, against what was said then.
     const since = earlierReview(prev, url, sha);
     const delta = since ? diffSince(worktree, since.sha) : null;
@@ -2396,7 +2526,7 @@ export class Runner {
       result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) }, t.key);
     } finally {
       this.current = null;
-      this.addUsage((Date.now() - startedAt) / 1000, result);
+
     }
     this.recordRun(p, "review", t.id, result, startedAt, reviewPath(Boolean(earlier), weight.light));
     if (await this.waitForUsage(result, "review", job)) {
@@ -2455,13 +2585,15 @@ export class Runner {
     this.queue = [];
     for (const t of this.timers) clearInterval(t);
     if (this.workTimer) clearTimeout(this.workTimer);
-    if (this.current) {
-      this.current.abort.abort();
+    for (const slot of this.slots.values()) slot.abort.abort();
+    if (this.currentRun || this.slots.size || this.busy) {
+      this.currentRun?.abort.abort();
       const deadline = Date.now() + 20_000;
-      while ((this.current || this.busy) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
+      while ((this.currentRun || this.slots.size || this.busy) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
     }
     await this.ak.heartbeat("offline").catch(() => undefined);
     await this.setStatus("offline");
+    await this.stateWrites;
     await this.ak.close();
   }
 }
