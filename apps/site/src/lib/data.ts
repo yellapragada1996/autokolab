@@ -572,6 +572,22 @@ export async function eventsBetween(projectId: string, from: Date, to: Date): Pr
   }
 }
 
+/**
+ * Only events added after an id, oldest first, a page at a time (AK-154). The five-minute refresh
+ * asks for these instead of re-reading the whole week; reconciliation covers edits and deletes.
+ */
+export async function eventsAfter(projectId: string, afterId: number): Promise<TicketEvent[]> {
+  const out: TicketEvent[] = [];
+  for (let after = afterId; ; ) {
+    const rows = check<TicketEvent[]>(
+      await supabase.from("ticket_events").select("*").eq("project_id", projectId).gt("id", after).order("id").limit(EVENTS_PAGE),
+    );
+    if (!rows.length) return out;
+    out.push(...rows);
+    after = rows[rows.length - 1].id;
+  }
+}
+
 /** Why a runner started its agent: to build a ticket, review one, reply in the room, or look at a worker's question. */
 export type RunKind = "build" | "review" | "reply" | "question";
 
@@ -619,6 +635,23 @@ export async function usageBetween(projectId: string, from: Date, to: Date): Pro
       .limit(EVENTS_PAGE);
     const e = r.error as { message: string; code?: string } | null;
     // Only a missing table reads as no runs; any other error, a permission error too, is shown (AK-93).
+    if (e && (e.code === "42P01" || e.code === "PGRST205")) return [];
+    const rows = check<RunUsage[]>(r);
+    if (!rows.length) return out;
+    out.push(...rows);
+    after = rows[rows.length - 1].id;
+  }
+}
+
+/**
+ * Only runs added after an id, oldest first, a page at a time (AK-154). Like usageBetween, a
+ * database before schema 20 reads as no runs.
+ */
+export async function usageAfter(projectId: string, afterId: number): Promise<RunUsage[]> {
+  const out: RunUsage[] = [];
+  for (let after = afterId; ; ) {
+    const r = await supabase.from("run_usage").select("*").eq("project_id", projectId).gt("id", after).order("id").limit(EVENTS_PAGE);
+    const e = r.error as { message: string; code?: string } | null;
     if (e && (e.code === "42P01" || e.code === "PGRST205")) return [];
     const rows = check<RunUsage[]>(r);
     if (!rows.length) return out;
