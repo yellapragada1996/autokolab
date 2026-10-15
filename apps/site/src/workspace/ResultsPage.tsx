@@ -4,7 +4,7 @@ import * as data from "../lib/data";
 import type { RunUsage, TicketEvent } from "../lib/data";
 import { Button, Skeleton } from "../ui";
 import { Who } from "./bits";
-import { auditCsv, auditFileName, auditJson, auditRows, barsText, checkedText, dollars, duration, emptyText, headline, missingText, onTopText, periodLine, periodOf, rangeOf, results, runsText, sentBackCaption, sharesText, tokens, usage, usageEmptyText, usageHeadline, type Period, type Results as Numbers, type Usage } from "./results";
+import { auditCsv, auditFileName, auditJson, auditRows, barsText, checkedText, dollars, duration, emptyText, headline, missingText, onTopText, pathText, periodLine, periodOf, rangeOf, results, runsText, sentBackCaption, sharesText, tokens, usage, usageEmptyText, usageHeadline, type Period, type Results as Numbers, type Usage } from "./results";
 import type { Workspace } from "./useWorkspace";
 
 // Results (S15): what the team got done in the period and how often it needed a person, counted from
@@ -25,6 +25,7 @@ const HOW = {
   onTop: "The usage of every run that wasn't building a ticket (reviewing, agents replying to each other in the room, and Captain looking at workers' questions), divided by the usage of the runs that were building.",
   perMerged: "All the usage reported in this period, coordination included, divided by the tickets merged in it.",
   cost: "The cost figure the agents' tools print after each run, added up. It is an estimate at API prices, not a bill; it shows only when every run in the period gave one.",
+  paths: "Reviews read the whole PR, only the commits since the last review, or a small safe PR on a cheaper model (light). Fixing conflicts is building after Captain sent a PR back because it conflicts with the branch it merges into. Each shows the usage of one run, over the runs that reported it.",
 };
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-xl)", padding: 20, minWidth: 0 };
@@ -179,6 +180,16 @@ function UsageSection({ ws, u }: { ws: Workspace; u: Usage }) {
                   <span style={{ height: 6, borderRadius: 999, background: "var(--track)" }}>
                     <span style={{ display: "block", height: "100%", width: `${k.percent}%`, borderRadius: 999, background: "var(--muted)" }} />
                   </span>
+                  {k.paths.length > 0 && (
+                    <span title={HOW.paths} style={{ display: "grid", gap: 4, paddingLeft: 12 }}>
+                      {k.paths.map((p) => (
+                        <span key={p.path ?? "none"} style={{ ...row, fontSize: 13, color: "var(--muted)" }}>
+                          {p.label}
+                          <span style={{ ...figure, color: "var(--muted)" }}>{pathText(p)}</span>
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -214,6 +225,7 @@ function UsageSection({ ws, u }: { ws: Workspace; u: Usage }) {
                 [
                   ["Usage", HOW.usage],
                   ["Coordination", HOW.onTop],
+                  ["Review paths", HOW.paths],
                   ["Per merged ticket", HOW.perMerged],
                   ["Cost", HOW.cost],
                 ] as const

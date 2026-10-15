@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MERGE_OK_PREFIX, type RunKind, type RunUsage, type Ticket, type TicketEvent } from "../lib/data";
 import { BIRCH, CAPTAIN, FJORD, ME, decision, ticket, workspace } from "./fixtures";
-import { CACHE_READ_WEIGHT, askKind, auditCsv, auditFileName, auditJson, auditRows, barsText, checkedText, dollars, duration, emptyText, headline, median, missingText, onTopText, percents, periodLine, periodOf, rangeOf, results, sentBackCaption, sharesText, tokens, usage, usageEmptyText, usageHeadline, weighted } from "./results";
+import { CACHE_READ_WEIGHT, askKind, auditCsv, auditFileName, auditJson, auditRows, barsText, checkedText, dollars, duration, emptyText, headline, median, missingText, onTopText, pathText, percents, periodLine, periodOf, rangeOf, results, sentBackCaption, sharesText, tokens, usage, usageEmptyText, usageHeadline, weighted } from "./results";
 
 // Sunday 11 Oct 2026, 3 pm, in whatever time zone the tests run in: the week began Monday 5 Oct.
 const NOW = new Date(2026, 9, 11, 15, 0);
@@ -358,15 +358,41 @@ describe("where the usage went", () => {
     const u = usage(ws, week, "week", NOW);
     expect(u.total).toBe(100_000);
     expect(u.kinds).toEqual([
-      { kind: "build", label: "Building", runs: 2, tokens: 78_000, percent: 78 },
-      { kind: "review", label: "Reviewing", runs: 1, tokens: 9000, percent: 9 },
-      { kind: "reply", label: "Agents talking", runs: 2, tokens: 11_000, percent: 11 },
-      { kind: "question", label: "Questions", runs: 1, tokens: 2000, percent: 2 },
+      { kind: "build", label: "Building", runs: 2, tokens: 78_000, percent: 78, paths: [] },
+      { kind: "review", label: "Reviewing", runs: 1, tokens: 9000, percent: 9, paths: [] },
+      { kind: "reply", label: "Agents talking", runs: 2, tokens: 11_000, percent: 11, paths: [] },
+      { kind: "question", label: "Questions", runs: 1, tokens: 2000, percent: 2, paths: [] },
     ]);
     expect(usageHeadline(u)).toBe("Building took 78% of the usage; reviewing 9%, agents talking 11%, questions 2%.");
     expect(sharesText(u)).toBe("Usage by kind of run: Building: 78%, 2 runs; Reviewing: 9%, 1 run; Agents talking: 11%, 2 runs; Questions: 2%, 1 run.");
     expect(usageEmptyText(u)).toBeNull();
     expect(missingText(u)).toBeNull();
+  });
+
+  it("splits reviews by path, and fixing conflicts out of building, once runs record one (AK-120)", () => {
+    const runs = [
+      ...week,
+      ran("review", CAPTAIN, "SH-1", local(10, 8), { output_tokens: 30_000, path: "full" }),
+      ran("review", CAPTAIN, "SH-1", local(10, 8, 14), { output_tokens: 10_000, path: "full" }),
+      ran("review", CAPTAIN, "SH-1", local(10, 9), { output_tokens: 4000, path: "re_review" }),
+      ran("review", CAPTAIN, "SH-2", local(10, 9, 13), null),
+      ran("review", CAPTAIN, "SH-2", local(10, 9, 14), { output_tokens: 3000, path: "light" }),
+      ran("build", FJORD, "SH-2", local(10, 10), { output_tokens: 12_000, path: "conflict_fix" }),
+    ];
+    const u = usage(ws, runs, "week", NOW);
+    const review = u.kinds.find((k) => k.kind === "review")!;
+    expect(review.paths).toEqual([
+      { path: "full", label: "Whole PR", runs: 2, tokens: 40_000, perRun: 20_000 },
+      { path: "re_review", label: "New commits only", runs: 1, tokens: 4000, perRun: 4000 },
+      { path: "light", label: "Light", runs: 1, tokens: 3000, perRun: 3000 },
+      // The week's first review was recorded before paths were; the silent one reported nothing.
+      { path: null, label: "Not recorded", runs: 2, tokens: 9000, perRun: 9000 },
+    ]);
+    // Ordinary building isn't a path; only the conflict fixes are listed.
+    expect(u.kinds.find((k) => k.kind === "build")!.paths).toEqual([{ path: "conflict_fix", label: "Fixing conflicts", runs: 1, tokens: 12_000, perRun: 12_000 }]);
+    expect(u.kinds.find((k) => k.kind === "reply")!.paths).toEqual([]);
+    expect(sharesText(u)).toContain("Reviewing: 35%, 6 runs (Whole PR, 2 runs · 20k a run; New commits only, 1 run · 4k a run; Light, 1 run · 3k a run; Not recorded, 2 runs · 9k a run)");
+    expect(pathText({ path: "light", label: "Light", runs: 1, tokens: 0, perRun: null })).toBe("1 run");
   });
 
   it("counts coordination as everything that isn't building, on top of building", () => {

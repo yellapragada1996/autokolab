@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunUsageRow, type Ticket } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type Ticket } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -381,9 +381,10 @@ export function agentTurnsSinceHuman(thread: Pick<Message, "sender_id" | "body">
 }
 
 /** One run as a run_usage row: the tool's own figures, null where it gave none. Nothing is estimated. */
-export function runUsageRow(kind: RunKind, ticketId: string | null, result: Pick<EngineRun, "usage" | "model">, seconds: number): RunUsageRow {
+export function runUsageRow(kind: RunKind, ticketId: string | null, result: Pick<EngineRun, "usage" | "model">, seconds: number, path: RunPath | null = null): RunUsageRow {
   const u = result.usage ?? noUsage();
   return {
+    path,
     kind,
     ticket_id: ticketId,
     model: result.model ?? null,
@@ -395,6 +396,20 @@ export function runUsageRow(kind: RunKind, ticketId: string | null, result: Pick
     seconds: Math.max(0, Math.round(seconds)),
     cost_usd: u.costUsd,
   };
+}
+
+/**
+ * A review's path for run_usage (AK-120). Only the new commits is a re-review even when it's also
+ * light (its row's model tells those apart); otherwise light or full, as lightReview decided.
+ */
+export function reviewPath(reReview: boolean, light: boolean): RunPath {
+  return reReview ? "re_review" : light ? "light" : "full";
+}
+
+/** The base branch Captain's newest conflict send-back among these comments names (AK-124), or null when there's none. */
+export function conflictSendBack(comments: Pick<Comment, "author_id" | "body">[], leadId: string | null): string | null {
+  const sendBack = [...comments].reverse().find((c) => c.author_id === leadId && conflictSendBackBase(c.body));
+  return sendBack ? conflictSendBackBase(sendBack.body) : null;
 }
 
 interface TicketJob {
@@ -1708,9 +1723,9 @@ export class Runner {
    * Never waits for the database and never fails the run: one before schema 20 just doesn't get it.
    * Any other failure is logged once and tried again on the next run (AK-93).
    */
-  private recordRun(p: ProjectView | undefined, kind: RunKind, ticketId: string | null, result: EngineRun | undefined, startedAt: number): void {
+  private recordRun(p: ProjectView | undefined, kind: RunKind, ticketId: string | null, result: EngineRun | undefined, startedAt: number, path: RunPath | null = null): void {
     if (!p || !result || !this.isAgentRow) return;
-    void p.recordRunUsage(runUsageRow(kind, ticketId, result, (Date.now() - startedAt) / 1000)).then(
+    void p.recordRunUsage(runUsageRow(kind, ticketId, result, (Date.now() - startedAt) / 1000, path)).then(
       () => {
         this.runUsageFailing = false;
       },
@@ -1990,7 +2005,8 @@ export class Runner {
 
     await p.loadNames();
     const resume = st.sessions[t.id] ?? null;
-    const merging = this.mergeBaseForSendBack(t, worktree, job.comments, p.project.lead_agent_id);
+    const sentBackTo = conflictSendBack(job.comments, p.project.lead_agent_id);
+    const merging = this.mergeBaseForSendBack(t, worktree, sentBackTo);
     const commentsText = asked ? [...job.comments.map((c) => `${p.authorLabel(c)}: ${c.body}`), ...(notes.length ? [notesText(notes)] : []), ...(merging ? [`Runner: ${merging}`] : [])].join("\n\n") : null;
     const prompt = buildTicketPrompt({
       myName: ak.me.name,
@@ -2062,7 +2078,7 @@ export class Runner {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000, result);
     }
-    this.recordRun(p, "build", t.id, result, startedAt);
+    this.recordRun(p, "build", t.id, result, startedAt, sentBackTo ? "conflict_fix" : null);
 
     if (result.sessionId) {
       const s2 = this.ticketState();
@@ -2139,9 +2155,7 @@ export class Runner {
    * before the run, so an agent that can't write the Git folder can still resolve it (AK-66 delivers
    * the result). Returns what the agent is told, or null when there's nothing to say.
    */
-  private mergeBaseForSendBack(t: Ticket, worktree: Worktree, comments: Comment[], leadId: string | null): string | null {
-    const sendBack = [...comments].reverse().find((c) => c.author_id === leadId && conflictSendBackBase(c.body));
-    const base = sendBack && conflictSendBackBase(sendBack.body);
+  private mergeBaseForSendBack(t: Ticket, worktree: Worktree, base: string | null): string | null {
     if (!base) return null;
     const gitDir = worktreeGitDir(worktree.clone, worktree.path);
     if (!gitDir) return null;
@@ -2349,8 +2363,7 @@ export class Runner {
     });
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
     const choice = chooseReviewModel(cfg, await this.modelChoice(), weight.light);
-    // Which path it took, for comparing in run_usage (each review's row has its model and the
-    // ticket; a ticket's later rows are its re-reviews).
+    // Which path it took, in words for the log; run_usage records it as reviewPath (AK-120).
     const path = `${earlier ? `changes since ${earlier.sha.slice(0, 7)}` : since ? "whole PR (couldn't diff from the last review)" : "whole PR"}, ${weight.light ? "light" : "full"} (${weight.why}) on ${choice.model ?? "the default model"} at ${choice.effort ?? "default"} effort`;
     this.log(`${t.key} review path: ${path}.`);
     const inv = this.invocation(mcp, null, worktree.path, choice);
@@ -2371,7 +2384,7 @@ export class Runner {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000, result);
     }
-    this.recordRun(p, "review", t.id, result, startedAt);
+    this.recordRun(p, "review", t.id, result, startedAt, reviewPath(Boolean(earlier), weight.light));
     if (await this.waitForUsage(result, "review", job)) {
       this.rememberReview(t.id, prev);
       return;

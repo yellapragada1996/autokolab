@@ -246,16 +246,21 @@ for (const [n, , , who, ago, took] of shipped) {
   const old = ago > 7 * DAY;
   if (who !== LEE) ran("build", who, id, ago + 20, took / 100, !(old && who === REVIEWER && n % 2 === 0));
   ran("review", LEAD, id, ago + 8, 0.18 + (n % 3) * 0.05);
+  // Reviews say which path they took from last week on (AK-120); the small ones were light.
+  if (!old) demoUsage.at(-1)!.path = n % 3 === 0 ? "light" : "full";
   if (n % 3 === 0) ran("question", LEAD, id, ago + took / 2, 0.07);
   if (n % 2 === 0) ran("reply", LEAD, null, ago + took / 3, 0.09);
   if (n % 4 === 1) ran("reply", who === LEE ? BUILDER : who, null, ago + took / 4, 0.06);
 }
 ran("build", BUILDER, "t14", 60, 1.1);
 ran("review", LEAD, "t14", 48, 0.2);
+demoUsage.at(-1)!.path = "re_review";
 ran("build", BUILDER, "t16", 80, 2.05);
 ran("review", LEAD, "t16", 68, 0.31);
+demoUsage.at(-1)!.path = "re_review";
 ran("reply", LEAD, null, 95, 0.12);
 ran("build", BUILDER, "t2", 30, 0.5);
+demoUsage.at(-1)!.path = "conflict_fix";
 ran("build", "api-demo", null, 1, 1);
 Object.assign(demoUsage.at(-1)!, { model: "deepseek/deepseek-v4-flash", cost_usd: 1.2, created_at: new Date(now).toISOString() });
 ran("build", "api-no-cost", null, 1, 1);

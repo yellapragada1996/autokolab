@@ -83,6 +83,13 @@ export interface MachineReport {
 export type RunKind = "build" | "review" | "reply" | "question";
 
 /**
+ * Which path a run took (schema 26, AK-120): a review of the whole PR (full), of only the commits
+ * since the last review (re_review) or a small safe PR on the cheaper model (light); or a build
+ * resuming after a conflict send-back (conflict_fix). Other runs have none.
+ */
+export type RunPath = "full" | "re_review" | "light" | "conflict_fix";
+
+/**
  * What one run used (schema 20), as the tool reported it: null where it didn't say, never an
  * estimate. Numbers and the model's name only; no message or prompt text.
  */
@@ -98,6 +105,7 @@ export interface RunUsageRow {
   /** How long the run took, measured by the runner. */
   seconds: number;
   cost_usd: number | null;
+  path: RunPath | null;
 }
 
 /** The model and effort a run launched with; "" means the tool's own default (schema 11). */
@@ -386,6 +394,8 @@ export class ProjectView {
   private machineMissing = false;
   /** The database has no record_run_usage yet (before schema 20). */
   private runUsageMissing = false;
+  /** The database's record_run_usage has no p_path yet (before schema 26). */
+  private runPathMissing = false;
 
   private constructor(
     readonly sb: SupabaseClient,
@@ -798,11 +808,12 @@ export class ProjectView {
 
   /**
    * What one run used, through record_run_usage (schema 20). Returns false when the database
-   * doesn't have it yet; it isn't asked again until the next reload.
+   * doesn't have it yet; it isn't asked again until the next reload. The path is sent only when
+   * there is one, and dropped from then on when the database is older than schema 26.
    */
   async recordRunUsage(u: RunUsageRow): Promise<boolean> {
     if (this.runUsageMissing) return false;
-    const r = await this.sb.rpc("record_run_usage", {
+    const args = {
       p_project: this.project.id,
       p_kind: u.kind,
       p_seconds: u.seconds,
@@ -814,11 +825,17 @@ export class ProjectView {
       p_output_tokens: u.output_tokens,
       p_turns: u.turns,
       p_cost_usd: u.cost_usd,
-    });
+    };
+    const missing = (code?: string) => code === "PGRST202" || code === "42883" || code === "42P01" || code === "PGRST205";
+    let r = await this.sb.rpc("record_run_usage", u.path && !this.runPathMissing ? { ...args, p_path: u.path } : args);
+    if (u.path && !this.runPathMissing && missing(r.error?.code)) {
+      this.runPathMissing = true;
+      r = await this.sb.rpc("record_run_usage", args);
+    }
     const e = r.error;
     // Only a missing function or table switches recording off; anything else (a permission error
     // too) is thrown, and the runner tries again next run (AK-93).
-    if (e && (e.code === "PGRST202" || e.code === "42883" || e.code === "42P01" || e.code === "PGRST205")) {
+    if (e && missing(e.code)) {
       this.runUsageMissing = true;
       return false;
     }

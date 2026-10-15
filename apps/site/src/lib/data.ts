@@ -550,6 +550,13 @@ export async function eventsBetween(projectId: string, from: Date, to: Date): Pr
 /** Why a runner started its agent: to build a ticket, review one, reply in the room, or look at a worker's question. */
 export type RunKind = "build" | "review" | "reply" | "question";
 
+/**
+ * Which path a run took (schema 26): a review of the whole PR (full), of only the new commits
+ * (re_review) or of a small safe PR on the cheaper model (light); or a build fixing a conflict
+ * send-back (conflict_fix). Other runs, and every run recorded before schema 26, have none.
+ */
+export type RunPath = "full" | "re_review" | "light" | "conflict_fix";
+
 /** What one run used, as its tool reported it (schema 20). null: the tool didn't say. */
 export interface RunUsage {
   id: number;
@@ -564,6 +571,8 @@ export interface RunUsage {
   turns: number | null;
   seconds: number;
   cost_usd: number | null;
+  /** Missing before schema 26. */
+  path?: RunPath | null;
   created_at: string;
 }
 

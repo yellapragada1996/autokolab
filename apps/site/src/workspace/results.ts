@@ -1,4 +1,4 @@
-import { MERGE_OK_PREFIX, statusLabel, type RunKind, type RunUsage, type Status, type Ticket, type TicketEvent } from "../lib/data";
+import { MERGE_OK_PREFIX, statusLabel, type RunKind, type RunPath, type RunUsage, type Status, type Ticket, type TicketEvent } from "../lib/data";
 import { RUNNER_PROBLEM } from "./captain";
 import type { Workspace } from "./useWorkspace";
 
@@ -230,6 +230,21 @@ const KIND_WORDS: Record<RunKind, { label: string; inSentence: string }> = {
   question: { label: "Questions", inSentence: "questions" },
 };
 
+/**
+ * The paths a kind of run splits into (AK-120), in the order shown. A review without one was
+ * recorded before paths were; a build without one is ordinary building, so it isn't listed.
+ */
+const PATHS: Partial<Record<RunKind, (RunPath | null)[]>> = {
+  review: ["full", "re_review", "light", null],
+  build: ["conflict_fix"],
+};
+const PATH_WORDS: Record<RunPath, string> = {
+  full: "Whole PR",
+  re_review: "New commits only",
+  light: "Light",
+  conflict_fix: "Fixing conflicts",
+};
+
 const num = (v: number | null | undefined): number | null => (v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
 
 /** One run's usage in weighted tokens, or null when its tool reported no tokens. */
@@ -247,6 +262,16 @@ export interface UsageShare {
   percent: number;
 }
 
+/** One path of a kind of run (AK-120), so paths can be compared by what a run of each used. */
+export interface UsagePath {
+  path: RunPath | null;
+  label: string;
+  runs: number;
+  tokens: number;
+  /** Tokens per run over the runs that reported; null when none did. */
+  perRun: number | null;
+}
+
 export interface Usage {
   range: Range;
   /** Every run recorded in the period, and how many of them reported no tokens. */
@@ -254,7 +279,7 @@ export interface Usage {
   missing: number;
   /** Weighted tokens over the runs that reported. */
   total: number;
-  kinds: (UsageShare & { kind: RunKind; label: string })[];
+  kinds: (UsageShare & { kind: RunKind; label: string; paths: UsagePath[] })[];
   /** Everything that isn't building, as a whole percent of building; null when no building reported. */
   onTop: number | null;
   /** The period's usage divided by the tickets merged in it; null when none merged. */
@@ -295,7 +320,18 @@ export function usage(ws: Workspace, rows: RunUsage[], period: Period, now: Date
 
   const byKind = KINDS.map((kind) => counted.filter((c) => c.u.kind === kind));
   const kindPercents = percents(byKind.map(sum));
-  const kinds = KINDS.map((kind, i) => ({ kind, label: KIND_WORDS[kind].label, runs: byKind[i].length, tokens: sum(byKind[i]), percent: kindPercents[i] })).filter((k) => k.runs > 0);
+  // A kind is split only once some of its runs recorded a path; empty paths aren't listed.
+  const pathsOf = (kind: RunKind, of: typeof counted): UsagePath[] => {
+    if (!of.some((c) => c.u.path)) return [];
+    return (PATHS[kind] ?? [])
+      .map((path) => {
+        const these = of.filter((c) => (c.u.path ?? null) === path);
+        const reported = these.filter((c) => c.tokens !== null).length;
+        return { path, label: path ? PATH_WORDS[path] : "Not recorded", runs: these.length, tokens: sum(these), perRun: reported ? sum(these) / reported : null };
+      })
+      .filter((p) => p.runs > 0);
+  };
+  const kinds = KINDS.map((kind, i) => ({ kind, label: KIND_WORDS[kind].label, runs: byKind[i].length, tokens: sum(byKind[i]), percent: kindPercents[i], paths: pathsOf(kind, byKind[i]) })).filter((k) => k.runs > 0);
   const building = sum(byKind[0]);
 
   const agentIds = [...new Set(runs.map((u) => u.agent_id))];
@@ -373,7 +409,11 @@ export const dollars = (n: number) => `$${n.toFixed(2)}`;
 export const runsText = (n: number) => plural(n, "run");
 
 /** The share rows for people who can't see the bars: "Building: 78%, 14 runs; …" */
-export const sharesText = (u: Usage) => `Usage by kind of run: ${u.kinds.map((k) => `${k.label}: ${k.percent}%, ${plural(k.runs, "run")}`).join("; ")}.`;
+export const sharesText = (u: Usage) =>
+  `Usage by kind of run: ${u.kinds.map((k) => `${k.label}: ${k.percent}%, ${plural(k.runs, "run")}${k.paths.length ? ` (${k.paths.map((p) => `${p.label}, ${pathText(p)}`).join("; ")})` : ""}`).join("; ")}.`;
+
+/** "3 runs · 41k a run": what a run of one path used, for comparing paths. */
+export const pathText = (p: UsagePath) => `${plural(p.runs, "run")}${p.perRun !== null ? ` · ${tokens(p.perRun)} a run` : ""}`;
 
 // ------------------------------------------------------------------ the audit export
 
