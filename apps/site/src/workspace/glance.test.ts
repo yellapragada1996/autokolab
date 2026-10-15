@@ -560,3 +560,42 @@ it("normalises a stale heartbeat to offline even when the status still says buil
   a.last_seen_at = at("10:00");
   expect(statusHere(a, ws.project.id, ws.byId, NOW).status).toBe("offline");
 });
+
+describe("parallel status stays in this project", () => {
+  const setup = () => {
+    const tickets = [ticket({ key: "SH-91", status: "in_progress", assignee_id: BIRCH, title: "Checkout" }), ticket({ key: "SH-92", status: "in_progress", assignee_id: BIRCH, title: "Invites" })];
+    const ws = workspace(tickets);
+    const a = run(ws, BIRCH, tickets[0]);
+    a.running_tickets = tickets.map((t) => ({ ticket_id: t.id, project_id: t.project_id }));
+    return { ws, a, tickets };
+  };
+  it("counts both active builds when grouping features", () => {
+    const { ws, a } = setup();
+    const t = team(ws, NOW).agents.find((x) => x.id === BIRCH)!;
+    expect(t.builds?.map((b) => b.name)).toEqual(["Checkout", "Invites"]);
+    expect(look(ws).state).toBe("working");
+    expect(statusHere(a, ws.project.id, ws.byId, NOW).running_tickets).toHaveLength(2);
+  });
+  it("keeps local builds when the latest reported slot is foreign, without its note or ids", () => {
+    const { ws, a } = setup();
+    a.running_tickets!.push({ ticket_id: "private-ticket", project_id: "private-project" });
+    Object.assign(a, { current_ticket_id: "private-ticket", status_project_id: "private-project", status_note: "Secret feature title" });
+    const scoped = statusHere(a, ws.project.id, ws.byId, NOW);
+    expect(scoped).toMatchObject({ elsewhere: false, busyElsewhere: true, current_ticket_id: "t-SH-91", status_note: null });
+    const visible = { scoped, team: team(ws, NOW), crew: crew(team(ws, NOW), agentRows(ws, NOW)), watch: watch(ws, [], NOW) };
+    expect(JSON.stringify(visible)).not.toMatch(/private-ticket|private-project|Secret feature/);
+    expect(visible.crew.find((x) => x.id === BIRCH)?.notes).toContain("Busy in another project");
+    expect(visible.team.agents.find((x) => x.id === BIRCH)?.builds).toHaveLength(2);
+  });
+  it("reduces entirely foreign builds to availability and never infers a local ticket", () => {
+    const { ws, a } = setup();
+    Object.assign(a, { current_ticket_id: null, status_project_id: null, status_note: "Secret work", running_tickets: [{ ticket_id: "private-ticket", project_id: "private-project" }] });
+    expect(statusHere(a, ws.project.id, ws.byId, NOW)).toMatchObject({ elsewhere: true, current_ticket_id: null, running_tickets: [], status_note: null });
+    expect(team(ws, NOW).agents.find((x) => x.id === BIRCH)).toMatchObject({ state: "elsewhere", label: "Busy in another project", builds: [] });
+    expect(agentRows(ws, NOW).some((x) => x.agentId === BIRCH)).toBe(false);
+  });
+  it.each(["offline", "paused"] as const)("keeps %s as an agent-wide state even with local builds", (status) => {
+    const { ws, a } = setup(); a.status = status;
+    expect(team(ws, NOW).agents.find((x) => x.id === BIRCH)?.builds).toEqual([]);
+  });
+});

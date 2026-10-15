@@ -114,17 +114,28 @@ export interface RanWith {
   effort: string;
 }
 
+/** A live build always carries its project; callers filter before drawing it. */
+export interface RunningTicket {
+  ticket_id: string;
+  project_id: string;
+}
+
 /** Report presence while tolerating databases before project scoping (27) and model reports (11). */
 export async function reportAgentStatus(sb: SupabaseClient, status: AgentStatus, note: string | null = null,
-  ticketId: string | null = null, ran?: RanWith, projectId: string | null = null): Promise<void> {
+  ticketId: string | null = null, ran?: RanWith, projectId: string | null = null, running?: RunningTicket[]): Promise<void> {
   const args: Record<string, unknown> = { p_status: status, p_note: note, p_ticket: ticketId, p_project: projectId };
+  if (running !== undefined) args.p_running_tickets = running;
   if (ran) Object.assign(args, { p_model: ran.model.slice(0, 100), p_effort: ran.effort });
   let res = await sb.rpc("agent_status", args);
-  if (res.error && /p_project|function/i.test(res.error.message)) {
+  if (res.error && running !== undefined && !/AUTOKOLAB_/.test(res.error.message) && /p_running_tickets|function/i.test(res.error.message)) {
+    delete args.p_running_tickets;
+    res = await sb.rpc("agent_status", args);
+  }
+  if (res.error && !/AUTOKOLAB_/.test(res.error.message) && /p_project|function/i.test(res.error.message)) {
     delete args.p_project;
     res = await sb.rpc("agent_status", args);
   }
-  if (res.error && ran && /p_model|p_effort|function/i.test(res.error.message)) {
+  if (res.error && ran && !/AUTOKOLAB_/.test(res.error.message) && /p_model|p_effort|function/i.test(res.error.message)) {
     delete args.p_model;
     delete args.p_effort;
     res = await sb.rpc("agent_status", args);
@@ -783,8 +794,8 @@ export class ProjectView {
    * What this agent is doing, shown on the board and in People. `ran` is the model and effort the
    * current run launched with (schema 11; "" for the tool's own default); left out, the last one stays.
    */
-  async status(status: AgentStatus, note: string | null = null, ticketId: string | null = null, ran?: RanWith): Promise<void> {
-    await reportAgentStatus(this.sb, status, note, ticketId, ran, this.project.id);
+  async status(status: AgentStatus, note: string | null = null, ticketId: string | null = null, ran?: RanWith, running?: RunningTicket[]): Promise<void> {
+    await reportAgentStatus(this.sb, status, note, ticketId, ran, this.project.id, running);
   }
 
   /**
@@ -863,11 +874,12 @@ export class ProjectView {
    * first, then board order. Moving it to In progress is the claim, so two runners can't both take it.
    * A ticket whose areas overlap one In progress or in Review waits (AK-126); `onWait` hears which.
    */
-  async claimNext(onWait?: (ticket: Ticket, text: string) => void): Promise<Ticket | null> {
+  async claimNext(onWait?: (ticket: Ticket, text: string) => void, canStart: (ticket: Ticket) => boolean = () => true): Promise<Ticket | null> {
     const all = await this.tickets();
     const { ready, waiting } = readyToStart(all, await this.links(), this.meId);
     for (const w of waiting) onWait?.(w.ticket, areaWaitText(w.on)!);
     for (const t of ready) {
+      if (!canStart(t)) continue;
       const r = await this.sb.from("tickets").update({ status: "in_progress" }).eq("id", t.id).eq("status", "ready").select("*");
       const got = check<Ticket[]>(r);
       if (!got.length) continue;
