@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
@@ -17,6 +17,7 @@ import { readAgentKey } from "../core/keys.js";
 import { askReviewMessage, checkResult, afterMergeFailure, diffLines, earlierReview, ghPrDiff, ghPrMerge, ghPrViewAsync, lightReview, mergeDecision, mergedAt, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prLines, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewFinding, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyMessage } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, fetchBranch, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
+import { SETUP_SCRIPT, runSetup, setupScript, type SetupResult } from "./setup.js";
 import { checkoutCommit, currentBranch, diffSince, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
@@ -1806,6 +1807,47 @@ export class Runner {
     if (data) await this.setStatus(data.status as AgentStatus, data.status_note, data.current_ticket_id);
   }
 
+  /**
+   * Run the repo's setup script in a ticket's worktree before the agent starts (AK-123): once per
+   * worktree, again only when the script changes. Its output goes to a log here, not to the agent.
+   * Returns why it failed, for one line in the prompt; a failure never stops the run. A pause does.
+   */
+  private async setUpWorktree(p: ProjectView, t: Ticket, wt: Worktree): Promise<{ failed: string | null; stopped: boolean }> {
+    const gitDir = worktreeGitDir(wt.clone, wt.path);
+    if (!gitDir) return { failed: null, stopped: false };
+    const logFile = join(this.logDir, `${p.project.slug}-${t.key}-setup-${Date.now()}.log`);
+    const abort = new AbortController();
+    this.current = { what: `${t.key} setup`, abort, ticket: { id: t.id, key: t.key, projectId: p.project.id } };
+    let r: SetupResult;
+    try {
+      const script = setupScript(wt.clone, wt.base);
+      if (script?.trim()) {
+        await this.setStatus("planning", "Getting the workspace ready", t.id);
+        this.log(`Running ${SETUP_SCRIPT} for ${t.key} (output in ${logFile}).`);
+      }
+      r = await runSetup(script, {
+        gitDir,
+        cwd: wt.path,
+        minutes: this.cfg.limits.setup_minutes,
+        onOutput: (line) => appendFileSync(logFile, `${line}\n`),
+        signal: abort.signal,
+      });
+    } finally {
+      this.current = null;
+    }
+    if (abort.signal.aborted) return { failed: null, stopped: true };
+    if (!r.ran || r.ok) {
+      if (r.ran) this.log(`${SETUP_SCRIPT} for ${t.key} finished.`);
+      return { failed: null, stopped: false };
+    }
+    const why = redactSecrets(r.problem);
+    this.log(`${SETUP_SCRIPT} for ${t.key} failed: ${why}`);
+    await p
+      .comment(t.key, `The repo's setup script (${SETUP_SCRIPT}) failed, so I started without it: ${why}. Its full output is in the runner's log on ${this.ak.ownerName(this.ak.me)}'s computer.`)
+      .catch(() => undefined);
+    return { failed: why, stopped: false };
+  }
+
   private async executeTicket(job: TicketJob): Promise<void> {
     const { ak, cfg } = this;
     const { project: p } = job;
@@ -1827,6 +1869,13 @@ export class Runner {
     }
     const worktree = ensureTicketWorktree(ak.me.name, repo, t.key, t.branch ?? ticketBranch(t.key, t.title));
     if (t.branch !== worktree.branch) t = await p.update(t.key, { branch: worktree.branch });
+    const setup = await this.setUpWorktree(p, t, worktree);
+    if (setup.stopped) {
+      await p.comment(t.key, `Stopped while getting the workspace ready: ${this.stopping ? "my runner was shut down" : `${ak.ownerName(ak.me)} paused me`}.`).catch(() => undefined);
+      await this.setStatus(ak.me.paused ? "paused" : "idle");
+      this.log(`${t.key} stopped during setup.`);
+      return;
+    }
 
     await p.loadNames();
     const resume = st.sessions[t.id] ?? null;
@@ -1842,6 +1891,7 @@ export class Runner {
       worktree,
       followUp: Boolean(resume),
       newComments: commentsText,
+      setupFailed: setup.failed,
     });
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
     const choice = await this.modelChoice();
