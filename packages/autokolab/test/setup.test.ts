@@ -48,9 +48,14 @@ describe("the repo's setup script (AK-123)", () => {
     expect(existsSync(join(cwd, "two"))).toBe(true);
   });
 
-  it("reports a failure by its last line, and doesn't retry the same script", async () => {
-    expect(await run("echo working\necho 'npm ERR! network down' >&2\nexit 3\n")).toEqual({ ran: true, ok: false, problem: "npm ERR! network down" });
-    expect(await run("echo working\necho 'npm ERR! network down' >&2\nexit 3\n")).toEqual({ ran: false, why: "unchanged" });
+  it("reports a failure by its last line, and runs the same script again (AK-153)", async () => {
+    const failing = "echo working\necho 'npm ERR! network down' >&2\nexit 3\n";
+    expect(await run(failing)).toEqual({ ran: true, ok: false, problem: "npm ERR! network down" });
+    // A failure isn't recorded, so the next attempt (the preflight retry) runs it again.
+    expect(await run(failing)).toEqual({ ran: true, ok: false, problem: "npm ERR! network down" });
+    // A success is recorded, so it isn't repeated.
+    expect(await run("true\n")).toEqual({ ran: true, ok: true });
+    expect(await run("true\n")).toEqual({ ran: false, why: "unchanged" });
     expect(await run("exit 4\n")).toEqual({ ran: true, ok: false, problem: "it exited with code 4" });
   });
 

@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
+import { randomBytes } from "node:crypto";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
 import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, LIGHT_TTL_MS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, envStopKind, envStopQuestion, missingTool, reportAgentStatus, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type Ticket, type TicketLight } from "../core/projects.js";
@@ -8,20 +9,21 @@ import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
 import type { Message, MessageKind, Room, RunState, TaskRun } from "../core/types.js";
-import { claudeBin, mcpArgs } from "../setup/agents.js";
+import { claudeBin, mcpArgs, which } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { chooseModel, chooseReplyModel, chooseReviewModel,engineInvocation, engineLabel, noUsage, ownCost, rememberSessionCost, runEngine, type EngineInvocation, type EngineRun, type McpLaunch, type ModelChoice, type PlanStep, type ReplyLimits, type RunUsage, type SessionCosts } from "./engines.js";
 import { KeepAwake } from "./awake.js";
 import { installHook } from "./githook.js";
 import { machineReport, overSpend, spendNotice, usageLimit, usageReport } from "./limit.js";
 import { readAgentKey } from "../core/keys.js";
-import { PR_CONFLICTS, askReviewMessage, baseMergeNote, conflictComment, conflictDecision, conflictQuestion, conflictSendBackBase, isConflictQuestion, checkResult, afterMergeFailure, diffLines, earlierReview, ghPrDiff, ghPrMerge, ghPrViewAsync, lightReview, mergeDecision, mergedAt, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prLines, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewFinding, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type ConflictRecord, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
+import { PR_CONFLICTS, askReviewMessage, baseMergeNote, conflictComment, conflictDecision, conflictQuestion, conflictSendBackBase, isConflictQuestion, checkResult, afterMergeFailure, diffLines, earlierReview, gh, ghPrDiff, ghPrMerge, ghPrViewAsync, lightReview, mergeDecision, mergedAt, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prLines, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewFinding, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type ConflictRecord, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyMessage } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, fetchBranch, startBaseMerge, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
 import { claimPorts, type PortBlock } from "./ports.js";
 import { SETUP_SCRIPT, runSetup, setupScript, type SetupResult } from "./setup.js";
 import { EfficiencyCounters, failureClass, promptSections, restKey, type EfficiencyKey } from "./efficiency.js";
-import { checkoutCommit, currentBranch, diffSince, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
+import { checkoutCommit, currentBranch, diffSince, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, trustedGit, worktreeGitDir, type Worktree } from "./repos.js";
+import { PREFLIGHT_GIT_TIMEOUT_MS, PREFLIGHT_RETRY_MS, PreflightCache, checkPreflight, isPreflightQuestion, preflightDue, preflightQuestion, type PreflightFailure, type PreflightHold, type PreflightKind } from "./preflight.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
 // teammate asks it something, starts the agent headless in that thread's own worktree. It also
@@ -472,6 +474,11 @@ interface TicketState {
   conflicts?: Record<string, ConflictRecord>;
   /** Per ticket id: teammates' requests waiting for the ticket's next build run (AK-116). */
   notes?: Record<string, TicketNote[]>;
+  /**
+   * Per ticket id: a build held back because the machine couldn't deliver (AK-153). It's retried on
+   * its own every ten minutes, without starting the model, until the preflight passes.
+   */
+  preflight?: Record<string, PreflightHold>;
 }
 
 type CurrentRun = { what: string; abort: AbortController; ticket?: { id: string; key: string; projectId: string } };
@@ -479,6 +486,15 @@ type CurrentRun = { what: string; abort: AbortController; ticket?: { id: string;
 const PROJECTS_RELOAD_MS = 5 * 60_000;
 /** How often the lead's runner looks at each approved PR. */
 const MERGE_CHECK_MS = 60_000;
+/** Preflight failures that would stop every new ticket too, so claiming more only sweeps the board (AK-153). */
+const MACHINE_WIDE_PREFLIGHT: PreflightKind[] = ["env_network", "env_auth", "env_git"];
+/** How a preflight failure is counted in AK-151's daily failure classes (AK-153). */
+const PREFLIGHT_FAILURE_KEY: Record<PreflightKind, EfficiencyKey> = {
+  env_git: "fail_env_git",
+  env_network: "fail_env_network",
+  env_auth: "fail_env_git",
+  env_setup: "fail_other",
+};
 
 export class Runner {
   private queue: Job[] = [];
@@ -533,6 +549,10 @@ export class Runner {
   /** When the board was last scanned for work; an idle tick skips the reads (AK-146). */
   private boardScannedAt = 0;
   private awake: KeepAwake;
+  /** Worktrees whose preflight passed recently, so a follow-up run skips the checks (AK-153). */
+  private preflightCache = new PreflightCache();
+  /** Whether the "not claiming new tickets while a preflight fails" line has been logged (AK-153). */
+  private preflightSweepLogged = false;
 
   constructor(
     private ak: AutoKolab,
@@ -1287,6 +1307,8 @@ export class Runner {
       }
       // Then the board: workers' questions (for a lead), follow-ups on its tickets, the next Ready ticket.
       while (!this.queue.length && !this.ak.me.paused && !this.stopping && !this.overLimit() && !this.limitWait) {
+        // A build held on a failing preflight retries on its own, without starting the model (AK-153).
+        if (await this.retryPreflight()) continue;
         const q = await this.nextQuestion().catch((e) => {
           this.countFailure(e);
           this.log(`Couldn't check workers' questions: ${(e as Error).message}`);
@@ -1639,6 +1661,17 @@ export class Runner {
       const ticket = resume ? tickets.find((t) => t.id === resume) : undefined;
       if (ticket) return this.startJob(project, ticket, [], "wake_comment");
     }
+    // A machine-wide preflight failure (no network, no gh sign-in, a read-only clone) would fail
+    // every new ticket the same way, so don't claim them until a retry passes (AK-153).
+    const sweeping = Object.values(st.preflight ?? {}).map((h) => h.kind).filter((k) => MACHINE_WIDE_PREFLIGHT.includes(k));
+    if (sweeping.length) {
+      if (!this.preflightSweepLogged) {
+        this.preflightSweepLogged = true;
+        this.log(`Not claiming new tickets while a preflight is failing (${[...new Set(sweeping)].join(", ")}).`);
+      }
+      return null;
+    }
+    this.preflightSweepLogged = false;
     const waits = new Map<string, string>();
     try {
       for (const project of this.projects) {
@@ -2100,7 +2133,7 @@ export class Runner {
   /**
    * Run the repo's setup script in a ticket's worktree before the agent starts (AK-123): once per
    * worktree, again only when the script changes. Its output goes to a log here, not to the agent.
-   * Returns why it failed, for one line in the prompt; a failure never stops the run. A pause does.
+   * Returns why it failed; a failed setup holds the build before the model starts (AK-153). A pause does.
    */
   private async setUpWorktree(p: ProjectView, t: Ticket, wt: Worktree): Promise<{ failed: string | null; stopped: boolean }> {
     const gitDir = worktreeGitDir(wt.clone, wt.path);
@@ -2139,10 +2172,124 @@ export class Runner {
     }
     const why = redactSecrets(r.problem);
     this.log(`${SETUP_SCRIPT} for ${t.key} failed: ${why}`);
-    await p
-      .comment(t.key, `The repo's setup script (${SETUP_SCRIPT}) failed, so I started without it: ${why}. Its full output is in the runner's log on ${this.ak.ownerName(this.ak.me)}'s computer.`)
-      .catch(() => undefined);
+    // The build won't start on a failed setup (AK-153); the preflight reports it in one plain sentence.
     return { failed: why, stopped: false };
+  }
+
+  /**
+   * Prove this machine can deliver the work before the model starts (AK-153): git is writable, GitHub
+   * is reachable, `gh` is signed in when the runner uses it, and setup succeeded. A recent pass on
+   * this worktree is trusted, so a follow-up run doesn't repeat the checks. Returns the failure to
+   * hold the build on, or null when it's fine to start.
+   */
+  private async preflightBeforeBuild(p: ProjectView, t: Ticket, worktree: Worktree, setupFailed: string | null): Promise<PreflightFailure | null> {
+    // A failed setup always holds the build, even when a recent pass is cached: the worktree isn't ready.
+    if (setupFailed) return { ok: false, kind: "env_setup", why: setupFailed };
+    if (this.preflightCache.fresh(worktree.path)) return null;
+    const gitDir = worktreeGitDir(worktree.clone, worktree.path);
+    if (!gitDir) return { ok: false, kind: "env_git", why: `${worktree.path} is no longer one of the runner's working copies` };
+    const result = checkPreflight(
+      {
+        git: trustedGit(gitDir, PREFLIGHT_GIT_TIMEOUT_MS),
+        hasGh: Boolean(which("gh")),
+        gh: (args) => gh(args),
+        token: () => randomBytes(6).toString("hex"),
+      },
+      worktree.path,
+      setupFailed,
+    );
+    if (result.ok) {
+      this.preflightCache.pass(worktree.path);
+      await this.clearPreflight(p, t);
+      return null;
+    }
+    return result;
+  }
+
+  /** A build held back by a failing preflight: one plain "Needs you", then a retry on its own (AK-153). */
+  private async holdPreflight(p: ProjectView, t: Ticket, pre: PreflightFailure): Promise<void> {
+    const st = this.ticketState();
+    const holds = st.preflight ?? {};
+    const question = preflightQuestion(this.ak.me.name, this.ak.ownerName(this.ak.me), pre.kind);
+    const why = redactSecrets(pre.why).slice(0, 300);
+    // Any Needs you of this same stop kind counts as ours (the lead's own runner writes the same
+    // sentence, AK-149), so a repeated failure doesn't ask the owner twice.
+    if (!isPreflightQuestion(t.needs_human, pre.kind)) {
+      await p.comment(t.key, `I couldn't start: ${why}\n\nThe runner won't start my model until this works; it retries every 10 minutes.`).catch(() => undefined);
+      await p.update(t.key, { needs_human: question }).catch((e) => this.log(`Couldn't update ${t.key}: ${(e as Error).message}`));
+    }
+    holds[t.id] = { project: p.project.slug, key: t.key, until: Date.now() + PREFLIGHT_RETRY_MS, kind: pre.kind, question };
+    st.preflight = holds;
+    this.saveTicketState(st);
+    await this.setStatus("waiting_human", `Waiting to start ${t.key}`, t.id);
+    this.efficiency.add(PREFLIGHT_FAILURE_KEY[pre.kind]);
+    this.log(`${t.key}: preflight ${pre.kind} failed; not starting the model (${why}).`);
+    this.workLater(PREFLIGHT_RETRY_MS);
+  }
+
+  /** The preflight now passes: forget the hold and clear the "Needs you" it wrote (AK-153). */
+  private async clearPreflight(p: ProjectView, t: Ticket): Promise<void> {
+    const st = this.ticketState();
+    const held = st.preflight?.[t.id];
+    if (!held) return;
+    const { [t.id]: _, ...rest } = st.preflight!;
+    st.preflight = rest;
+    this.saveTicketState(st);
+    if (isPreflightQuestion(t.needs_human, held.kind)) await p.update(t.key, { needs_human: null }).catch((e) => this.log(`Couldn't update ${t.key}: ${(e as Error).message}`));
+  }
+
+  /**
+   * Try again the held builds whose ten minutes are up (AK-153), one at a time. Returns true when a
+   * run was attempted. Like the usage-limit retry, a held ticket that's done or moved on is dropped:
+   * only the preflight runs, never the model, until it passes.
+   */
+  private async retryPreflight(): Promise<boolean> {
+    const st = this.ticketState();
+    const holds = { ...(st.preflight ?? {}) };
+    const due = preflightDue(holds);
+    if (!due.length) {
+      if (Object.keys(holds).length) this.workLater(Math.max(Math.min(...Object.values(holds).map((h) => h.until)) - Date.now(), 0));
+      return false;
+    }
+    for (const id of due) {
+      const held = holds[id]!;
+      delete holds[id];
+      st.preflight = { ...holds };
+      this.saveTicketState(st);
+      const project = this.projects.find((p) => p.project.slug === held.project);
+      if (!project) {
+        this.log(`Dropping preflight retry for ${held.key}: the project is no longer available.`);
+        continue;
+      }
+      let ticket: Ticket | null = null;
+      try {
+        ticket = await project.ticket(held.key);
+      } catch (e) {
+        if (!/^No ticket /.test((e as Error).message)) {
+          holds[id] = held; // A read failure: keep the hold and try again next time.
+          st.preflight = { ...holds };
+          this.saveTicketState(st);
+        }
+        this.log(`Couldn't read ${held.key} for its preflight retry: ${(e as Error).message}`);
+        continue;
+      }
+      if (ticket.status === "done" || ticket.status === "canceled" || ticket.assignee_id !== this.ak.me.id) {
+        this.log(`Dropping preflight retry for ${held.key}: the ticket no longer needs this run.`);
+        continue;
+      }
+      try {
+        await this.executeTicket({ project, ticket, comments: [] });
+      } catch (e) {
+        // It failed to even get to the checks (a clone or worktree problem): keep the hold and retry.
+        holds[id] = { ...held, until: Date.now() + PREFLIGHT_RETRY_MS };
+        st.preflight = { ...holds };
+        this.saveTicketState(st);
+        this.workLater(PREFLIGHT_RETRY_MS);
+        this.log(`${held.key} couldn't retry its preflight: ${(e as Error).message}`);
+      }
+      return true;
+    }
+    return false;
   }
 
   private async executeTicket(job: TicketJob): Promise<void> {
@@ -2171,6 +2318,14 @@ export class Runner {
       await p.comment(t.key, `Stopped while getting the workspace ready: ${this.stopping ? "my runner was shut down" : `${ak.ownerName(ak.me)} paused me`}.`).catch(() => undefined);
       await this.setStatus(ak.me.paused ? "paused" : "idle");
       this.log(`${t.key} stopped during setup.`);
+      return;
+    }
+
+    // Before the expensive model starts: prove this machine can commit, push and open a pull request
+    // (AK-153). A failure holds the build with one plain "Needs you" and retries on its own.
+    const held = await this.preflightBeforeBuild(p, t, worktree, setup.failed);
+    if (held) {
+      await this.holdPreflight(p, t, held);
       return;
     }
 

@@ -1311,7 +1311,7 @@ export function untriaged<T extends Pick<Ticket, "id" | "needs_human">>(question
  * git, no network, a missing tool, or a browser that won't start. Only the machine's owner can fix
  * these, so a worker that stops on one goes straight to its owner (AK-149).
  */
-export type EnvStopKind = "read-only-git" | "no-network" | "missing-tool" | "no-browser";
+export type EnvStopKind = "read-only-git" | "no-network" | "no-auth" | "missing-tool" | "setup-failed" | "no-browser";
 
 // These match real tool and git error text, not everyday English ("I couldn't write the migration").
 // The order matters: a browser message can also say "not installed", so it's matched before a tool.
@@ -1325,6 +1325,17 @@ const ENV_STOPS: { kind: EnvStopKind; test: RegExp }[] = [
     kind: "read-only-git",
     // A git or filesystem write failure: the phrase carries the context itself.
     test: /read-only file system|EROFS|\bgit\b[^\n]{0,40}(?:read[- ]?only|permission denied|unable to (?:create|write)|cannot (?:open|create|write|lock)|could not (?:open|create|write|lock))|(?:read[- ]?only|permission denied|unable to (?:create|write)|cannot (?:open|create|write|lock)|could not (?:open|create|write|lock))[^\n]{0,40}(?:\.git[\\/]?|\bgit\b|repository|worktree)|\.git[\\/]?[^\n]{0,80}lock|unable to create[^\n]{0,80}\.git|can'?t write to (?:the )?(?:\.git|git|repo)/i,
+  },
+  {
+    kind: "no-auth",
+    // The tool's own sign-in wording, never an ordinary idea of "not signed in" (people sign in with
+    // GitHub, DEC-7): gh's own prompts, git's https/SSH auth failures.
+    test: /gh auth login|you are not logged into any GitHub hosts|fatal: authentication failed for 'https?:\/\/|permission denied \(publickey\)/i,
+  },
+  {
+    kind: "setup-failed",
+    // The repo's own setup script failing, so the worktree was never made ready.
+    test: /setup script[^\n]{0,60}failed|failed[^\n]{0,20}setup script|\.autokolab\/setup\.sh[^\n]{0,60}failed/i,
   },
   {
     kind: "no-network",
@@ -1348,7 +1359,9 @@ export function envStopKind(question: string | null | undefined): EnvStopKind | 
 const ENV_STOP_FIX: Record<EnvStopKind, string> = {
   "read-only-git": "computer can't write to git",
   "no-network": "computer can't reach GitHub",
+  "no-auth": "computer isn't signed in to GitHub (run `gh auth login`)",
   "missing-tool": "computer is missing a tool the agent needs",
+  "setup-failed": "repo's setup script failed",
   "no-browser": "computer can't start a browser the agent needs",
 };
 

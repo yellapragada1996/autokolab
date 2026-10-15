@@ -46,12 +46,12 @@ export function worktreeGitDir(clone: string, path: string): string | null {
 }
 
 /** Git run against a known Git folder, whatever the `.git` link inside the working copy says. */
-export function trustedGit(gitDir: string): (cwd: string, ...args: string[]) => string {
+export function trustedGit(gitDir: string, timeoutMs = 120_000): (cwd: string, ...args: string[]) => string {
   return (cwd, ...args) => {
     try {
       const env = { ...NON_INTERACTIVE, GIT_DIR: gitDir, GIT_WORK_TREE: cwd };
       // Only the end is trimmed: `status --porcelain` lines can start with a space that matters.
-      return execFileSync("git", args, { cwd, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 }).trimEnd();
+      return execFileSync("git", args, { cwd, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"], timeout: timeoutMs }).trimEnd();
     } catch (e) {
       const x = e as { stderr?: string; stdout?: string; message: string };
       throw new Error((x.stderr || x.stdout || x.message).toString().trim());
