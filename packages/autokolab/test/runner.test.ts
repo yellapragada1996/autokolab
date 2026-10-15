@@ -14,6 +14,7 @@ import { BATCH_MAX_MS, BATCH_WAIT_MS, REPLY_RESUME_MS, Runner, STALE_RUN_SUMMARY
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
 import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_ASK_ONCE, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, LOOK_BUILD, LOOK_NEVER_ASK, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ROOM_QUIET, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, envStopKind, envStopQuestion, missingTool, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
 import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, afterMergeFailure, mergedAt, runAsync, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, reviewNeedsHuman, settledByMerge, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
+import { preflightQuestion } from "../src/runner/preflight.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
 const AID = "3f1c2a9e-1b2c-4d5e-8f90-123456789abc";
@@ -534,6 +535,97 @@ describe("the lead's runner", () => {
   });
 });
 
+describe("holding a build on a failed preflight (AK-153)", () => {
+  // The runner's own ticket state lives under XDG_STATE_HOME, so each test gets its own folder.
+  const withState = async (fn: (r: Runner, t: Ticket, seen: { comments: string[]; updates: Record<string, unknown>[] }) => Promise<void>) => {
+    const root = mkdtempSync(join(tmpdir(), "ak-preflight-hold-"));
+    const oldState = process.env.XDG_STATE_HOME;
+    process.env.XDG_STATE_HOME = join(root, "state");
+    try {
+      const comments: string[] = [];
+      const updates: Record<string, unknown>[] = [];
+      const t = { id: "t1", key: "AK-1", status: "in_progress", assignee_id: "worker", needs_human: null, type: "task" } as Ticket;
+      const project = {
+        project: { slug: "p", id: "p1" },
+        comment: async (_k: string, body: string) => void comments.push(body),
+        update: async (_k: string, change: Record<string, unknown>) => {
+          updates.push(change);
+          if ("needs_human" in change) (t as { needs_human: string | null }).needs_human = change.needs_human as string | null;
+          return t;
+        },
+        ticket: async () => t,
+      };
+      const ak = { me: { id: "worker", name: "a-codex", paused: false }, ownerName: () => "ana" } as unknown as ConstructorParameters<typeof Runner>[0];
+      const r = new Runner(ak, cfgFor());
+      r["projects"] = [project as never];
+      await fn(r, t, { comments, updates });
+    } finally {
+      if (oldState === undefined) delete process.env.XDG_STATE_HOME;
+      else process.env.XDG_STATE_HOME = oldState;
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  it("writes one plain Needs you, holds the ticket, then retries it without a model", async () => {
+    await withState(async (r, t, seen) => {
+      await r["holdPreflight"](r["projects"][0], t, { ok: false, kind: "env_git", why: "fatal: Read-only file system" });
+      expect(seen.comments).toHaveLength(1);
+      expect(seen.comments[0]).toContain("Read-only file system");
+      expect(seen.updates[0]).toEqual({ needs_human: preflightQuestion("a-codex", "ana", "env_git") });
+      const held = r["ticketState"]().preflight!;
+      expect(held.t1).toMatchObject({ project: "p", key: "AK-1", kind: "env_git" });
+      expect(held.t1!.until).toBeGreaterThan(Date.now());
+
+      // The same failure of the same kind doesn't write a second Needs you.
+      await r["holdPreflight"](r["projects"][0], t, { ok: false, kind: "env_git", why: "fatal: Read-only file system" });
+      expect(seen.comments).toHaveLength(1);
+      expect(seen.updates).toHaveLength(1);
+
+      // Ten minutes on, the retry runs the ticket again (the preflight, never the model).
+      const tried: string[] = [];
+      r["executeTicket"] = (async (job: { ticket: Ticket }) => void tried.push(job.ticket.key)) as never;
+      const st = r["ticketState"]();
+      st.preflight!.t1!.until = Date.now() - 1;
+      r["saveTicketState"](st);
+      expect(await r["retryPreflight"]()).toBe(true);
+      expect(tried).toEqual(["AK-1"]);
+      expect(r["ticketState"]().preflight).toEqual({});
+    });
+  });
+
+  it("clears the Needs you and the hold once the preflight passes", async () => {
+    await withState(async (r, t, seen) => {
+      const question = preflightQuestion("a-codex", "ana", "env_git");
+      const st = r["ticketState"]();
+      st.preflight = { t1: { project: "p", key: "AK-1", until: Date.now() + 1000, kind: "env_git", question } };
+      r["saveTicketState"](st);
+      (t as { needs_human: string | null }).needs_human = question;
+      await r["clearPreflight"](r["projects"][0], t);
+      expect(r["ticketState"]().preflight).toEqual({});
+      expect(seen.updates.at(-1)).toEqual({ needs_human: null });
+    });
+  });
+
+  it("drops a hold when the ticket is done or no longer this agent's", async () => {
+    await withState(async (r, t) => {
+      const st = r["ticketState"]();
+      st.preflight = { t1: { project: "p", key: "AK-1", until: Date.now() - 1, kind: "env_network", question: "q" } };
+      r["saveTicketState"](st);
+      (t as { status: string }).status = "done";
+      expect(await r["retryPreflight"]()).toBe(false);
+      expect(r["ticketState"]().preflight).toEqual({});
+
+      (t as { status: string }).status = "in_progress";
+      (t as { assignee_id: string }).assignee_id = "someone-else";
+      const st2 = r["ticketState"]();
+      st2.preflight = { t1: { project: "p", key: "AK-1", until: Date.now() - 1, kind: "env_network", question: "q" } };
+      r["saveTicketState"](st2);
+      expect(await r["retryPreflight"]()).toBe(false);
+      expect(r["ticketState"]().preflight).toEqual({});
+    });
+  });
+});
+
 describe("tickets", () => {
   it("names branches after the ticket", () => {
     expect(ticketBranch("SH-12", "Add Google sign-in!")).toBe("sh-12-add-google-sign-in");
@@ -619,6 +711,10 @@ describe("tickets", () => {
     expect(envStopKind(".git/FETCH_HEAD: Permission denied")).toBe("read-only-git");
     expect(envStopKind("Couldn't reach GitHub: could not resolve host github.com")).toBe("no-network");
     expect(envStopKind("fatal: could not read from remote repository")).toBe("no-network");
+    expect(envStopKind("gh isn't signed in to GitHub")).toBe("no-auth");
+    expect(envStopKind("fatal: Authentication failed for 'https://github.com/a/b/'")).toBe("no-auth");
+    expect(envStopKind("Permission denied (publickey).")).toBe("no-auth");
+    expect(envStopKind("The repo setup script failed")).toBe("setup-failed");
     expect(envStopKind("bash: gh: command not found")).toBe("missing-tool");
     expect(envStopKind("Error: spawn npm ENOENT")).toBe("missing-tool");
     expect(envStopKind("the browser couldn't start")).toBe("no-browser");
@@ -644,7 +740,7 @@ describe("tickets", () => {
     expect(missingTool("playwright is not installed")).toBe("playwright");
     expect(missingTool("I could not reach GitHub")).toBeNull();
     // The sentence it writes is recognised again, so the same stop is only asked once.
-    for (const kind of ["read-only-git", "no-network", "missing-tool", "no-browser"] as const) {
+    for (const kind of ["read-only-git", "no-network", "no-auth", "missing-tool", "setup-failed", "no-browser"] as const) {
       expect(envStopKind(envStopQuestion("a-codex", "ana", kind))).toBe(kind);
       expect(envStopKind(envStopQuestion("a-codex", "ana", kind, "gh"))).toBe(kind);
     }

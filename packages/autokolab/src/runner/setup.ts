@@ -98,8 +98,9 @@ export async function runSetup(script: string | null, opts: SetupOptions): Promi
       else resolve(code === 0 ? null : last || `it exited with code ${code}`);
     });
   });
-  // Recorded either way, so a failing script isn't retried on every run, only once it changes.
+  // A success is recorded so the same script isn't repeated; a failure is not, so the next attempt
+  // (the preflight retry, AK-153) runs it again instead of treating a broken worktree as ready.
   // A pause isn't a result: the script runs again next time.
-  if (!opts.signal?.aborted) writeFileSync(record, `${sum}\n`);
+  if (!opts.signal?.aborted && problem === null) writeFileSync(record, `${sum}\n`);
   return problem === null ? { ran: true, ok: true } : { ran: true, ok: false, problem: problem.slice(0, 300) };
 }
