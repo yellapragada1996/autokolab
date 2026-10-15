@@ -224,6 +224,22 @@ export function checkoutCommit(wt: Pick<Worktree, "clone" | "path">, sha: string
   g("clean", "-fdq");
 }
 
+/**
+ * What changed from `from` to the commit checked out in a worktree (AK-117). Null, so the whole PR
+ * is reviewed instead, when `from` isn't an ancestor (a rebase or force-push), when the new commits
+ * include a merge (it brings in other people's changes), or when Git can't say.
+ */
+export function diffSince(wt: Pick<Worktree, "clone" | "path">, from: string): string | null {
+  try {
+    const g = worktreeGit(wt.clone, wt.path);
+    g("merge-base", "--is-ancestor", from, "HEAD");
+    if (g("rev-list", "--merges", `${from}..HEAD`)) return null;
+    return g("diff", "--no-color", "--no-ext-diff", from, "HEAD");
+  } catch {
+    return null;
+  }
+}
+
 /** The latest commit in a worktree: its id and first line. */
 export function headCommit(clone: string, path: string): { sha: string; subject: string } | null {
   try {

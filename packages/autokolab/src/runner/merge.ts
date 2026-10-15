@@ -147,6 +147,65 @@ export interface ReviewRecord {
   reviews: number;
   /** A commit seen with no checks: since when (ms), and whether "No automatic tests ran" was set for it. */
   noChecks?: { sha: string; since: number; asked?: boolean };
+  /** The last commit a review run sent back, on which PR, and what the lead said (AK-117). */
+  reviewed?: EarlierReview;
+}
+
+/** A review that sent a ticket back: the next one looks only at what changed since (AK-117). */
+export interface EarlierReview {
+  sha: string;
+  pr: string;
+  finding: string;
+}
+
+/** About this much of the lead's earlier finding goes into a re-review. */
+export const FINDING_LIMIT = 4000;
+
+/** What the lead said on the ticket during a review run: its comments after `afterId`, oldest first. */
+export function reviewFinding(comments: Pick<Comment, "id" | "author_id" | "body">[], leadId: string, afterId: number): string {
+  return comments
+    .filter((c) => c.id > afterId && c.author_id === leadId)
+    .sort((a, b) => a.id - b.id)
+    .map((c) => c.body.trim())
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, FINDING_LIMIT);
+}
+
+/** The earlier review a review of `sha` on `prUrl` builds on, if there's one for an older commit of the same PR. */
+export function earlierReview(rec: Pick<ReviewRecord, "reviewed"> | null | undefined, prUrl: string, sha: string): EarlierReview | undefined {
+  const r = rec?.reviewed;
+  return r && r.pr === prUrl && r.sha.toLowerCase() !== sha.toLowerCase() && r.finding.trim() ? r : undefined;
+}
+
+/** Changed lines in a unified diff: added plus removed, without the file headers. */
+export function diffLines(diff: string): number {
+  let n = 0;
+  for (const line of diff.split("\n")) {
+    if ((line.startsWith("+") && !line.startsWith("+++")) || (line.startsWith("-") && !line.startsWith("---"))) n++;
+  }
+  return n;
+}
+
+/** The PR's added plus removed lines, if gh said. */
+export function prLines(pr: Pick<PrInfo, "additions" | "deletions">): number | null {
+  const ok = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= 0;
+  return ok(pr.additions) && ok(pr.deletions) ? pr.additions + pr.deletions : null;
+}
+
+/**
+ * Whether a review may take the light path (AK-117): at most `maxLines` changed lines to read
+ * (the PR's, or on a re-review the new commits'), and nothing risky anywhere in the PR, since the
+ * approval covers all of it. Anything unknown takes the full path.
+ */
+export function lightReview(pr: Pick<PrInfo, "files">, lines: number | null, maxLines: number): { light: boolean; why: string } {
+  if (maxLines <= 0) return { light: false, why: "light reviews are off" };
+  const risky = riskyFiles(pr);
+  if (risky.length) return { light: false, why: `it touches ${shortList(risky, 3)}` };
+  if (!(pr.files ?? []).length) return { light: false, why: "gh listed no files" };
+  if (lines === null) return { light: false, why: "gh didn't say how big it is" };
+  if (lines > maxLines) return { light: false, why: `${lines} changed lines` };
+  return { light: true, why: `${lines} changed lines, nothing risky` };
 }
 
 /** How long a commit may have no checks before the runner says so: GitHub takes a while to register them. */

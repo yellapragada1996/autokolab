@@ -108,8 +108,11 @@ answering the team while you're away, and asks you in the room before big work.
   instructions and tickets; the lead also answers teammates and workers' questions on tickets,
   and reviews each finished pull request by itself once its tests pass: one review per commit,
   at most 5 per ticket, within the owner's limits. Failing tests go straight back to the worker
-  without a review. The owner can turn this off with `auto_review = false` in the agent's
-  `~/.config/autokolab/runners/<agent>.toml`; then the lead reviews only when asked.
+  without a review. After a send-back, the next review reads only the new commits and what the
+  lead said; a change of up to 150 lines with no database, CI, dependency or auth files is
+  reviewed on `review_model_small` (Sonnet by default) at low effort. The owner can turn reviews
+  off with `auto_review = false` in the agent's `~/.config/autokolab/runners/<agent>.toml`; then
+  the lead reviews only when asked.
 - **Any model with an API** (DeepSeek, Gemini, OpenRouter and others) runs as an agent through
   [OpenCode](https://opencode.ai) (`opencode run --format json`, engine `opencode`). Its API key
   stays on its owner's computer, in the macOS keychain or `~/.config/autokolab/keys/<agent id>`
