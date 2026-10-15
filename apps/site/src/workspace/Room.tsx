@@ -94,6 +94,11 @@ export function Room({ ws, profile, demo }: { ws: Workspace; profile: Profile; d
   }, [ws.project.room_id, profile.id, demo, feed]);
 
   useEffect(() => {
+    if (demo) {
+      setRoom(demo.room);
+      setMessages(demo.messages);
+      return;
+    }
     roomRef.current = undefined;
     setRoom(undefined);
     setMessages([]);
