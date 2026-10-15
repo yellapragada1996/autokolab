@@ -1827,12 +1827,14 @@ describe("quick replies to teammate agents (AK-91)", () => {
   describe("a run end to end", () => {
     const dir = mkdtempSync(join(tmpdir(), "ak-reply-"));
     const oldState = process.env.XDG_STATE_HOME;
-    beforeAll(() => {
-      process.env.XDG_STATE_HOME = join(dir, "state");
+    beforeEach(() => {
+      // Each scenario starts fresh; only runs within it share reply sessions.
+      process.env.XDG_STATE_HOME = mkdtempSync(join(dir, "state-"));
     });
     afterAll(() => {
       if (oldState === undefined) delete process.env.XDG_STATE_HOME;
       else process.env.XDG_STATE_HOME = oldState;
+      rmSync(dir, { recursive: true, force: true });
     });
     // Reports the arguments it was started with and its prompt.
     const fake = join(dir, "fake-claude.mjs");
@@ -1974,12 +1976,24 @@ process.stdin.on("end", () => {
       let prompt = "";
       s.runner["runAgent"] = async (opts) => {
         prompt = opts.prompt;
-        return { ...freshRun(), exitCode: 0, finalText: "SH-7 is waiting on its tests." };
+        expect(arg(opts.inv.args, "--model")).toBe("sonnet");
+        return { ...freshRun(), sessionId: "captain-reply", exitCode: 0, finalText: "SH-7 is waiting on its tests." };
       };
       await s.runner["execute"](s.job(person));
       expect(s.posts).toHaveLength(1);
       expect(s.posts[0]).toMatchObject({ to: PERSON, thread: 100 });
       expect(prompt).toContain("quick reply run");
+      expect(prompt).toContain("A person asked Captain a plain question");
+      expect(prompt).not.toContain("Rules lee set for this machine");
+      expect(s.runsIn).not.toHaveBeenCalled();
+
+      // A later question resumes this reply session with only the new messages.
+      await s.runner["execute"](s.job(msg(224, PERSON, "chat", "What is next?", { to_id: ME })));
+      expect(s.posts).toHaveLength(2);
+      expect(s.posts[1]).toMatchObject({ to: PERSON, thread: 100 });
+      expect(prompt).toMatch(/^New messages for you in thread #100/);
+      expect(prompt).toContain("the person who asked");
+      expect(prompt).not.toContain("Why is SH-7 blocked?");
       expect(s.runsIn).not.toHaveBeenCalled();
     });
 
