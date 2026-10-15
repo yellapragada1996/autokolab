@@ -25,6 +25,7 @@ export interface ConnectOptions {
   token: string;
   /** WebSocket implementation for realtime when the runtime has none (Node < 22). */
   realtimeTransport?: unknown;
+  onRestResponse?: (url: string, bytes: number) => void;
 }
 
 export interface PostInput {
@@ -73,6 +74,10 @@ export function looksSignedOut(e: unknown): boolean {
 }
 
 export class AutoKolab {
+  /** REST response sizes for the runner's numeric daily counters. */
+  onRestResponse?: (url: string, bytes: number) => void;
+  /** Realtime deliveries, including changes that do not start work. */
+  onRealtimeEvent?: () => void;
   private memberMap = new Map<string, Member>();
   private roomMap = new Map<string, Room>();
   private memberships: RoomMember[] = [];
@@ -89,9 +94,23 @@ export class AutoKolab {
 
   static async connect(opts: ConnectOptions): Promise<AutoKolab> {
     const { email, password, memberId } = parseToken(opts.token);
+    let connected: AutoKolab | undefined;
     const sb = createClient(opts.url, opts.anonKey, {
       auth: { persistSession: false, autoRefreshToken: true, detectSessionInUrl: false },
       realtime: opts.realtimeTransport ? ({ transport: opts.realtimeTransport } as never) : undefined,
+      global: { fetch: async (input, init) => {
+        const response = await fetch(input, init);
+        if (connected?.onRestResponse || opts.onRestResponse) {
+          const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+          if (url.includes("/rest/v1/")) {
+            try {
+              const bytes = (await response.clone().arrayBuffer()).byteLength;
+              (connected?.onRestResponse ?? opts.onRestResponse)?.(url, bytes);
+            } catch { /* Measurement cannot break a request. */ }
+          }
+        }
+        return response;
+      } },
     });
     const { error: authError } = await sb.auth.signInWithPassword({ email, password });
     if (authError) {
@@ -105,6 +124,7 @@ export class AutoKolab {
       if (e) throw new AutoKolabError(e.name === "AuthRetryableFetchError" ? SIGN_IN_UNREACHABLE : SIGN_IN_LOST);
     };
     const ak = new AutoKolab(sb, me as Member, signIn);
+    connected = ak;
     await ak.refresh();
     return ak;
   }
@@ -337,6 +357,7 @@ export class AutoKolab {
   onMembersChange(cb: () => void): RealtimeChannel {
     const ch = this.sb.channel(`ak-members-${rand()}`);
     ch.on("postgres_changes", { event: "*", schema: "public", table: "members" }, (p) => {
+      this.onRealtimeEvent?.();
       const m = p.new as Member;
       if (m?.id) {
         this.memberMap.set(m.id, m);
@@ -345,6 +366,7 @@ export class AutoKolab {
       cb();
     });
     ch.on("postgres_changes", { event: "*", schema: "public", table: "room_members" }, () => {
+      this.onRealtimeEvent?.();
       void this.refresh().then(cb, () => undefined);
     });
     return ch.subscribe();
@@ -354,6 +376,7 @@ export class AutoKolab {
     return this.sb
       .channel(`ak-${tag}-${rand()}`)
       .on("postgres_changes", { event, schema: "public", table, ...(filter ? { filter } : {}) } as never, (payload: { new: Record<string, unknown> }) => {
+        this.onRealtimeEvent?.();
         if (payload.new && Object.keys(payload.new).length) cb(payload.new);
       })
       .subscribe();

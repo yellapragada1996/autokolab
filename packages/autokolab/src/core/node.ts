@@ -28,12 +28,12 @@ export function nodeSupabase(url: string, key: string): SupabaseClient {
 }
 
 /** Connect as a member from Node. */
-export function nodeConnect(opts: { url: string; anonKey: string; token: string }): Promise<AutoKolab> {
+export function nodeConnect(opts: { url: string; anonKey: string; token: string; onRestResponse?: (url: string, bytes: number) => void }): Promise<AutoKolab> {
   return AutoKolab.connect({ ...opts, realtimeTransport: nodeWebSocket });
 }
 
 /** Connect as one of this machine's identities. */
-export async function connectFromConfig(profile?: string): Promise<AutoKolab> {
+export async function connectFromConfig(profile?: string, onRestResponse?: (url: string, bytes: number) => void): Promise<AutoKolab> {
   const cfg = resolveConfig(profile);
-  return nodeConnect({ url: cfg.url, anonKey: cfg.anonKey, token: cfg.token });
+  return nodeConnect({ url: cfg.url, anonKey: cfg.anonKey, token: cfg.token, onRestResponse });
 }

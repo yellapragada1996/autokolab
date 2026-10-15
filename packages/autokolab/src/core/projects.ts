@@ -68,6 +68,9 @@ export interface UsageReport {
   waiting_until: string | null;
 }
 
+/** Schema 29: fixed metric names and numeric deltas only. */
+export type EfficiencyReport = Record<string, number>;
+
 /**
  * Which computer an agent runs on and, for an API-model agent, its active daily dollar limit
  * (schema 25). Non-secret values only: never a key or the settings file.
@@ -431,6 +434,7 @@ export class ProjectView {
   private runUsageMissing = false;
   /** The database's record_run_usage has no p_path yet (before schema 26). */
   private runPathMissing = false;
+  private efficiencyMissing = false;
   /** The scheduling list kept between ticks; refetched when realtime says it changed, or after 5 minutes (AK-146). */
   private light: { at: number; rows: TicketLight[] } | null = null;
   /** Realtime saw a change to tickets, comments or links: the next read must refetch (AK-146). */
@@ -885,6 +889,17 @@ export class ProjectView {
     const e = r.error;
     if (e && !e.message.includes("AUTOKOLAB_") && (e.code === "PGRST202" || missingColumn(e) || /report_usage/.test(e.message))) {
       this.usageMissing = true;
+      return false;
+    }
+    check(r);
+    return true;
+  }
+
+  async reportEfficiency(day: string, delta: EfficiencyReport): Promise<boolean> {
+    if (this.efficiencyMissing || !Object.keys(delta).length) return false;
+    const r = await this.sb.rpc("report_agent_efficiency", { p_day: day, p_delta: delta });
+    if (r.error && (r.error.code === "PGRST202" || /report_agent_efficiency/.test(r.error.message))) {
+      this.efficiencyMissing = true;
       return false;
     }
     check(r);

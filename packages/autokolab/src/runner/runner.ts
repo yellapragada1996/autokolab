@@ -21,6 +21,7 @@ import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReplyPrompt, buildReviewPro
 import { SHIP_FAILED_PREFIX, fetchBranch, startBaseMerge, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
 import { claimPorts, type PortBlock } from "./ports.js";
 import { SETUP_SCRIPT, runSetup, setupScript, type SetupResult } from "./setup.js";
+import { EfficiencyCounters, failureClass, promptSections, restKey, type EfficiencyKey } from "./efficiency.js";
 import { checkoutCommit, currentBranch, diffSince, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, trustedGit, worktreeGitDir, type Worktree } from "./repos.js";
 import { PREFLIGHT_GIT_TIMEOUT_MS, PREFLIGHT_RETRY_MS, PreflightCache, checkPreflight, isPreflightQuestion, preflightDue, preflightQuestion, type PreflightFailure, type PreflightHold, type PreflightKind } from "./preflight.js";
 
@@ -487,6 +488,13 @@ const PROJECTS_RELOAD_MS = 5 * 60_000;
 const MERGE_CHECK_MS = 60_000;
 /** Preflight failures that would stop every new ticket too, so claiming more only sweeps the board (AK-153). */
 const MACHINE_WIDE_PREFLIGHT: PreflightKind[] = ["env_network", "env_auth", "env_git"];
+/** How a preflight failure is counted in AK-151's daily failure classes (AK-153). */
+const PREFLIGHT_FAILURE_KEY: Record<PreflightKind, EfficiencyKey> = {
+  env_git: "fail_env_git",
+  env_network: "fail_env_network",
+  env_auth: "fail_env_git",
+  env_setup: "fail_other",
+};
 
 export class Runner {
   private queue: Job[] = [];
@@ -536,6 +544,8 @@ export class Runner {
   /** Rough bytes read from the database since the last log line (AK-146). */
   private downloadedBytes = 0;
   private downloadLoggedAt = 0;
+  private readonly efficiency: EfficiencyCounters;
+  private efficiencyFlushing = false;
   /** When the board was last scanned for work; an idle tick skips the reads (AK-146). */
   private boardScannedAt = 0;
   private awake: KeepAwake;
@@ -547,8 +557,15 @@ export class Runner {
   constructor(
     private ak: AutoKolab,
     private cfg: RunnerConfig,
+    efficiency = new EfficiencyCounters(),
   ) {
+    this.efficiency = efficiency;
     this.awake = new KeepAwake(cfg.keep_awake, (msg) => this.log(msg));
+    ak.onRestResponse = (url, bytes) => {
+      const key = restKey(url);
+      if (key) this.efficiency.add(key, bytes);
+    };
+    ak.onRealtimeEvent = () => this.efficiency.add("realtime_events");
     this.logDir = join(stateDir(), "runs");
     mkdirSync(this.logDir, { recursive: true });
   }
@@ -557,8 +574,12 @@ export class Runner {
     const cfg = loadRunnerConfig(file);
     // Claude Code may come bundled with the desktop app instead of being on the PATH.
     if (cfg.engine === "claude" && cfg.claude_bin === "claude") cfg.claude_bin = claudeBin() ?? "claude";
-    const ak = await connectFromConfig(cfg.agent_id);
-    const r = new Runner(ak, cfg);
+    const efficiency = new EfficiencyCounters();
+    const ak = await connectFromConfig(cfg.agent_id, (url, bytes) => {
+      const key = restKey(url);
+      if (key) efficiency.add(key, bytes);
+    });
+    const r = new Runner(ak, cfg, efficiency);
     await r.init();
     return r;
   }
@@ -578,6 +599,33 @@ export class Runner {
     if (this.downloadLoggedAt) this.log(`Downloaded about ${Math.round(this.downloadedBytes / 1024)} KB from the database in the last 10 minutes.`);
     this.downloadLoggedAt = now;
     this.downloadedBytes = 0;
+  }
+
+  private countPrompt(prompt: string): void {
+    for (const [key, bytes] of Object.entries(promptSections(prompt))) this.efficiency.add(key as EfficiencyKey, bytes);
+  }
+
+  private countFailure(error: unknown): void {
+    this.efficiency.add(failureClass(error));
+  }
+
+  private async flushEfficiency(): Promise<void> {
+    if (this.efficiencyFlushing || !this.projects.length) return;
+    this.efficiencyFlushing = true;
+    try {
+      for (const batch of this.efficiency.take()) {
+        try {
+          await this.projects[0].reportEfficiency(batch.day, batch.values);
+        } catch (error) {
+          this.efficiency.restore(batch.day, batch.values);
+          throw error;
+        }
+      }
+    } catch (error) {
+      this.log(`Couldn't report numeric daily counters: ${(error as Error).message}`);
+    } finally {
+      this.efficiencyFlushing = false;
+    }
   }
 
   private async init(): Promise<void> {
@@ -607,6 +655,7 @@ export class Runner {
       }),
     );
     this.timers.push(setInterval(() => this.poll(), POLL_MS));
+    this.timers.push(setInterval(() => void this.flushEfficiency(), 10 * 60_000));
     // Merging approved PRs is plain code, not a model run, so it has its own timer and goes on
     // while a task is running.
     this.timers.push(
@@ -1012,11 +1061,17 @@ export class Runner {
               }
               const queued = await this.enqueue(m, d.fromInstructor);
               if (queued) this.countWake(queued);
+              if (queued === "run") {
+                const key: EfficiencyKey = m.kind === "chat" ? "wake_message_chat" : m.kind === "question" ? "wake_message_question"
+                  : m.kind === "task" ? "wake_message_task" : m.kind === "review" ? "wake_message_review" : "wake_message_other";
+                this.efficiency.add(key);
+              }
               this.log(`${what}, ${queued === "run" ? "run" : queued === "merged" ? "answered with the waiting messages in its thread" : "already taken"}.`);
             }
             if (batch.length < 100) break;
           }
         } catch (e) {
+          this.countFailure(e);
           this.log(`Couldn't check for messages: ${(e as Error).message}`);
         }
       } while (this.pollAgain);
@@ -1243,6 +1298,7 @@ export class Runner {
         }
         const [job] = this.queue.splice(ready, 1);
         await this.execute(job).catch(async (e) => {
+          this.countFailure(e);
           const msg = (e as Error).message;
           this.log(`#${job.message.id} failed to start: ${msg}`);
           await this.updateRuns(job, { state: "failed", summary: msg.slice(0, 16000), finished_at: now() }).catch(() => undefined);
@@ -1254,24 +1310,27 @@ export class Runner {
         // A build held on a failing preflight retries on its own, without starting the model (AK-153).
         if (await this.retryPreflight()) continue;
         const q = await this.nextQuestion().catch((e) => {
+          this.countFailure(e);
           this.log(`Couldn't check workers' questions: ${(e as Error).message}`);
           return null;
         });
         if (q) {
-          await this.executeTriage(q).catch((e) => this.log(`Couldn't look at ${q.ticket.key}'s question: ${(e as Error).message}`));
+          await this.executeTriage(q).catch((e) => { this.countFailure(e); this.log(`Couldn't look at ${q.ticket.key}'s question: ${(e as Error).message}`); });
           continue;
         }
         const rj = this.nextReview();
         if (rj) {
-          await this.executeReview(rj).catch((e) => this.log(`Couldn't review ${rj.ticket.key}: ${(e as Error).message}`));
+          await this.executeReview(rj).catch((e) => { this.countFailure(e); this.log(`Couldn't review ${rj.ticket.key}: ${(e as Error).message}`); });
           continue;
         }
         const tj = await this.nextTicket().catch((e) => {
+          this.countFailure(e);
           this.log(`Couldn't check the board: ${(e as Error).message}`);
           return null;
         });
         if (!tj) break;
         await this.executeTicket(tj).catch(async (e) => {
+          this.countFailure(e);
           const msg = (e as Error).message;
           this.log(`${tj.ticket.key} failed to start: ${msg}`);
           await tj.project.update(tj.ticket.key, { needs_human: `I couldn't start: ${msg}`.slice(0, 1000) }).catch(() => undefined);
@@ -1360,6 +1419,7 @@ export class Runner {
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, room.name) };
     const inv = this.invocation(mcp, resume, worktree.path, choice, replyLimits);
     const logFile = join(this.logDir, `${room.name}-run${run.id}-msg${m.id}.log`);
+    this.countPrompt(prompt);
     const ids = [m, ...job.more.map((x) => x.message)].map((x) => `#${x.id}`).join(", ");
 
     const abort = new AbortController();
@@ -1380,6 +1440,7 @@ export class Runner {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000, result);
     }
+    if (result.isError) this.efficiency.add("fail_provider");
     this.recordRun(this.projects.find((p) => this.projectRoom(p)?.id === room.id), "reply", null, result, startedAt);
     this.log(runCostLine(isReply ? "Reply" : "Work", ids, prompt.length, result.model ?? choice.model ?? "", choice.effort, result.usage ?? noUsage()));
     if (isReply && result.sessionId) this.saveReplySession(run.thread_root, result.sessionId);
@@ -1522,6 +1583,7 @@ export class Runner {
     // change to tickets, comments or links also makes the cached board stale (AK-146).
     this.ticketChannels = views.map((v) =>
       v.onChange(() => {
+        this.efficiency.add("realtime_events");
         for (const p of this.projects) p.invalidateLight();
         void this.checkReviews();
         void this.work();
@@ -1577,7 +1639,7 @@ export class Runner {
           this.saveTicketState(st);
           continue;
         }
-        if (!looping) return this.startJob(project, ticket, comments);
+        if (!looping) return this.startJob(project, ticket, comments, "wake_comment");
         // Agents keep answering each other here: stop resuming and hand it to a person.
         st.seen[ticket.id] = comments[comments.length - 1].id;
         this.saveTicketState(st);
@@ -1597,7 +1659,7 @@ export class Runner {
         this.saveTicketState(st);
       }
       const ticket = resume ? tickets.find((t) => t.id === resume) : undefined;
-      if (ticket) return this.startJob(project, ticket, []);
+      if (ticket) return this.startJob(project, ticket, [], "wake_comment");
     }
     // A machine-wide preflight failure (no network, no gh sign-in, a read-only clone) would fail
     // every new ticket the same way, so don't claim them until a retry passes (AK-153).
@@ -1617,7 +1679,7 @@ export class Runner {
           waits.set(t.id, text);
           if (this.areaWaits.get(t.id) !== text) this.log(`${t.key}: ${text}.`);
         });
-        if (ticket) return this.startJob(project, ticket, []);
+        if (ticket) return this.startJob(project, ticket, [], "wake_ready");
       }
     } finally {
       this.areaWaits = waits;
@@ -1626,7 +1688,8 @@ export class Runner {
   }
 
   /** The full ticket for a run that's about to start; the board itself is read light (AK-146). */
-  private async startJob(project: ProjectView, light: TicketLight, comments: Comment[]): Promise<TicketJob> {
+  private async startJob(project: ProjectView, light: TicketLight, comments: Comment[], reason: EfficiencyKey): Promise<TicketJob> {
+    this.efficiency.add(reason);
     return { project, ticket: await project.ticket(light.key), comments };
   }
 
@@ -1685,6 +1748,7 @@ export class Runner {
       this.saveTicketState(st);
     }
     const next = untriaged(open.map((j) => j.ticket), handled)[0];
+    if (next) this.efficiency.add("wake_triage");
     return next ? open.find((j) => j.ticket.id === next.id)! : null;
   }
 
@@ -1803,6 +1867,7 @@ export class Runner {
         t = { ...t, needs_human: null };
       }
       this.reviewQueue.push({ project: p, ticket: t, pr, sha: d.sha });
+      this.efficiency.add("wake_review");
       return;
     }
     // Handled once per commit, whatever happens below.
@@ -1811,6 +1876,7 @@ export class Runner {
     if (d.action === "limit") return ask(REVIEW_LIMIT_QUESTION);
     if (d.action === "conflict") return this.conflictFound(p, t, d.sha, pr.baseRefName || p.project.default_branch || "main");
     if (d.action === "tests_failed") {
+      this.efficiency.add("fail_ci");
       await p.comment(t.key, testsFailedComment(url, d.sha, d.failed ?? []));
       const stale = isMergeQuestion(t.needs_human) || isReviewQuestion(t.needs_human);
       await p.update(t.key, { status: "in_progress", ...(stale ? { needs_human: null } : {}) });
@@ -1970,6 +2036,7 @@ export class Runner {
     const st = this.ticketState();
     const c = conflictDecision(st.conflicts?.[t.id], url, sha);
     if (c.action === "wait") return;
+    this.efficiency.add("fail_conflict");
     st.conflicts = { ...(st.conflicts ?? {}), [t.id]: c.next };
     this.saveTicketState(st);
     if (c.action === "ask") {
@@ -2155,6 +2222,7 @@ export class Runner {
     st.preflight = holds;
     this.saveTicketState(st);
     await this.setStatus("waiting_human", `Waiting to start ${t.key}`, t.id);
+    this.efficiency.add(PREFLIGHT_FAILURE_KEY[pre.kind]);
     this.log(`${t.key}: preflight ${pre.kind} failed; not starting the model (${why}).`);
     this.workLater(PREFLIGHT_RETRY_MS);
   }
@@ -2279,6 +2347,7 @@ export class Runner {
       newComments: commentsText,
       setupFailed: setup.failed,
     });
+    this.countPrompt(prompt);
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
     const choice = await this.modelChoice();
     const inv = this.invocation(mcp, resume, worktree.path, choice);
@@ -2337,6 +2406,7 @@ export class Runner {
       this.addUsage((Date.now() - startedAt) / 1000, result);
     }
     this.recordRun(p, "build", t.id, result, startedAt, sentBackTo ? "conflict_fix" : null);
+    if (result.isError) this.efficiency.add("fail_provider");
 
     if (result.sessionId) {
       const s2 = this.ticketState();
@@ -2522,6 +2592,7 @@ export class Runner {
       ticket: await p.ticketText(t.key),
       repoPath: worktree.path,
     });
+    this.countPrompt(prompt);
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
     const choice = await this.modelChoice();
     const inv = this.invocation(mcp, null, worktree.path, choice);
@@ -2541,6 +2612,7 @@ export class Runner {
       this.addUsage((Date.now() - startedAt) / 1000, result);
     }
     this.recordRun(p, "question", t.id, result, startedAt);
+    if (result.isError) this.efficiency.add("fail_provider");
     if (await this.waitForUsage(result, "triage", job)) {
       const reset = this.ticketState();
       delete reset.triaged?.[t.id];
@@ -2619,6 +2691,7 @@ export class Runner {
       repoPath: worktree.path,
       base: p.project.default_branch || worktree.base,
     });
+    this.countPrompt(prompt);
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
     const choice = chooseReviewModel(cfg, await this.modelChoice(), weight.light);
     // Which path it took, in words for the log; run_usage records it as reviewPath (AK-120).
@@ -2643,6 +2716,7 @@ export class Runner {
       this.addUsage((Date.now() - startedAt) / 1000, result);
     }
     this.recordRun(p, "review", t.id, result, startedAt, reviewPath(Boolean(earlier), weight.light));
+    if (result.isError) this.efficiency.add("fail_provider");
     if (await this.waitForUsage(result, "review", job)) {
       this.rememberReview(t.id, prev);
       return;
@@ -2706,6 +2780,7 @@ export class Runner {
     }
     await this.ak.heartbeat("offline").catch(() => undefined);
     await this.setStatus("offline");
+    await this.flushEfficiency();
     await this.ak.close();
   }
 }
