@@ -1,4 +1,5 @@
 import { createClient, type Session } from "@supabase/supabase-js";
+import { addTabTraffic } from "./tabTraffic";
 
 // Sign-in is GitHub only (spec §4.1). The browser holds the session; the GitHub token is never sent
 // to our server.
@@ -9,6 +10,17 @@ export const configured = !!url && !!key;
 
 export const supabase = createClient(url ?? "https://example.invalid", key ?? "missing", {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce" },
+  global: { fetch: async (input, init) => {
+    const response = await fetch(input, init);
+    const requestUrl = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (requestUrl.includes("/rest/v1/")) {
+      try {
+        const size = (await response.clone().arrayBuffer()).byteLength;
+        addTabTraffic(requestUrl, size);
+      } catch { /* Measurement cannot break a request. */ }
+    }
+    return response;
+  } },
 });
 
 export interface Profile {
