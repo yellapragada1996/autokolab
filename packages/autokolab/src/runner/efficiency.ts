@@ -71,7 +71,7 @@ export function promptSections(prompt: string): EfficiencyDelta {
     else if (/^=== (Rules |Project brief |The pull request|The diff|What you said)/.test(line) || /^How to review:/.test(line) || /^What to do \(/.test(line)) key = "prompt_other";
     else if (/^## (Concept|Architecture|Rules)\s*$/.test(line.trimEnd())) key = "prompt_guide";
     else if (/^## Decisions in force\s*$/.test(line.trimEnd()) || /^Decisions and contracts this ticket mentions:/.test(line)) key = "prompt_decisions";
-    else if (/^## (Board|Your open tickets|Agents|Your job)\s*$/.test(line.trimEnd())) key = "prompt_other";
+    else if (/^## (Board|Other open tickets|Your open tickets|Agents|Your job)\s*$/.test(line.trimEnd())) key = "prompt_other";
     else if (/^Comments \(\d+, oldest first\):/.test(line) || /^New comments (on|since)/.test(line)) key = "prompt_comments";
     out[key] = (out[key] ?? 0) + Buffer.byteLength(line);
   }

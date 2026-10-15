@@ -208,7 +208,7 @@ export function buildReplyPrompt(ctx: ReplyPromptContext): string {
     ...(ctx.skipped ? [`(${ctx.skipped} earlier message${ctx.skipped === 1 ? "" : "s"} not shown: room_thread ${t})`] : []),
     ...ctx.recent.map(replyMessage),
   ].join("\n-----\n");
-  const tickets = ctx.tickets.length ? `\n\n=== Tickets the thread mentions (as ticket_get shows them) ===\n${ctx.tickets.join("\n\n-----\n\n")}` : "";
+  const tickets = ctx.tickets.length ? `\n\n=== Tickets the thread mentions (title and status) ===\n${ctx.tickets.join("\n\n-----\n\n")}` : "";
   return `${head}
 
 === Thread #${t}${ctx.followUp ? "" : ", oldest first"} ===

@@ -258,7 +258,7 @@ process.stdin.on("end", () => {
       tickets: async () => board,
       ticketsLight: async () => board,
       ticket: async (k: string) => board.find((t) => t.key === k),
-      ticketText: async (k: string) => `${k} · the full ticket`,
+      ticketMention: async (k: string) => `${k} [Ready] ticket title`,
       recordRunUsage: async () => undefined,
     }] as never;
     const job = (m: Message): Job => ({ run: { id: m.id, thread_root: 100 } as TaskRun, message: m, fromInstructor: true, more: [], notBefore: 0, queuedAt: 0 });
