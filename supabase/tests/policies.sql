@@ -750,6 +750,37 @@ select pg_temp.expect((select data ->> 'to' = 'Risky merges wait for a person' a
   from public.ticket_events where ticket_id = '00000000-0000-0000-0000-0000000000a9' and kind = 'summary' order by id desc offset 1 limit 1),
   'history says who wrote the summary');
 
+-- ------------------------------------------------ the areas a ticket touches (schema 26)
+reset role;
+select pg_temp.expect((select areas = '{}' from public.tickets where key = 'MZ-1'), 'existing tickets touch no areas (no check)');
+set role authenticated;
+-- a worker, the lead and a person in the project can set them; blanks and repeats are dropped
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+update public.tickets set areas = array[' packages/autokolab/src/runner/** ', '', 'packages/autokolab/src/runner/**', 'GUIDE.md'] where key = 'MZ-1';
+select pg_temp.expect((select areas = array['packages/autokolab/src/runner/**', 'GUIDE.md'] from public.tickets where key = 'MZ-1'),
+  'a worker sets the areas, trimmed and without repeats, in order');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+update public.tickets set areas = array['packages/autokolab/src/runner/**'] where key = 'MZ-1';
+select pg_temp.expect((select areas = array['packages/autokolab/src/runner/**'] from public.tickets where key = 'MZ-1'), 'the lead sets the areas');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+update public.tickets set areas = array['apps/site/src/workspace/TicketPage.tsx', 'packages/autokolab/src/runner/**'] where key = 'MZ-1';
+select pg_temp.expect((select cardinality(areas) = 2 from public.tickets where key = 'MZ-1'), 'a person member sets the areas');
+-- keys, overlong areas and too many are refused
+select pg_temp.expect_error($q$update public.tickets set areas = array['ghp_abcdefghijklmnopqrstuvwxyz0123456789'] where key = 'MZ-1'$q$, 'AUTOKOLAB_SECRET');
+select pg_temp.expect_error($q$update public.tickets set areas = array[repeat('x', 201)] where key = 'MZ-1'$q$, 'AUTOKOLAB_BAD_AREA');
+select pg_temp.expect_error($q$update public.tickets set areas = array(select 'dir' || g || '/**' from generate_series(1, 31) g) where key = 'MZ-1'$q$, 'check constraint');
+-- someone outside the project can't change them
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b4';
+update public.tickets set areas = array['hijacked/**'] where key = 'MZ-1';
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect((select 'apps/site/src/workspace/TicketPage.tsx' = any(areas) from public.tickets where key = 'MZ-1'), 'outsiders can''t change the areas');
+-- an empty list means no check again; null is stored as empty
+update public.tickets set areas = null where key = 'MZ-1';
+select pg_temp.expect((select areas = '{}' from public.tickets where key = 'MZ-1'), 'clearing the areas leaves an empty list');
+reset role;
+select pg_temp.expect((select count(*) from public.ticket_events where ticket_id = '00000000-0000-0000-0000-0000000000a9' and kind = 'areas') = 4,
+  'history records each change of areas');
+
 -- ------------------------------------------------ last visit (schema 15)
 reset role;
 set role authenticated;

@@ -1,5 +1,6 @@
 import type { RealtimeChannel, SupabaseClient } from "@supabase/supabase-js";
 import { AutoKolabError, friendly } from "./client.js";
+import { areaWaits, areaWaitText, cleanAreas } from "./areas.js";
 import { ago } from "./format.js";
 import { looksLikeSecret } from "./secrets.js";
 
@@ -148,6 +149,41 @@ export interface Ticket {
   built_by?: string[] | null;
   /** What GitHub last said about the PR, recorded by the lead's runner (schema 18). Missing on older databases. */
   pr_facts?: PrFacts | null;
+  /** The repo paths or globs it touches; empty means no check (schema 26). Missing on older databases. */
+  areas?: string[] | null;
+}
+
+/**
+ * The Ready tickets assigned to `me` that can start now, best first: their blockers are done and
+ * nothing In progress or in Review touches the same files (AK-126). `waiting` are the ones held
+ * back only by the same files, with the tickets they wait for.
+ */
+export function readyToStart(
+  all: Ticket[],
+  links: { ticket_id: string; blocked_by: string }[],
+  me: string,
+): { ready: Ticket[]; waiting: { ticket: Ticket; on: Ticket[] }[] } {
+  const byId = new Map(all.map((t) => [t.id, t]));
+  const unblocked = all
+    .filter((t) => t.assignee_id === me && t.status === "ready" && !t.needs_human)
+    .filter((t) => links.filter((l) => l.ticket_id === t.id).every((l) => ["done", "canceled"].includes(byId.get(l.blocked_by)?.status ?? "done")))
+    .sort((a, b) => rank(a.priority) - rank(b.priority) || a.sort_order - b.sort_order);
+  const ready: Ticket[] = [];
+  const waiting: { ticket: Ticket; on: Ticket[] }[] = [];
+  for (const t of unblocked) {
+    const on = areaWaits(t, all);
+    if (on.length) waiting.push({ ticket: t, on });
+    else ready.push(t);
+  }
+  return { ready, waiting };
+}
+
+/**
+ * Two runners can claim overlapping tickets at the same moment. Right after a claim, the ticket with
+ * the higher number gives way to any overlapping one that was claimed alongside it.
+ */
+export function mustGiveWay(claimed: Ticket, all: Ticket[]): Ticket[] {
+  return areaWaits(claimed, all).filter((o) => o.number < claimed.number);
 }
 
 /** The lead's runner's snapshot of a PR, for "How do you know?" (AK-57). */
@@ -292,7 +328,8 @@ ${LEAD_WORK_SUMMARIES}
    - Title: the outcome, as an instruction ("Add Google sign-in to /login").
    - Description, with these headings: **Context** (why, for whom), **What to do** (the behaviour and the approach to take), **Where** (files, modules, APIs and existing code to follow), **Not in scope**, **Notes** (decisions, gotchas, how to test).
    - Done means: 2 to 6 checkable items, including the tests that must pass.
-   - Blocked by: tickets that must land first. If two tickets touch the same files, order them with blocked_by instead of running them in parallel.
+   - Areas: the repo paths or globs it will change, such as "packages/autokolab/src/runner/**" or "GUIDE.md" (a plain folder covers everything under it). A runner doesn't start a ticket while another ticket In progress or in Review touches the same areas, and the ticket says what it's waiting for. Keep them as narrow as the work allows; leave them empty only when you can't tell.
+   - Blocked by: tickets that must land first, when one needs the other's result, not just the same files.
 4. Assign each ticket to a worker agent (see Agents below: status and open tickets) and put it in Ready so it starts now, or Backlog if it shouldn't start yet. Spread the work; don't stack one agent while another is idle.
 5. Tell your person what you created: keys, who has what, and the order.
 6. Your runner starts you on a review of each worker's PR by itself once its tests pass, and sends failing tests back to the worker, so nobody has to ask. The board is the report, for workers and for you: ${ROOM_QUIET} Ask workers with kind=question and assign with kind=task: only question, task, review and answer wake an agent. Whenever your person comes back or asks, also check tickets with "Needs you" and in Review. Answer a worker's question yourself on its ticket (ticket_comment, then ticket_update needs_human=null) when the answer is in the code, guide or decisions; bring real product choices to your person. ${LEAD_ASK_ONCE} ${LEAD_APPROVAL} Record settled choices with decision_add. ${LOOK_NEVER_ASK}
@@ -517,8 +554,9 @@ export class ProjectView {
     labels?: string[];
     done_means?: string[];
     blocked_by?: string[];
+    areas?: string[];
   }): Promise<Ticket> {
-    this.noSecrets(input.title, input.description, input.summary, ...(input.done_means ?? []));
+    this.noSecrets(input.title, input.description, input.summary, ...(input.done_means ?? []), ...(input.areas ?? []));
     this.checkBrief({ ...input, assignee_id: input.assignee ? this.resolveActor(input.assignee) : null });
     const parent = input.epic ? (await this.ticket(input.epic)).id : null;
     let t = check<Ticket>(
@@ -542,8 +580,17 @@ export class ProjectView {
       if (!r.error) t = r.data as Ticket;
       else if (!missingColumn(r.error)) t = check<Ticket>(r);
     }
+    if (input.areas?.length) t = await this.setAreas(t, input.areas);
     for (const b of input.blocked_by ?? []) await this.addBlocker(t.key, b);
     return t;
+  }
+
+  /** create_ticket has no areas argument, so they're written on their own (schema 26). */
+  private async setAreas(t: Ticket, areas: string[]): Promise<Ticket> {
+    const r = await this.sb.from("tickets").update({ areas: cleanAreas(areas) }).eq("id", t.id).select("*").single();
+    if (!r.error) return r.data as Ticket;
+    if (missingColumn(r.error)) throw new AutoKolabError("This AutoKolab server can't store a ticket's areas yet (it needs schema 26). The rest of the change was saved.");
+    return check<Ticket>(r);
   }
 
   async update(
@@ -564,10 +611,11 @@ export class ProjectView {
       summary?: string | null;
       blocked_by_add?: string[];
       blocked_by_remove?: string[];
+      areas?: string[];
     },
   ): Promise<Ticket> {
     const t = await this.ticket(ref);
-    this.noSecrets(change.title, change.description, change.needs_human, change.summary, ...(change.done_means ?? []));
+    this.noSecrets(change.title, change.description, change.needs_human, change.summary, ...(change.done_means ?? []), ...(change.areas ?? []));
     const patch: Record<string, unknown> = {};
     for (const k of ["status", "title", "description", "priority", "type", "labels", "done_means", "branch", "pr_url", "needs_human"] as const) {
       if (change[k] !== undefined) patch[k] = change[k];
@@ -594,6 +642,7 @@ export class ProjectView {
       if (!r.error) out = r.data as Ticket;
       else if (!missingColumn(r.error)) out = check<Ticket>(r);
     }
+    if (change.areas !== undefined) out = await this.setAreas(out, change.areas);
     for (const b of change.blocked_by_add ?? []) await this.addBlocker(t.key, b);
     for (const b of change.blocked_by_remove ?? []) {
       const other = await this.ticket(b);
@@ -782,19 +831,22 @@ export class ProjectView {
   /**
    * Take the next Ready ticket assigned to this agent whose blockers are all done: highest priority
    * first, then board order. Moving it to In progress is the claim, so two runners can't both take it.
+   * A ticket whose areas overlap one In progress or in Review waits (AK-126); `onWait` hears which.
    */
-  async claimNext(): Promise<Ticket | null> {
+  async claimNext(onWait?: (ticket: Ticket, text: string) => void): Promise<Ticket | null> {
     const all = await this.tickets();
-    const links = await this.links();
-    const byId = new Map(all.map((t) => [t.id, t]));
-    const ready = all
-      .filter((t) => t.assignee_id === this.meId && t.status === "ready" && !t.needs_human)
-      .filter((t) => links.filter((l) => l.ticket_id === t.id).every((l) => ["done", "canceled"].includes(byId.get(l.blocked_by)?.status ?? "done")))
-      .sort((a, b) => rank(a.priority) - rank(b.priority) || a.sort_order - b.sort_order);
+    const { ready, waiting } = readyToStart(all, await this.links(), this.meId);
+    for (const w of waiting) onWait?.(w.ticket, areaWaitText(w.on)!);
     for (const t of ready) {
       const r = await this.sb.from("tickets").update({ status: "in_progress" }).eq("id", t.id).eq("status", "ready").select("*");
       const got = check<Ticket[]>(r);
-      if (got.length) return got[0];
+      if (!got.length) continue;
+      if (!got[0].areas?.length) return got[0];
+      // Another runner may have claimed an overlapping ticket at the same moment.
+      const first = mustGiveWay(got[0], await this.tickets());
+      if (!first.length) return got[0];
+      check(await this.sb.from("tickets").update({ status: "ready" }).eq("id", t.id).eq("status", "in_progress"));
+      onWait?.(t, areaWaitText(first)!);
     }
     return null;
   }
@@ -912,7 +964,8 @@ export class ProjectView {
     const blockers = (t: Ticket) => links.filter((l) => l.ticket_id === t.id).map((l) => tickets.find((x) => x.id === l.blocked_by)).filter((x): x is Ticket => !!x && !["done", "canceled"].includes(x.status));
     const line = (t: Ticket) => {
       const b = blockers(t);
-      return `- ${t.key} [${STATUS_LABEL[t.status]}${t.priority !== "none" ? `, ${t.priority}` : ""}] ${t.title} · ${t.assignee_id ? this.nameOf(t.assignee_id) : "unassigned"}${t.needs_human ? " · NEEDS A PERSON" : ""}${b.length ? ` · waiting on ${b.map((x) => x.key).join(", ")}` : ""}`;
+      const same = t.status === "ready" ? areaWaitText(areaWaits(t, tickets)) : null;
+      return `- ${t.key} [${STATUS_LABEL[t.status]}${t.priority !== "none" ? `, ${t.priority}` : ""}] ${t.title} · ${t.assignee_id ? this.nameOf(t.assignee_id) : "unassigned"}${t.needs_human ? " · NEEDS A PERSON" : ""}${b.length ? ` · waiting on ${b.map((x) => x.key).join(", ")}` : ""}${same ? ` · ${same}` : ""}`;
     };
     const humans = [...this.names.values()].filter((x) => x.type === "human").map((x) => x.name);
     const lead = this.leadId ? this.nameOf(this.leadId) : null;
@@ -995,6 +1048,8 @@ export class ProjectView {
       ...(t.branch || t.pr_url ? [`Branch: ${t.branch ?? "-"} · PR: ${t.pr_url ?? "-"}`] : []),
       ...(t.summary ? [`Summary: ${t.summary}`] : []),
       ...(t.needs_human ? [`NEEDS A PERSON: ${t.needs_human}`] : []),
+      ...(t.areas?.length ? [`Touches: ${t.areas.join(", ")}`] : []),
+      ...(t.status === "ready" && areaWaits(t, all).length ? [`Not started yet: ${areaWaitText(areaWaits(t, all))}`] : []),
       ...(blockedBy.length ? [`Blocked by: ${blockedBy.map(ref2).join("; ")}`] : []),
       ...(unblocks.length ? [`Unblocks: ${unblocks.map(ref2).join("; ")}`] : []),
       "",

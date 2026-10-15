@@ -404,6 +404,11 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     }
   };
   const keyArg = z.string().describe("Ticket key, e.g. VV-12 (or just 12)");
+  const areasArg = z
+    .array(z.string().max(200))
+    .max(30)
+    .optional()
+    .describe('Repo paths or globs the ticket changes, e.g. ["packages/autokolab/src/runner/**", "GUIDE.md"]; a plain folder covers everything under it');
 
   server.registerTool(
     "project_brief",
@@ -454,7 +459,7 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     "ticket_create",
     {
       description:
-        "Create a ticket. Give every ticket a plain summary of current work, such as 'adding Apple Pay to the checkout' or 'making a profile page for people who sign in for the first time'. Give an epic (goal) a one-sentence summary of what people can do when it is done. The worker only sees the ticket, so write the whole brief: a title that states the outcome, a description with **Context**, **What to do**, **Where** (files, code to follow), **Not in scope** and **Notes**, and done_means (2 to 6 checkable items, including tests). Assign an agent and status=ready to have it picked up right away (that requires the description and done_means). For a bigger goal, create an epic (type=epic) first and pass it as epic.",
+        "Create a ticket. Give every ticket a plain summary of current work, such as 'adding Apple Pay to the checkout' or 'making a profile page for people who sign in for the first time'. Give an epic (goal) a one-sentence summary of what people can do when it is done. The worker only sees the ticket, so write the whole brief: a title that states the outcome, a description with **Context**, **What to do**, **Where** (files, code to follow), **Not in scope** and **Notes**, and done_means (2 to 6 checkable items, including tests). Fill in areas with the paths or globs it will change: a runner doesn't start it while another ticket In progress or in Review touches the same areas. Assign an agent and status=ready to have it picked up right away (that requires the description and done_means). For a bigger goal, create an epic (type=epic) first and pass it as epic.",
       inputSchema: {
         title: z.string().min(1).max(200),
         description: z.string().max(20000).optional(),
@@ -467,6 +472,7 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
         epic: z.string().optional().describe("Key of the epic this belongs to"),
         labels: z.array(z.string().max(40)).max(10).optional(),
         blocked_by: z.array(z.string()).optional().describe("Keys of tickets that must be done first"),
+        areas: areasArg,
         project: projectArg,
       },
     },
@@ -482,7 +488,7 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
     "ticket_update",
     {
       description:
-        "Change a ticket: status (in_progress when you start, review with pr_url and summary when the PR is open), branch, pr_url, summary (one plain sentence on what changed, for someone who doesn't code), needs_human (one short question a person can answer without opening anything; put the background in a ticket comment first; null when answered), assignee, priority, title, description, done_means, labels, epic, blockers. Pass only what changes.",
+        "Change a ticket: status (in_progress when you start, review with pr_url and summary when the PR is open), branch, pr_url, summary (one plain sentence on what changed, for someone who doesn't code), needs_human (one short question a person can answer without opening anything; put the background in a ticket comment first; null when answered), assignee, priority, title, description, done_means, labels, epic, blockers, areas. Pass only what changes.",
       inputSchema: {
         key: keyArg,
         status: z.enum(STATUSES).optional(),
@@ -500,6 +506,7 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
         epic: z.string().nullable().optional(),
         blocked_by_add: z.array(z.string()).optional(),
         blocked_by_remove: z.array(z.string()).optional(),
+        areas: areasArg.describe("Replaces the list; [] clears it (no check)"),
         project: projectArg,
       },
     },

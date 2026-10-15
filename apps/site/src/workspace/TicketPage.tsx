@@ -1,3 +1,4 @@
+import { areaWaits, areaWaitText } from "../lib/areas";
 import { reportError } from "../lib/errors";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -79,6 +80,8 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
   const steps = detail?.steps ?? ws.steps.get(t.id) ?? [];
   const kids = ws.childrenOf(t.id);
   const kidsDone = kids.filter((k) => k.status === "done").length;
+  // A Ready ticket that a runner holds back because another one touches the same files (AK-126).
+  const sameFiles = t.status === "ready" ? areaWaitText(areaWaits(t, ws.tickets)) : null;
   const crumb: React.CSSProperties = { color: "var(--muted)", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6 };
   const plain: React.CSSProperties = { border: "1px solid transparent", background: "transparent", padding: "0 6px", marginLeft: -6 };
 
@@ -176,6 +179,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
                 {assignee.display_name} is on it{assignee.status_note ? `: ${assignee.status_note}` : ""}
               </span>
             )}
+            {sameFiles && <span style={{ fontSize: 13, color: "var(--muted)" }}>{sameFiles[0].toUpperCase() + sameFiles.slice(1)}</span>}
           </div>
 
           <section style={{ borderRadius: 8, border: "1px solid var(--line)", overflow: "hidden" }}>
@@ -223,6 +227,12 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
               <dd style={{ margin: 0 }}>
                 <LabelsEditor labels={t.labels} onSave={(labels) => save({ labels })} />
               </dd>
+              {!!t.areas?.length && (
+                <>
+                  <dt style={{ color: "var(--muted)" }}>Touches</dt>
+                  <dd style={{ margin: 0, fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-2)" }}>{t.areas.join(", ")}</dd>
+                </>
+              )}
               <CodeLinks t={t} repo={ws.project.repo} onSave={save} />
               <MergeRows ws={ws} t={t} me={me} />
             </dl>
@@ -774,6 +784,10 @@ export function describe(ws: Workspace, e: TicketEvent): string | null {
       return `renamed it to "${d.to}"`;
     case "summary":
       return d.to ? `summed it up: "${d.to}"` : "cleared the summary";
+    case "areas": {
+      const to = e.data.to as unknown as string[] | null;
+      return to?.length ? `said it touches ${to.join(", ")}` : "cleared what it touches";
+    }
     case "branch":
       return `is working on branch ${d.branch}`;
     case "pr":
