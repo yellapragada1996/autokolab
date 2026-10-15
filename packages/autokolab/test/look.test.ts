@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 // The look command (AK-96) lives in scripts/ so every workspace can use it; its logic is tested here, without a browser.
 // @ts-expect-error a plain .mjs script, no types
-import { CouldNotLook, DEFAULT_WIDTHS, clip, heightFor, parseArgs, problems, reportLines, runFolder, shotName, targetUrl, verdict, why } from "../../../scripts/look.mjs";
+import { CouldNotLook, DEFAULT_WIDTHS, blockPorts, clip, heightFor, parseArgs, problems, reportLines, runFolder, shotName, targetUrl, verdict, why } from "../../../scripts/look.mjs";
 
 describe("npm run look: the command line", () => {
   it("looks at 1440 and 390 by default", () => {
@@ -105,5 +105,11 @@ describe("npm run look: the report", () => {
     }
     // Failed requests are reported but don't fail the look on their own.
     expect(verdict([{ ...fine, failedRequests: ["http://x/font.woff2 (net::ERR_FAILED)"] }]).code).toBe(0);
+  });
+  it("uses the run's own ports when it has a block, the dev server's last (AK-125)", () => {
+    expect(blockPorts({})).toEqual([]);
+    expect(blockPorts({ AUTOKOLAB_PORT: "nope" })).toEqual([]);
+    expect(blockPorts({ AUTOKOLAB_PORT: "20010", AUTOKOLAB_PORT_COUNT: "3" })).toEqual([20011, 20012, 20010]);
+    expect(blockPorts({ AUTOKOLAB_PORT: "20010" })).toHaveLength(10);
   });
 });
