@@ -251,6 +251,17 @@ insert into public.ticket_steps (ticket_id, idx, label, status) select id, 0, 'B
 update public.ticket_steps set status = 'done';
 insert into public.ticket_comments (ticket_id, author_id, author_type, body) select id, '00000000-0000-0000-0000-0000000000c1', 'agent', 'Started; using components/ui/Button.' from public.tickets where key = 'VV-1';
 select pg_temp.expect((public.agent_status('building', 'VV-1', (select id from public.tickets where key = 'VV-1'))).status = 'building', 'agent reports status');
+-- Status is scoped even when an old helper sends only a ticket, and only its function can write it.
+select pg_temp.expect((select status_project_id = project_id from public.agents cross join public.tickets
+  where public.agents.id = auth.uid() and key = 'VV-1'), 'status project derived from ticket');
+select pg_temp.expect((public.agent_status('planning', 'Planning here', p_project => (select id from public.projects))).status_project_id
+  = (select id from public.projects), 'status scoped without a ticket');
+select pg_temp.expect((public.agent_status('idle', p_project => (select id from public.projects))).status_project_id is null, 'idle clears the status project');
+select pg_temp.expect((public.agent_status('offline', p_project => (select id from public.projects))).status_project_id is null, 'offline clears the status project');
+select pg_temp.expect((public.agent_status('planning', 'Old helper')).status_project_id is null, 'old helper without a ticket stays unscoped');
+select pg_temp.expect_error($q$select public.agent_status('building', p_project => '00000000-0000-0000-0000-000000000099')$q$, 'AUTOKOLAB_NOT_MEMBER');
+select pg_temp.expect_error($q$update public.agents set status_project_id = null where id = auth.uid()$q$, 'permission denied');
+select pg_temp.expect((public.agent_status('building', 'VV-1', (select id from public.tickets where key = 'VV-1'))).status = 'building', 'restore building status');
 select pg_temp.expect((select started_at is not null from public.tickets where key = 'VV-1'), 'start time recorded');
 select pg_temp.expect((select string_agg(kind, ',' order by id) from public.ticket_events where ticket_id = (select id from public.tickets where key = 'VV-1'))
   = 'created,status,branch,step,comment', 'history records every change');
@@ -946,7 +957,7 @@ select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000
 select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('b', 40), 'checks', jsonb_build_object('passed', 1, 'total', 1, 'state', 'success'), 'files', jsonb_build_object('total', 30, 'risky', to_jsonb(array_fill('a.sql'::text, array[21]))), 'additions', 1, 'deletions', 0))$q$, '"files.risky"');
 select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('b', 40), 'checks', jsonb_build_object('passed', 1, 'total', 1, 'state', 'success'), 'files', jsonb_build_object('total', 1, 'risky', jsonb_build_array(repeat('a', 301))), 'additions', 1, 'deletions', 0))$q$, '"files.risky"');
 select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('b', 40), 'checks', jsonb_build_object('passed', 1, 'total', 1, 'state', 'success'), 'files', jsonb_build_object('total', 1, 'risky', jsonb_build_array('ghp_abcdefghijklmnopqrstuvwxyz0123456789')), 'additions', 1, 'deletions', 0))$q$, 'AUTOKOLAB_SECRET');
--- the file list is a list of paths with whole-number counts, and paths are checked for secrets (schema 27)
+-- the file list is a list of paths with whole-number counts, and paths are checked for secrets (schema 28)
 select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('b', 40), 'checks', jsonb_build_object('passed', 1, 'total', 1, 'state', 'success'), 'files', jsonb_build_object('total', 1, 'risky', '[]'::jsonb, 'list', 'src/a.ts'), 'additions', 1, 'deletions', 0))$q$, '"files.list"');
 select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('b', 40), 'checks', jsonb_build_object('passed', 1, 'total', 1, 'state', 'success'), 'files', jsonb_build_object('total', 1, 'risky', '[]'::jsonb, 'list', jsonb_build_array(jsonb_build_object('path', 'a.ts', 'deletions', 0))), 'additions', 1, 'deletions', 0))$q$, '"files.list"');
 select pg_temp.expect_error($q$select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('b', 40), 'checks', jsonb_build_object('passed', 1, 'total', 1, 'state', 'success'), 'files', jsonb_build_object('total', 1, 'risky', '[]'::jsonb, 'list', jsonb_build_array(jsonb_build_object('path', 'a.ts', 'additions', -1, 'deletions', 0))), 'additions', 1, 'deletions', 0))$q$, '"files.list"');
@@ -979,7 +990,7 @@ set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
 select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('c', 40), 'checks', jsonb_build_object('passed', 48, 'total', 48, 'state', 'success'), 'files', jsonb_build_object('total', 2), 'additions', 10, 'deletions', 0));
 select pg_temp.expect((select pr_facts -> 'files' -> 'risky' = '[]'::jsonb from public.tickets where key = 'MZ-1'), 'no risky list means none');
 select pg_temp.expect((select pr_facts is null from public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', null)), 'null clears the PR facts');
--- the file list is kept up to gh's 100-file limit (schema 27)
+-- the file list is kept up to gh's 100-file limit (schema 28)
 select public.record_pr_facts('00000000-0000-0000-0000-0000000000a9', jsonb_build_object('sha', repeat('e', 40), 'checks', jsonb_build_object('passed', 1, 'total', 1, 'state', 'success'), 'files', jsonb_build_object('total', 130, 'risky', '[]'::jsonb, 'list', (select jsonb_agg(jsonb_build_object('path', 'f' || i || '.ts', 'additions', i, 'deletions', 0)) from generate_series(1, 130) i)), 'additions', 130, 'deletions', 0));
 select pg_temp.expect((select jsonb_array_length(pr_facts -> 'files' -> 'list') = 100 from public.tickets where key = 'MZ-1'), 'the file list keeps at most 100 files');
 set role anon;
@@ -1204,5 +1215,31 @@ select pg_temp.expect(public.looks_like_secret(s), 'secret pattern: ' || s) from
 select pg_temp.expect(not public.looks_like_secret(s), 'not a secret: ' || s) from unnest(array[
   'Fix the zones API', 'See PR #12, branch zones-api', 'sk-learn is a library', 'commit 3f1c2a9e1b2c',
   'gsk_ prefix means Groq', 'the xai-sdk package']) s;
+
+-- ------------------------------------------------ project-scoped status (schema 27)
+begin;
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b1';
+select set_config('test.status_first', (public.create_project('Status first', 'status/first', 'SF')).id::text, false);
+select set_config('test.status_first_ticket', (public.create_ticket(current_setting('test.status_first')::uuid, 'First work')).id::text, false);
+select set_config('test.status_second', (public.create_project('Status second', 'status/second', 'SS')).id::text, false);
+select set_config('test.status_outside', (public.create_project('Status outside', 'status/outside', 'SO')).id::text, false);
+select set_config('test.status_outside_ticket', (public.create_ticket(current_setting('test.status_outside')::uuid, 'Outside work')).id::text, false);
+reset role;
+insert into public.project_members (project_id, actor_id, actor_type)
+  values (current_setting('test.status_first')::uuid, '00000000-0000-0000-0000-0000000000c1', 'agent'),
+    (current_setting('test.status_second')::uuid, '00000000-0000-0000-0000-0000000000c1', 'agent');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000c1';
+select public.agent_status('planning', 'Same note', p_project => current_setting('test.status_first')::uuid);
+select pg_temp.expect((public.agent_status('planning', 'Same note', p_project => current_setting('test.status_second')::uuid)).status_project_id
+  = current_setting('test.status_second')::uuid, 'project changes even when status and note stay the same');
+select pg_temp.expect_error($q$select public.agent_status('planning', p_project => current_setting('test.status_outside')::uuid)$q$, 'AUTOKOLAB_NOT_MEMBER');
+select pg_temp.expect_error($q$select public.agent_status('building', p_ticket => current_setting('test.status_outside_ticket')::uuid)$q$, 'AUTOKOLAB_NOT_MEMBER');
+select pg_temp.expect_error($q$select public.agent_status('building', p_ticket => current_setting('test.status_first_ticket')::uuid,
+  p_project => current_setting('test.status_second')::uuid)$q$, 'AUTOKOLAB_BAD_TICKET');
+select pg_temp.expect((public.agent_status('idle', p_ticket => current_setting('test.status_first_ticket')::uuid)).status_project_id is null,
+  'idle clears a project derived from a ticket');
+rollback;
 
 \echo ALL POLICY TESTS PASSED

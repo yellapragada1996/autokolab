@@ -114,6 +114,24 @@ export interface RanWith {
   effort: string;
 }
 
+/** Report presence while tolerating databases before project scoping (27) and model reports (11). */
+export async function reportAgentStatus(sb: SupabaseClient, status: AgentStatus, note: string | null = null,
+  ticketId: string | null = null, ran?: RanWith, projectId: string | null = null): Promise<void> {
+  const args: Record<string, unknown> = { p_status: status, p_note: note, p_ticket: ticketId, p_project: projectId };
+  if (ran) Object.assign(args, { p_model: ran.model.slice(0, 100), p_effort: ran.effort });
+  let res = await sb.rpc("agent_status", args);
+  if (res.error && /p_project|function/i.test(res.error.message)) {
+    delete args.p_project;
+    res = await sb.rpc("agent_status", args);
+  }
+  if (res.error && ran && /p_model|p_effort|function/i.test(res.error.message)) {
+    delete args.p_model;
+    delete args.p_effort;
+    res = await sb.rpc("agent_status", args);
+  }
+  check(res);
+}
+
 interface AgentInfo extends AgentModel {
   status: AgentStatus;
   status_note: string | null;
@@ -199,7 +217,7 @@ export interface PrFacts {
   /** The PR's head commit these facts are about. */
   sha: string;
   checks: { passed: number; total: number; state: "success" | "pending" | "failure" };
-  /** How many files the PR changes, the ones that wait for a person's OK, and each with its counts (schema 27). */
+  /** How many files the PR changes, the ones that wait for a person's OK, and each with its counts (schema 28). */
   files: { total: number; risky: string[]; list?: { path: string; additions: number; deletions: number }[] };
   additions: number;
   deletions: number;
@@ -416,7 +434,7 @@ export class ProjectView {
     const all = await ProjectView.mine(sb);
     const want = ref?.toLowerCase();
     const p =
-      (want && all.find((x) => x.slug === want || x.repo === want || x.name.toLowerCase() === want)) ||
+      (want && all.find((x) => x.id === want || x.slug === want || x.repo === want || x.name.toLowerCase() === want)) ||
       (repo && all.find((x) => x.repo === repo.toLowerCase())) ||
       (!want && all.length === 1 ? all[0] : undefined);
     if (!p) return null;
@@ -766,12 +784,7 @@ export class ProjectView {
    * current run launched with (schema 11; "" for the tool's own default); left out, the last one stays.
    */
   async status(status: AgentStatus, note: string | null = null, ticketId: string | null = null, ran?: RanWith): Promise<void> {
-    const args: Record<string, unknown> = { p_status: status, p_note: note, p_ticket: ticketId };
-    if (ran) Object.assign(args, { p_model: ran.model.slice(0, 100), p_effort: ran.effort });
-    const res = await this.sb.rpc("agent_status", args);
-    // A database before schema 11 has no p_model: still report the status.
-    if (res.error && ran && /p_model|function/i.test(res.error.message)) return this.status(status, note, ticketId);
-    check(res);
+    await reportAgentStatus(this.sb, status, note, ticketId, ran, this.project.id);
   }
 
   /**

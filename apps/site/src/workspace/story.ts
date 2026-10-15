@@ -1,3 +1,4 @@
+import { statusHere } from "./agentStatus";
 import { MERGE_OK_PREFIX, waitsForMergeOk, type Agent, type Ticket, type TicketEvent } from "../lib/data";
 import type { Workspace } from "./useWorkspace";
 
@@ -47,7 +48,7 @@ export function headline(ws: Workspace, now = new Date()): Headline {
   const moving = inProgress.filter((t) => {
     if (t.assignee_type === "human") return !!t.assignee_id;
     const agent = ws.agentOf(t.assignee_id);
-    return !!agent && agentDot(agent, now) === "working";
+    return !!agent && !statusHere(agent, ws.project.id, ws.byId, now).elsewhere && agentDot(agent, now) === "working";
   });
   const workers = new Set(moving.map((t) => t.assignee_id).filter((id): id is string => !!id));
   const epics: Ticket[] = [];

@@ -1,3 +1,4 @@
+import { statusHere } from "./glance";
 import { CAPTAIN_DRAFT_EVENT, captainDraftKey } from "./captainDraft";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { href, onNav, go, openLook, type Route } from "../lib/router";
@@ -65,6 +66,7 @@ export function CaptainHome({ ws, cr, me }: { ws: Workspace; cr: CaptainRoom; me
 // ------------------------------------------------------------------ the conversation
 
 function Conversation({ ws, cr, me, pulse, onTarget }: { ws: Workspace; cr: CaptainRoom; me: string; pulse: string | null; onTarget: (el: HTMLElement, key: string) => void }) {
+  const captainStatus = cr.captain ? statusHere(cr.captain, ws.project.id, ws.byId) : null;
   const slug = ws.project.slug;
   const answeredOf = useMemo(() => new Map(cr.answered.map((a) => [a.need.key, a])), [cr.answered]);
   // Captain's answer that closed its own question shows under the question, so not again on its own.
@@ -155,7 +157,7 @@ function Conversation({ ws, cr, me, pulse, onTarget }: { ws: Workspace; cr: Capt
         {cr.working && (
           <span role="status" className="ak-indent" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-dim)" }}>
             <span className="ak-live" aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", flex: "none" }} />
-            {(cr.captain && agentDot(cr.captain) === "working" && cr.captain.status_note) || "Captain is reading…"}
+            {(captainStatus?.elsewhere ? "Busy in another project" : captainStatus && agentDot(captainStatus) === "working" && captainStatus.status_note) || "Captain is reading…"}
           </span>
         )}
         <div aria-live="polite" className="sr-only">
