@@ -501,6 +501,12 @@ export class ProjectView {
     return this.names.get(id)?.name ?? "someone";
   }
 
+  /** The person an agent belongs to, for a "Needs you" that names whose machine to fix (AK-149). */
+  ownerOf(id: string | null | undefined): string {
+    if (!id) return "the owner";
+    return this.agentInfo.get(id)?.owner_label || "the owner";
+  }
+
   /** A person's or agent's id from their name; "me" is you. */
   resolveActor(ref: string): string {
     if (ref === "me") return this.meId;
@@ -1210,7 +1216,7 @@ export class ProjectView {
 }
 
 /** Agent comments in a row (since the last person's) after which agents stop resuming each other. */
-export const AGENT_COMMENT_LIMIT = 8;
+export const AGENT_COMMENT_LIMIT = 3;
 export const AGENT_LOOP_QUESTION = `Agents have gone back and forth ${AGENT_COMMENT_LIMIT} times on this ticket; a person should take a look.`;
 
 /** A ticket's comments after `afterId` that should resume its assignee: anyone's but the assignee's own. */
@@ -1279,6 +1285,52 @@ export function isMergeQuestion(text: string | null | undefined): boolean {
 /** The questions not yet triaged: each ticket's question text is handled once. */
 export function untriaged<T extends Pick<Ticket, "id" | "needs_human">>(questions: T[], handled: Record<string, string>): T[] {
   return questions.filter((t) => handled[t.id] !== t.needs_human);
+}
+
+/**
+ * The environment failures an agent can't get past, because the machine's setup is wrong: read-only
+ * git, no network, a missing tool, or a browser that won't start. Only the machine's owner can fix
+ * these, so a worker that stops on one goes straight to its owner (AK-149).
+ */
+export type EnvStopKind = "read-only-git" | "no-network" | "missing-tool" | "no-browser";
+
+// The order matters: a browser message can also say "not installed", so it's matched before a tool.
+const ENV_STOPS: { kind: EnvStopKind; test: RegExp }[] = [
+  {
+    kind: "no-browser",
+    test: /(?:couldn'?t|could not|can'?t|cannot|failed|unable to).{0,30}start.{0,30}browser|browser.{0,40}(?:couldn'?t|could not|failed|can'?t|cannot|unable|won'?t).{0,20}start|failed to launch.{0,20}browser|playwright.{0,40}(?:not installed|missing|failed)|chrome.{0,20}not found|no browser/i,
+  },
+  {
+    kind: "read-only-git",
+    test: /read[- ]?only.{0,30}(?:git|repo|repository|file|filesystem|disk|worktree|\.git)|(?:git|repo|repository|worktree|\.git).{0,40}read[- ]?only|permission denied|EACCES|EPERM|couldn'?t (?:push|write)|can'?t (?:push|write)|failed to (?:push|write)|cannot write|could not write|unable to (?:create|write|lock)|fatal: (?:unable|cannot|could not).{0,30}(?:write|create|lock|open)/i,
+  },
+  {
+    kind: "no-network",
+    test: /could not resolve host|network is unreachable|network unreachable|temporary failure in name resolution|connection (?:refused|reset|timed out)|failed to connect|could not connect|no internet|(?:can'?t|couldn'?t) reach (?:the )?(?:internet|github)|unable to access.{0,20}github|failed to fetch|(?:github|network|internet).{0,20}offline|offline.{0,20}(?:github|network|internet)/i,
+  },
+  {
+    kind: "missing-tool",
+    test: /command not found|not found in (?:the )?path|missing (?:a |an |the )?(?:tool|binary|executable)|no such file or directory.{0,30}(?:command|binary|executable|tool)|(?:cannot|couldn'?t|could not|can'?t) find.{0,30}(?:binary|executable|tool|command)|(?:binary|tool|command|executable|gh|git|node|npm|npx|python|pip|docker|playwright|chrome|rg|jq).{0,20}(?:isn'?t|is not|not) installed/i,
+  },
+];
+
+/** Which environment failure a worker's stop is, or null when it's an ordinary question (AK-149). */
+export function envStopKind(question: string | null | undefined): EnvStopKind | null {
+  if (!question) return null;
+  for (const s of ENV_STOPS) if (s.test.test(question)) return s.kind;
+  return null;
+}
+
+const ENV_STOP_FIX: Record<EnvStopKind, string> = {
+  "read-only-git": "computer can't write to git",
+  "no-network": "computer can't reach GitHub",
+  "missing-tool": "computer is missing a tool the agent needs",
+  "no-browser": "computer can't start a browser the agent needs",
+};
+
+/** One plain sentence for "Needs you" when a machine's setup stops an agent (AK-149). */
+export function envStopQuestion(agent: string, owner: string, kind: EnvStopKind): string {
+  return `${agent}'s ${ENV_STOP_FIX[kind]}; ${owner} needs to fix its settings.`;
 }
 
 /** A change to an agent's model and effort; what isn't named stays as it is. */

@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, LIGHT_TTL_MS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, reportAgentStatus, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type Ticket, type TicketLight } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, LIGHT_TTL_MS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, envStopKind, envStopQuestion, reportAgentStatus, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type Ticket, type TicketLight } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -453,6 +453,11 @@ interface TicketState {
   sessions: Record<string, string>;
   seen: Record<string, number>;
   triaged?: Record<string, string>;
+  /**
+   * For a lead: the kind of environment stop (AK-149) each ticket's worker last hit, so the same
+   * machine failure isn't brought to its owner twice and never starts a triage run.
+   */
+  stuck?: Record<string, string>;
   /**
    * For a lead: what its runner last did about merging each approved ticket (AK-30). `sig` stops it
    * repeating itself; `failedAt` is the ticket's updated_at after a failed merge, so it doesn't
@@ -1595,6 +1600,10 @@ export class Runner {
   /**
    * For a lead: the next worker's question it hasn't looked at. Each question text is handled once;
    * once a ticket's question is cleared or changed, its old entry is dropped.
+   *
+   * A worker stopped by its own machine's setup (read-only git, no network, a missing tool or
+   * browser) isn't triaged again: the same kind is asked of its owner once and never answered by an
+   * agent, because no run can fix it (AK-149). It's recorded as `stuck_env` in the log.
    */
   private async nextQuestion(): Promise<TriageJob | null> {
     if (Date.now() - this.projectsLoadedAt > PROJECTS_RELOAD_MS) await this.loadProjects();
@@ -1602,19 +1611,39 @@ export class Runner {
     if (!leading.length) return null;
     const st = this.ticketState();
     const handled = st.triaged ?? {};
+    const stuck = st.stuck ?? {};
     const open: TriageJob[] = [];
+    const envIds = new Set<string>();
     for (const project of leading) {
       for (const light of await project.openQuestions()) {
         try {
-          open.push({ project, ticket: await project.ticket(light.key) });
+          const ticket = await project.ticket(light.key);
+          const env = envStopKind(ticket.needs_human);
+          if (env) {
+            // Only the machine's owner can clear this; ask once and don't triage (AK-149).
+            envIds.add(ticket.id);
+            const key = `env:${env}`;
+            if (stuck[ticket.id] !== key) {
+              stuck[ticket.id] = key;
+              handled[ticket.id] = ticket.needs_human!;
+              const who = project.ownerOf(ticket.assignee_id);
+              this.log(`${ticket.key}: stuck_env (${env}); asking ${who}.`);
+              await project.update(ticket.key, { needs_human: envStopQuestion(project.nameOf(ticket.assignee_id), who, env) }).catch((e) => this.log(`Couldn't update ${ticket.key}: ${(e as Error).message}`));
+            }
+            continue;
+          }
+          open.push({ project, ticket });
         } catch (e) {
           this.log(`Couldn't read ${light.key} for its question: ${(e as Error).message}`);
         }
       }
     }
     const kept = Object.fromEntries(open.filter((j) => handled[j.ticket.id] === j.ticket.needs_human).map((j) => [j.ticket.id, j.ticket.needs_human!]));
-    if (Object.keys(kept).length !== Object.keys(handled).length) {
+    // A stop's kind is kept while the ticket still shows it, so it isn't asked of the owner twice.
+    const keptStuck = Object.fromEntries(Object.entries(stuck).filter(([id]) => envIds.has(id)));
+    if (JSON.stringify(kept) !== JSON.stringify(handled) || JSON.stringify(keptStuck) !== JSON.stringify(stuck)) {
       st.triaged = kept;
+      st.stuck = keptStuck;
       this.saveTicketState(st);
     }
     const next = untriaged(open.map((j) => j.ticket), handled)[0];
