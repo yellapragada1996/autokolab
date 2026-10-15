@@ -10,7 +10,7 @@ import { chooseModel, chooseReplyModel, claudeDenyRules, claudeInvocation, codex
 import { installHook } from "../src/runner/githook.js";
 import { NO_REPLY, REVIEW_DIFF_LIMIT, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyPromptContext } from "../src/runner/prompt.js";
 import { needsRunner } from "../src/setup/connect.js";
-import { BATCH_MAX_MS, BATCH_WAIT_MS, REPLY_RESUME_MS, Runner, STALE_RUN_SUMMARY, addToQueue, agentTurnsSinceHuman, countWake, isLegacyAnswer, isPauseNotice, isReplyJob, isRunnerNotice, mentionedTickets, pauseNotice, recentReplySession, rememberReplySession, replyAs, replyThread, runCostLine, runOutcome, shouldWake, staleTeammateMessage, startNotice, workSession, type Job, type WakeContext } from "../src/runner/runner.js";
+import { BATCH_MAX_MS, BATCH_WAIT_MS, REPLY_RESUME_MS, Runner, STALE_RUN_SUMMARY, addToQueue, agentTurnsSinceHuman, captainFirstReply, captainReplied, countWake, isLegacyAnswer, isPauseNotice, isPlainQuestion, isReplyJob, isRunnerNotice, mentionedTickets, pauseNotice, recentReplySession, rememberReplySession, replyAs, replyThread, runCostLine, runOutcome, shouldWake, staleTeammateMessage, startNotice, workSession, type Job, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
 import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_ASK_ONCE, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, LOOK_BUILD, LOOK_NEVER_ASK, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ROOM_QUIET, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
 import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, afterMergeFailure, mergedAt, runAsync, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, reviewNeedsHuman, settledByMerge, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
@@ -381,6 +381,15 @@ describe("prompt", () => {
     expect(follower).not.toContain("As Captain:");
     expect(follower).not.toContain("You are Captain");
     expect(follower).not.toContain(LEAD_VOICE);
+  });
+  it("tells Captain to answer a person's chat before ticket work and close in the same thread", () => {
+    const person = { ...sender, name: "ana", kind: "human" } as Member;
+    const p = buildPrompt({ ...base, myRole: "lead", sender: person, senderRole: "member", message: { ...message, kind: "chat" }, followUp: false });
+    expect(p).toContain("Before any board or ticket tool call");
+    expect(p).toContain("room_post kind=chat to=ana thread=7");
+    expect(p).toContain("linking any tickets by key");
+    expect(p).toContain("room_post kind=question to=ana thread=7");
+    expect(p).toContain("a ticket flag or a message elsewhere is not enough");
   });
   it("leadGuide says the same", () => {
     const g = leadGuide("Shop", ["ana"]);
@@ -1818,12 +1827,14 @@ describe("quick replies to teammate agents (AK-91)", () => {
   describe("a run end to end", () => {
     const dir = mkdtempSync(join(tmpdir(), "ak-reply-"));
     const oldState = process.env.XDG_STATE_HOME;
-    beforeAll(() => {
-      process.env.XDG_STATE_HOME = join(dir, "state");
+    beforeEach(() => {
+      // Each scenario starts fresh; only runs within it share reply sessions.
+      process.env.XDG_STATE_HOME = mkdtempSync(join(dir, "state-"));
     });
     afterAll(() => {
       if (oldState === undefined) delete process.env.XDG_STATE_HOME;
       else process.env.XDG_STATE_HOME = oldState;
+      rmSync(dir, { recursive: true, force: true });
     });
     // Reports the arguments it was started with and its prompt.
     const fake = join(dir, "fake-claude.mjs");
@@ -1843,21 +1854,22 @@ process.stdin.on("end", () => {
     );
     const ME = "me-1";
     const LEAD = "lead-1";
-    const setup = (thread: Message[]) => {
+    const setup = (thread: Message[], captain = false, failOpening = false) => {
       const room = { id: "room-1", name: "shop", repo: "ana/shop" };
       const members: Record<string, { id: string; name: string; kind: string; owner_id: string }> = {
         [ME]: { id: ME, name: "lee-claude", kind: "agent", owner_id: "o-lee" },
         [LEAD]: { id: LEAD, name: "ana-claude", kind: "agent", owner_id: "o-ana" },
         [PERSON]: { id: PERSON, name: "ana", kind: "human", owner_id: PERSON },
       };
-      const posts: { kind: string; body: string; to: string | null }[] = [];
+      const posts: { kind: string; body: string; to: string | null; thread?: number }[] = [];
+      let attempts = 0;
       const runsIn = vi.fn(async () => [{ session_id: "long-work-session" }]);
       const ak = {
         me: { ...members[ME], paused: false },
         sb: { from: () => { throw new Error("offline"); } },
         roomById: () => room,
         memberFresh: async (id: string) => members[id],
-        membership: (_r: string, id = ME) => ({ role: id === LEAD ? "lead" : "follower" }),
+        membership: (_r: string, id = ME) => ({ role: captain && id === ME || id === LEAD ? "lead" : "follower" }),
         membersOf: () => [],
         isHuman: (id: string) => members[id]?.kind === "human",
         nameOf: (id: string) => members[id]?.name ?? id,
@@ -1866,12 +1878,15 @@ process.stdin.on("end", () => {
         threadMessages: async () => thread,
         updateRun: async () => undefined,
         heartbeat: async () => ({}),
-        room: () => ({ post: async (m: { kind: string; body: string; to: string | null }) => void posts.push(m) }),
+        room: () => ({ post: async (m: { kind: string; body: string; to: string | null; thread?: number }) => {
+          if (failOpening && ++attempts === 1) throw new Error("room temporarily unavailable");
+          posts.push(m);
+        } }),
       };
       const runner = new Runner(ak as unknown as ConstructorParameters<typeof Runner>[0], parseRunnerConfig(`agent_id = "${AID}"\nengine = "claude"\nclaude_bin = "${fake}"\n[claude]\nmodel = "opus"`, "p"));
       runner["prepareWorkspace"] = () => ({ path: dir, clone: dir, branch: "ak/lee-claude/t100", base: "main", created: false });
       const tickets: string[] = [];
-      runner["projects"] = [{ project: { room_id: "room-1", repo: "ana/shop", ticket_prefix: "SH" }, ticketText: async (k: string) => (tickets.push(k), `${k} · the full ticket`), recordRunUsage: async () => undefined }] as never;
+      runner["projects"] = [{ iAmLead: captain, project: { room_id: "room-1", repo: "ana/shop", ticket_prefix: "SH" }, ticketText: async (k: string) => (tickets.push(k), `${k} · the full ticket`), recordRunUsage: async () => undefined }] as never;
       const job = (m: Message, more: Message[] = []): Job => ({ run: { id: m.id, thread_root: 100 } as TaskRun, message: m, fromInstructor: false, more: more.map((x) => ({ run: { id: x.id, thread_root: 100 } as TaskRun, message: x })), notBefore: 0, queuedAt: 0 });
       const ran = () => JSON.parse(posts[posts.length - 1].body) as { args: string[]; prompt: string };
       return { runner, posts, runsIn, tickets, job, ran };
@@ -1926,5 +1941,97 @@ process.stdin.on("end", () => {
         expect(r.prompt).toContain("Rules lee set for this machine");
       }
     });
+
+    it("Captain opens an action request before the work run and closes in the same thread", async () => {
+      const person = msg(220, PERSON, "chat", "Projects aren't isolated", { to_id: ME });
+      const s = setup([person], true);
+      let prompt = "";
+      s.runner["runAgent"] = async (opts) => {
+        expect(s.posts[0]).toMatchObject({ kind: "chat", to: PERSON, thread: 100 });
+        prompt = opts.prompt;
+        return { ...freshRun(), exitCode: 0, finalText: "Created SH-9 to fix project isolation." };
+      };
+      await s.runner["execute"](s.job(person));
+      expect(s.posts).toHaveLength(2);
+      expect(s.posts[0]).toMatchObject({ kind: "chat", to: PERSON, thread: 100 });
+      expect(s.posts[0].body).toContain("Projects aren't isolated");
+      expect(s.posts[1]).toMatchObject({ kind: "chat", to: PERSON, thread: 100 });
+      expect(s.posts[1].body).toContain("SH-9");
+      expect(prompt).toContain("Rules lee set for this machine");
+    });
+
+    it("Captain's closing line is the fallback when its opening could not post", async () => {
+      const person = msg(221, PERSON, "chat", "Please fix it", { to_id: ME });
+      const s = setup([person], true, true);
+      s.runner["runAgent"] = async () => ({ ...freshRun(), exitCode: 0, finalText: "Created SH-9 to fix it." });
+      await s.runner["execute"](s.job(person));
+      expect(s.posts).toHaveLength(1);
+      expect(s.posts[0]).toMatchObject({ kind: "chat", to: PERSON, thread: 100 });
+      expect(s.posts[0].body).toContain("Created SH-9");
+    });
+
+    it("Captain answers a plain question on the slim reply path", async () => {
+      const person = msg(222, PERSON, "chat", "Why is SH-7 blocked?", { to_id: ME });
+      const s = setup([person], true);
+      let prompt = "";
+      s.runner["runAgent"] = async (opts) => {
+        prompt = opts.prompt;
+        expect(arg(opts.inv.args, "--model")).toBe("sonnet");
+        return { ...freshRun(), sessionId: "captain-reply", exitCode: 0, finalText: "SH-7 is waiting on its tests." };
+      };
+      await s.runner["execute"](s.job(person));
+      expect(s.posts).toHaveLength(1);
+      expect(s.posts[0]).toMatchObject({ to: PERSON, thread: 100 });
+      expect(prompt).toContain("quick reply run");
+      expect(prompt).toContain("A person asked Captain a plain question");
+      expect(prompt).not.toContain("Rules lee set for this machine");
+      expect(s.runsIn).not.toHaveBeenCalled();
+
+      // A later question resumes this reply session with only the new messages.
+      await s.runner["execute"](s.job(msg(224, PERSON, "chat", "What is next?", { to_id: ME })));
+      expect(s.posts).toHaveLength(2);
+      expect(s.posts[1]).toMatchObject({ to: PERSON, thread: 100 });
+      expect(prompt).toMatch(/^New messages for you in thread #100/);
+      expect(prompt).toContain("the person who asked");
+      expect(prompt).not.toContain("Why is SH-7 blocked?");
+      expect(s.runsIn).not.toHaveBeenCalled();
+    });
+
+    it("Captain never leaves a person's plain question silent when the model returns NO_REPLY", async () => {
+      const person = msg(223, PERSON, "chat", "How does review work?", { to_id: ME });
+      const s = setup([person], true);
+      s.runner["runAgent"] = async () => ({ ...freshRun(), exitCode: 0, finalText: NO_REPLY });
+      await s.runner["execute"](s.job(person));
+      expect(s.posts).toHaveLength(1);
+      expect(s.posts[0]).toMatchObject({ kind: "chat", to: PERSON, thread: 100 });
+      expect(s.posts[0].body).toContain("couldn't answer");
+    });
+  });
+});
+
+describe("Captain's conversation with a person (AK-142)", () => {
+  const human = (id: string) => id === "person";
+  const m = (body: string, kind: Message["kind"] = "chat") => ({ sender_id: "person", kind, body });
+  it("routes plain questions and greetings to a quick reply, and requests for action to work", () => {
+    for (const body of ["Why is AK-141 blocked?", "How does review work?", "Is the PR ready?", "Hi"]) {
+      expect(isPlainQuestion(body)).toBe(true);
+      expect(isReplyJob([m(body)], human, false, true)).toBe(true);
+    }
+    for (const body of ["Can you fix project isolation?", "Please create a ticket", "Projects aren't isolated", "Could you investigate the PR?"]) {
+      expect(isPlainQuestion(body)).toBe(false);
+      expect(isReplyJob([m(body)], human, false, true)).toBe(false);
+    }
+    expect(isReplyJob([m("Why?"), m("Please fix it")], human, false, true)).toBe(false);
+    expect(isReplyJob([m("Why?")], human)).toBe(false); // Workers keep their existing path.
+  });
+  it("opens before work and checks for a reply in the person's thread", () => {
+    expect(captainFirstReply("Projects aren't isolated")).toContain("Projects aren't isolated");
+    const thread = [
+      { id: 10, sender_id: "person", to_id: "captain", body: "Fix this" },
+      { id: 11, sender_id: "captain", to_id: "person", body: "Started on #10 (branch b)." },
+    ];
+    expect(captainReplied(thread, "captain", "person", 10)).toBe(false);
+    expect(captainReplied([...thread, { id: 12, sender_id: "captain", to_id: "person", body: "I'll look into it." }], "captain", "person", 10)).toBe(true);
+    expect(captainReplied([...thread, { id: 12, sender_id: "captain", to_id: "other", body: "I'll look into it." }], "captain", "person", 10)).toBe(false);
   });
 });

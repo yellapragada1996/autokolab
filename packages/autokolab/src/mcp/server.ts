@@ -49,7 +49,7 @@ const ACTIVITY: Record<string, string> = {
   tickets: "Reading the board",
   ticket_get: "Reading a ticket",
   ticket_create: "Writing tickets",
-  ticket_update: "Updating tickets",
+  ticket_update: "Updating the ticket",
   ticket_comment: "Commenting on a ticket",
   guide_update: "Writing the Project Guide",
   decision_add: "Recording a decision",

@@ -117,6 +117,8 @@ export function buildPrompt(ctx: PromptContext): string {
     : m.body;
 
   const rules = rulesText(cfg, worktree).map((r) => `- ${r}`).join("\n");
+  const personChat = ctx.myRole === "lead" && (sender.kind === "human" || more.some((x) => x.sender.kind === "human"));
+  const conversation = personChat ? `\n\nThis message is from a person chatting with Captain. The runner has sent an opening reply in thread ${thread} before this work run. Before any board or ticket tool call, check that the reply says what you understood and what you will do; if it is missing or too generic, post a short, specific reply with room_post kind=chat to=${sender.name} thread=${thread}. After the work, your final message must be one or two plain sentences saying what you did, linking any tickets by key, and asking one question last if the person must decide. The runner posts that final message in this same thread. If a person's OK is needed, ask the question here with room_post kind=question to=${sender.name} thread=${thread} in plain words; a ticket flag or a message elsewhere is not enough. Do not finish with ${NO_REPLY}.\n` : "";
   return `${header}
 -----
 ${body}
@@ -135,7 +137,7 @@ Working with the others (everyone works on the same repo and can read every mess
 - Keep this task's bulletin board item current (in_progress, then done with the PR link). Create one if none exists.
 - When finished: commit, push your branch and open a pull request if you changed code. End with a short final message (what you did, PR link, anything left). The runner posts that final message to the room for you.
 - ${ROOM_QUIET}
-- Don't post acknowledgements ("thanks", "ok"). If you have nothing useful to add, make your final message exactly ${NO_REPLY} and the runner posts nothing.${ctx.myRole === "lead" ? `\n\nAs Captain:\n- ${leadAutonomy(ctx.ownerName)}\n- ${LEAD_APPROVAL}\n- ${LEAD_VOICE}` : ""}`;
+- Don't post acknowledgements ("thanks", "ok"). If you have nothing useful to add, make your final message exactly ${NO_REPLY} and the runner posts nothing.${conversation}${ctx.myRole === "lead" ? `\n\nAs Captain:\n- ${leadAutonomy(ctx.ownerName)}\n- ${LEAD_APPROVAL}\n- ${LEAD_VOICE}` : ""}`;
 }
 
 export interface ReplyMessage {
@@ -174,6 +176,8 @@ export interface ReplyPromptContext {
   ownTickets?: string[];
   /** The runner passed the request on to that ticket's build run. */
   handedOver?: boolean;
+  /** A person is asking Captain a plain question in the chat. */
+  fromPerson?: boolean;
 }
 
 /** What a follower's reply run does when the message is about its own ticket (AK-116). */
@@ -202,7 +206,7 @@ export function buildReplyPrompt(ctx: ReplyPromptContext): string {
   const head = ctx.followUp
     ? `New messages for you in thread #${t}, since your last reply there. Reply to the ones marked NEW.`
     : `You are ${who}${ctx.repo ? ` (repo ${ctx.repo})` : ""}, owned by ${ctx.ownerName}. No person is watching this session.\n` +
-      `A teammate agent wrote to you in thread #${t}. This is a quick reply run: answer them, don't start work.`;
+      `${ctx.fromPerson ? "A person asked Captain a plain question" : "A teammate agent wrote to you"} in thread #${t}. This is a quick reply run: answer them, don't start work.`;
   const thread = [
     ...(ctx.root ? [replyMessage(ctx.root)] : []),
     ...(ctx.skipped ? [`(${ctx.skipped} earlier message${ctx.skipped === 1 ? "" : "s"} not shown: room_thread ${t})`] : []),
@@ -215,7 +219,7 @@ export function buildReplyPrompt(ctx: ReplyPromptContext): string {
 ${thread}${tickets}
 
 How to reply:
-- Your final message is posted in thread #${t} as your reply, to the agent who asked. Don't post it yourself.
+- Your final message is posted in thread #${t} as your reply, to ${ctx.fromPerson ? "the person who asked" : "the agent who asked"}. Don't post it yourself.
 - Be brief and plain. Answer what was asked, with everything in that one message.
 - If there's nothing useful to add (thanks, ok, news that needs nothing from you), make your final message exactly ${NO_REPLY}.
 - Be accurate: if you aren't sure of a fact, check it rather than guess. If you truly need more, use ticket_get, decision_get, project_brief, or read the code in ${ctx.worktreePath}.

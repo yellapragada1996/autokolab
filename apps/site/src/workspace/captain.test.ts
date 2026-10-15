@@ -1,9 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LEAD_BUILT_QUESTION, MERGE_OK_PREFIX, REVIEW_LIMIT_QUESTION } from "../lib/data";
-import { answeredLine, awayText, briefing, catchUp, catchUpItems, catchUpSummary, catchUpText, ANSWERED_BELOW, clock, closingAnswers, closingReply, conversation, settledLine, settledWithoutYou, dayLabel, folded, foldText, goalName, lowerFirst, mergeChip, mergeQuestion, NO_ANSWER_NEEDED, needsYou, needText, newerPlan, openQuestions, ownerOf, parsePlan, planAsks, planLine, planOrder, planRequest, plans, planTitle, problemText, replyPreview, riskyPart, shortened, timeline, today, waitsFor, withoutPlan } from "./captain";
+import { answeredLine, awayText, briefing, captainWorkActivity, catchUp, catchUpItems, catchUpSummary, catchUpText, ANSWERED_BELOW, clock, closingAnswers, closingReply, conversation, settledLine, settledWithoutYou, dayLabel, folded, foldText, goalName, lowerFirst, mergeChip, mergeQuestion, NO_ANSWER_NEEDED, needsYou, needText, newerPlan, openQuestions, ownerOf, parsePlan, planAsks, planLine, planOrder, planRequest, plans, planTitle, problemText, replyPreview, riskyPart, shortened, timeline, today, waitsFor, withoutPlan } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, message, ticket, workspace } from "./fixtures";
 
 describe("the conversation with Captain", () => {
+  it("shows a plain working message and step instead of a raw tool label", () => {
+    expect(captainWorkActivity("Updating tickets")).toBe("Captain is working on your message… updating a ticket.");
+    expect(captainWorkActivity("Updating the ticket")).toBe("Captain is working on your message… updating a ticket.");
+    expect(captainWorkActivity("tool_xyz")).toBe("Captain is working on your message…");
+  });
   it("is the messages between the person and Captain, oldest first, each one classified", () => {
     const msgs = [
       message(ME, CAPTAIN, "We need Google sign-in."),
