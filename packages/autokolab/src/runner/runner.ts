@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, reportAgentStatus, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type Ticket } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, LIGHT_TTL_MS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, reportAgentStatus, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type Ticket, type TicketLight } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -34,7 +34,7 @@ const THREAD_KINDS: MessageKind[] = ["task", "chat", "answer", "review", "decisi
 /** From a teammate, addressed to everyone: only these continue work in a thread we're on (DEC-17). */
 const TEAMMATE_THREAD_KINDS: MessageKind[] = ["question", "answer", "review"];
 
-const POLL_MS = 30_000;
+const POLL_MS = 120_000;
 const HEARTBEAT_MS = 30_000;
 
 export interface Job {
@@ -519,6 +519,11 @@ export class Runner {
   private limitWait: LimitWait | null = null;
   /** Ready tickets waiting for another one with the same files (AK-126), said once each. */
   private areaWaits = new Map<string, string>();
+  /** Rough bytes read from the database since the last log line (AK-146). */
+  private downloadedBytes = 0;
+  private downloadLoggedAt = 0;
+  /** When the board was last scanned for work; an idle tick skips the reads (AK-146). */
+  private boardScannedAt = 0;
   private awake: KeepAwake;
 
   constructor(
@@ -542,6 +547,19 @@ export class Runner {
 
   private log(msg: string): void {
     console.log(`${new Date().toISOString().slice(0, 19).replace("T", " ")} [${this.ak.me.name}] ${msg}`);
+  }
+
+  /**
+   * Count the bytes a project read returned, and say roughly how much the runner downloaded once
+   * every 10 minutes, so the drop after AK-146 can be seen in the log.
+   */
+  private noteDownload(bytes: number): void {
+    this.downloadedBytes += bytes;
+    const now = Date.now();
+    if (now - this.downloadLoggedAt < 10 * 60_000) return;
+    if (this.downloadLoggedAt) this.log(`Downloaded about ${Math.round(this.downloadedBytes / 1024)} KB from the database in the last 10 minutes.`);
+    this.downloadLoggedAt = now;
+    this.downloadedBytes = 0;
   }
 
   private async init(): Promise<void> {
@@ -586,6 +604,8 @@ export class Runner {
         void ak.withSession(() => ak.heartbeat(this.stateNow())).catch((e) => this.log(`Heartbeat failed: ${e.message}`));
         void this.touchAgent();
         void this.reportUsage();
+        // Say how much was downloaded even when the board was skipped, once every 10 minutes (AK-146).
+        this.noteDownload(0);
       }, HEARTBEAT_MS),
     );
     await this.loadProjects();
@@ -1428,10 +1448,10 @@ export class Runner {
   }
 
   /** This follower's open tickets the messages are about; none when the board can't be read. */
-  private async ownTickets(project: ProjectView, messages: Message[]): Promise<Ticket[]> {
+  private async ownTickets(project: ProjectView, messages: Message[]): Promise<TicketLight[]> {
     if (!mentionedTickets(messages, project.project.ticket_prefix, 1).length) return [];
     try {
-      return ownTicketsMentioned(messages, project.project.ticket_prefix, await project.tickets(), this.ak.me.id);
+      return ownTicketsMentioned(messages, project.project.ticket_prefix, await project.ticketsLight(), this.ak.me.id);
     } catch (e) {
       this.log(`Couldn't read the board for a reply: ${(e as Error).message}`);
       return [];
@@ -1474,11 +1494,15 @@ export class Runner {
     const known = new Set(this.projects.map((p) => p.project.id));
     const changed = views.length !== this.projects.length || views.some((v) => !known.has(v.project.id));
     this.projects = views;
+    // Every read a project makes reports its size, for the once-every-10-minutes log (AK-146).
+    for (const v of views) v.onDownload = (bytes) => this.noteDownload(bytes);
     if (!changed) return;
     for (const ch of this.ticketChannels) void this.ak.sb.removeChannel(ch);
-    // A ticket moving to Review is noticed here, without anyone saying so in the room (AK-59).
+    // A ticket moving to Review is noticed here, without anyone saying so in the room (AK-59). A
+    // change to tickets, comments or links also makes the cached board stale (AK-146).
     this.ticketChannels = views.map((v) =>
       v.onChange(() => {
+        for (const p of this.projects) p.invalidateLight();
         void this.checkReviews();
         void this.work();
       }),
@@ -1519,9 +1543,14 @@ export class Runner {
     if (Date.now() - this.projectsLoadedAt > PROJECTS_RELOAD_MS) await this.loadProjects();
     if (!this.projects.length) return null;
     const st = this.ticketState();
+    // Nothing changed on the board and no teammate request is waiting: don't ask the database at
+    // all. Realtime, or the 5-minute reload above, wakes this again. At least one scan runs after
+    // each board (re)load, so tickets already assigned are still claimed right away (AK-146).
+    if (!Object.keys(st.notes ?? {}).length && this.projects.every((p) => p.boardFresh()) && Date.now() - this.boardScannedAt < LIGHT_TTL_MS) return null;
+    this.boardScannedAt = Date.now();
     for (const project of this.projects) {
       for (const { ticket, comments, looping } of await project.newComments(st.seen)) {
-        if (!looping) return { project, ticket, comments };
+        if (!looping) return this.startJob(project, ticket, comments);
         // Agents keep answering each other here: stop resuming and hand it to a person.
         st.seen[ticket.id] = comments[comments.length - 1].id;
         this.saveTicketState(st);
@@ -1534,14 +1563,14 @@ export class Runner {
     // Teammates' requests passed on to a ticket's build run (AK-116) wake it like a comment does.
     for (const project of this.projects) {
       if (!Object.keys(st.notes ?? {}).length) break;
-      const tickets = await project.tickets();
+      const tickets = await project.ticketsLight();
       const { resume, drop } = notesToAct(st.notes!, tickets, this.ak.me.id);
       if (drop.length) {
         for (const id of drop) delete st.notes![id];
         this.saveTicketState(st);
       }
       const ticket = resume ? tickets.find((t) => t.id === resume) : undefined;
-      if (ticket) return { project, ticket, comments: [] };
+      if (ticket) return this.startJob(project, ticket, []);
     }
     const waits = new Map<string, string>();
     try {
@@ -1550,12 +1579,17 @@ export class Runner {
           waits.set(t.id, text);
           if (this.areaWaits.get(t.id) !== text) this.log(`${t.key}: ${text}.`);
         });
-        if (ticket) return { project, ticket, comments: [] };
+        if (ticket) return this.startJob(project, ticket, []);
       }
     } finally {
       this.areaWaits = waits;
     }
     return null;
+  }
+
+  /** The full ticket for a run that's about to start; the board itself is read light (AK-146). */
+  private async startJob(project: ProjectView, light: TicketLight, comments: Comment[]): Promise<TicketJob> {
+    return { project, ticket: await project.ticket(light.key), comments };
   }
 
   /**
@@ -1569,7 +1603,15 @@ export class Runner {
     const st = this.ticketState();
     const handled = st.triaged ?? {};
     const open: TriageJob[] = [];
-    for (const project of leading) for (const ticket of await project.openQuestions()) open.push({ project, ticket });
+    for (const project of leading) {
+      for (const light of await project.openQuestions()) {
+        try {
+          open.push({ project, ticket: await project.ticket(light.key) });
+        } catch (e) {
+          this.log(`Couldn't read ${light.key} for its question: ${(e as Error).message}`);
+        }
+      }
+    }
     const kept = Object.fromEntries(open.filter((j) => handled[j.ticket.id] === j.ticket.needs_human).map((j) => [j.ticket.id, j.ticket.needs_human!]));
     if (Object.keys(kept).length !== Object.keys(handled).length) {
       st.triaged = kept;
@@ -1589,9 +1631,16 @@ export class Runner {
     try {
       if (Date.now() - this.projectsLoadedAt > PROJECTS_RELOAD_MS) await this.loadProjects();
       for (const p of this.projects.filter((x) => x.iAmLead)) {
-        for (const t of await p.approvedForMerge()) {
-          if (Date.now() - (this.mergeCheckedAt.get(t.id) ?? 0) < MERGE_CHECK_MS) continue;
-          this.mergeCheckedAt.set(t.id, Date.now());
+        for (const light of await p.approvedForMerge()) {
+          if (Date.now() - (this.mergeCheckedAt.get(light.id) ?? 0) < MERGE_CHECK_MS) continue;
+          this.mergeCheckedAt.set(light.id, Date.now());
+          let t: Ticket;
+          try {
+            t = await p.ticket(light.key);
+          } catch (e) {
+            this.log(`Couldn't read ${light.key} for its merge: ${(e as Error).message}`);
+            continue;
+          }
           await this.checkMerge(p, t).catch((e) => this.log(`${t.key} merge: couldn't check: ${(e as Error).message}`));
         }
       }
@@ -1619,16 +1668,23 @@ export class Runner {
     try {
       if (Date.now() - this.projectsLoadedAt > PROJECTS_RELOAD_MS) await this.loadProjects();
       for (const p of this.projects.filter((x) => x.iAmLead)) {
-        for (const t of await p.waitingForReview()) {
-          const seen = this.reviewCheckedAt.get(t.id);
-          if (seen && seen.updated === t.updated_at && Date.now() - seen.at < MERGE_CHECK_MS) continue;
-          if (this.reviewQueue.some((j) => j.ticket.id === t.id)) continue;
-          this.reviewCheckedAt.set(t.id, { at: Date.now(), updated: t.updated_at });
+        for (const light of await p.waitingForReview()) {
+          const seen = this.reviewCheckedAt.get(light.id);
+          if (seen && seen.updated === light.updated_at && Date.now() - seen.at < MERGE_CHECK_MS) continue;
+          if (this.reviewQueue.some((j) => j.ticket.id === light.id)) continue;
+          this.reviewCheckedAt.set(light.id, { at: Date.now(), updated: light.updated_at });
           let pr: PrInfo;
           try {
-            pr = await ghPrViewAsync<PrInfo>(t.pr_url!);
+            pr = await ghPrViewAsync<PrInfo>(light.pr_url!);
           } catch (e) {
-            this.log(`${t.key} review: couldn't check the PR: ${plainGhError((e as Error).message, `on ${this.ak.ownerName(this.ak.me)}'s machine`)}`);
+            this.log(`${light.key} review: couldn't check the PR: ${plainGhError((e as Error).message, `on ${this.ak.ownerName(this.ak.me)}'s machine`)}`);
+            continue;
+          }
+          let t: Ticket;
+          try {
+            t = await p.ticket(light.key);
+          } catch (e) {
+            this.log(`Couldn't read ${light.key} for its review: ${(e as Error).message}`);
             continue;
           }
           await this.recordPrFacts(p, t, pr);
@@ -2152,7 +2208,7 @@ export class Runner {
       if (after.status === "in_progress" && movesToReview(o.status, !!pr, !!(pr || after.pr_url), deliveryFailed)) change.status = "review";
       if (Object.keys(change).length) await p.update(t.key, change).catch((e) => this.log(`Couldn't update ${t.key}: ${(e as Error).message}`));
       if (o.newTickets.length) {
-        const open = (await p.tickets()).filter((x) => !["done", "canceled"].includes(x.status)).map((x) => x.title.toLowerCase());
+        const open = (await p.ticketsLight()).filter((x) => !["done", "canceled"].includes(x.status)).map((x) => x.title.toLowerCase());
         for (const title of o.newTickets) {
           if (open.includes(title.toLowerCase())) continue;
           await p.create({ title, description: `Found by ${ak.me.name} while working on ${t.key}.` }).catch((e) => this.log(`Couldn't create "${title}": ${(e as Error).message}`));
