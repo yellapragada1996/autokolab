@@ -78,3 +78,29 @@ describe("runner re-reports", () => {
     expect(rpc.mock.calls.every(([, args]) => args.p_project === null)).toBe(true);
   });
 });
+
+describe("parallel build reports", () => {
+  it("sends every run with its own project, and clears the list explicitly when finished", async () => {
+    const rpc = vi.fn().mockResolvedValue({ error: null });
+    const runs = [{ ticket_id: "t1", project_id: "first" }, { ticket_id: "t2", project_id: "second" }];
+    await view({ rpc }, "second").status("building", null, "t2", undefined, runs);
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_running_tickets: runs, p_project: "second", p_ticket: "t2" });
+    await view({ rpc }, "second").status("idle", null, null, undefined, []);
+    expect(rpc.mock.calls[1][1]).toMatchObject({ p_running_tickets: [], p_status: "idle" });
+  });
+  it("keeps project and model reporting when the database cannot record multiple builds yet", async () => {
+    const calls: Record<string, unknown>[] = [];
+    const sb = { rpc: async (_: string, args: Record<string, unknown>) => {
+      calls.push({ ...args });
+      return { error: "p_running_tickets" in args ? { message: "Could not find the function agent_status(p_running_tickets)" } : null };
+    } };
+    await view(sb, "second").status("building", null, "t2", { model: "opus", effort: "high" }, [{ ticket_id: "t2", project_id: "second" }]);
+    expect(calls).toHaveLength(2);
+    expect(calls[1]).toEqual({ p_status: "building", p_note: null, p_ticket: "t2", p_project: "second", p_model: "opus", p_effort: "high" });
+  });
+  it("does not retry a refused run list without validation", async () => {
+    const rpc = vi.fn().mockResolvedValue({ error: { message: "AUTOKOLAB_BAD_TICKET: The ticket is not assigned to you." } });
+    await expect(view({ rpc }, "second").status("building", null, "t2", undefined, [{ ticket_id: "t2", project_id: "second" }])).rejects.toThrow(/not assigned/);
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+});

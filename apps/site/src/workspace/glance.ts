@@ -127,6 +127,14 @@ interface Running {
   running: boolean;
 }
 
+/** Active builds visible in this project. All consumers use the same project filter. */
+export function runningTickets(ws: Workspace, a: Agent, now = new Date()): Ticket[] {
+  const scoped = statusHere(a, ws.project.id, ws.byId, now);
+  if (scoped.elsewhere || agentDot(scoped, now) !== "working") return [];
+  return [...new Set(scoped.running_tickets?.map((r) => r.ticket_id) ?? [])]
+    .map((id) => ws.byId.get(id)).filter((t): t is Ticket => !!t && isWork(t) && isOpen(t));
+}
+
 /** What an agent is on: the ticket its runner reported, else its most recently moved In progress ticket. */
 function agentTicket(ws: Workspace, a: Agent, now = new Date()): Ticket | null {
   const scoped = statusHere(a, ws.project.id, ws.byId, now);
@@ -151,7 +159,10 @@ function agentsAt(ws: Workspace, now: Date): Running[] {
 /** Tickets someone is on right now: an agent running on it, or a person holding it In progress. */
 function activeTickets(ws: Workspace, now: Date): Set<string> {
   const ids = new Set<string>();
-  for (const r of agentsAt(ws, now)) if (r.running && r.ticket) ids.add(r.ticket.id);
+  for (const r of agentsAt(ws, now)) if (r.running) {
+    if (r.ticket) ids.add(r.ticket.id);
+    for (const t of runningTickets(ws, r.agent, now)) ids.add(t.id);
+  }
   for (const t of ws.tickets) if (isWork(t) && t.status === "in_progress" && t.assignee_type === "human" && t.assignee_id) ids.add(t.id);
   return ids;
 }
@@ -538,6 +549,9 @@ export interface TeamAgent {
   usage: Usage | null;
   /** Whose agent it is and its model, for hover text. */
   hover: string;
+  /** Every local build, with the foreign work reduced to availability only. */
+  builds?: { name: string; key: string }[];
+  busyElsewhere?: boolean;
 }
 
 export interface TeamPerson {
@@ -617,7 +631,9 @@ export function team(ws: Workspace, now: Date, seen: Map<string, string | null> 
     .sort((a, b) => Number(b.id === lead) - Number(a.id === lead))
     .map((a): TeamAgent => {
       const state = teamState(ws, a, now);
-      let label: string = state;
+      const builds = state === "working" ? runningTickets(ws, a, now).map((t) => ({ name: t.title, key: t.key })) : [];
+      const busyElsewhere = statusHere(a, ws.project.id, ws.byId, now).busyElsewhere;
+      let label: string = builds.length > 1 ? `building ${builds.length} · ${builds.map((b) => b.name).join(", ")}` : state;
       if (state === "elsewhere") label = "Busy in another project";
       else if (state === "limit") label = backAt(a, now) ? `limit reached · back ${aboutTime(backAt(a, now)!)}` : "limit reached";
       else if (state === "waiting") label = "waiting on you";
@@ -630,7 +646,7 @@ export function team(ws: Workspace, now: Date, seen: Map<string, string | null> 
       }
       const owner = a.owner_profile_id ? ws.nameOf(a.owner_profile_id) : a.owner_label;
       const hover = [owner ? `${owner}'s agent` : "shared agent", a.effective_model ?? a.model ?? "model set on its machine"].join(" · ");
-      return { id: a.id, name: whoName(ws, a.id), state, label, tone: TEAM_TONE[state], usage: usageOf(ws, a, now), hover };
+      return { id: a.id, name: whoName(ws, a.id), state, label, tone: TEAM_TONE[state], usage: usageOf(ws, a, now), hover, builds, busyElsewhere };
     });
   const people = ws.people.members
     .filter((m) => m.actor_type === "human")
@@ -826,8 +842,10 @@ export function crew(t: Team, rows: AgentRow[]): CrewRow[] {
       else if (a.state === "offline") doing = capital(a.label);
       else if (a.state === "limit") doing = capital(a.label.replace(/^limit reached · /, ""));
       else doing = capital(a.label);
-      const notes = r ? [...r.notes, r.held] : a.state === "free" || a.state === "idle" ? a.label.split(" · ").slice(1) : [];
-      return { id: a.id, name: a.name, state: a.state, word: CREW_WORD[a.state], tone: a.tone, doing, feature: r?.feature ?? null, notes, usage: a.usage, hover: a.hover, key: r?.key ?? null };
+      if (a.builds && a.builds.length > 1) doing = a.builds.map((b) => b.name).join(", ");
+      const multiple = !!a.builds && a.builds.length > 1;
+      const notes = multiple ? [] : r ? [...r.notes, r.held] : a.state === "free" || a.state === "idle" ? a.label.split(" · ").slice(1) : [];
+      return { id: a.id, name: a.name, state: a.state, word: multiple ? `Building ${a.builds!.length}` : CREW_WORD[a.state], tone: a.tone, doing, feature: multiple ? null : r?.feature ?? null, notes: a.busyElsewhere && a.state !== "elsewhere" ? [...notes, "Busy in another project"] : notes, usage: a.usage, hover: a.hover, key: multiple ? null : r?.key ?? null };
     })
     .sort((x, y) => CREW_ORDER.indexOf(x.state) - CREW_ORDER.indexOf(y.state));
 }

@@ -308,38 +308,53 @@ export function pruneWorktrees(agent: string, days = 14): number {
  * protect individual commands, but fetch + branch lookup + worktree add must stay together.
  * A live holder never expires during a slow fetch. A dead process's lock can be reclaimed.
  */
-export async function withRepoLock<T>(repo: string, fn: () => T | Promise<T>): Promise<T> {
+export async function withRepoLock<T>(repo: string, fn: () => T | Promise<T>, signal?: AbortSignal): Promise<T> {
   const chosen = readConfigFile().repos?.[repo];
   const clone = chosen ?? clonePath(repo);
-  return withCloneLock(clone, fn);
+  return withCloneLock(clone, fn, signal);
 }
 
-export async function withCloneLock<T>(clone: string, fn: () => T | Promise<T>): Promise<T> {
+export async function withCloneLock<T>(clone: string, fn: () => T | Promise<T>, signal?: AbortSignal): Promise<T> {
   // Outside .git so creating the clone itself is protected too.
   const lock = `${real(clone)}.autokolab-lock`;
   mkdirSync(dirname(lock), { recursive: true });
   const deadline = Date.now() + 5 * 60_000;
   for (;;) {
+    if (signal?.aborted) throw new Error("This run was stopped while waiting for the repo.");
     try {
       mkdirSync(lock);
       writeFileSync(join(lock, "pid"), String(process.pid));
       break;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      // Only one helper reclaims dead holders, and it re-reads the owner under that guard.
+      // Otherwise two waiters could both see a dead pid, and the second delete a new live lock.
+      const reaper = `${lock}.reclaim`;
+      let reclaiming = false;
       try {
-        const pid = Number(readFileSync(join(lock, "pid"), "utf8"));
+        mkdirSync(reaper);
+        reclaiming = true;
+        let pid = 0;
+        try { pid = Number(readFileSync(join(lock, "pid"), "utf8")); } catch { /* holder is writing it */ }
         if (Number.isInteger(pid) && pid > 0) {
           try { process.kill(pid, 0); }
           catch (err) { if ((err as NodeJS.ErrnoException).code === "ESRCH") rmSync(lock, { recursive: true, force: true }); }
-        }
+        } else if (Date.now() - statSync(lock).mtimeMs > 30_000) rmSync(lock, { recursive: true, force: true });
       } catch {
-        // Allow the holder to finish creating its pid file. Reclaim a crash in that small window.
-        try { if (Date.now() - statSync(lock).mtimeMs > 30_000) rmSync(lock, { recursive: true, force: true }); } catch { /* released */ }
+        // Reclaiming only does synchronous filesystem calls. Recover its own crash window too.
+        if (!reclaiming) {
+          try { if (Date.now() - statSync(reaper).mtimeMs > 30_000) rmSync(reaper, { recursive: true, force: true }); } catch { /* released */ }
+        }
+      } finally {
+        if (reclaiming) rmSync(reaper, { recursive: true, force: true });
       }
       if (Date.now() > deadline) throw new Error("Another run kept this repo busy for five minutes. Try again shortly.");
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
   }
-  try { return await fn(); }
+  try {
+    if (signal?.aborted) throw new Error("This run was stopped while waiting for the repo.");
+    return await fn();
+  }
   finally { rmSync(lock, { recursive: true, force: true }); }
 }

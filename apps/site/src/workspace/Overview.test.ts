@@ -50,3 +50,21 @@ describe("the Something's off panel", () => {
     expect(html).not.toMatch(/SH-\d/);
   });
 });
+
+describe("parallel builds on one teammate", () => {
+  it("lists each build in one row, names the count and opens People to see each ticket", () => {
+    const a = ticket({ key: "SH-21", title: "Checkout page", status: "in_progress", assignee_id: BIRCH });
+    const b = ticket({ key: "SH-22", title: "Invite expiry", status: "in_progress", assignee_id: BIRCH });
+    const ws = workspace([a, b]);
+    Object.assign(ws.agentOf(BIRCH)!, { status: "building", last_seen_at: at("11:59"), running_tickets: [a, b].map((t) => ({ ticket_id: t.id, project_id: t.project_id })) });
+    const t = team(ws, NOW);
+    expect(t.agents.find((a) => a.id === BIRCH)?.label).toBe("building 2 · Checkout page, Invite expiry");
+    const row = crew(t, []).find((a) => a.id === BIRCH)!;
+    expect(row).toMatchObject({ word: "Building 2", doing: "Checkout page, Invite expiry", feature: null, key: null });
+    const html = renderToStaticMarkup(createElement(CrewTable, { rows: [row], people: t, peoplePage: people }));
+    expect(html.match(/>Birch</g)).toHaveLength(1);
+    expect(html).toContain("Building 2");
+    expect(html).toContain("Checkout page, Invite expiry");
+    expect(html).not.toMatch(/SH-\d/);
+  });
+});

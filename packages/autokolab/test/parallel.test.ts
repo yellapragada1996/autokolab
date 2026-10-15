@@ -1,8 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseRunnerConfig } from "../src/runner/config.js";
+import { writeConfigFile } from "../src/core/config.js";
 import { Runner } from "../src/runner/runner.js";
 import { withCloneLock } from "../src/runner/repos.js";
 
@@ -16,10 +18,11 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "ak-parallel-"));
   vi.stubEnv("XDG_STATE_HOME", root);
   vi.stubEnv("XDG_CONFIG_HOME", root);
+  vi.stubEnv("XDG_DATA_HOME", root);
   runners = [];
 });
 afterEach(async () => {
-  for (const r of runners) { r.stopping = true; if (r.workTimer) clearTimeout(r.workTimer); await r.stateWrites; }
+  for (const r of runners) { r.stopping = true; for (const slot of r.slots.values()) slot.abort.abort(); if (r.workTimer) clearTimeout(r.workTimer); await r.stateWrites; }
   vi.useRealTimers();
   vi.unstubAllEnvs();
   rmSync(root, { recursive: true, force: true });
@@ -126,6 +129,26 @@ describe("parallel builds", () => {
     vi.setSystemTime(new Date(2026, 9, 16, 12));
     expect(restarted.parallelLimit()).toBe(3);
   });
+  it("a subscription wait spanning midnight also steps down on its resume day", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 16, 1));
+    const { r } = setup(3);
+    r.savedTickets = { sessions: {}, seen: {}, steppedDownDay: "2026-10-15" };
+    r.limitWait = { kind: "message", until: new Date(2026, 9, 16, 0, 59).toISOString(), noticedAt: new Date(2026, 9, 15, 23).toISOString() };
+    r.nextTicket = vi.fn().mockResolvedValue(null);
+    await r.work();
+    expect(r.parallelLimit()).toBe(1);
+    expect(r.ticketState().steppedDownDay).toBe("2026-10-16");
+  });
+  it("passes one teammate's instructions to every running ticket it names", async () => {
+    const { r, ak, p, job } = setup();
+    p.project.ticket_prefix = "AK";
+    ak.isHuman = () => false; ak.roomById = () => ({}); ak.nameOf = () => "Captain";
+    ak.updateRun = vi.fn().mockResolvedValue(undefined); r.roomProject = () => p;
+    for (const n of [1, 2]) r.slots.set(`t${n}`, { job: job(n), abort: new AbortController() });
+    expect(await r.handToBuildRun({ id: 50, kind: "task", body: "AK-1 and AK-2: include keyboard checks", room_id: "room", sender_id: "captain" }, { id: 10 })).toBe(true);
+    expect(r.ticketState().notes).toMatchObject({ t1: [{ id: 50 }], t2: [{ id: 50 }] });
+    r.slots.clear();
+  });
   it("queued writes preserve concurrent session, note and review changes in one complete file", async () => {
     const { r } = setup();
     const first = r.ticketState(); const second = r.ticketState();
@@ -153,6 +176,92 @@ describe("parallel builds", () => {
   });
 });
 
+describe("parallel builds through real worktrees and agent processes", () => {
+  it.each(["pause", "usage limit"])("claims separate Ready tickets, stops both processes on %s and resumes their own sessions", async (stop) => {
+    const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe" }).trim();
+    const clone = join(root, "clone"); const remote = join(root, "remote.git");
+    mkdirSync(clone);
+    git(root, "init", "--bare", "-q", "-b", "main", remote);
+    git(clone, "init", "-q", "-b", "main"); git(clone, "config", "user.name", "test"); git(clone, "config", "user.email", "test@example.test");
+    writeFileSync(join(clone, "README.md"), "Test repo");
+    git(clone, "add", "."); git(clone, "commit", "-qm", "initial"); git(clone, "remote", "add", "origin", remote); git(clone, "push", "-qu", "origin", "main");
+    writeConfigFile({ repos: { "owner/shop": clone } });
+    const fake = join(root, "codex.mjs");
+    writeFileSync(fake, `#!/usr/bin/env node
+import { writeFileSync, existsSync } from 'node:fs';
+const ticket = process.env.AUTOKOLAB_TICKET;
+const resumed = process.argv.includes('resume');
+console.log(JSON.stringify({type:'thread.started',thread_id:'session-' + ticket}));
+process.stdin.resume();
+process.stdin.on('end', () => {
+  writeFileSync(resumed ? 'resumed.json' : 'started.json', JSON.stringify({ticket,cwd:process.cwd(),port:process.env.AUTOKOLAB_PORT,args:process.argv}));
+  const timer = setInterval(() => {
+    if (!resumed && existsSync('limit')) {
+      clearInterval(timer);
+      console.log(JSON.stringify({type:'turn.failed',error:{message:"You've hit your session limit"}}));
+      return;
+    }
+    if (!existsSync('finish')) return;
+    clearInterval(timer);
+    console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'Work complete.'}}));
+    console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:100,cached_input_tokens:20,output_tokens:10}}));
+  }, 20);
+});
+`, { mode: 0o755 });
+    const { r, ak, p, job } = setup();
+    r.cfg.codex_bin = fake;
+    ak.ownerName = () => "Owner";
+    p.project.name = "Shop";
+    const tickets = [1, 2].map((n) => ({ ...job(n).ticket, status: "ready", title: `Task ${n}`, areas: [`area${n}/**`] }));
+    p.ticket = async (key: string) => tickets.find((t) => t.key === key);
+    p.tickets = async () => tickets;
+    p.update = async (key: string, change: object) => Object.assign(await p.ticket(key), change);
+    p.newComments = async () => [];
+    p.claimNext = async (_wait: unknown, canStart: (t: unknown) => boolean) => {
+      const t = tickets.find((t) => t.status === "ready" && canStart(t));
+      if (t) t.status = "in_progress";
+      return t ?? null;
+    };
+    p.loadNames = async () => undefined; p.brief = async () => ""; p.ticketText = async (key: string) => key;
+    p.recordRunUsage = vi.fn().mockResolvedValue(true);
+    r.modelChoice = async () => ({}); r.reportModel = () => () => undefined;
+    await r.work();
+    const dirs = tickets.map((t) => join(root, "autokolab", "worktrees", "worker", "owner-shop", t.key));
+    await vi.waitFor(() => expect(dirs.every((d) => existsSync(join(d, "started.json")))).toBe(true));
+    const launched = dirs.map((d) => JSON.parse(readFileSync(join(d, "started.json"), "utf8")));
+    expect(launched.map((a) => a.ticket)).toEqual(["AK-1", "AK-2"]);
+    expect(new Set(launched.map((a) => a.cwd)).size).toBe(2);
+    expect(new Set(launched.map((a) => a.port)).size).toBe(2);
+    expect(dirs.map((d) => git(d, "branch", "--show-current"))).toEqual(["ak-1-task-1", "ak-2-task-2"]);
+    if (stop === "pause") { ak.me.paused = true; await r.onPauseChange(true); }
+    else writeFileSync(join(dirs[0], "limit"), "limited");
+    await vi.waitFor(() => expect(r.slots.size).toBe(0));
+    expect(r.ticketState().sessions).toEqual({ t1: "session-AK-1", t2: "session-AK-2" });
+    expect(Object.keys(r.ticketState().pendingBuilds)).toEqual(["t1", "t2"]);
+    ak.me.paused = false;
+    if (stop === "usage limit") {
+      expect(r.parallelLimit()).toBe(1);
+      r.saveLimitWait({ ...r.limitWait, until: new Date(Date.now() - 1).toISOString() });
+      r.loadProjects = async () => undefined;
+    }
+    await r.work();
+    for (let i = 0; i < dirs.length; i++) {
+      await vi.waitFor(() => expect(existsSync(join(dirs[i], "resumed.json"))).toBe(true));
+      if (stop === "usage limit" && i === 0) expect(existsSync(join(dirs[1], "resumed.json"))).toBe(false);
+      const resumed = JSON.parse(readFileSync(join(dirs[i], "resumed.json"), "utf8"));
+      expect(resumed.args).toContain(`session-AK-${i + 1}`);
+      writeFileSync(join(dirs[i], "finish"), "done");
+    }
+    await vi.waitFor(() => expect(r.slots.size).toBe(0));
+    expect(r.ticketState().pendingBuilds).toEqual({});
+    expect(p.recordRunUsage).toHaveBeenCalledTimes(4);
+    expect(p.recordRunUsage.mock.calls.slice(-2).map(([row]: any[]) => row)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "build", ticket_id: "t1", input_tokens: 80, cache_read_tokens: 20, output_tokens: 10 }),
+      expect.objectContaining({ kind: "build", ticket_id: "t2", input_tokens: 80, cache_read_tokens: 20, output_tokens: 10 }),
+    ]));
+  });
+});
+
 describe("clone lock", () => {
   it("serializes the same clone, lets another clone proceed, and releases after a failure", async () => {
     const clone = join(root, "repo"); const other = join(root, "other");
@@ -164,6 +273,16 @@ describe("clone lock", () => {
     gate.resolve(); await a; expect(await b).toBe("fetch failed");
     await withCloneLock(clone, () => events.push("third"));
     expect(events).toEqual(["first", "other", "released", "second", "third"]);
+  });
+  it("pause cancels a slot waiting for the clone without running its git commands", async () => {
+    const clone = join(root, "repo"); const gate = deferred();
+    const holder = withCloneLock(clone, () => gate.promise);
+    const abort = new AbortController(); const git = vi.fn();
+    const waiting = withCloneLock(clone, git, abort.signal);
+    abort.abort();
+    await expect(waiting).rejects.toThrow(/stopped while waiting/);
+    expect(git).not.toHaveBeenCalled();
+    gate.resolve(); await holder;
   });
   it("reclaims a lock left by a dead helper", async () => {
     const clone = join(root, "repo"); const lock = `${clone}.autokolab-lock`;

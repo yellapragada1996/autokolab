@@ -1,4 +1,4 @@
-import { statusHere } from "./glance";
+import { runningTickets, statusHere } from "./glance";
 import { reportError } from "../lib/errors";
 import { useEffect, useState } from "react";
 import { addPerson, createInvite, EFFORTS, inviteLink, invites as listInvites, MERGE_POLICIES, mergePolicyOf, MODEL_CHOICES, revokeInvite, setAgentModel, setLead, setMergePolicy, showCode, VENDOR_LABEL, type Agent, type Effort, type Invite, type MergePolicy } from "../lib/data";
@@ -106,6 +106,7 @@ export function People({ ws, me, onProjectChanged, onAddAgent }: { ws: Workspace
         {agents.map((raw) => {
           const a = statusHere(raw, ws.project.id, ws.byId);
           const st = a.elsewhere ? { label: "Busy in another project", color: "var(--blue-text)" } : agentOnline(a) ? agentStatusText[a.status] : agentStatusText.offline;
+          const builds = runningTickets(ws, raw);
           const cur = a.current_ticket_id ? ws.byId.get(a.current_ticket_id) : undefined;
           return (
             <div key={a.id} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line-soft)", flexWrap: "wrap" }}>
@@ -129,7 +130,9 @@ export function People({ ws, me, onProjectChanged, onAddAgent }: { ws: Workspace
                   </button>
                 )}
                 <span style={{ fontSize: 13, color: st.color }}>{st.label}</span>
-                {cur ? (
+                {builds.length > 1 ? builds.map((t) => (
+                  <a key={t.id} href={href({ view: "ticket", project: ws.project.slug, key: t.key })} onClick={onNav({ view: "ticket", project: ws.project.slug, key: t.key })} style={{ fontSize: 12, color: "var(--muted)", textDecoration: "none" }}>{t.title}</a>
+                )) : cur ? (
                   <a href={`/p/${ws.project.slug}/work/${cur.key}`} onClick={onNav({ view: "ticket", project: ws.project.slug, key: cur.key })} style={{ fontSize: 12, color: "var(--muted)", textDecoration: "none" }}>
                     <KeyText t={cur} style={{ color: "inherit" }} /> {a.status_note ?? cur.title}
                   </a>

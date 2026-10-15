@@ -84,6 +84,8 @@ export interface Agent {
   current_ticket_id: string | null;
   /** Project whose work the status describes (schema 27; absent on older databases). */
   status_project_id?: string | null;
+  /** Active builds, each scoped to its ticket’s project (schema 28; absent on older databases). */
+  running_tickets?: { ticket_id: string; project_id: string }[];
   last_seen_at: string | null;
   /** Set from AutoKolab (schema 10); null means the agent's machine decides. */
   model: string | null;

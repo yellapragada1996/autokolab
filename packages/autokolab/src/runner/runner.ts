@@ -4,7 +4,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, reportAgentStatus, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type Ticket } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, reportAgentStatus, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type RunningTicket, type Ticket } from "../core/projects.js";
 import { areasOverlap } from "../core/areas.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
@@ -488,7 +488,8 @@ const MERGE_CHECK_MS = 60_000;
 
 export class Runner {
   private queue: Job[] = [];
-  private busy = false;
+  /** Serializes scheduling decisions; long build runs live in slots, outside this guard. */
+  private dispatching = false;
   private polling: Promise<void> | null = null;
   private pollAgain = false;
   private lastSeenId = 0;
@@ -740,6 +741,7 @@ export class Runner {
     let run!: EngineRun;
     try {
       const env = ports?.env ?? (ticket ? { AUTOKOLAB_TICKET: ticket } : {});
+      if (opts.signal.aborted || this.ak.me.paused || this.stopping || this.overLimit() || (this.limitWait && Date.now() < Date.parse(this.limitWait.until))) return run = { sessionId: null, finalText: "", exitCode: null, timedOut: false, aborted: true, isError: false };
       run = await runEngine({ ...opts, inv: { ...opts.inv, env: { ...env, ...opts.inv.env } } });
     } finally {
       this.runningTime.delete(meter);
@@ -861,7 +863,7 @@ export class Runner {
     const previous = this.limitWait;
     const target = job?.ticket;
     const wait: LimitWait = {
-      until: limit.until.toISOString(), noticedAt: previous?.noticedAt ?? new Date().toISOString(), kind,
+      until: new Date(Math.max(limit.until.getTime(), Date.parse(previous?.until ?? "") || 0)).toISOString(), noticedAt: previous?.noticedAt ?? new Date().toISOString(), kind,
       ...(job ? { project: job.project.project.slug, key: target!.key } : {}),
       ...(kind === "ticket" ? { comments: (job as TicketJob).comments } : {}),
       ...(kind === "review" ? { pr: (job as ReviewJob).pr, sha: (job as ReviewJob).sha } : {}),
@@ -920,7 +922,7 @@ export class Runner {
     const marker = join(stateDir(), "introduced", this.ak.me.id);
     if (existsSync(marker)) return;
     const room = this.ak.rooms().find((r) => r.repo);
-    if (!room || this.held || this.limitWait || this.busy || this.slots.size) return;
+    if (!room || this.held || this.limitWait || this.dispatching || this.slots.size) return;
     this.greeting = true;
     const release = this.awake.hold();
     try {
@@ -941,7 +943,12 @@ export class Runner {
     const mcp = { command: process.execPath, args: mcpArgs(this.cfg.agent_id, room.name) };
     const choice = await this.modelChoice();
     const inv = this.invocation(mcp, null, clone, choice);
-    const result = await this.runAgent({ cfg: this.cfg, inv, cwd: clone, prompt, logFile: join(this.logDir, `${room.name}-hello.log`), signal: new AbortController().signal, onModel: this.reportModel(choice) });
+    const abort = new AbortController();
+    this.current = { what: "introducing myself", abort };
+    let result: EngineRun;
+    try {
+      result = await this.runAgent({ cfg: this.cfg, inv, cwd: clone, prompt, logFile: join(this.logDir, `${room.name}-hello.log`), signal: abort.signal, onModel: this.reportModel(choice) });
+    } finally { this.current = null; }
     const text = redactSecrets(result.finalText.trim()).slice(0, 4000);
     if (result.isError || !text) throw new Error(text || "no reply");
     await this.ak.room(room).post({ kind: "chat", body: text });
@@ -1109,15 +1116,19 @@ export class Runner {
    * to that build run's next wake-up, instead of a reply run of its own (AK-116).
    */
   private async handToBuildRun(m: Message, run: TaskRun): Promise<boolean> {
-    const t = [...this.slots.values()].map((s) => ({ id: s.job.ticket.id, key: s.job.ticket.key, projectId: s.job.project.project.id }))
-      .find((t) => mentionedTickets([m], t.key.split("-")[0], 20).includes(t.key)) ?? this.currentRun?.ticket;
-    if (!t || this.ak.isHuman(m.sender_id) || !HANDOVER_KINDS.includes(m.kind)) return false;
+    if (this.ak.isHuman(m.sender_id) || !HANDOVER_KINDS.includes(m.kind)) return false;
     const room = this.ak.roomById(m.room_id);
     const p = room ? this.roomProject(room) : undefined;
-    if (!p || p.iAmLead || p.project.id !== t.projectId || !mentionedTickets([m], p.project.ticket_prefix, 20).includes(t.key)) return false;
-    this.addNotes(t.id, [m]);
-    await this.ak.updateRun(run.id, { state: "done", summary: `Passed to my ${t.key} build run`, finished_at: now() });
-    this.log(`#${m.id} is about ${t.key}, which I'm building: passed to that run.`);
+    if (!p || p.iAmLead) return false;
+    const keys = mentionedTickets([m], p.project.ticket_prefix, 20);
+    const candidates = [...this.slots.values()].map((s) => ({ id: s.job.ticket.id, key: s.job.ticket.key, projectId: s.job.project.project.id }));
+    if (this.currentRun?.ticket) candidates.push(this.currentRun.ticket);
+    const tickets = candidates.filter((t) => t.projectId === p.project.id && keys.includes(t.key));
+    if (!tickets.length) return false;
+    for (const t of tickets) this.addNotes(t.id, [m]);
+    const names = tickets.map((t) => t.key).join(", ");
+    await this.ak.updateRun(run.id, { state: "done", summary: `Passed to my ${names} build run${tickets.length > 1 ? "s" : ""}`, finished_at: now() });
+    this.log(`#${m.id} is about ${names}, which I'm building: passed to those runs.`);
     return true;
   }
 
@@ -1179,7 +1190,7 @@ export class Runner {
 
   /** For the updater: if no run is in progress, hold new ones until release() and say yes. */
   holdIfIdle(): boolean {
-    if (this.busy || this.currentRun || this.slots.size || this.greeting) return false;
+    if (this.dispatching || this.currentRun || this.slots.size || this.greeting) return false;
     this.held = true;
     return true;
   }
@@ -1195,10 +1206,15 @@ export class Runner {
 
   private async work(): Promise<void> {
     if (this.slotContext?.getStore()) return this.slotContext.exit(() => this.work());
-    if (this.busy || this.held || this.greeting) return;
-    this.busy = true;
+    if (this.dispatching || this.held || this.greeting) return;
+    this.dispatching = true;
     try {
       if (this.limitWait && Date.now() < Date.parse(this.limitWait.until)) return;
+      if (this.limitWait && this.ticketState().steppedDownDay !== today()) {
+        const st = this.ticketState();
+        st.steppedDownDay = today(); // A wait spanning midnight also steps down on the day it resumes.
+        this.saveTicketState(st);
+      }
       if (this.slots.size && (this.queue.length || this.limitWait)) return;
       if (this.limitWait?.kind === "message" && !this.queue.length && Date.now() >= Date.parse(this.limitWait.until)) this.saveLimitWait(null);
       if (this.limitWait && !this.ak.me.paused && !this.stopping && !this.overLimit() && this.limitWait.kind !== "message") {
@@ -1253,6 +1269,7 @@ export class Runner {
           }
         }
       }
+      if (this.slots.size && this.queue.length) return;
       while (this.queue.length && !this.ak.me.paused && !this.stopping) {
         if (this.overLimit()) {
           await this.waitForTomorrow(this.queue[0]);
@@ -1301,7 +1318,7 @@ export class Runner {
     } catch (e) {
       this.log(`Couldn't resume after usage limit: ${(e as Error).message}`);
     } finally {
-      this.busy = false;
+      this.dispatching = false;
     }
   }
 
@@ -1311,6 +1328,8 @@ export class Runner {
     const state = this.ticketState();
     (state.pendingBuilds ??= {})[job.ticket.id] = { project: job.project.project.slug, key: job.ticket.key, comments: job.comments };
     this.saveTicketState(state);
+    if (this.ak.me.paused || this.stopping || this.overLimit() || this.limitWait) slot.abort.abort();
+    void this.setStatus("building", null, job.ticket.id, job.project.project.id);
     const release = this.awake.hold();
     void this.slotContext.run(slot, async () => {
       try {
@@ -1348,12 +1367,12 @@ export class Runner {
     if (!room?.repo) throw new Error(`room ${room?.name ?? m.room_id} isn't linked to a GitHub repo.`);
     const repo = room.repo;
     return withRepoLock(repo, () => {
-    const clone = ensureClone(repo);
-    if (!this.hooked.has(repo)) {
-      installHook(clone, this.cfg.limits.protected_branches);
-      this.hooked.add(repo);
-    }
-    return ensureWorktree(this.ak.me.name, repo, threadRoot);
+      const clone = ensureClone(repo);
+      if (!this.hooked.has(repo)) {
+        installHook(clone, this.cfg.limits.protected_branches);
+        this.hooked.add(repo);
+      }
+      return ensureWorktree(this.ak.me.name, repo, threadRoot);
     });
   }
 
@@ -1428,7 +1447,6 @@ export class Runner {
       result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
     } finally {
       this.current = null;
-
     }
     this.recordRun(this.projects.find((p) => this.projectRoom(p)?.id === room.id), "reply", null, result, startedAt);
     this.log(runCostLine(isReply ? "Reply" : "Work", ids, prompt.length, result.model ?? choice.model ?? "", choice.effort, result.usage ?? noUsage()));
@@ -1660,7 +1678,7 @@ export class Runner {
         const ticket = await project.claimNext((t, text) => {
           waits.set(t.id, text);
           if (this.areaWaits.get(t.id) !== text) this.log(`${t.key}: ${text}.`);
-        });
+        }, (t) => available(t, project));
         if (ticket) return { project, ticket, comments: [] };
       }
     } finally {
@@ -1989,6 +2007,12 @@ export class Runner {
     this.log(`${t.key} merge: merged PR #${prNumber(url)} at ${sha.slice(0, 7)}.`);
   }
 
+  /** Live build records, including setup and delivery, in every project this runner serves. */
+  private runningTickets(): RunningTicket[] | undefined {
+    return this.slots ? [...this.slots.values()].filter((s) => !s.abort.signal.aborted)
+      .map((s) => ({ ticket_id: s.job.ticket.id, project_id: s.job.project.project.id })) : undefined;
+  }
+
   /** What this agent is doing, for the board and People. Quietly does nothing for v1-only agents. */
   private setStatus(status: AgentStatus, note: string | null = null, ticketId: string | null = null, projectId?: string): Promise<void> {
     return this.inOrder(async () => {
@@ -2005,8 +2029,8 @@ export class Runner {
         const ticket = ticketId ? await this.ak.sb.from("tickets").select("project_id").eq("id", ticketId).maybeSingle() : null;
         const id = projectId ?? ticket?.data?.project_id;
         const p = this.projects.find((p) => p.project.id === id);
-        if (p) await p.status(status, note, ticketId);
-        else await reportAgentStatus(this.ak.sb, status, note, ticketId, undefined, id ?? null);
+        if (p) await p.status(status, note, ticketId, undefined, this.runningTickets());
+        else await reportAgentStatus(this.ak.sb, status, note, ticketId, undefined, id ?? null, this.runningTickets());
       } catch (e) {
         if ((e as Error).message.includes("only agents")) this.isAgentRow = false;
       }
@@ -2036,8 +2060,8 @@ export class Runner {
           if (error) throw new Error(error.message);
           if (data) {
             const p = this.projects.find((p) => p.project.id === data.status_project_id);
-            if (p) await p.status(data.status as AgentStatus, data.status_note, data.current_ticket_id, r);
-            else await reportAgentStatus(this.ak.sb, data.status as AgentStatus, data.status_note, data.current_ticket_id, r, data.status_project_id ?? null);
+            if (p) await p.status(data.status as AgentStatus, data.status_note, data.current_ticket_id, r, this.runningTickets() ?? data.running_tickets);
+            else await reportAgentStatus(this.ak.sb, data.status as AgentStatus, data.status_note, data.current_ticket_id, r, data.status_project_id ?? null, this.runningTickets() ?? data.running_tickets);
           }
         } catch (e) {
           this.log(`Couldn't report my model: ${(e as Error).message}`);
@@ -2054,8 +2078,8 @@ export class Runner {
       const { data } = await this.ak.sb.from("agents").select("*").eq("id", this.ak.me.id).maybeSingle();
       if (!data) return;
       const p = this.projects.find((p) => p.project.id === data.status_project_id);
-      if (p) await p.status(data.status as AgentStatus, data.status_note, data.current_ticket_id);
-      else await reportAgentStatus(this.ak.sb, data.status as AgentStatus, data.status_note, data.current_ticket_id, undefined, data.status_project_id ?? null);
+      if (p) await p.status(data.status as AgentStatus, data.status_note, data.current_ticket_id, undefined, this.runningTickets() ?? data.running_tickets);
+      else await reportAgentStatus(this.ak.sb, data.status as AgentStatus, data.status_note, data.current_ticket_id, undefined, data.status_project_id ?? null, this.runningTickets() ?? data.running_tickets);
     });
   }
 
@@ -2077,9 +2101,11 @@ export class Runner {
         await this.setStatus("planning", "Getting the workspace ready", t.id);
         this.log(`Running ${SETUP_SCRIPT} for ${t.key} (output in ${logFile}).`);
       }
+      if (abort.signal.aborted) return { failed: null, stopped: true };
       // The script gets the same variables as the agent's run (AK-125), with a block of its own.
       const ports = script?.trim() ? await this.holdPorts(t.key) : null;
       try {
+        if (abort.signal.aborted) return { failed: null, stopped: true };
         r = await runSetup(script, {
           gitDir,
           cwd: wt.path,
@@ -2123,14 +2149,14 @@ export class Runner {
     const asked = job.comments.length > 0 || notes.length > 0;
 
     const worktree = await withRepoLock(repo, () => {
-    const clone = ensureClone(repo);
-    if (!this.hooked.has(repo)) {
-      installHook(clone, cfg.limits.protected_branches);
-      this.hooked.add(repo);
-    }
-    const worktree = ensureTicketWorktree(ak.me.name, repo, t.key, t.branch ?? ticketBranch(t.key, t.title));
+      const clone = ensureClone(repo);
+      if (!this.hooked.has(repo)) {
+        installHook(clone, cfg.limits.protected_branches);
+        this.hooked.add(repo);
+      }
+      const worktree = ensureTicketWorktree(ak.me.name, repo, t.key, t.branch ?? ticketBranch(t.key, t.title));
       return worktree;
-    });
+    }, this.slotContext.getStore()?.abort.signal);
     if (t.branch !== worktree.branch) t = await p.update(t.key, { branch: worktree.branch });
     const setup = await this.setUpWorktree(p, t, worktree);
     if (setup.stopped) {
@@ -2144,7 +2170,7 @@ export class Runner {
     await p.loadNames();
     const resume = st.sessions[t.id] ?? null;
     const sentBackTo = conflictSendBack(job.comments, p.project.lead_agent_id);
-    const merging = await withRepoLock(repo, () => this.mergeBaseForSendBack(t, worktree, sentBackTo));
+    const merging = await withRepoLock(repo, () => this.mergeBaseForSendBack(t, worktree, sentBackTo), this.slotContext.getStore()?.abort.signal);
     const commentsText = asked ? [...job.comments.map((c) => `${p.authorLabel(c)}: ${c.body}`), ...(notes.length ? [notesText(notes)] : []), ...(merging ? [`Runner: ${merging}`] : [])].join("\n\n") : null;
     const prompt = buildTicketPrompt({
       myName: ak.me.name,
@@ -2214,7 +2240,6 @@ export class Runner {
       else pendingPlan = null;
       await syncing;
       this.current = null;
-
     }
     this.recordRun(p, "build", t.id, result, startedAt, sentBackTo ? "conflict_fix" : null);
 
@@ -2260,7 +2285,7 @@ export class Runner {
       let deliveryFailed = false;
       if (o.status === "review") {
         const existing = pr || after.pr_url || undefined;
-        const shipped = await withRepoLock(repo, () => this.deliver(t, worktree, repo, o.summary, text, existing));
+        const shipped = await withRepoLock(repo, () => this.deliver(t, worktree, repo, o.summary, text, existing), this.slotContext.getStore()?.abort.signal);
         if ("pr" in shipped) {
           pr = shipped.pr;
           if (existing && shipped.commit) await p.comment(t.key, `Pushed the follow-up work (${shipped.commit}) to ${shipped.pr}.`).catch(() => undefined);
@@ -2385,13 +2410,13 @@ export class Runner {
     const repo = p.project.repo;
     if (!repo) return;
     const worktree = await withRepoLock(repo, () => {
-    const clone = ensureClone(repo);
-    if (!this.hooked.has(repo)) {
-      installHook(clone, cfg.limits.protected_branches);
-      this.hooked.add(repo);
-    }
-    // Its own worktree to read the code in, never its person's checkout.
-    const worktree = ensureTicketWorktree(ak.me.name, repo, "triage", `ak/${ak.me.name}/triage`);
+      const clone = ensureClone(repo);
+      if (!this.hooked.has(repo)) {
+        installHook(clone, cfg.limits.protected_branches);
+        this.hooked.add(repo);
+      }
+      // Its own worktree to read the code in, never its person's checkout.
+      const worktree = ensureTicketWorktree(ak.me.name, repo, "triage", `ak/${ak.me.name}/triage`);
       return worktree;
     });
     await p.loadNames();
@@ -2421,7 +2446,6 @@ export class Runner {
       result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) }, t.key);
     } finally {
       this.current = null;
-
     }
     this.recordRun(p, "question", t.id, result, startedAt);
     if (await this.waitForUsage(result, "triage", job)) {
@@ -2457,14 +2481,14 @@ export class Runner {
     const url = t.pr_url!;
     const where = `on ${ak.ownerName(ak.me)}'s machine`;
     const worktree = await withRepoLock(repo, () => {
-    const clone = ensureClone(repo);
-    if (!this.hooked.has(repo)) {
-      installHook(clone, cfg.limits.protected_branches);
-      this.hooked.add(repo);
-    }
-    // Its own worktree at exactly this commit, never its person's checkout.
-    const worktree = ensureTicketWorktree(ak.me.name, repo, "review", `ak/${ak.me.name}/review`);
-    checkoutCommit(worktree, sha, prNumber(url));
+      const clone = ensureClone(repo);
+      if (!this.hooked.has(repo)) {
+        installHook(clone, cfg.limits.protected_branches);
+        this.hooked.add(repo);
+      }
+      // Its own worktree at exactly this commit, never its person's checkout.
+      const worktree = ensureTicketWorktree(ak.me.name, repo, "review", `ak/${ak.me.name}/review`);
+      checkoutCommit(worktree, sha, prNumber(url));
       return worktree;
     });
     // AK-117: after a send-back, only the new commits are reviewed, against what was said then.
@@ -2526,7 +2550,6 @@ export class Runner {
       result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) }, t.key);
     } finally {
       this.current = null;
-
     }
     this.recordRun(p, "review", t.id, result, startedAt, reviewPath(Boolean(earlier), weight.light));
     if (await this.waitForUsage(result, "review", job)) {
@@ -2586,10 +2609,10 @@ export class Runner {
     for (const t of this.timers) clearInterval(t);
     if (this.workTimer) clearTimeout(this.workTimer);
     for (const slot of this.slots.values()) slot.abort.abort();
-    if (this.currentRun || this.slots.size || this.busy) {
+    if (this.currentRun || this.slots.size || this.dispatching) {
       this.currentRun?.abort.abort();
       const deadline = Date.now() + 20_000;
-      while ((this.currentRun || this.slots.size || this.busy) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
+      while ((this.currentRun || this.slots.size || this.dispatching) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 200));
     }
     await this.ak.heartbeat("offline").catch(() => undefined);
     await this.setStatus("offline");

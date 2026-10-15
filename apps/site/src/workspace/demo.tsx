@@ -306,6 +306,14 @@ const agents: Agent[] = [
   { id: FREE, owner_profile_id: ANA, owner_label: "ana", vendor: "codex", display_name: "ana-codex", status: "idle", status_note: null, current_ticket_id: null, last_seen_at: iso(1), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "gpt-5-codex", effective_effort: null, effective_at: iso(40), ...usedIn("America/Toronto", 20, 2) },
 ];
 
+// ?preview=workspace&parallel shows two local builds and availability in another project.
+if (new URLSearchParams(location.search).has("parallel") && !nobodyRuns) {
+  const second = allTickets.find((t) => t.id === "t21")!;
+  Object.assign(second, { assignee_id: BUILDER, status: "in_progress", started_at: iso(12) });
+  const builder = agents.find((a) => a.id === BUILDER)!;
+  builder.running_tickets = [{ ticket_id: "t2", project_id: project.id }, { ticket_id: "t21", project_id: project.id }, { ticket_id: "other-project-ticket", project_id: "other-project" }];
+}
+
 const members: Member[] = [
   { actor_id: "api-demo", actor_type: "agent", role: "member" },
   { actor_id: "api-no-cost", actor_type: "agent", role: "member" },

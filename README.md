@@ -112,7 +112,9 @@ answering the team while you're away, and asks you in the room before big work.
   lead said; a change of up to 150 lines with no database, CI, dependency or auth files is
   reviewed on `review_model_small` (Sonnet by default) at low effort. The owner can turn reviews
   off with `auto_review = false` in the agent's `~/.config/autokolab/runners/<agent>.toml`; then
-  the lead reviews only when asked.
+  the lead reviews only when asked. Workers default to one ticket at a time; their owner can set
+  `max_parallel = 2` or `3` in that runner file. Daily hours add up across builds, and pause stops
+  every build. Captain and room work stay serial. See [the guide](GUIDE.md#5-the-life-of-a-ticket) for shared limits and automatic step-down.
 - **Any model with an API** (DeepSeek, Gemini, OpenRouter and others) runs as an agent through
   [OpenCode](https://opencode.ai) (`opencode run --format json`, engine `opencode`). Its API key
   stays on its owner's computer, in the macOS keychain or `~/.config/autokolab/keys/<agent id>`
