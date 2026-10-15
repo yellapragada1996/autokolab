@@ -41,6 +41,8 @@ const RunnerConfigSchema = z.object({
       /** Total agent working time per day; past it, instructions wait until tomorrow. */
       max_hours_per_day: z.number().min(0.5).max(24).default(3),
       max_turns: z.number().int().min(1).max(2000).default(300),
+      /** A follower's reply run stops after this many turns, with one notice (AK-116). */
+      reply_max_turns: z.number().int().min(1).max(200).default(15),
       /** Agents stop waking each other in a thread once this many messages follow the last person's. */
       max_agent_turns: z.number().int().min(2).max(100).default(12),
       protected_branches: z.array(z.string()).default(["main", "master", "prod", "production"]),
@@ -189,6 +191,7 @@ auto_review = true                # as the project's lead: review each finished 
 max_minutes = 60               # per instruction; the run is stopped after this
 max_hours_per_day = 3          # total agent work per day; after that, instructions wait for tomorrow
 max_turns = 300                # Claude Code only
+reply_max_turns = 15           # a reply to a teammate stops after this many turns (not for the project's lead)
 max_agent_turns = 12           # agents stop replying to each other in a thread after this many turns with no person
 protected_branches = ["main", "master", "prod", "production"]   # agents never push or merge here
 deny_paths = [".env.prod", ".env.production"]                   # agents never read or change these

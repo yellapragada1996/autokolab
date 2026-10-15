@@ -63,6 +63,10 @@ export interface EngineRun {
   rateLimited?: boolean;
   /** What the provider's error means, in plain words, when the run failed on one (OpenCode). */
   problem?: { kind: ProviderProblemKind; reason: string };
+  /** Model steps (OpenCode) or tool calls (Codex) so far, counted for a reply's turn cap. */
+  steps?: number;
+  /** The run hit its turn cap (AK-116). */
+  turnCapped?: boolean;
 }
 
 export interface EngineInvocation {
@@ -80,6 +84,8 @@ export interface EngineInvocation {
   model?: string;
   /** The session this run continues, if any. */
   resumed?: string | null;
+  /** A reply run's turn cap (AK-116). Claude Code stops itself; Codex and OpenCode are stopped by runEngine. */
+  maxTurns?: number;
 }
 
 /** A session's cost so far as Claude Code last reported it, and when (ms). */
@@ -178,37 +184,64 @@ export function chooseReplyModel(cfg: RunnerConfig, usual: ModelChoice): ModelCh
   return { model: toml.reply_model || usual.model, effort: toml.reply_effort ?? usual.effort };
 }
 
-export function claudeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, choice: ModelChoice = chooseModel(cfg, null)): EngineInvocation {
+/**
+ * A follower's reply run (AK-116) reads and answers but never changes the worktree: no edits, no
+ * commits, no pushes, and it stops after reply_max_turns turns. Captain's replies stay as they are.
+ */
+export interface ReplyLimits {
+  maxTurns: number;
+}
+
+/** What a read-only reply run may use in Claude Code: reading tools and read-only git and gh. */
+export const CLAUDE_REPLY_TOOLS = [
+  "Read", "Glob", "Grep", "WebFetch", "WebSearch",
+  "Bash(git log:*)", "Bash(git diff:*)", "Bash(git show:*)", "Bash(git status:*)", "Bash(git branch:*)",
+  "Bash(gh pr view:*)", "Bash(gh pr diff:*)", "Bash(gh pr checks:*)", "Bash(ls:*)", "Bash(rg:*)", "Bash(grep:*)",
+];
+
+/** Denied in a read-only reply run whatever the owner's permission mode, so bypassPermissions can't undo it. */
+export const CLAUDE_REPLY_DENY = [
+  "Edit", "Write", "NotebookEdit",
+  "Bash(git commit:*)", "Bash(git push:*)", "Bash(git add:*)", "Bash(git reset:*)", "Bash(git checkout:*)",
+  "Bash(git merge:*)", "Bash(git rebase:*)", "Bash(git restore:*)", "Bash(git stash:*)", "Bash(git switch:*)",
+  "Bash(gh pr create:*)", "Bash(gh pr merge:*)", "Bash(gh pr edit:*)",
+];
+
+export function claudeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, choice: ModelChoice = chooseModel(cfg, null), reply?: ReplyLimits): EngineInvocation {
   const tempDir = mkdtempSync(join(tmpdir(), "autokolab-"));
   const mcpConfig = join(tempDir, "mcp.json");
   writeFileSync(mcpConfig, JSON.stringify({ mcpServers: { autokolab: { command: mcp.command, args: mcp.args } } }));
+  // In a reply, anything outside the short allow list is refused ("plan" is read-only already).
+  const mode = reply && cfg.claude.permission_mode !== "plan" ? "default" : cfg.claude.permission_mode;
   const args = [
     "-p",
     "--output-format", "stream-json",
     "--verbose",
-    "--permission-mode", cfg.claude.permission_mode,
-    "--max-turns", String(cfg.limits.max_turns),
+    "--permission-mode", mode,
+    "--max-turns", String(reply ? reply.maxTurns : cfg.limits.max_turns),
     "--mcp-config", mcpConfig,
   ];
   // On every launch, resumes included: a resumed session switches to the model given here (AK-7).
   if (choice.model) args.push("--model", choice.model);
   if (choice.effort) args.push("--effort", choice.effort);
   if (resumeSession) args.push("--resume", resumeSession);
-  args.push("--allowedTools", ...cfg.claude.allowed_tools, "mcp__autokolab");
-  args.push("--disallowedTools", ...claudeDenyRules(cfg));
+  args.push("--allowedTools", ...(reply ? CLAUDE_REPLY_TOOLS : cfg.claude.allowed_tools), "mcp__autokolab");
+  args.push("--disallowedTools", ...claudeDenyRules(cfg), ...(reply ? CLAUDE_REPLY_DENY : []));
   return { bin: cfg.claude_bin, args, tempDir };
 }
 
 const tomlStr = (s: string) => JSON.stringify(s); // JSON strings are valid TOML basic strings
 
-export function codexInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, cwd: string, choice: ModelChoice = chooseModel(cfg, null)): EngineInvocation {
+export function codexInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, cwd: string, choice: ModelChoice = chooseModel(cfg, null), reply?: ReplyLimits): EngineInvocation {
   const tempDir = mkdtempSync(join(tmpdir(), "autokolab-"));
   const lastMessageFile = join(tempDir, "last-message.txt");
+  // A reply can't write anything; Codex has no turn limit, so runEngine counts and stops it.
+  const sandbox = reply ? "read-only" : cfg.codex.sandbox;
   // Settings go through -c, which both `codex exec` and `codex exec resume` accept
   // (resume doesn't take -C / -s; the working directory comes from the process itself).
   const config = [
     "-c", 'approval_policy="never"',
-    "-c", `sandbox_mode=${tomlStr(cfg.codex.sandbox)}`,
+    "-c", `sandbox_mode=${tomlStr(sandbox)}`,
     "-c", `sandbox_workspace_write.network_access=${cfg.codex.network}`,
     "-c", `mcp_servers.autokolab.command=${tomlStr(mcp.command)}`,
     "-c", `mcp_servers.autokolab.args=[${mcp.args.map(tomlStr).join(",")}]`,
@@ -220,7 +253,7 @@ export function codexInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession
   const common = ["--json", "--skip-git-repo-check", ...config, "--output-last-message", lastMessageFile];
   const args = resumeSession
     ? ["exec", "resume", ...common, resumeSession, "-"]
-    : ["exec", ...common, "-C", cwd, "-s", cfg.codex.sandbox, "-"]; // "-": read the prompt from stdin
+    : ["exec", ...common, "-C", cwd, "-s", sandbox, "-"]; // "-": read the prompt from stdin
   return { bin: cfg.codex_bin, args, tempDir, lastMessageFile };
 }
 
@@ -261,12 +294,21 @@ export function opencodePermissions(cfg: RunnerConfig): Record<string, unknown> 
   return { "*": "allow", read: pathRules, edit: { ...pathRules }, bash, external_directory: "deny" };
 }
 
+/** A read-only reply run's OpenCode rules (AK-116): no edits, and only commands that read. */
+export function opencodeReplyPermissions(cfg: RunnerConfig): Record<string, unknown> {
+  const base = opencodePermissions(cfg);
+  const bash: Record<string, string> = { "*": "deny" };
+  for (const c of ["git log", "git diff", "git show", "git status", "git branch", "gh pr view", "gh pr diff", "gh pr checks", "ls", "rg", "grep"]) bash[`${c}*`] = "allow";
+  for (const c of ["git branch -d", "git branch -D", "git branch -m", "git branch -M"]) bash[`${c}*`] = "deny";
+  return { ...base, edit: "deny", bash };
+}
+
 /**
  * OpenCode run headless with JSON events (DEC-26). Its settings go in a config file named by
  * OPENCODE_CONFIG; the key goes only into the engine's environment, under the provider's variable.
  * Logs at ERROR level go to stderr: they're the only place a rate limit or an unknown model shows.
  */
-export function opencodeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, key: string | undefined, choice: ModelChoice = chooseModel(cfg, null)): EngineInvocation {
+export function opencodeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, key: string | undefined, choice: ModelChoice = chooseModel(cfg, null), reply?: ReplyLimits): EngineInvocation {
   const provider = opencodeProvider(cfg)!;
   const local = isLocalProvider(provider);
   const keyEnv = local ? null : providerKeyEnv(provider, cfg.opencode.key_env);
@@ -280,7 +322,7 @@ export function opencodeInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSess
     autoupdate: false,
     share: "disabled",
     mcp: { autokolab: { type: "local", command: [mcp.command, ...mcp.args], enabled: true } },
-    permission: opencodePermissions(cfg),
+    permission: reply ? opencodeReplyPermissions(cfg) : opencodePermissions(cfg),
     ...(local ? { provider: localProviderConfig(cfg, provider, model) } : {}),
   }));
   const args = ["run", "--format", "json", "--print-logs", "--log-level", "ERROR", "-m", model];
@@ -309,15 +351,15 @@ export function localProviderConfig(cfg: RunnerConfig, provider: string, model: 
 }
 
 /** The invocation for the agent's engine. OpenCode needs the agent's key (unless its model is local); the others never get one. */
-export function engineInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, cwd: string, choice: ModelChoice, key?: () => string): EngineInvocation {
+export function engineInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, cwd: string, choice: ModelChoice, key?: () => string, reply?: ReplyLimits): EngineInvocation {
   const inv = (() => {
-    if (cfg.engine === "claude") return claudeInvocation(cfg, mcp, resumeSession, choice);
-    if (cfg.engine === "codex") return codexInvocation(cfg, mcp, resumeSession, cwd, choice);
-    if (isLocalProvider(opencodeProvider(cfg)!)) return opencodeInvocation(cfg, mcp, resumeSession, undefined, choice);
+    if (cfg.engine === "claude") return claudeInvocation(cfg, mcp, resumeSession, choice, reply);
+    if (cfg.engine === "codex") return codexInvocation(cfg, mcp, resumeSession, cwd, choice, reply);
+    if (isLocalProvider(opencodeProvider(cfg)!)) return opencodeInvocation(cfg, mcp, resumeSession, undefined, choice, reply);
     if (!key) throw new Error("OpenCode needs the agent's key.");
-    return opencodeInvocation(cfg, mcp, resumeSession, key(), choice);
+    return opencodeInvocation(cfg, mcp, resumeSession, key(), choice, reply);
   })();
-  return { ...inv, resumed: resumeSession };
+  return { ...inv, resumed: resumeSession, ...(reply ? { maxTurns: reply.maxTurns } : {}) };
 }
 
 const clip = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, 200);
@@ -363,6 +405,7 @@ function parseOpencode(ev: Record<string, any>, run: EngineRun): void {
   if (ev.type === "text" && typeof part.text === "string" && part.text.trim()) run.finalText = part.text;
   // Each step is one model call; its reasoning tokens are billed as output.
   if (ev.type === "step_finish") {
+    run.steps = (run.steps ?? 0) + 1;
     const t = part.tokens && typeof part.tokens === "object" ? part.tokens : {};
     const was = run.usage ?? noUsage();
     const out = count(t.output);
@@ -410,6 +453,9 @@ export function providerProblem(output: string, provider: string, model: string)
   return null;
 }
 
+/** Codex items that are one tool call each: what a reply's turn cap counts for Codex. */
+const CODEX_TOOL_ITEMS = ["command_execution", "mcp_tool_call", "file_change", "web_search"];
+
 /** Pull session id / final text / the agent's plan out of one JSON line of engine output. */
 export function parseEvent(engine: RunnerConfig["engine"], line: string, run: EngineRun): void {
   let ev: Record<string, any>;
@@ -431,6 +477,7 @@ export function parseEvent(engine: RunnerConfig["engine"], line: string, run: En
       if (ev.session_id) run.sessionId = ev.session_id;
       if (typeof ev.result === "string") run.finalText = ev.result;
       run.isError = Boolean(ev.is_error) || (typeof ev.subtype === "string" && ev.subtype !== "success");
+      if (ev.subtype === "error_max_turns") run.turnCapped = true;
       if (!run.finalText && ev.subtype) run.finalText = `Run ended: ${ev.subtype}`;
       if (typeof ev.total_cost_usd === "number") run.costUsd = ev.total_cost_usd;
       const u = ev.usage && typeof ev.usage === "object" ? ev.usage : {};
@@ -454,6 +501,7 @@ export function parseEvent(engine: RunnerConfig["engine"], line: string, run: En
     const item = ev.item;
     if (item && /^item\.(started|updated|completed)$/.test(ev.type)) {
       if (item.type === "todo_list" && Array.isArray(item.items)) run.plan = codexPlan(item.items);
+      if (ev.type === "item.started" && CODEX_TOOL_ITEMS.includes(item.type)) run.steps = (run.steps ?? 0) + 1;
       if (item.type === "mcp_tool_call" && item.server === "autokolab" && item.tool === "ticket_steps" && ev.type === "item.completed" && item.status !== "failed") {
         run.reportsSteps = true;
       }
@@ -499,6 +547,14 @@ export function scrubber(secrets: string[] = []): (s: string) => string {
   return (s) => values.reduce((t, v) => t.split(v).join("[redacted]"), s);
 }
 
+/**
+ * A reply run past its turn cap, for the engines without a cap of their own (Claude Code has
+ * --max-turns). Once only: a run already being stopped isn't stopped again.
+ */
+export function overTurnCap(engine: RunnerConfig["engine"], run: Pick<EngineRun, "steps" | "turnCapped">, maxTurns: number | undefined): boolean {
+  return engine !== "claude" && maxTurns !== undefined && !run.turnCapped && (run.steps ?? 0) > maxTurns;
+}
+
 export async function runEngine(opts: {
   cfg: RunnerConfig;
   inv: EngineInvocation;
@@ -536,9 +592,10 @@ export async function runEngine(opts: {
         /* already gone */
       }
     };
-    const stop = (why: "timeout" | "abort" | "rate") => {
+    const stop = (why: "timeout" | "abort" | "rate" | "turns") => {
       if (why === "timeout") run.timedOut = true;
       else if (why === "abort") run.aborted = true;
+      else if (why === "turns") run.turnCapped = true;
       else run.rateLimited = true;
       killGroup("SIGTERM");
       setTimeout(() => killGroup("SIGKILL"), 10_000).unref();
@@ -556,6 +613,7 @@ export async function runEngine(opts: {
       parseEvent(cfg.engine, line, run);
       if (run.plan && run.plan !== before) opts.onPlan?.(run.plan, run);
       if (run.model && run.model !== modelBefore) opts.onModel?.(run.model);
+      if (overTurnCap(cfg.engine, run, inv.maxTurns)) stop("turns");
       opts.onLine?.(line);
     });
     let stderrTail = "";

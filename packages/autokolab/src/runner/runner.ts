@@ -10,7 +10,7 @@ import { redactSecrets } from "../core/secrets.js";
 import type { Message, MessageKind, Room, RunState, TaskRun } from "../core/types.js";
 import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
-import { chooseModel, chooseReplyModel, engineInvocation, engineLabel, noUsage, ownCost, rememberSessionCost, runEngine, type EngineInvocation, type EngineRun, type McpLaunch, type ModelChoice, type PlanStep, type RunUsage, type SessionCosts } from "./engines.js";
+import { chooseModel, chooseReplyModel, engineInvocation, engineLabel, noUsage, ownCost, rememberSessionCost, runEngine, type EngineInvocation, type EngineRun, type McpLaunch, type ModelChoice, type PlanStep, type ReplyLimits, type RunUsage, type SessionCosts } from "./engines.js";
 import { installHook } from "./githook.js";
 import { machineReport, overSpend, spendNotice, usageLimit, usageReport } from "./limit.js";
 import { readAgentKey } from "../core/keys.js";
@@ -164,10 +164,56 @@ export const REPLY_KINDS: MessageKind[] = ["question", "answer", "chat"];
 /**
  * A job is a reply when every message in it is another agent's question, answer or chat: it runs
  * with the slim reply prompt on the reply model. A person's message, a task and a review request are
- * work, and keep the full prompt and session.
+ * work, and keep the full prompt and session. A follower's job about its own open ticket is a reply
+ * whatever the kind: the ticket's build run does the work (AK-116).
  */
-export function isReplyJob(messages: Pick<Message, "sender_id" | "kind">[], isHuman: (id: string) => boolean): boolean {
-  return messages.length > 0 && messages.every((m) => !isHuman(m.sender_id) && REPLY_KINDS.includes(m.kind));
+export function isReplyJob(messages: Pick<Message, "sender_id" | "kind">[], isHuman: (id: string) => boolean, aboutOwnTicket = false): boolean {
+  return messages.length > 0 && messages.every((m) => !isHuman(m.sender_id) && (aboutOwnTicket || REPLY_KINDS.includes(m.kind)));
+}
+
+/** Tickets whose build run is still to come or under way, so it does the work a message asks for. */
+const BUILD_STATUSES = ["ready", "in_progress", "review"];
+
+/** The open tickets assigned to this agent that the messages mention (AK-116). */
+export function ownTicketsMentioned<T extends Pick<Ticket, "key" | "assignee_id" | "status">>(messages: Pick<Message, "body">[], prefix: string, tickets: T[], meId: string): T[] {
+  const keys = mentionedTickets(messages, prefix, 20);
+  return tickets.filter((t) => t.assignee_id === meId && BUILD_STATUSES.includes(t.status) && keys.includes(t.key));
+}
+
+/** A teammate's message passed on to the build run of a ticket it's about (AK-116). */
+export interface TicketNote {
+  id: number;
+  from: string;
+  body: string;
+}
+
+/** Messages that ask for work, so the ticket's build run gets them; a question only needs its reply. */
+export const HANDOVER_KINDS: MessageKind[] = ["task", "review"];
+
+/** Room messages for a build run, after the ticket's new comments. */
+export function notesText(notes: TicketNote[]): string {
+  return notes.map((n) => `${n.from} (room message #${n.id}): ${n.body}`).join("\n\n");
+}
+
+/**
+ * Of this project's tickets with notes waiting: the one whose build run to resume with them (in
+ * progress or in review; a Ready ticket gets them when it starts; one waiting for a person waits),
+ * and those whose notes are moot now (finished, or no longer this agent's).
+ */
+export function notesToAct(notes: Record<string, TicketNote[]>, tickets: Pick<Ticket, "id" | "assignee_id" | "status" | "needs_human">[], meId: string): { resume: string | null; drop: string[] } {
+  let resume: string | null = null;
+  const drop: string[] = [];
+  for (const t of tickets) {
+    if (!notes[t.id]?.length) continue;
+    if (t.assignee_id !== meId || !BUILD_STATUSES.includes(t.status)) drop.push(t.id);
+    else if (!resume && t.status !== "ready" && !t.needs_human) resume = t.id;
+  }
+  return { resume, drop };
+}
+
+/** The one line a follower's reply run gets when it hits reply_max_turns (AK-116). */
+export function replyCutShort(messageId: number, maxTurns: number): string {
+  return `My reply to #${messageId} was cut short after ${maxTurns} turns.`;
 }
 
 /** A reply run resumes this agent's own reply session in the same thread when it's younger than this. */
@@ -299,14 +345,15 @@ export interface RunOutcome {
 
 /** How a finished run is recorded and reported. */
 export function runOutcome(
-  result: Pick<EngineRun, "aborted" | "timedOut" | "isError">,
+  result: Pick<EngineRun, "aborted" | "timedOut" | "isError" | "turnCapped">,
   text: string,
-  ctx: { messageId: number; stopReason: string; maxMinutes: number },
+  ctx: { messageId: number; stopReason: string; maxMinutes: number; replyMaxTurns?: number },
 ): RunOutcome {
   const sofar = text ? `\n\nWhere it got to:\n${text}` : "";
   const quiet = false;
   if (result.aborted) return { state: "cancelled", report: `Stopped #${ctx.messageId}: ${ctx.stopReason}.${sofar}`, quiet };
   if (result.timedOut) return { state: "failed", report: `Stopped #${ctx.messageId}: hit the ${ctx.maxMinutes}-minute limit.${sofar}`, quiet };
+  if (result.turnCapped && ctx.replyMaxTurns) return { state: "failed", report: replyCutShort(ctx.messageId, ctx.replyMaxTurns), quiet };
   if (text.startsWith(BLOCKED_PREFIX)) return { state: "blocked", report: `Blocked on #${ctx.messageId}: ${text.slice(BLOCKED_PREFIX.length).trim()}`, quiet };
   if (result.isError) return { state: "failed", report: `Failed on #${ctx.messageId}.${text ? `\n\n${text}` : ""}`, quiet };
   if (text === NO_REPLY) return { state: "done", report: "No reply needed", quiet: true };
@@ -396,6 +443,8 @@ interface TicketState {
   merges?: Record<string, { sig: string; failedAt?: string }>;
   /** For a lead: the last commit of each ticket waiting for review that it handled, and how (AK-59). */
   reviews?: Record<string, ReviewRecord>;
+  /** Per ticket id: teammates' requests waiting for the ticket's next build run (AK-116). */
+  notes?: Record<string, TicketNote[]>;
 }
 
 const PROJECTS_RELOAD_MS = 5 * 60_000;
@@ -411,7 +460,7 @@ export class Runner {
   /** When this runner started: teammate messages from before it don't start work. */
   private readonly startedAt = Date.now();
   /** The run in progress: a room instruction or a ticket. */
-  private current: { what: string; abort: AbortController } | null = null;
+  private current: { what: string; abort: AbortController; ticket?: { id: string; key: string; projectId: string } } | null = null;
   private stopping = false;
   /** The updater holds new runs while it pulls and builds (AK-31). */
   private held = false;
@@ -576,8 +625,8 @@ export class Runner {
   }
 
   /** The invocation for this agent's engine; an API-model agent's key is read here, for this run only. */
-  private invocation(mcp: McpLaunch, resume: string | null, cwd: string, choice: ModelChoice): EngineInvocation {
-    return engineInvocation(this.cfg, mcp, resume, cwd, choice, () => readAgentKey(this.cfg.agent_id).key);
+  private invocation(mcp: McpLaunch, resume: string | null, cwd: string, choice: ModelChoice, reply?: ReplyLimits): EngineInvocation {
+    return engineInvocation(this.cfg, mcp, resume, cwd, choice, () => readAgentKey(this.cfg.agent_id).key, reply);
   }
 
   /** Runs the engine; the result's cost is this run's own, not the session's so far (AK-115). */
@@ -922,11 +971,53 @@ export class Runner {
   private async enqueue(m: Message, fromInstructor: boolean): Promise<"run" | "merged" | null> {
     const run = await this.ak.claimRun(m);
     if (!run) return null;
+    if (await this.handToBuildRun(m, run)) return "merged";
     const queued = addToQueue(this.queue, { run, message: m, fromInstructor }, !this.ak.isHuman(m.sender_id), Date.now());
     if (queued === "run" && this.ak.me.paused && fromInstructor) {
       await this.say(m.room_id, run.thread_root, m.sender_id, `Queued #${m.id}: ${this.ak.ownerName(this.ak.me)} has paused me; I'll start when resumed.`);
     }
     return queued;
+  }
+
+  /**
+   * A teammate's task or review request about the ticket this follower is building right now goes
+   * to that build run's next wake-up, instead of a reply run of its own (AK-116).
+   */
+  private async handToBuildRun(m: Message, run: TaskRun): Promise<boolean> {
+    const t = this.current?.ticket;
+    if (!t || this.ak.isHuman(m.sender_id) || !HANDOVER_KINDS.includes(m.kind)) return false;
+    const room = this.ak.roomById(m.room_id);
+    const p = room ? this.roomProject(room) : undefined;
+    if (!p || p.iAmLead || p.project.id !== t.projectId || !mentionedTickets([m], p.project.ticket_prefix, 20).includes(t.key)) return false;
+    this.addNotes(t.id, [m]);
+    await this.ak.updateRun(run.id, { state: "done", summary: `Passed to my ${t.key} build run`, finished_at: now() });
+    this.log(`#${m.id} is about ${t.key}, which I'm building: passed to that run.`);
+    return true;
+  }
+
+  private addNotes(ticketId: string, messages: Message[]): void {
+    const st = this.ticketState();
+    const notes = st.notes ?? {};
+    const have = notes[ticketId] ?? [];
+    const fresh = messages.filter((x) => !have.some((n) => n.id === x.id)).map((x) => ({ id: x.id, from: this.ak.nameOf(x.sender_id), body: x.body }));
+    notes[ticketId] = [...have, ...fresh];
+    st.notes = notes;
+    this.saveTicketState(st);
+  }
+
+  /** Forget the notes a build run has had; ones added while it ran stay for its next wake-up. */
+  private dropNotes(ticketId: string, had: TicketNote[]): void {
+    const st = this.ticketState();
+    const left = (st.notes?.[ticketId] ?? []).filter((n) => !had.some((h) => h.id === n.id));
+    if (!st.notes) return;
+    if (left.length) st.notes[ticketId] = left;
+    else delete st.notes[ticketId];
+    this.saveTicketState(st);
+  }
+
+  /** The project whose room this is. */
+  private roomProject(room: Room): ProjectView | undefined {
+    return this.projects.find((p) => p.project.room_id === room.id) ?? this.projects.find((p) => room.repo && p.project.repo === room.repo);
   }
 
   private wakeCountsPath(): string {
@@ -1113,14 +1204,23 @@ export class Runner {
     const sender = (await ak.memberFresh(m.sender_id))!;
     const worktree = this.prepareWorkspace(m, run.thread_root);
     // Another agent's question, answer or chat gets a quick reply run: a slim prompt, its own short
-    // session (never a long work session), and the reply model (AK-91).
-    const isReply = isReplyJob([m, ...job.more.map((x) => x.message)], (id) => ak.isHuman(id));
+    // session (never a long work session), and the reply model (AK-91). For a follower, so does any
+    // agent's message about its own open ticket, which that ticket's build run does (AK-116).
+    const messages = [m, ...job.more.map((x) => x.message)];
+    const project = this.roomProject(room);
+    const lead = ak.membership(room.id)?.role === "lead" || Boolean(project?.iAmLead);
+    const own = lead || !project || messages.some((x) => ak.isHuman(x.sender_id)) ? [] : await this.ownTickets(project, messages);
+    const isReply = isReplyJob(messages, (id) => ak.isHuman(id), own.length > 0);
+    // A follower's reply can't change anything and stops at reply_max_turns; Captain's stay as they are.
+    const replyLimits: ReplyLimits | undefined = isReply && !lead ? { maxTurns: cfg.limits.reply_max_turns } : undefined;
     let resume: string | null;
     let prompt: string;
     let choice: ModelChoice;
     if (isReply) {
+      const asks = messages.filter((x) => HANDOVER_KINDS.includes(x.kind));
+      for (const t of asks.length ? own : []) this.addNotes(t.id, asks);
       resume = recentReplySession(this.replySessions(), run.thread_root, Date.now());
-      prompt = await this.replyPrompt(job, room, worktree, Boolean(resume));
+      prompt = await this.replyPrompt(job, room, worktree, Boolean(resume), { keys: own.map((t) => t.key), handedOver: asks.length > 0 });
       choice = chooseReplyModel(cfg, await this.modelChoice());
     } else {
       resume = workSession(await ak.runsIn(run.thread_root), this.replySessions()[String(run.thread_root)]);
@@ -1148,7 +1248,7 @@ export class Runner {
       choice = await this.modelChoice();
     }
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, room.name) };
-    const inv = this.invocation(mcp, resume, worktree.path, choice);
+    const inv = this.invocation(mcp, resume, worktree.path, choice, replyLimits);
     const logFile = join(this.logDir, `${room.name}-run${run.id}-msg${m.id}.log`);
     const ids = [m, ...job.more.map((x) => x.message)].map((x) => `#${x.id}`).join(", ");
 
@@ -1157,7 +1257,8 @@ export class Runner {
     await this.updateRuns(job, { state: "running", branch: worktree.branch, started_at: now() });
     await ak.heartbeat("working").catch(() => undefined);
     this.log(`Working on ${ids} in ${room.name} (${worktree.branch})${isReply ? " as a reply" : ""}${resume ? ", continuing session" : ""}.`);
-    const notice = this.limitWait?.kind === "message" ? null : startNotice(m.id, worktree.branch, Boolean(resume), job.fromInstructor);
+    // A follower's reply is short and its answer says enough: no start notice.
+    const notice = this.limitWait?.kind === "message" || replyLimits ? null : startNotice(m.id, worktree.branch, Boolean(resume), job.fromInstructor);
     if (notice) await this.say(room.id, run.thread_root, sender.id, notice);
 
     let result;
@@ -1189,6 +1290,7 @@ export class Runner {
       messageId: m.id,
       stopReason: this.stopping ? "my runner was shut down" : `${ak.ownerName(ak.me)} paused me`,
       maxMinutes: cfg.limits.max_minutes,
+      replyMaxTurns: replyLimits?.maxTurns,
     });
 
     const branch = currentBranch(worktree.clone, worktree.path) ?? worktree.branch;
@@ -1206,7 +1308,7 @@ export class Runner {
    * The slim reply prompt: the thread's root and latest messages, and the tickets they mention, all
    * fetched here so the model doesn't have to. A resumed reply session only gets the new messages.
    */
-  private async replyPrompt(job: Job, room: Room, worktree: Worktree, followUp: boolean): Promise<string> {
+  private async replyPrompt(job: Job, room: Room, worktree: Worktree, followUp: boolean, own: { keys: string[]; handedOver: boolean }): Promise<string> {
     const { ak } = this;
     const root = job.run.thread_root;
     const newIds = [job.message.id, ...job.more.map((x) => x.message.id)];
@@ -1223,7 +1325,7 @@ export class Runner {
       ? { root: null, recent: thread.filter((x) => newIds.includes(x.id)), skipped: 0 }
       : replyThread(thread, root, newIds);
     const shown = [...(picked.root ? [picked.root] : []), ...picked.recent];
-    const project = this.projects.find((p) => p.project.room_id === room.id) ?? this.projects.find((p) => room.repo && p.project.repo === room.repo);
+    const project = this.roomProject(room);
     const tickets: string[] = [];
     if (project) {
       for (const key of mentionedTickets(shown, project.project.ticket_prefix)) {
@@ -1249,7 +1351,20 @@ export class Runner {
       denyPaths: this.cfg.limits.deny_paths,
       worktreePath: worktree.path,
       followUp,
+      ownTickets: own.keys,
+      handedOver: own.handedOver,
     });
+  }
+
+  /** This follower's open tickets the messages are about; none when the board can't be read. */
+  private async ownTickets(project: ProjectView, messages: Message[]): Promise<Ticket[]> {
+    if (!mentionedTickets(messages, project.project.ticket_prefix, 1).length) return [];
+    try {
+      return ownTicketsMentioned(messages, project.project.ticket_prefix, await project.tickets(), this.ak.me.id);
+    } catch (e) {
+      this.log(`Couldn't read the board for a reply: ${(e as Error).message}`);
+      return [];
+    }
   }
 
   private replySessionsPath(): string {
@@ -1344,6 +1459,18 @@ export class Runner {
           await project.update(ticket.key, { needs_human: AGENT_LOOP_QUESTION }).catch((e) => this.log(`Couldn't update ${ticket.key}: ${(e as Error).message}`));
         }
       }
+    }
+    // Teammates' requests passed on to a ticket's build run (AK-116) wake it like a comment does.
+    for (const project of this.projects) {
+      if (!Object.keys(st.notes ?? {}).length) break;
+      const tickets = await project.tickets();
+      const { resume, drop } = notesToAct(st.notes!, tickets, this.ak.me.id);
+      if (drop.length) {
+        for (const id of drop) delete st.notes![id];
+        this.saveTicketState(st);
+      }
+      const ticket = resume ? tickets.find((t) => t.id === resume) : undefined;
+      if (ticket) return { project, ticket, comments: [] };
     }
     for (const project of this.projects) {
       const ticket = await project.claimNext();
@@ -1662,7 +1789,10 @@ export class Runner {
 
     const st = this.ticketState();
     if (job.comments.length) st.seen[t.id] = job.comments[job.comments.length - 1].id;
+    // Teammates' requests passed on to this run (AK-116); dropped once it has run, kept over a usage-limit wait.
+    const notes = st.notes?.[t.id] ?? [];
     this.saveTicketState(st);
+    const asked = job.comments.length > 0 || notes.length > 0;
 
     const clone = ensureClone(repo);
     if (!this.hooked.has(repo)) {
@@ -1674,7 +1804,7 @@ export class Runner {
 
     await p.loadNames();
     const resume = st.sessions[t.id] ?? null;
-    const commentsText = job.comments.length ? job.comments.map((c) => `${p.authorLabel(c)}: ${c.body}`).join("\n\n") : null;
+    const commentsText = asked ? [...job.comments.map((c) => `${p.authorLabel(c)}: ${c.body}`), ...(notes.length ? [notesText(notes)] : [])].join("\n\n") : null;
     const prompt = buildTicketPrompt({
       myName: ak.me.name,
       ownerName: ak.ownerName(ak.me),
@@ -1693,11 +1823,11 @@ export class Runner {
     const logFile = join(this.logDir, `${p.project.slug}-${t.key}-${Date.now()}.log`);
 
     const abort = new AbortController();
-    this.current = { what: t.key, abort };
+    this.current = { what: t.key, abort, ticket: { id: t.id, key: t.key, projectId: p.project.id } };
     await ak.heartbeat("working").catch(() => undefined);
-    await this.setStatus("planning", job.comments.length ? "Reading new comments" : "Reading the ticket", t.id);
+    await this.setStatus("planning", asked ? "Reading new comments" : "Reading the ticket", t.id);
     const onModel = this.reportModel(choice);
-    this.log(`Working on ${t.key} in ${p.project.name} (${worktree.branch})${job.comments.length ? " after new comments" : ""}${resume ? ", continuing session" : ""}.`);
+    this.log(`Working on ${t.key} in ${p.project.name} (${worktree.branch})${asked ? " after new comments" : ""}${resume ? ", continuing session" : ""}.`);
 
     // Progress shows on the board even when the agent can't use the AutoKolab tools: its own
     // to-do list becomes the ticket's steps, and without one, its latest commit is what it's doing.
@@ -1755,6 +1885,7 @@ export class Runner {
     const raw = redactSecrets(result.finalText.trim()).slice(0, 12000);
     if (await this.waitForUsage(result, "ticket", job)) return;
     if (this.limitWait?.kind === "ticket") this.saveLimitWait(null);
+    if (notes.length) this.dropNotes(t.id, notes);
     const o = parseOutcome(raw);
     const text = o.body;
     const after = await p.ticket(t.key);
