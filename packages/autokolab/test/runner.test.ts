@@ -12,7 +12,7 @@ import { NO_REPLY, REVIEW_DIFF_LIMIT, buildPrompt, buildReplyPrompt, buildReview
 import { needsRunner } from "../src/setup/connect.js";
 import { BATCH_MAX_MS, BATCH_WAIT_MS, REPLY_RESUME_MS, Runner, STALE_RUN_SUMMARY, addToQueue, agentTurnsSinceHuman, countWake, isLegacyAnswer, isPauseNotice, isReplyJob, isRunnerNotice, mentionedTickets, pauseNotice, recentReplySession, rememberReplySession, replyAs, replyThread, runCostLine, runOutcome, shouldWake, staleTeammateMessage, startNotice, workSession, type Job, type WakeContext } from "../src/runner/runner.js";
 import { clonePath, currentBranch, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreePath, type Worktree } from "../src/runner/repos.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_ASK_ONCE, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, LOOK_BUILD, LOOK_NEVER_ASK, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ROOM_QUIET, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, BIG_WORK, LEAD_APPROVAL, LEAD_ASK_ONCE, LEAD_BUILT_QUESTION, LEAD_PLAN, LEAD_UNDO, LEAD_VOICE, LEAD_WORK_SUMMARIES, LOOK_BUILD, LOOK_NEVER_ASK, MAX_AUTO_REVIEWS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MERGE_OK_PREFIX, NO_CHECKS_QUESTION, PLAN_BLOCK, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ROOM_QUIET, agentStreak, agentsLooping, authorKind, commentsToAct, defaultRules, envStopKind, envStopQuestion, missingTool, isMergeQuestion, isReviewQuestion, leadGuide, questionsForLead, untriaged, ProjectView, type Comment, type ReviewerCandidate, type Ticket } from "../src/core/projects.js";
 import { MERGE_FIELDS, NO_CHECKS_GRACE_MS, afterMergeFailure, mergedAt, runAsync, REVIEW_UNDECIDED_QUESTION, RISKY_PATHS, approvalMessage, askReviewMessage, checkResult, isRiskyPath, leadBuilt, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, reviewNeedsHuman, settledByMerge, plainGhError, prFacts, readyToMergeMessage, reviewDecision, reviewEndedUndecided, reviewedShaProblem, samePrFacts, shortList, testsFailedComment, type PrInfo } from "../src/runner/merge.js";
 
 const mcp = { command: "/usr/bin/node", args: ["/opt/autokolab/cli.js", "mcp", "--profile", "lee-claude"] };
@@ -455,6 +455,83 @@ describe("the lead's runner", () => {
     expect(p).toContain("exactly NO_REPLY");
     expect(p).toContain(LEAD_VOICE);
   });
+  it("asks a worker's owner once for an environment stop and never triages it (AK-149)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ak-env-stop-"));
+    const oldState = process.env.XDG_STATE_HOME;
+    process.env.XDG_STATE_HOME = join(root, "state");
+    try {
+      const stop = { id: "t1", key: "SH-1", needs_human: "Couldn't reach GitHub: could not resolve host", assignee_id: "worker", status: "in_progress", type: "task" } as Ticket;
+      const updates: Record<string, unknown>[] = [];
+      const comments: string[] = [];
+      const logs: string[] = [];
+      const project = {
+        iAmLead: true,
+        project: { id: "p1", room_id: "r1" },
+        openQuestions: async () => (stop.needs_human ? [stop] : []),
+        ticket: async () => stop,
+        nameOf: () => "jamesblack-codex",
+        ownerOf: () => "jamesblack",
+        comment: async (_key: string, body: string) => void comments.push(body),
+        update: async (_key: string, change: Record<string, unknown>) => void updates.push(change),
+      };
+      const ak = { me: { id: "lead", name: "ana-claude", paused: false } } as unknown as ConstructorParameters<typeof Runner>[0];
+      const make = () => {
+        const r = new Runner(ak, cfgFor());
+        r["projects"] = [project as never];
+        r["projectsLoadedAt"] = Date.now();
+        (r as unknown as { log: (m: string) => void }).log = (m) => void logs.push(m);
+        return r;
+      };
+
+      // First sight: no triage run, the worker's words are kept, the owner is asked once, recorded.
+      expect(await make()["nextQuestion"]()).toBeNull();
+      expect(comments).toEqual(["jamesblack-codex stopped on:\n\nCouldn't reach GitHub: could not resolve host"]);
+      expect(updates).toEqual([{ needs_human: envStopQuestion("jamesblack-codex", "jamesblack", "no-network") }]);
+      expect(logs.some((l) => l.includes("stuck_env"))).toBe(true);
+
+      // The same stop again, even after the runner restarts: never a second ask or a triage run.
+      expect(await make()["nextQuestion"]()).toBeNull();
+      expect(updates).toHaveLength(1);
+      expect(comments).toHaveLength(1);
+
+      // A person clears it; a fresh stop of the same kind asks again.
+      (stop as { needs_human: string | null }).needs_human = null;
+      expect(await make()["nextQuestion"]()).toBeNull();
+      (stop as { needs_human: string | null }).needs_human = "Couldn't reach GitHub: could not resolve host";
+      expect(await make()["nextQuestion"]()).toBeNull();
+      expect(updates).toHaveLength(2);
+    } finally {
+      if (oldState === undefined) delete process.env.XDG_STATE_HOME;
+      else process.env.XDG_STATE_HOME = oldState;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+  it("still triages an ordinary worker question (AK-149)", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ak-env-ok-"));
+    const oldState = process.env.XDG_STATE_HOME;
+    process.env.XDG_STATE_HOME = join(root, "state");
+    try {
+      const ask = { id: "t2", key: "SH-2", needs_human: "Redis or Postgres?", assignee_id: "worker", status: "in_progress", type: "task" } as Ticket;
+      const project = {
+        iAmLead: true,
+        project: { id: "p1", room_id: "r1" },
+        openQuestions: async () => [ask],
+        ticket: async () => ask,
+        nameOf: () => "jamesblack-codex",
+        ownerOf: () => "jamesblack",
+        update: async () => undefined,
+      };
+      const ak = { me: { id: "lead", name: "ana-claude", paused: false } } as unknown as ConstructorParameters<typeof Runner>[0];
+      const r = new Runner(ak, cfgFor());
+      r["projects"] = [project as never];
+      r["projectsLoadedAt"] = Date.now();
+      expect(await r["nextQuestion"]()).toMatchObject({ ticket: { key: "SH-2" } });
+    } finally {
+      if (oldState === undefined) delete process.env.XDG_STATE_HOME;
+      else process.env.XDG_STATE_HOME = oldState;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("tickets", () => {
@@ -518,22 +595,59 @@ describe("tickets", () => {
     expect(commentsToAct(all, 3, "me").map((x) => x.id)).toEqual([4]);
     expect(commentsToAct(all, 4, "me")).toEqual([]);
   });
-  it("stops agents resuming each other after 8 agent comments in a row; a person's comment resets it", () => {
+  it("stops agents resuming each other after 3 agent comments in a row; a person's comment resets it", () => {
     const agents = (from: number, n: number) => Array.from({ length: n }, (_, i) => c(from + i, i % 2 ? "me" : "lead", "agent"));
     expect(agentStreak([])).toBe(0);
+    expect(AGENT_COMMENT_LIMIT).toBe(3);
     expect(agentStreak([c(1, "ana", "human"), ...agents(2, 3)])).toBe(3);
 
-    const seven = [c(1, "ana", "human"), ...agents(2, 7)];
-    expect(agentsLooping(seven, seven.slice(-1))).toBe(false);
-    const eight = [c(1, "ana", "human"), ...agents(2, 8)];
-    expect(agentStreak(eight)).toBe(AGENT_COMMENT_LIMIT);
-    expect(agentsLooping(eight, eight.slice(-1))).toBe(true);
+    const two = [c(1, "ana", "human"), ...agents(2, 2)];
+    expect(agentsLooping(two, two.slice(-1))).toBe(false);
+    const three = [c(1, "ana", "human"), ...agents(2, 3)];
+    expect(agentStreak(three)).toBe(AGENT_COMMENT_LIMIT);
+    expect(agentsLooping(three, three.slice(-1))).toBe(true);
 
     // A person's comment among the new ones always resumes, and starts the count again.
-    const person = [...eight, c(10, "ana", "human")];
+    const person = [...three, c(10, "ana", "human")];
     expect(agentsLooping(person, person.slice(-1))).toBe(false);
-    expect(agentsLooping([...eight, c(10, "ana", "human"), c(11, "lead", "agent")], [c(10, "ana", "human"), c(11, "lead", "agent")])).toBe(false);
+    expect(agentsLooping([...three, c(10, "ana", "human"), c(11, "lead", "agent")], [c(10, "ana", "human"), c(11, "lead", "agent")])).toBe(false);
     expect(agentStreak([...person, c(11, "lead", "agent")])).toBe(1);
+  });
+  it("recognises real tool and git errors, and never an ordinary question (AK-149)", () => {
+    expect(envStopKind("BLOCKED: git is read-only, I can't write to .git")).toBe("read-only-git");
+    expect(envStopKind("fatal: unable to create '/repo/.git/index.lock': Read-only file system")).toBe("read-only-git");
+    expect(envStopKind(".git/FETCH_HEAD: Permission denied")).toBe("read-only-git");
+    expect(envStopKind("Couldn't reach GitHub: could not resolve host github.com")).toBe("no-network");
+    expect(envStopKind("fatal: could not read from remote repository")).toBe("no-network");
+    expect(envStopKind("bash: gh: command not found")).toBe("missing-tool");
+    expect(envStopKind("Error: spawn npm ENOENT")).toBe("missing-tool");
+    expect(envStopKind("the browser couldn't start")).toBe("no-browser");
+    expect(envStopKind("browserType.launch: Executable doesn't exist at /root/.cache/ms-playwright/chromium")).toBe("no-browser");
+    expect(envStopKind("I stopped: the run failed.")).toBeNull();
+    expect(envStopKind("Which colour do you want?")).toBeNull();
+    expect(envStopKind("Redis or Postgres?")).toBeNull();
+    expect(envStopKind(null)).toBeNull();
+
+    // Everyday English is not an environment failure (the review's six questions).
+    expect(envStopKind("I couldn't write the migration without knowing which table owns orders. Which one?")).toBeNull();
+    expect(envStopKind("The staging API returns permission denied for the service account; should I mock it?")).toBeNull();
+    expect(envStopKind("Unable to create a ticket for the follow-up; should I fold it into this one?")).toBeNull();
+    expect(envStopKind("The checkout page shows 'Failed to fetch' when offline mode is on. Should I add a retry?")).toBeNull();
+    expect(envStopKind("Login fails with connection refused because Postgres isn't running locally; should I use the test container?")).toBeNull();
+    expect(envStopKind("Should the share link work when no browser is installed, e.g. from the CLI?")).toBeNull();
+  });
+  it("names the machine fix for its owner, and the tool when it can (AK-149)", () => {
+    expect(envStopQuestion("jamesblack-codex", "jamesblack", "read-only-git")).toBe("jamesblack-codex's computer can't write to git; jamesblack needs to fix its settings.");
+    expect(envStopQuestion("jamesblack-codex", "jamesblack", "missing-tool", "gh")).toBe("jamesblack-codex's computer is missing the tool gh; jamesblack needs to fix its settings.");
+    expect(missingTool("bash: gh: command not found")).toBe("gh");
+    expect(missingTool("Error: spawn npm ENOENT")).toBe("npm");
+    expect(missingTool("playwright is not installed")).toBe("playwright");
+    expect(missingTool("I could not reach GitHub")).toBeNull();
+    // The sentence it writes is recognised again, so the same stop is only asked once.
+    for (const kind of ["read-only-git", "no-network", "missing-tool", "no-browser"] as const) {
+      expect(envStopKind(envStopQuestion("a-codex", "ana", kind))).toBe(kind);
+      expect(envStopKind(envStopQuestion("a-codex", "ana", kind, "gh"))).toBe(kind);
+    }
   });
   it("reads the ending block", () => {
     const o = parseOutcome("Added the button.\n\n```autokolab\nstatus: review\npr: https://github.com/ana/shop/pull/12\nquestion: none\nnew_ticket: Add retries\nnew_ticket: <title of follow-up work you found>\n```");
