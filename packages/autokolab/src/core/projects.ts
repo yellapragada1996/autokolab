@@ -180,22 +180,39 @@ export interface Ticket {
 }
 
 /**
+ * A ticket's scheduling fields: everything the board reads while looking for work, without the long
+ * text (description, done means, labels). The runner reads this every tick and the full ticket only
+ * for the run it starts (AK-146).
+ */
+export type TicketLight = Pick<
+  Ticket,
+  | "id" | "project_id" | "number" | "key" | "title" | "type" | "priority" | "status"
+  | "assignee_id" | "sort_order" | "areas" | "needs_human" | "approved_sha" | "pr_url" | "branch" | "updated_at"
+>;
+
+/** The columns ticketsLight reads; keep in step with TicketLight (AK-146). */
+export const LIGHT_COLUMNS =
+  "id, project_id, number, key, title, type, priority, status, assignee_id, sort_order, areas, needs_human, approved_sha, pr_url, branch, updated_at";
+/** How long the runner trusts a cached light list without a realtime change (AK-146). */
+export const LIGHT_TTL_MS = 5 * 60_000;
+
+/**
  * The Ready tickets assigned to `me` that can start now, best first: their blockers are done and
  * nothing In progress or in Review touches the same files (AK-126). `waiting` are the ones held
  * back only by the same files, with the tickets they wait for.
  */
 export function readyToStart(
-  all: Ticket[],
+  all: TicketLight[],
   links: { ticket_id: string; blocked_by: string }[],
   me: string,
-): { ready: Ticket[]; waiting: { ticket: Ticket; on: Ticket[] }[] } {
+): { ready: TicketLight[]; waiting: { ticket: TicketLight; on: TicketLight[] }[] } {
   const byId = new Map(all.map((t) => [t.id, t]));
   const unblocked = all
     .filter((t) => t.assignee_id === me && t.status === "ready" && !t.needs_human)
     .filter((t) => links.filter((l) => l.ticket_id === t.id).every((l) => ["done", "canceled"].includes(byId.get(l.blocked_by)?.status ?? "done")))
     .sort((a, b) => rank(a.priority) - rank(b.priority) || a.sort_order - b.sort_order);
-  const ready: Ticket[] = [];
-  const waiting: { ticket: Ticket; on: Ticket[] }[] = [];
+  const ready: TicketLight[] = [];
+  const waiting: { ticket: TicketLight; on: TicketLight[] }[] = [];
   for (const t of unblocked) {
     const on = areaWaits(t, all);
     if (on.length) waiting.push({ ticket: t, on });
@@ -208,7 +225,7 @@ export function readyToStart(
  * Two runners can claim overlapping tickets at the same moment. Right after a claim, the ticket with
  * the higher number gives way to any overlapping one that was claimed alongside it.
  */
-export function mustGiveWay(claimed: Ticket, all: Ticket[]): Ticket[] {
+export function mustGiveWay(claimed: TicketLight, all: TicketLight[]): TicketLight[] {
   return areaWaits(claimed, all).filter((o) => o.number < claimed.number);
 }
 
@@ -414,6 +431,14 @@ export class ProjectView {
   private runUsageMissing = false;
   /** The database's record_run_usage has no p_path yet (before schema 26). */
   private runPathMissing = false;
+  /** The scheduling list kept between ticks; refetched when realtime says it changed, or after 5 minutes (AK-146). */
+  private light: { at: number; rows: TicketLight[] } | null = null;
+  /** Realtime saw a change to tickets, comments or links: the next read must refetch (AK-146). */
+  private lightStale = false;
+  /** The database is older than schema 26 and has no `areas`: read the full list instead (AK-146). */
+  private lightFull = false;
+  /** The runner's rough byte counter, for its once-every-10-minutes log (AK-146). */
+  onDownload?: (bytes: number) => void;
 
   private constructor(
     readonly sb: SupabaseClient,
@@ -547,12 +572,63 @@ export class ProjectView {
   }
 
   async tickets(): Promise<Ticket[]> {
-    return check(await this.sb.from("tickets").select("*").eq("project_id", this.project.id).order("sort_order"));
+    const rows = check<Ticket[]>(await this.sb.from("tickets").select("*").eq("project_id", this.project.id).order("sort_order"));
+    this.noteDownload(rows);
+    return rows;
+  }
+
+  /**
+   * The board without the long text, for scheduling (AK-146). Kept between ticks: it's refetched
+   * when realtime says tickets, comments or links changed (invalidateLight), or after LIGHT_TTL_MS.
+   * A database before schema 26 (no `areas`) falls back to the full list.
+   */
+  async ticketsLight(force = false): Promise<TicketLight[]> {
+    if (!force && this.light && !this.lightStale && Date.now() - this.light.at < LIGHT_TTL_MS) {
+      this.onDownload?.(0);
+      return this.light.rows;
+    }
+    let rows: TicketLight[];
+    if (this.lightFull) {
+      rows = (await this.tickets()) as TicketLight[];
+    } else {
+      const r = await this.sb.from("tickets").select(LIGHT_COLUMNS).eq("project_id", this.project.id).order("sort_order");
+      if (r.error && missingColumn(r.error)) {
+        this.lightFull = true;
+        rows = (await this.tickets()) as TicketLight[];
+      } else {
+        rows = check<TicketLight[]>(r);
+        this.noteDownload(rows);
+      }
+    }
+    this.light = { at: Date.now(), rows };
+    this.lightStale = false;
+    return rows;
+  }
+
+  /** The light list is cached and nothing has marked it stale: an idle tick can skip the reads (AK-146). */
+  boardFresh(): boolean {
+    return !!this.light && !this.lightStale && Date.now() - this.light.at < LIGHT_TTL_MS;
+  }
+
+  /** Realtime saw a change to tickets, comments or links: forget the cached board (AK-146). */
+  invalidateLight(): void {
+    this.lightStale = true;
+  }
+
+  /** Add a rough response size to the runner's byte counter (AK-146). Never fails a read. */
+  private noteDownload(rows: unknown): void {
+    if (!this.onDownload) return;
+    try {
+      this.onDownload(JSON.stringify(rows)?.length ?? 0);
+    } catch {
+      // A measuring error is never worth a failed read.
+    }
   }
 
   async ticket(ref: string): Promise<Ticket> {
     const t = check<Ticket | null>(await this.sb.from("tickets").select("*").eq("project_id", this.project.id).eq("key", this.key(ref)).maybeSingle());
     if (!t) throw new AutoKolabError(`No ticket ${this.key(ref)} in ${this.project.name}.`);
+    this.noteDownload(t);
     return t;
   }
 
@@ -561,13 +637,17 @@ export class ProjectView {
   }
 
   async comments(ticketId: string): Promise<Comment[]> {
-    return check(await this.sb.from("ticket_comments").select("*").eq("ticket_id", ticketId).order("id"));
+    const rows = check<Comment[]>(await this.sb.from("ticket_comments").select("*").eq("ticket_id", ticketId).order("id"));
+    this.noteDownload(rows);
+    return rows;
   }
 
   async links(): Promise<{ ticket_id: string; blocked_by: string }[]> {
-    const ids = (await this.tickets()).map((t) => t.id);
+    const ids = (await this.ticketsLight()).map((t) => t.id);
     if (!ids.length) return [];
-    return check(await this.sb.from("ticket_links").select("*").in("ticket_id", ids));
+    const rows = check<{ ticket_id: string; blocked_by: string }[]>(await this.sb.from("ticket_links").select("*").in("ticket_id", ids));
+    this.noteDownload(rows);
+    return rows;
   }
 
   async create(input: {
@@ -610,6 +690,7 @@ export class ProjectView {
     }
     if (input.areas?.length) t = await this.setAreas(t, input.areas);
     for (const b of input.blocked_by ?? []) await this.addBlocker(t.key, b);
+    this.invalidateLight();
     return t;
   }
 
@@ -676,6 +757,7 @@ export class ProjectView {
       const other = await this.ticket(b);
       check(await this.sb.from("ticket_links").delete().eq("ticket_id", t.id).eq("blocked_by", other.id));
     }
+    this.invalidateLight();
     return out;
   }
 
@@ -863,39 +945,53 @@ export class ProjectView {
    * first, then board order. Moving it to In progress is the claim, so two runners can't both take it.
    * A ticket whose areas overlap one In progress or in Review waits (AK-126); `onWait` hears which.
    */
-  async claimNext(onWait?: (ticket: Ticket, text: string) => void): Promise<Ticket | null> {
-    const all = await this.tickets();
+  async claimNext(onWait?: (ticket: TicketLight, text: string) => void): Promise<TicketLight | null> {
+    const all = await this.ticketsLight();
     const { ready, waiting } = readyToStart(all, await this.links(), this.meId);
     for (const w of waiting) onWait?.(w.ticket, areaWaitText(w.on)!);
     for (const t of ready) {
-      const r = await this.sb.from("tickets").update({ status: "in_progress" }).eq("id", t.id).eq("status", "ready").select("*");
-      const got = check<Ticket[]>(r);
+      const r = await this.sb.from("tickets").update({ status: "in_progress" }).eq("id", t.id).eq("status", "ready").select(LIGHT_COLUMNS);
+      const got = check<TicketLight[]>(r);
       if (!got.length) continue;
+      this.invalidateLight();
       if (!got[0].areas?.length) return got[0];
       // Another runner may have claimed an overlapping ticket at the same moment.
-      const first = mustGiveWay(got[0], await this.tickets());
+      const first = mustGiveWay(got[0], await this.ticketsLight(true));
       if (!first.length) return got[0];
       check(await this.sb.from("tickets").update({ status: "ready" }).eq("id", t.id).eq("status", "in_progress"));
+      this.invalidateLight();
       onWait?.(t, areaWaitText(first)!);
     }
     return null;
   }
 
   /**
-   * New comments by anyone but this agent on its open tickets, after the given comment ids.
-   * `looping` means only agents commented and they've gone back and forth too often: don't resume.
+   * New comments by anyone but this agent on its open tickets, after the given comment ids (AK-146).
+   * Each ticket is asked only for comments newer than the id already handled, so an idle runner
+   * downloads nothing. `looping` means only agents commented and they've gone back and forth too
+   * often: don't resume; the trailing authors are read to keep that count exact.
    */
-  async newComments(after: Record<string, number>): Promise<{ ticket: Ticket; comments: Comment[]; looping: boolean }[]> {
-    const mine = (await this.tickets()).filter((t) => t.assignee_id === this.meId && ["in_progress", "review"].includes(t.status));
-    if (!mine.length) return [];
-    const rows = check<Comment[]>(await this.sb.from("ticket_comments").select("*").in("ticket_id", mine.map((t) => t.id)).order("id"));
-    const out: { ticket: Ticket; comments: Comment[]; looping: boolean }[] = [];
+  async newComments(after: Record<string, number>): Promise<{ ticket: TicketLight; comments: Comment[]; looping: boolean }[]> {
+    const mine = (await this.ticketsLight()).filter((t) => t.assignee_id === this.meId && ["in_progress", "review"].includes(t.status));
+    const out: { ticket: TicketLight; comments: Comment[]; looping: boolean }[] = [];
     for (const t of mine) {
-      const all = rows.filter((c) => c.ticket_id === t.id);
-      const fresh = commentsToAct(all, after[t.id] ?? 0, this.meId);
-      if (fresh.length) out.push({ ticket: t, comments: fresh, looping: agentsLooping(all, fresh) });
+      const since = after[t.id] ?? 0;
+      const fresh = check<Comment[]>(await this.sb.from("ticket_comments").select("*").eq("ticket_id", t.id).gt("id", since).order("id"));
+      this.noteDownload(fresh);
+      const act = commentsToAct(fresh, since, this.meId);
+      if (!act.length) continue;
+      const looping = !act.some((c) => c.author_type === "human") && (await this.tailStreak(t.id)) >= AGENT_COMMENT_LIMIT;
+      out.push({ ticket: t, comments: act, looping });
     }
     return out;
+  }
+
+  /** Agent comments in a row at the end of a ticket, read from its last AGENT_COMMENT_LIMIT comments (AK-146). */
+  private async tailStreak(ticketId: string): Promise<number> {
+    const rows = check<Pick<Comment, "author_type">[]>(
+      await this.sb.from("ticket_comments").select("author_type").eq("ticket_id", ticketId).order("id", { ascending: false }).limit(AGENT_COMMENT_LIMIT),
+    );
+    return agentStreak([...rows].reverse());
   }
 
   /** The project's merge setting, read fresh; a server before schema 12 has none, and then a person merges. */
@@ -941,15 +1037,15 @@ export class ProjectView {
   }
 
   /** For the lead: tickets in Review with a PR and an approved commit, for the runner to merge. */
-  async approvedForMerge(): Promise<Ticket[]> {
+  async approvedForMerge(): Promise<TicketLight[]> {
     if (!this.iAmLead) return [];
-    return (await this.tickets()).filter((t) => t.status === "review" && t.pr_url && t.approved_sha);
+    return (await this.ticketsLight()).filter((t) => t.status === "review" && t.pr_url && t.approved_sha);
   }
 
   /** For the lead: tickets in Review with a PR and no approval yet, for the runner to start a review (AK-59). */
-  async waitingForReview(): Promise<Ticket[]> {
+  async waitingForReview(): Promise<TicketLight[]> {
     if (!this.iAmLead) return [];
-    return (await this.tickets()).filter((t) => t.status === "review" && t.pr_url && !t.approved_sha && t.type !== "epic");
+    return (await this.ticketsLight()).filter((t) => t.status === "review" && t.pr_url && !t.approved_sha && t.type !== "epic");
   }
 
   /** The project's agents with what their runners last said, for picking a reviewer. */
@@ -964,9 +1060,9 @@ export class ProjectView {
   }
 
   /** For the lead: workers' tickets in this project with a question for a person. Empty for anyone else. */
-  async openQuestions(): Promise<Ticket[]> {
+  async openQuestions(): Promise<TicketLight[]> {
     if (!this.iAmLead) return [];
-    return questionsForLead(await this.tickets(), this.meId);
+    return questionsForLead(await this.ticketsLight(), this.meId);
   }
 
   /** "raghavendra (person)", "raghavendra-claude (lead agent)" or "ana-codex (agent)". */
@@ -978,6 +1074,8 @@ export class ProjectView {
     const ch = this.sb.channel(`project-${this.project.id}-${Math.random().toString(36).slice(2)}`);
     ch.on("postgres_changes" as never, { event: "*", schema: "public", table: "tickets", filter: `project_id=eq.${this.project.id}` }, cb);
     ch.on("postgres_changes" as never, { event: "INSERT", schema: "public", table: "ticket_comments" }, cb);
+    // Links change which tickets can start, so the cached board is stale too (AK-146).
+    ch.on("postgres_changes" as never, { event: "*", schema: "public", table: "ticket_links" }, cb);
     return ch.subscribe();
   }
 
@@ -1136,7 +1234,7 @@ export function agentsLooping(all: Pick<Comment, "author_type">[], fresh: Pick<C
  * Open tickets the lead should triage: someone else's, with "Needs you" set. The agents-looping
  * question is left for a person, since the lead answering would only add to the back and forth.
  */
-export function questionsForLead(tickets: Ticket[], leadId: string): Ticket[] {
+export function questionsForLead(tickets: TicketLight[], leadId: string): TicketLight[] {
   return tickets.filter(
     (t) =>
       t.needs_human &&

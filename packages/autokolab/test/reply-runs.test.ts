@@ -256,6 +256,8 @@ process.stdin.on("end", () => {
       project: { id: "pr-1", room_id: "room-1", repo: "ana/shop", ticket_prefix: "SH" },
       iAmLead: myRole === "lead",
       tickets: async () => board,
+      ticketsLight: async () => board,
+      ticket: async (k: string) => board.find((t) => t.key === k),
       ticketText: async (k: string) => `${k} · the full ticket`,
       recordRunUsage: async () => undefined,
     }] as never;
