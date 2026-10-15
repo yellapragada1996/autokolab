@@ -39,6 +39,8 @@ const RunnerConfigSchema = z.object({
    * review_model_small at review_effort_small (AK-117). 0 turns light reviews off.
    */
   review_small_lines: z.number().int().min(0).max(10_000).default(150),
+  /** Keep the computer from idle sleep while a run is going (AK-128). Closing the lid still sleeps it. */
+  keep_awake: z.boolean().default(true),
 
   limits: z
     .object({
@@ -202,6 +204,7 @@ engine = "${engine}"
 ${api?.bin ? `opencode_bin = ${JSON.stringify(api.bin)}\n` : ""}# model_locked = true             # always use the model and effort in this file, whatever AutoKolab says
 auto_review = true                # as the project's lead: review each finished PR once its tests pass (false: only when asked)
 review_small_lines = 150          # a review of up to this many changed lines, nothing risky, uses review_model_small (0: never)
+keep_awake = true                 # keep this computer from idle sleep while the agent works (closing the lid still sleeps it)
 
 [limits]
 max_minutes = 60               # per instruction; the run is stopped after this

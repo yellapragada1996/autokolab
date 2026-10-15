@@ -11,6 +11,7 @@ import type { Message, MessageKind, Room, RunState, TaskRun } from "../core/type
 import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
 import { chooseModel, chooseReplyModel, chooseReviewModel,engineInvocation, engineLabel, noUsage, ownCost, rememberSessionCost, runEngine, type EngineInvocation, type EngineRun, type McpLaunch, type ModelChoice, type PlanStep, type ReplyLimits, type RunUsage, type SessionCosts } from "./engines.js";
+import { KeepAwake } from "./awake.js";
 import { installHook } from "./githook.js";
 import { machineReport, overSpend, spendNotice, usageLimit, usageReport } from "./limit.js";
 import { readAgentKey } from "../core/keys.js";
@@ -452,6 +453,8 @@ interface TicketState {
   notes?: Record<string, TicketNote[]>;
 }
 
+type CurrentRun = { what: string; abort: AbortController; ticket?: { id: string; key: string; projectId: string } };
+
 const PROJECTS_RELOAD_MS = 5 * 60_000;
 /** How often the lead's runner looks at each approved PR. */
 const MERGE_CHECK_MS = 60_000;
@@ -464,8 +467,20 @@ export class Runner {
   private lastSeenId = 0;
   /** When this runner started: teammate messages from before it don't start work. */
   private readonly startedAt = Date.now();
-  /** The run in progress: a room instruction or a ticket. */
-  private current: { what: string; abort: AbortController; ticket?: { id: string; key: string; projectId: string } } | null = null;
+  /** The run in progress: a room instruction or a ticket. The computer stays awake while there is one. */
+  private currentRun: CurrentRun | null = null;
+  private releaseAwake: (() => void) | null = null;
+  private get current(): CurrentRun | null {
+    return this.currentRun;
+  }
+  private set current(run: CurrentRun | null) {
+    if (run && !this.releaseAwake) this.releaseAwake = this.awake.hold();
+    if (!run && this.releaseAwake) {
+      this.releaseAwake();
+      this.releaseAwake = null;
+    }
+    this.currentRun = run;
+  }
   private stopping = false;
   /** The updater holds new runs while it pulls and builds (AK-31). */
   private held = false;
@@ -487,11 +502,13 @@ export class Runner {
   private checkingReviews = false;
   private reviewCheckedAt = new Map<string, { at: number; updated: string }>();
   private limitWait: LimitWait | null = null;
+  private awake: KeepAwake;
 
   constructor(
     private ak: AutoKolab,
     private cfg: RunnerConfig,
   ) {
+    this.awake = new KeepAwake(cfg.keep_awake, (msg) => this.log(msg));
     this.logDir = join(stateDir(), "runs");
     mkdirSync(this.logDir, { recursive: true });
   }
@@ -833,9 +850,11 @@ export class Runner {
     const room = this.ak.rooms().find((r) => r.repo);
     if (!room || this.held || this.limitWait) return;
     this.greeting = true;
+    const release = this.awake.hold();
     try {
       await this.sayHello(room, marker);
     } finally {
+      release();
       this.greeting = false;
     }
   }
@@ -1764,7 +1783,7 @@ export class Runner {
       remember();
       return;
     }
-    const merged = await ghPrMerge(url, sha);
+    const merged = await this.awake.during(() => ghPrMerge(url, sha));
     if (!merged.ok) {
       const why = plainGhError(merged.error, where);
       // gh can fail or time out after GitHub merged it (a Mac asleep mid-call), so look before saying so (AK-119).
