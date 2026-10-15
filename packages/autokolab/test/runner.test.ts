@@ -1146,7 +1146,7 @@ describe("the lead's auto-merge (AK-30)", () => {
     expect(facts).toEqual({
       sha: SHA,
       checks: { passed: 2, total: 3, state: "pending" },
-      files: { total: 2, risky: ["supabase/tests/policies.sql"] },
+      files: { total: 2, risky: ["supabase/tests/policies.sql"], list: [{ path: "README.md", additions: 0, deletions: 0 }, { path: "supabase/tests/policies.sql", additions: 0, deletions: 0 }] },
       additions: 62,
       deletions: 4,
     });
@@ -1158,17 +1158,24 @@ describe("the lead's auto-merge (AK-30)", () => {
     // The database keeps at most 20 risky files.
     const many = Array.from({ length: 30 }, (_, i) => ({ path: `supabase/m${i}.sql` }));
     expect(prFacts(pr({ files: many })).files.risky).toHaveLength(20);
+    // Each file's own +/− is kept for "Show the work" (AK-134), capped at gh's 100-file limit.
+    expect(prFacts(pr({ files: [{ path: "src/a.ts", additions: 6, deletions: 1 }, { path: "src/b.ts", additions: 2, deletions: 0 }] })).files.list)
+      .toEqual([{ path: "src/a.ts", additions: 6, deletions: 1 }, { path: "src/b.ts", additions: 2, deletions: 0 }]);
+    expect(prFacts(pr({ files: Array.from({ length: 130 }, (_, i) => ({ path: `src/f${i}.ts` })) })).files.list).toHaveLength(100);
   });
   it("records the facts only when they changed, whenever they were recorded", () => {
     const facts = prFacts(pr({ additions: 3, deletions: 1 }));
     expect(samePrFacts(null, facts)).toBe(false);
     expect(samePrFacts(undefined, facts)).toBe(false);
     // The database returns its own key order and adds checked_at.
-    const stored = { checked_at: "2026-10-11T09:00:00Z", deletions: 1, additions: 3, files: { risky: [], total: 1 }, checks: { state: "success" as const, total: 1, passed: 1 }, sha: SHA };
+    const stored = { checked_at: "2026-10-11T09:00:00Z", deletions: 1, additions: 3, files: { risky: [], total: 1, list: [{ path: "packages/autokolab/src/runner/runner.ts", additions: 0, deletions: 0 }] }, checks: { state: "success" as const, total: 1, passed: 1 }, sha: SHA };
     expect(samePrFacts(stored, facts)).toBe(true);
     expect(samePrFacts(stored, prFacts(pr({ additions: 4, deletions: 1 })))).toBe(false);
     expect(samePrFacts(stored, prFacts(pr({ headRefOid: OTHER, additions: 3, deletions: 1 })))).toBe(false);
     expect(samePrFacts(stored, prFacts(pr({ statusCheckRollup: [ok(), ok("x")], additions: 3, deletions: 1 })))).toBe(false);
+    // A changed file list is a change (AK-134); a stored row without one (schema 26) is re-recorded.
+    expect(samePrFacts(stored, prFacts(pr({ files: [{ path: "src/a.ts", additions: 9, deletions: 0 }] })))).toBe(false);
+    expect(samePrFacts({ ...stored, files: { risky: [], total: 1 } }, facts)).toBe(false);
   });
   it("keeps going when the database can't record the facts yet (before schema 18)", async () => {
     const calls: string[] = [];

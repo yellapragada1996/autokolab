@@ -2,6 +2,7 @@ import { waitsForMergeOk, type Ticket, type TicketEvent } from "../lib/data";
 import { describe } from "./TicketPage";
 import type { Workspace } from "./useWorkspace";
 import { clock, type Turn } from "./captain";
+import { fileDiffUrl } from "./diffLink";
 import { approvedFacts, changeCounts, riskyLine } from "./evidence";
 
 export type UndoState = { kind: "none" | "risky" | "can" } | { kind: "asked"; at: string };
@@ -25,6 +26,20 @@ export function workSummary(t: Ticket): string {
 export function changeTotals(t: Ticket): { counts: string; risky?: string } | null {
   const f = approvedFacts(t);
   return f ? { counts: changeCounts(f), risky: riskyLine(f) } : null;
+}
+
+/** One changed file, with its own +/− and a link to its diff on GitHub (AK-134). */
+export interface ChangedFile {
+  path: string;
+  additions: number;
+  deletions: number;
+  href: string | null;
+}
+
+/** The PR's changed files for the approved commit (schema 27), each linking to its diff (AK-134). */
+export function changedFiles(t: Ticket): ChangedFile[] {
+  const f = approvedFacts(t);
+  return (f?.files?.list ?? []).map((file) => ({ ...file, href: fileDiffUrl(t.pr_url, file.path) }));
 }
 
 export type WorkRow = { label: "Built by" | "Reviewed by" | "Waiting on"; value: string; sha?: string; at?: string };

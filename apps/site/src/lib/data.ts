@@ -173,8 +173,8 @@ export interface Ticket {
 export interface PrFacts {
   sha: string;
   checks: { passed: number; total: number; state: "success" | "pending" | "failure" };
-  /** How many files change, and the ones that need a person's OK (database, CI, dependencies, sign-in). */
-  files: { total: number; risky: string[] };
+  /** How many files change, the ones that need a person's OK, and each with its counts (schema 27). */
+  files: { total: number; risky: string[]; list?: { path: string; additions: number; deletions: number }[] };
   additions: number;
   deletions: number;
   checked_at?: string;

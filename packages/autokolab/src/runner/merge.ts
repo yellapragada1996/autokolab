@@ -41,7 +41,7 @@ export interface PrInfo {
   headRefOid: string;
   mergeable?: string;
   statusCheckRollup?: PrCheck[] | null;
-  files?: { path: string }[] | null;
+  files?: { path: string; additions?: number; deletions?: number }[] | null;
   /** How many files the PR changes; `files` lists at most 100. */
   changedFiles?: number;
   additions?: number;
@@ -102,11 +102,21 @@ export function prFacts(pr: PrInfo): PrFacts {
   return {
     sha: pr.headRefOid.toLowerCase(),
     checks: { passed: results.filter((r) => r === "success").length, total: results.length, state },
-    files: { total: Math.max(count(pr.changedFiles), (pr.files ?? []).length), risky: riskyFiles(pr).slice(0, 20).map((f) => f.slice(0, 300)) },
+    files: {
+      total: Math.max(count(pr.changedFiles), (pr.files ?? []).length),
+      risky: riskyFiles(pr).slice(0, 20).map((f) => f.slice(0, 300)),
+      // Each changed file with its own +/−, so "Show the work" can list and link them (AK-134).
+      // gh lists at most 100 files; the database keeps the same cap.
+      list: (pr.files ?? []).slice(0, 100).map((f) => ({ path: f.path.slice(0, 300), additions: count(f.additions), deletions: count(f.deletions) })),
+    },
     additions: count(pr.additions),
     deletions: count(pr.deletions),
   };
 }
+
+/** Every changed file with its counts, as one string, so two lists compare cleanly. */
+const fileListKey = (list: PrFacts["files"]["list"]): string =>
+  (list ?? []).map((f) => `${f.path}:${f.additions}:${f.deletions}`).join("\n");
 
 /** The stored facts say the same as the new ones (when they were recorded doesn't count). */
 export function samePrFacts(stored: PrFacts | null | undefined, next: PrFacts): boolean {
@@ -117,6 +127,7 @@ export function samePrFacts(stored: PrFacts | null | undefined, next: PrFacts): 
     a?.passed === b.passed && a?.total === b.total && a?.state === b.state &&
     stored.files?.total === next.files.total &&
     (stored.files?.risky ?? []).join("\n") === next.files.risky.join("\n") &&
+    fileListKey(stored.files?.list) === fileListKey(next.files.list) &&
     stored.additions === next.additions &&
     stored.deletions === next.deletions
   );

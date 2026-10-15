@@ -199,8 +199,8 @@ export interface PrFacts {
   /** The PR's head commit these facts are about. */
   sha: string;
   checks: { passed: number; total: number; state: "success" | "pending" | "failure" };
-  /** How many files the PR changes, and the ones that wait for a person's OK. */
-  files: { total: number; risky: string[] };
+  /** How many files the PR changes, the ones that wait for a person's OK, and each with its counts (schema 27). */
+  files: { total: number; risky: string[]; list?: { path: string; additions: number; deletions: number }[] };
   additions: number;
   deletions: number;
   /** Set by the database when it's recorded. */
