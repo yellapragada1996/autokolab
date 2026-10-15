@@ -609,7 +609,9 @@ function teamState(ws: Workspace, a: Agent, now: Date): TeamState {
   if (!agentOnline(a, now)) return "offline";
   if (a.status === "paused") return "stopped";
   if (backAt(a, now) || /usage limit/i.test(a.status_note ?? "")) return "limit";
-  if (statusHere(a, ws.project.id, ws.byId, now).elsewhere) return "elsewhere";
+  const scoped = statusHere(a, ws.project.id, ws.byId, now);
+  if (scoped.elsewhere) return "elsewhere";
+  a = scoped;
   if (a.status === "blocked") return "stopped";
   if (agentDot(a, now) === "working") {
     const t = agentTicket(ws, a, now);
