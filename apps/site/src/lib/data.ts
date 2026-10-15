@@ -627,6 +627,22 @@ export async function usageBetween(projectId: string, from: Date, to: Date): Pro
   }
 }
 
+/** Numeric daily counters reported by agents; older databases simply have no rows yet. */
+export interface AgentEfficiencyDay {
+  agent_id: string;
+  day: string;
+  counters: Record<string, number>;
+}
+
+export async function efficiencyDays(agentIds: string[], fromDay: string, toDay: string): Promise<AgentEfficiencyDay[]> {
+  if (!agentIds.length) return [];
+  const r = await supabase.from("agent_efficiency_daily").select("agent_id, day, counters")
+    .in("agent_id", agentIds).gte("day", fromDay).lte("day", toDay).order("day");
+  const e = r.error as { code?: string } | null;
+  if (e && (e.code === "42P01" || e.code === "PGRST205")) return [];
+  return check<AgentEfficiencyDay[]>(r);
+}
+
 // ------------------------------------------------------------------ guide and decisions
 
 export async function guide(projectId: string): Promise<Guide | null> {

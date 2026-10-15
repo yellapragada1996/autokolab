@@ -1242,4 +1242,26 @@ select pg_temp.expect((public.agent_status('idle', p_ticket => current_setting('
   'idle clears a project derived from a ticket');
 rollback;
 
+-- ------------------------------------------------ numeric agent efficiency (schema 29)
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select public.report_agent_efficiency(current_date, '{"rest_tickets_board":123,"wake_ready":1}'::jsonb);
+select public.report_agent_efficiency(current_date, '{"rest_tickets_board":7,"wake_ready":2}'::jsonb);
+select pg_temp.expect((select counters ->> 'rest_tickets_board' = '130' and counters ->> 'wake_ready' = '3'
+  from public.agent_efficiency_daily where agent_id = '00000000-0000-0000-0000-0000000000e1'),
+  'numeric deltas add for the reporting agent');
+select pg_temp.expect_error($q$select public.report_agent_efficiency(current_date, '{"prompt_text":"secret"}'::jsonb)$q$, 'AUTOKOLAB_BAD_METRICS');
+select pg_temp.expect_error($q$select public.report_agent_efficiency(current_date, '{"wake_ready":-1}'::jsonb)$q$, 'AUTOKOLAB_BAD_METRICS');
+select pg_temp.expect_error($q$select public.report_agent_efficiency(current_date, '{"wake_ready":"1"}'::jsonb)$q$, 'AUTOKOLAB_BAD_METRICS');
+select pg_temp.expect_error($q$update public.agent_efficiency_daily set counters = '{}'::jsonb$q$, 'permission denied');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect((select count(*) = 1 from public.agent_efficiency_daily), 'a teammate can read the daily counters');
+select pg_temp.expect_error($q$select public.report_agent_efficiency(current_date, '{"wake_ready":1}'::jsonb)$q$, 'AUTOKOLAB_NOT_AGENT');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e3';
+select pg_temp.expect((select count(*) = 0 from public.agent_efficiency_daily), 'another project cannot read the counters');
+set role anon;
+select pg_temp.expect_error($q$select count(*) from public.agent_efficiency_daily$q$, 'permission denied');
+select pg_temp.expect_error($q$select public.report_agent_efficiency(current_date, '{}'::jsonb)$q$, 'permission denied');
+reset role;
+
 \echo ALL POLICY TESTS PASSED

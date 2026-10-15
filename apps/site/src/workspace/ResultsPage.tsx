@@ -1,11 +1,13 @@
 import { reportError } from "../lib/errors";
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import * as data from "../lib/data";
-import type { RunUsage, TicketEvent } from "../lib/data";
+import type { AgentEfficiencyDay, RunUsage, TicketEvent } from "../lib/data";
+import { subscribeTabTraffic, tabTrafficBytes } from "../lib/tabTraffic";
 import { Button, Skeleton } from "../ui";
 import { Who } from "./bits";
 import { auditCsv, auditFileName, auditJson, auditRows, barsText, checkedText, dollars, duration, emptyText, headline, missingText, onTopText, pathText, periodLine, periodOf, rangeOf, results, runsText, sentBackCaption, sharesText, tokens, usage, usageEmptyText, usageHeadline, type Period, type Results as Numbers, type Usage } from "./results";
 import type { Workspace } from "./useWorkspace";
+import { efficiencyLine, lastSevenDays, mb } from "./efficiency";
 
 // Results (S15): what the team got done in the period and how often it needed a person, counted from
 // the record, and the audit export. No baseline and no comparison (00-AMENDMENTS.md).
@@ -67,6 +69,20 @@ export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment 
   // What the runs used, read apart from the history: if it can't be read, the rest of the page still shows.
   const [runs, setRuns] = useState<RunUsage[] | null>(ws.demoUsage ?? (ws.demoEvents ? [] : null));
   const [usageError, setUsageError] = useState("");
+  const [efficiencyDays, setEfficiencyDays] = useState<AgentEfficiencyDay[] | null>(ws.demoEvents ? [] : null);
+  const [efficiencyError, setEfficiencyError] = useState("");
+  const tabBytes = useSyncExternalStore(subscribeTabTraffic, tabTrafficBytes, () => 0);
+  useEffect(() => {
+    if (ws.demoEvents) return;
+    let live = true;
+    const days = lastSevenDays(now);
+    setEfficiencyDays(null);
+    setEfficiencyError("");
+    data.efficiencyDays([...ws.people.agents.keys()], days[0], days[6])
+      .then((rows) => live && setEfficiencyDays(rows))
+      .catch((e: Error) => live && setEfficiencyError(reportError(e, "load AutoKolab traffic")));
+    return () => { live = false; };
+  }, [ws.project.id, ws.people.agents, ws.demoEvents, now]);
   useEffect(() => {
     if (ws.demoUsage || ws.demoEvents) return;
     let live = true;
@@ -135,6 +151,14 @@ export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment 
       </div>
 
       {r && r.merged.length > 0 && <Body ws={ws} r={r} />}
+      <section aria-label="AutoKolab traffic" style={card}>
+        <h3 style={heading}>AutoKolab traffic</h3>
+        {efficiencyError ? <p role="alert" style={{ color: "var(--danger)", fontSize: 14 }}>{efficiencyError}</p>
+          : efficiencyDays === null ? <Skeleton lines={1} />
+            : <p style={{ fontSize: 14, lineHeight: 1.5, marginTop: 8 }}>{efficiencyLine(efficiencyDays, now)}</p>}
+        <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 8 }}>Runner totals include these agents’ work in other projects. Downloads count REST response bytes.</p>
+        <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 8 }}>This tab downloaded about {mb(tabBytes)} from the database since it opened.</p>
+      </section>
       {usageError ? (
         <p role="alert" style={{ fontSize: 14, color: "var(--danger)" }}>
           {usageError}
