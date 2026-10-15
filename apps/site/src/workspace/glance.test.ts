@@ -545,3 +545,18 @@ describe("status in this project", () => {
     expect(watch(ws, [], NOW).some((x) => x.text.includes("Birch is free"))).toBe(false);
   });
 });
+
+
+it("hides a ticket explicitly known to belong to a different project", () => {
+  const t = ticket({ key: "OTHER-1", project_id: "other", title: "Private title" });
+  const ws = workspace([t]);
+  const a = run(ws, BIRCH, t);
+  expect(statusHere(a, ws.project.id, ws.byId, NOW)).toMatchObject({ elsewhere: true, current_ticket_id: null });
+});
+
+it("normalises a stale heartbeat to offline even when the status still says building", () => {
+  const ws = workspace([]);
+  const a = run(ws, BIRCH);
+  a.last_seen_at = at("10:00");
+  expect(statusHere(a, ws.project.id, ws.byId, NOW).status).toBe("offline");
+});

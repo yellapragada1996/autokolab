@@ -8,10 +8,16 @@ export function statusHere(a: Agent, projectId: string, tickets: ReadonlyMap<str
   const offline = a.status === "offline" || !a.last_seen_at || now.getTime() - Date.parse(a.last_seen_at) >= 5 * 60_000;
   const limit = (!!a.waiting_until && Date.parse(a.waiting_until) > now.getTime()) || /usage limit/i.test(a.status_note ?? "");
   const global = offline || a.status === "paused" || limit;
-  if (!foreign) return { ...a, elsewhere: false };
+  const status = offline ? "offline" : a.status === "paused" ? "paused" : limit ? "idle" : foreign ? "planning" : a.status;
+  if (!foreign) return { ...a, status, elsewhere: false };
   // Keep only the reset time from a limit note, never any surrounding project text.
-  const reset = /\b(?:about|resets?|until)\s+(\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?)(?:\s*\(([A-Za-z_+\-/]+)\))?/i.exec(a.status_note ?? "");
-  const note = limit ? `Waiting for my usage limit to reset${reset ? `, about ${reset[1]}${reset[2] ? ` (${reset[2]})` : ""}` : ""}` : null;
-  return { ...a, status: offline ? "offline" : global ? a.status : "planning", status_note: note,
+  const reset = /\b(?:about|resets?|until)\s+(\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?)(?:\s*\(([A-Za-z0-9_+\-/:]+)\))?/i.exec(a.status_note ?? "");
+  let zone = reset?.[2];
+  if (zone) {
+    try { new Intl.DateTimeFormat("en-US", { timeZone: zone }); }
+    catch { zone = undefined; }
+  }
+  const note = limit ? `Waiting for my usage limit to reset${reset ? `, about ${reset[1]}${zone ? ` (${zone})` : ""}` : ""}` : null;
+  return { ...a, status, status_note: note,
     current_ticket_id: null, elsewhere: !global };
 }
