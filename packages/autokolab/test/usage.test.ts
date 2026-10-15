@@ -5,7 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ProjectView, type RunUsageRow } from "../src/core/projects.js";
 import { parseRunnerConfig } from "../src/runner/config.js";
 import { claudeInvocation, engineInvocation, noUsage, ownCost, parseEvent, rememberSessionCost, runEngine, type EngineRun, type SessionCosts } from "../src/runner/engines.js";
-import { Runner, runUsageRow } from "../src/runner/runner.js";
+import { conflictComment } from "../src/runner/merge.js";
+import { Runner, conflictSendBack, reviewPath, runUsageRow } from "../src/runner/runner.js";
 
 // What each run used (AK-92): read from the tools' own output, never estimated, and recorded
 // without ever getting in the run's way.
@@ -65,7 +66,7 @@ describe("reading usage from the tools", () => {
     parseEvent("codex", JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "Done" } }), run);
     expect(run.usage).toBeUndefined();
     expect(runUsageRow("build", "t1", run, 12.4)).toEqual({
-      kind: "build", ticket_id: "t1", model: null, input_tokens: null, cache_read_tokens: null, cache_write_tokens: null, output_tokens: null, turns: null, seconds: 12, cost_usd: null,
+      kind: "build", ticket_id: "t1", model: null, input_tokens: null, cache_read_tokens: null, cache_write_tokens: null, output_tokens: null, turns: null, seconds: 12, cost_usd: null, path: null,
     });
   });
 });
@@ -95,7 +96,7 @@ process.stdin.on("end", () => {
     const run = await go("hello");
     expect(run.usage).toEqual({ inputTokens: 30, cacheReadTokens: 9000, cacheWriteTokens: 500, outputTokens: 700, turns: 4, costUsd: 0.25 });
     expect(runUsageRow("reply", null, run, 7)).toEqual({
-      kind: "reply", ticket_id: null, model: "claude-fake-1", input_tokens: 30, cache_read_tokens: 9000, cache_write_tokens: 500, output_tokens: 700, turns: 4, seconds: 7, cost_usd: 0.25,
+      kind: "reply", ticket_id: null, model: "claude-fake-1", input_tokens: 30, cache_read_tokens: 9000, cache_write_tokens: 500, output_tokens: 700, turns: 4, seconds: 7, cost_usd: 0.25, path: null,
     });
   });
   it("nulls when it doesn't, also when the run dies before reporting", async () => {
@@ -201,6 +202,51 @@ describe("recording a run", () => {
     ]);
   });
 
+  it("sends the run's path when it has one (AK-120)", async () => {
+    const sent: Record<string, unknown>[] = [];
+    const view = Object.assign(Object.create(ProjectView.prototype), {
+      runUsageMissing: false,
+      project: { id: "p1" },
+      sb: { rpc: async (_fn: string, args: Record<string, unknown>) => (sent.push(args), { data: 1, error: null }) },
+    }) as ProjectView;
+    expect(await view.recordRunUsage({ ...row, path: "re_review" })).toBe(true);
+    expect(sent[0]).toMatchObject({ p_kind: "review", p_path: "re_review" });
+  });
+
+  it("keeps recording without the path on a database before schema 26, and stops sending it", async () => {
+    const sent: Record<string, unknown>[] = [];
+    const view = Object.assign(Object.create(ProjectView.prototype), {
+      runUsageMissing: false,
+      project: { id: "p1" },
+      sb: {
+        rpc: async (_fn: string, args: Record<string, unknown>) => {
+          sent.push(args);
+          return "p_path" in args
+            ? { data: null, error: { code: "PGRST202", message: "Could not find the function public.record_run_usage(p_cache_read_tokens, ..., p_path, ...) in the schema cache" } }
+            : { data: 1, error: null };
+        },
+      },
+    }) as ProjectView;
+    expect(await view.recordRunUsage({ ...row, path: "light" })).toBe(true);
+    expect(await view.recordRunUsage({ ...row, path: "full" })).toBe(true);
+    expect(sent.map((a) => "p_path" in a)).toEqual([true, false, false]);
+    expect(sent[1]).toMatchObject({ p_kind: "review", p_output_tokens: 5 });
+  });
+
+  it("names a review's path, and a build after a conflict send-back", () => {
+    expect(reviewPath(false, false)).toBe("full");
+    expect(reviewPath(false, true)).toBe("light");
+    expect(reviewPath(true, true)).toBe("re_review");
+    expect(reviewPath(true, false)).toBe("re_review");
+    const lead = "lead-1";
+    const sendBack = conflictComment("https://github.com/ana/shop/pull/7", "main", 1);
+    expect(conflictSendBack([{ author_id: lead, body: "Looks good." }, { author_id: lead, body: sendBack }], lead)).toBe("main");
+    // Only Captain sends a PR back; the same words from someone else, or no send-back, aren't one.
+    expect(conflictSendBack([{ author_id: "worker", body: sendBack }], lead)).toBeNull();
+    expect(conflictSendBack([{ author_id: lead, body: "Please add a test." }], lead)).toBeNull();
+    expect(conflictSendBack([], lead)).toBeNull();
+  });
+
   it("stops asking a database that can't record it yet (before schema 20)", async () => {
     const calls: string[] = [];
     const view = (error: { message: string; code?: string } | null) =>
@@ -226,7 +272,9 @@ describe("recording a run", () => {
     const failed: EngineRun = { ...freshRun(), isError: true, timedOut: true, usage: { ...noUsage(), outputTokens: 9 } };
     for (const kind of ["build", "review", "reply", "question"] as const) runner.recordRun(p, kind, kind === "reply" ? null : "t1", failed, Date.now() - 2000);
     expect(rows.map((r) => r.kind)).toEqual(["build", "review", "reply", "question"]);
-    expect(rows[0]).toMatchObject({ ticket_id: "t1", output_tokens: 9, input_tokens: null, seconds: 2 });
+    expect(rows[0]).toMatchObject({ ticket_id: "t1", output_tokens: 9, input_tokens: null, seconds: 2, path: null });
+    runner.recordRun(p, "review", "t1", failed, Date.now(), "light");
+    expect(rows.pop()).toMatchObject({ kind: "review", path: "light" });
     // A room with no project, or a run that never started, has nothing to record.
     runner.recordRun(undefined, "reply", null, failed, Date.now());
     runner.recordRun(p, "build", "t1", undefined, Date.now());

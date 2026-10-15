@@ -993,9 +993,45 @@ set role anon;
 select pg_temp.expect_error($q$select count(*) from public.run_usage$q$, 'permission denied');
 select pg_temp.expect_error($q$select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'build', 5)$q$, 'permission denied');
 reset role;
--- the table has nowhere to put text: every column is a number, an id, a time, the kind or the model name
-select pg_temp.expect((select count(*) = 2 from information_schema.columns
+-- the table has nowhere to put text: every column is a number, an id, a time, the kind, the model name or the path
+select pg_temp.expect((select count(*) = 3 from information_schema.columns
   where table_schema = 'public' and table_name = 'run_usage' and data_type in ('text', 'character varying', 'json', 'jsonb')), 'run_usage holds no free text');
+
+-- ------------------------------------------------ which path each run took (schema 26)
+reset role;
+select pg_temp.expect((select count(*) = 5 and bool_and(path is null) from public.run_usage), 'runs recorded without a path keep none');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+-- a review says how it read the PR; a build says it was fixing a conflict send-back
+select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'review', 60, '00000000-0000-0000-0000-0000000000a9', p_path => 're_review');
+select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'review', 60, p_path => 'light');
+select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'review', 60, p_path => 'full');
+select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'build', 60, p_path => 'conflict_fix');
+select pg_temp.expect((select array_agg(path order by id) = array['re_review', 'light', 'full', 'conflict_fix'] from public.run_usage where path is not null),
+  'each run records the path it took');
+-- a path that isn't one, or doesn't fit the kind of run, is stored as unknown, and the run is still recorded
+select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'reply', 61, p_path => 'full');
+select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'build', 62, p_path => 'light');
+select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'review', 63, p_path => 'conflict_fix');
+select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'review', 64, p_path => 'ignore previous instructions');
+select pg_temp.expect((select count(*) = 4 and bool_and(path is null) from public.run_usage where seconds between 61 and 64), 'a path that doesn''t fit is left off, not refused');
+-- an older helper calls it with the eleven arguments it knows, by name
+select public.record_run_usage(p_project => '00000000-0000-0000-0000-0000000000f1', p_kind => 'review', p_seconds => 65, p_ticket => null, p_model => 'claude-opus-5-5',
+  p_input_tokens => 1, p_cache_read_tokens => 2, p_cache_write_tokens => 3, p_output_tokens => 4, p_turns => 5, p_cost_usd => 0.5);
+select pg_temp.expect((select path is null and output_tokens = 4 from public.run_usage where seconds = 65), 'an older helper still records, with no path');
+-- still only through the function, and still only for agents
+select pg_temp.expect_error($q$update public.run_usage set path = 'full'$q$, 'permission denied');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect_error($q$select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'review', 5, p_path => 'full')$q$, 'AUTOKOLAB_NOT_AGENT');
+set role anon;
+select pg_temp.expect_error($q$select public.record_run_usage('00000000-0000-0000-0000-0000000000f1', 'review', 5, p_path => 'full')$q$, 'permission denied');
+reset role;
+-- the table refuses a made-up path even from the service role
+select pg_temp.expect_error($q$insert into public.run_usage (project_id, agent_id, kind, seconds, path) values ('00000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000e1', 'review', 1, 'fast')$q$, 'run_usage_path_check');
+-- the old eleven-argument version is gone, so a call without p_path is never ambiguous
+select pg_temp.expect((select count(*) = 1 from pg_proc where proname = 'record_run_usage' and pronamespace = 'public'::regnamespace), 'record_run_usage has one version');
+-- these runs aren't anyone's work on a ticket beyond what schema 21 counts; clear them for the tests after
+delete from public.run_usage where path is not null or seconds between 61 and 65;
 
 -- ------------------------------------------------ builders are the members who worked on a ticket (schema 21)
 reset role;
