@@ -121,7 +121,7 @@ describe("computer name and daily dollar limit (AK-112)", () => {
     expect(machineReport("box", "opencode", Number.NaN).daily_usd).toBeNull();
   });
 
-  it("stops asking a database that can't record it yet (before schema 24)", async () => {
+  it("stops asking a database that can't record it yet (before schema 25)", async () => {
     const calls: { fn: string; args: unknown }[] = [];
     const view = (error: { message: string; code?: string } | null) =>
       Object.assign(Object.create(ProjectView.prototype), {

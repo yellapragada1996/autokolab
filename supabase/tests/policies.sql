@@ -570,7 +570,7 @@ set role anon;
 select pg_temp.expect_error($q$select public.report_usage(0, 10800, '2026-10-11')$q$, 'permission denied');
 reset role;
 
--- ------------------------------------------------ computer name and daily dollar limit (schema 24)
+-- ------------------------------------------------ computer name and daily dollar limit (schema 25)
 reset role;
 select pg_temp.expect((select machine is null and daily_usd is null from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'computer and dollar limit start unset');
 set role authenticated;

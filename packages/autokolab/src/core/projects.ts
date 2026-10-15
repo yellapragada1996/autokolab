@@ -69,7 +69,7 @@ export interface UsageReport {
 
 /**
  * Which computer an agent runs on and, for an API-model agent, its active daily dollar limit
- * (schema 24). Non-secret values only: never a key or the settings file.
+ * (schema 25). Non-secret values only: never a key or the settings file.
  */
 export interface MachineReport {
   /** The computer's name; null when it isn't a plain hostname. */
@@ -345,7 +345,7 @@ export class ProjectView {
   private prFactsMissing = false;
   /** The database has no report_usage yet (before schema 19). */
   private usageMissing = false;
-  /** The database has no report_machine yet (before schema 24). */
+  /** The database has no report_machine yet (before schema 25). */
   private machineMissing = false;
   /** The database has no record_run_usage yet (before schema 20). */
   private runUsageMissing = false;
@@ -732,7 +732,7 @@ export class ProjectView {
   }
 
   /**
-   * This agent's computer name and daily dollar limit, through report_machine (schema 24). Returns
+   * This agent's computer name and daily dollar limit, through report_machine (schema 25). Returns
    * false when the database doesn't have it yet; it isn't asked again until the next reload.
    */
   async reportMachine(m: MachineReport): Promise<boolean> {

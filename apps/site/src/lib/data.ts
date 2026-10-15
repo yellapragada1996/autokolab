@@ -101,9 +101,9 @@ export interface Agent {
   usage_day?: string | null;
   /** When it expects to work again while it waits out a limit; null otherwise. */
   waiting_until?: string | null;
-  /** The computer it runs on, reported by its runner (schema 24; absent before it, null until reported). */
+  /** The computer it runs on, reported by its runner (schema 25; absent before it, null until reported). */
   machine?: string | null;
-  /** An API-model agent's active daily dollar limit from its runner, 0 for none (schema 24); null when not reported. */
+  /** An API-model agent's active daily dollar limit from its runner, 0 for none (schema 25); null when not reported. */
   daily_usd?: number | string | null;
 }
 

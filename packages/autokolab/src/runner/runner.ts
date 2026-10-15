@@ -605,7 +605,7 @@ export class Runner {
 
   /**
    * Tell the team which computer this is and the active daily dollar limit (AK-112), only when it
-   * changed. Never stops anything: a database before schema 24 just doesn't get it.
+   * changed. Never stops anything: a database before schema 25 just doesn't get it.
    */
   private machineSent = "";
   private async reportMachine(): Promise<void> {

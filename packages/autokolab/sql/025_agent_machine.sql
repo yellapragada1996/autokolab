@@ -1,4 +1,4 @@
--- AutoKolab schema 24: which computer an agent runs on, and an API-model agent's daily dollar limit
+-- AutoKolab schema 25: which computer an agent runs on, and an API-model agent's daily dollar limit
 -- (AK-112, CON-25). Both live only in the runner's settings on that computer, so People could say no
 -- more than "its owner's computer" and "daily limit set on its computer". The runner now reports:
 --   machine     the computer's name (its hostname, without ".local")
@@ -36,4 +36,4 @@ grant execute on function public.report_machine(text, numeric) to authenticated,
 
 -- ---------------------------------------------------------------- schema version
 
-update public.autokolab_meta set value = '24' where key = 'schema_version';
+update public.autokolab_meta set value = '25' where key = 'schema_version';

@@ -23,7 +23,7 @@ export function costToday(ws: Workspace, agent: Agent, rows: RunUsage[], now: Da
 }
 export const costText = (cost: AgentCost | null | undefined) => (cost?.usd != null ? `$${cost.usd.toFixed(2)} today` : null);
 
-/** The daily dollar limit its runner reported (schema 24); null when its helper or the server is older. */
+/** The daily dollar limit its runner reported (schema 25); null when its helper or the server is older. */
 export function reportedLimit(agent: Pick<Agent, "vendor" | "daily_usd">): number | null {
   if (agent.vendor !== "opencode" || agent.daily_usd == null) return null;
   const usd = Number(agent.daily_usd);
