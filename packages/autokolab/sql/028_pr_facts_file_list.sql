@@ -1,4 +1,4 @@
--- AutoKolab schema 27: the list of files a PR changes, for "Show the work" (AK-134).
+-- AutoKolab schema 28: the list of files a PR changes, for "Show the work" (AK-134).
 -- pr_facts.files held only how many files changed and which were risky (schema 18), so the ticket
 -- page had nothing per file to link. The runner already sees the list: `gh pr view --json files`
 -- returns path/additions/deletions for each file. clean_pr_facts now keeps that as `files.list`,
@@ -84,4 +84,4 @@ begin
   return f;
 end $$;
 
-update public.autokolab_meta set value = '27' where key = 'schema_version';
+update public.autokolab_meta set value = '28' where key = 'schema_version';
