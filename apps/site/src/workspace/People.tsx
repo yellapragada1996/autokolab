@@ -1,3 +1,4 @@
+import { statusHere } from "./glance";
 import { reportError } from "../lib/errors";
 import { useEffect, useState } from "react";
 import { addPerson, createInvite, EFFORTS, inviteLink, invites as listInvites, MERGE_POLICIES, mergePolicyOf, MODEL_CHOICES, revokeInvite, setAgentModel, setLead, setMergePolicy, showCode, VENDOR_LABEL, type Agent, type Effort, type Invite, type MergePolicy } from "../lib/data";
@@ -102,8 +103,9 @@ export function People({ ws, me, onProjectChanged, onAddAgent }: { ws: Workspace
             Add an agent
           </Button>
         </div>
-        {agents.map((a) => {
-          const st = agentOnline(a) ? agentStatusText[a.status] : agentStatusText.offline;
+        {agents.map((raw) => {
+          const a = statusHere(raw, ws.project.id, ws.byId);
+          const st = a.elsewhere ? { label: "Busy in another project", color: "var(--blue-text)" } : agentOnline(a) ? agentStatusText[a.status] : agentStatusText.offline;
           const cur = a.current_ticket_id ? ws.byId.get(a.current_ticket_id) : undefined;
           return (
             <div key={a.id} style={{ display: "flex", gap: 12, alignItems: "center", padding: "12px 14px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line-soft)", flexWrap: "wrap" }}>

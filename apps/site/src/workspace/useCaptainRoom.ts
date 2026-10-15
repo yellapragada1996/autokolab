@@ -1,3 +1,4 @@
+import { statusHere } from "./glance";
 import { reportError } from "../lib/errors";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addComment, allowMerge, approveTicket, lastCaughtUp, markCaughtUp, updateTicket, type Agent, type Project, type Ticket } from "../lib/data";
@@ -169,7 +170,8 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   const captain = ws?.agentOf(captainId);
   const member: RoomMember | undefined = room?.members.find((m) => m.id === captainId);
   const online = !!captain && agentOnline(captain);
-  const working = demoReading || (!!captain && agentDot(captain) === "working") || member?.runner_state === "working";
+  const scopedCaptain = captain && ws ? statusHere(captain, ws.project.id, ws.byId) : null;
+  const working = demoReading || (!scopedCaptain?.elsewhere && ((!!scopedCaptain && agentDot(scopedCaptain) === "working") || member?.runner_state === "working"));
 
   const setError = (key: string, msg: string | null) =>
     setErrors((m) => {

@@ -1,3 +1,4 @@
+import { statusHere } from "./agentStatus";
 import { LEAD_BUILT_QUESTION, MERGE_OK_PREFIX, waitsForMergeOk, type Decision, type Ticket } from "../lib/data";
 import { isBookkeeping, problemOf, type RoomMessage } from "../lib/room";
 import { waitsForApproval } from "./approve";
@@ -508,7 +509,7 @@ function agentRows(ws: Workspace): AgentRow[] {
   for (const t of moving) {
     if (rows.has(t.assignee_id!)) continue;
     const agent = ws.agentOf(t.assignee_id)!;
-    const working = agentDot(agent) === "working";
+    const working = !statusHere(agent, ws.project.id, ws.byId).elsewhere && agentDot(agent) === "working";
     const steps = ws.steps.get(t.id) ?? [];
     const now = steps.findIndex((s) => s.status === "now");
     const done = steps.filter((s) => s.status === "done").length;

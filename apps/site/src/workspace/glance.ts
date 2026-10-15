@@ -1,3 +1,5 @@
+import { statusHere } from "./agentStatus";
+export { statusHere } from "./agentStatus";
 import { MERGE_OK_PREFIX, type Agent, type Ticket, type TicketEvent } from "../lib/data";
 import { localTime } from "../lib/place";
 import { awayText, catchUpItems, clock, goalName, named, RUNNER_PROBLEM, type CatchUp, type Need, type Plan } from "./captain";
@@ -126,7 +128,10 @@ interface Running {
 }
 
 /** What an agent is on: the ticket its runner reported, else its most recently moved In progress ticket. */
-function agentTicket(ws: Workspace, a: Agent): Ticket | null {
+function agentTicket(ws: Workspace, a: Agent, now = new Date()): Ticket | null {
+  const scoped = statusHere(a, ws.project.id, ws.byId, now);
+  if (scoped.elsewhere) return null;
+  a = scoped;
   const cur = a.current_ticket_id ? ws.byId.get(a.current_ticket_id) : undefined;
   if (cur && isWork(cur) && isOpen(cur)) return cur;
   return (
@@ -137,7 +142,10 @@ function agentTicket(ws: Workspace, a: Agent): Ticket | null {
 }
 
 function agentsAt(ws: Workspace, now: Date): Running[] {
-  return [...ws.people.agents.values()].map((agent) => ({ agent, ticket: agentTicket(ws, agent), running: agentDot(agent, now) === "working" }));
+  return [...ws.people.agents.values()].map((a) => {
+    const agent = statusHere(a, ws.project.id, ws.byId, now);
+    return { agent, ticket: agent.elsewhere ? null : agentTicket(ws, a, now), running: !agent.elsewhere && agentDot(agent, now) === "working" };
+  });
 }
 
 /** Tickets someone is on right now: an agent running on it, or a person holding it In progress. */
@@ -510,7 +518,7 @@ export function sinceLine(ws: Workspace, c: CatchUp | null): string | null {
 
 // ------------------------------------------------------------------ team
 
-export type TeamState = "working" | "reviewing" | "waiting" | "free" | "idle" | "stopped" | "limit" | "offline";
+export type TeamState = "elsewhere" | "working" | "reviewing" | "waiting" | "free" | "idle" | "stopped" | "limit" | "offline";
 
 export interface Usage {
   /** "1 h 10 of 3 h today" */
@@ -585,17 +593,20 @@ const queuedFor = (ws: Workspace, id: string) => ws.tickets.filter((t) => isWork
 /** An agent's state in a word, before any wording: shared by the Team block and Worth watching. */
 function teamState(ws: Workspace, a: Agent, now: Date): TeamState {
   if (!agentOnline(a, now)) return "offline";
-  if (a.status === "paused" || a.status === "blocked") return "stopped";
+  if (a.status === "paused") return "stopped";
+  if (backAt(a, now) || /usage limit/i.test(a.status_note ?? "")) return "limit";
+  if (statusHere(a, ws.project.id, ws.byId, now).elsewhere) return "elsewhere";
+  if (a.status === "blocked") return "stopped";
   if (agentDot(a, now) === "working") {
-    const t = agentTicket(ws, a);
+    const t = agentTicket(ws, a, now);
     return t && t.status === "review" && t.assignee_id !== a.id ? "reviewing" : "working";
   }
-  if (backAt(a, now)) return "limit";
+  if (backAt(a, now) || /usage limit/i.test(a.status_note ?? "")) return "limit";
   if (a.status === "waiting_human") return "waiting";
   return queuedFor(ws, a.id).length ? "idle" : "free";
 }
 
-const TEAM_TONE: Record<TeamState, Tone> = { working: "live", reviewing: "live", waiting: "needs", free: "quiet", idle: "quiet", stopped: "problem", limit: "problem", offline: "quiet" };
+const TEAM_TONE: Record<TeamState, Tone> = { elsewhere: "live", working: "live", reviewing: "live", waiting: "needs", free: "quiet", idle: "quiet", stopped: "problem", limit: "problem", offline: "quiet" };
 
 /**
  * Who is free, who is stopped and how much of today each agent has used, then each person.
@@ -608,7 +619,8 @@ export function team(ws: Workspace, now: Date, seen: Map<string, string | null> 
     .map((a): TeamAgent => {
       const state = teamState(ws, a, now);
       let label: string = state;
-      if (state === "limit") label = `limit reached · back ${aboutTime(backAt(a, now)!)}`;
+      if (state === "elsewhere") label = "Busy in another project";
+      else if (state === "limit") label = backAt(a, now) ? `limit reached · back ${aboutTime(backAt(a, now)!)}` : "limit reached";
       else if (state === "waiting") label = "waiting on you";
       else if (state === "offline") label = a.last_seen_at ? `offline · ${awayText(now.getTime() - Date.parse(a.last_seen_at))}` : "not connected yet";
       else if (state === "free" || state === "idle") {
@@ -797,8 +809,8 @@ export interface CrewRow {
   key: string | null;
 }
 
-const CREW_WORD: Record<TeamState, string> = { working: "Working", reviewing: "Reviewing", waiting: "Waiting on you", stopped: "Stopped", limit: "Limit reached", free: "Free", idle: "Idle", offline: "Offline" };
-const CREW_ORDER: TeamState[] = ["working", "reviewing", "waiting", "stopped", "limit", "idle", "free", "offline"];
+const CREW_WORD: Record<TeamState, string> = { elsewhere: "Busy", working: "Working", reviewing: "Reviewing", waiting: "Waiting on you", stopped: "Stopped", limit: "Limit reached", free: "Free", idle: "Idle", offline: "Offline" };
+const CREW_ORDER: TeamState[] = ["working", "reviewing", "elsewhere", "waiting", "stopped", "limit", "idle", "free", "offline"];
 
 /** The team table: every agent once, working first, then waiting, stopped, idle, free and offline. */
 export function crew(t: Team, rows: AgentRow[]): CrewRow[] {

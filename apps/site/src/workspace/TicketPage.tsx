@@ -1,3 +1,4 @@
+import { statusHere } from "./glance";
 import { areaWaits, areaWaitText } from "../lib/areas";
 import { reportError } from "../lib/errors";
 import { useCallback, useEffect, useState } from "react";
@@ -79,6 +80,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
   const assignee = ws.agentOf(t.assignee_id);
   const steps = detail?.steps ?? ws.steps.get(t.id) ?? [];
   const kids = ws.childrenOf(t.id);
+  const assigneeStatus = assignee ? statusHere(assignee, ws.project.id, ws.byId) : null;
   const kidsDone = kids.filter((k) => k.status === "done").length;
   // A Ready ticket that a runner holds back because another one touches the same files (AK-126).
   const sameFiles = t.status === "ready" ? areaWaitText(areaWaits(t, ws.tickets)) : null;
@@ -176,7 +178,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
             <StatusButton status={t.status} onChange={(status) => save({ status })} />
             {assignee && t.status === "in_progress" && (
               <span style={{ fontSize: 13, color: "var(--muted)" }}>
-                {assignee.display_name} is on it{assignee.status_note ? `: ${assignee.status_note}` : ""}
+                {assignee.display_name}{assigneeStatus?.elsewhere ? ": Busy in another project" : assigneeStatus?.status === "offline" ? ": Offline" : assigneeStatus?.status === "paused" ? ": Paused" : assigneeStatus?.status_note && /usage limit/i.test(assigneeStatus.status_note) ? `: ${assigneeStatus.status_note}` : ` is on it${assigneeStatus?.status_note ? `: ${assigneeStatus.status_note}` : ""}`}
               </span>
             )}
             {sameFiles && <span style={{ fontSize: 13, color: "var(--muted)" }}>{sameFiles[0].toUpperCase() + sameFiles.slice(1)}</span>}

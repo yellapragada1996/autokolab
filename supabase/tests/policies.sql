@@ -251,6 +251,17 @@ insert into public.ticket_steps (ticket_id, idx, label, status) select id, 0, 'B
 update public.ticket_steps set status = 'done';
 insert into public.ticket_comments (ticket_id, author_id, author_type, body) select id, '00000000-0000-0000-0000-0000000000c1', 'agent', 'Started; using components/ui/Button.' from public.tickets where key = 'VV-1';
 select pg_temp.expect((public.agent_status('building', 'VV-1', (select id from public.tickets where key = 'VV-1'))).status = 'building', 'agent reports status');
+-- Status is scoped even when an old helper sends only a ticket, and only its function can write it.
+select pg_temp.expect((select status_project_id = project_id from public.agents cross join public.tickets
+  where public.agents.id = auth.uid() and key = 'VV-1'), 'status project derived from ticket');
+select pg_temp.expect((public.agent_status('planning', 'Planning here', p_project => (select id from public.projects))).status_project_id
+  = (select id from public.projects), 'status scoped without a ticket');
+select pg_temp.expect((public.agent_status('idle', p_project => (select id from public.projects))).status_project_id is null, 'idle clears the status project');
+select pg_temp.expect((public.agent_status('offline', p_project => (select id from public.projects))).status_project_id is null, 'offline clears the status project');
+select pg_temp.expect((public.agent_status('planning', 'Old helper')).status_project_id is null, 'old helper without a ticket stays unscoped');
+select pg_temp.expect_error($q$select public.agent_status('building', p_project => '00000000-0000-0000-0000-000000000099')$q$, 'AUTOKOLAB_NOT_MEMBER');
+select pg_temp.expect_error($q$update public.agents set status_project_id = null where id = auth.uid()$q$, 'permission denied');
+select pg_temp.expect((public.agent_status('building', 'VV-1', (select id from public.tickets where key = 'VV-1'))).status = 'building', 'restore building status');
 select pg_temp.expect((select started_at is not null from public.tickets where key = 'VV-1'), 'start time recorded');
 select pg_temp.expect((select string_agg(kind, ',' order by id) from public.ticket_events where ticket_id = (select id from public.tickets where key = 'VV-1'))
   = 'created,status,branch,step,comment', 'history records every change');
