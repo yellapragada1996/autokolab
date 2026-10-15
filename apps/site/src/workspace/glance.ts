@@ -601,7 +601,6 @@ function teamState(ws: Workspace, a: Agent, now: Date): TeamState {
     const t = agentTicket(ws, a, now);
     return t && t.status === "review" && t.assignee_id !== a.id ? "reviewing" : "working";
   }
-  if (backAt(a, now) || /usage limit/i.test(a.status_note ?? "")) return "limit";
   if (a.status === "waiting_human") return "waiting";
   return queuedFor(ws, a.id).length ? "idle" : "free";
 }

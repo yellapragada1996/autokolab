@@ -171,7 +171,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   const member: RoomMember | undefined = room?.members.find((m) => m.id === captainId);
   const online = !!captain && agentOnline(captain);
   const scopedCaptain = captain && ws ? statusHere(captain, ws.project.id, ws.byId) : null;
-  const working = demoReading || (!scopedCaptain?.elsewhere && ((!!scopedCaptain && agentDot(scopedCaptain) === "working") || member?.runner_state === "working"));
+  const working = demoReading || (scopedCaptain ? !scopedCaptain.elsewhere && agentDot(scopedCaptain) === "working" : member?.runner_state === "working");
 
   const setError = (key: string, msg: string | null) =>
     setErrors((m) => {
