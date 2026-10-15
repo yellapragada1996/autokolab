@@ -1,10 +1,10 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ProjectView, type RunUsageRow } from "../src/core/projects.js";
 import { parseRunnerConfig } from "../src/runner/config.js";
-import { claudeInvocation, noUsage, parseEvent, runEngine, type EngineRun } from "../src/runner/engines.js";
+import { claudeInvocation, engineInvocation, noUsage, ownCost, parseEvent, rememberSessionCost, runEngine, type EngineRun, type SessionCosts } from "../src/runner/engines.js";
 import { Runner, runUsageRow } from "../src/runner/runner.js";
 
 // What each run used (AK-92): read from the tools' own output, never estimated, and recorded
@@ -103,6 +103,85 @@ process.stdin.on("end", () => {
     const crashed = await go("CRASH");
     expect(crashed.isError).toBe(true);
     expect(crashed.usage).toEqual(noUsage());
+  });
+});
+
+describe("each run's own cost, when it continues a session (AK-115)", () => {
+  it("takes the difference from the session's last total, and null when that isn't known", () => {
+    const known: SessionCosts = { s1: { usd: 7.85, at: 0 } };
+    expect(ownCost("claude", 7.85, null, {})).toBe(7.85);
+    expect(ownCost("claude", 8.06, "s1", known)).toBe(0.21);
+    expect(ownCost("claude", 8.06, "s2", known)).toBeNull();
+    expect(ownCost("claude", 5, "s1", known)).toBeNull();
+    expect(ownCost("claude", null, "s1", known)).toBeNull();
+    // OpenCode's cost is already per step of this run; Codex reports none.
+    expect(ownCost("opencode", 0.3, "ses_1", {})).toBe(0.3);
+    expect(ownCost("codex", null, "t1", known)).toBeNull();
+  });
+
+  it("forgets a session's total when a run of it reported none, and old sessions", () => {
+    const now = 40 * 24 * 3600_000;
+    const known: SessionCosts = { s1: { usd: 1, at: now - 1000 }, old: { usd: 2, at: 0 } };
+    expect(rememberSessionCost(known, ["s1", "s1"], 1.5, now)).toEqual({ s1: { usd: 1.5, at: now } });
+    expect(rememberSessionCost(known, ["s1", null], null, now)).toEqual({});
+    // A resume that comes back under a new id: both carry the total.
+    expect(rememberSessionCost({}, ["s1", "s2"], 3, now)).toEqual({ s1: { usd: 3, at: now }, s2: { usd: 3, at: now } });
+  });
+
+  describe("through the runner, with a Claude Code that reports the session's total", () => {
+    const dir = mkdtempSync(join(tmpdir(), "ak-cost-"));
+    const fake = join(dir, "fake-claude.mjs");
+    // Prints the session it was told to resume (or a new one) and the total cost given in the prompt.
+    writeFileSync(
+      fake,
+      `#!/usr/bin/env node
+const args = process.argv.slice(2);
+const i = args.indexOf("--resume");
+const session = i >= 0 ? args[i + 1] : "s-new";
+let input = "";
+process.stdin.on("data", (d) => (input += d));
+process.stdin.on("end", () => {
+  const total = input.match(/TOTAL=([\\d.]+)/);
+  console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, session_id: session, result: "done", num_turns: 2, ...(total ? { total_cost_usd: Number(total[1]) } : {}) }));
+});
+`,
+      { mode: 0o755 },
+    );
+    const cfg = parseRunnerConfig(`agent_id = "${AID}"\nengine = "claude"\nclaude_bin = "${fake}"\n[limits]\nmax_minutes = 1`, "p");
+    const mcp = { command: process.execPath, args: ["cli.js", "mcp"] };
+    let stateWas: string | undefined;
+    beforeAll(() => {
+      stateWas = process.env.XDG_STATE_HOME;
+      process.env.XDG_STATE_HOME = join(dir, "state");
+    });
+    afterAll(() => {
+      if (stateWas === undefined) delete process.env.XDG_STATE_HOME;
+      else process.env.XDG_STATE_HOME = stateWas;
+    });
+    // A new Runner each time: what it knows comes from this machine's state, as after a restart.
+    const runner = () => Object.assign(Object.create(Runner.prototype), { cfg, ak: { me: { id: AID } }, log: () => undefined }) as Runner;
+    const go = async (prompt: string, resume: string | null) => {
+      const run: EngineRun = await (runner() as any).runAgent({
+        cfg, inv: engineInvocation(cfg, mcp, resume, dir, {}), cwd: dir, prompt, logFile: join(dir, `${Math.random()}.log`), signal: new AbortController().signal,
+      });
+      return { usage: run.usage?.costUsd, log: run.costUsd, row: runUsageRow("build", "t1", run, 1).cost_usd };
+    };
+
+    it("records the first run's cost, then only what each resumed run added, across a restart", async () => {
+      expect(await go("TOTAL=7.85", null)).toEqual({ usage: 7.85, log: 7.85, row: 7.85 });
+      expect(await go("TOTAL=8.06", "s-new")).toEqual({ usage: 0.21, log: 0.21, row: 0.21 });
+      // The next runner (after a restart) reads the same totals.
+      expect(await go("TOTAL=8.14", "s-new")).toEqual({ usage: 0.08, log: 0.08, row: 0.08 });
+    });
+
+    it("records null when the session's last total isn't known, and the difference again after", async () => {
+      rmSync(join(dir, "state"), { recursive: true, force: true });
+      expect(await go("TOTAL=9", "s-new")).toEqual({ usage: null, log: undefined, row: null });
+      expect(await go("TOTAL=9.5", "s-new")).toEqual({ usage: 0.5, log: 0.5, row: 0.5 });
+      // A run that reported no total leaves the next one unknown too, rather than counting both.
+      expect(await go("no total", "s-new")).toEqual({ usage: null, log: undefined, row: null });
+      expect(await go("TOTAL=10.5", "s-new")).toEqual({ usage: null, log: undefined, row: null });
+    });
   });
 });
 

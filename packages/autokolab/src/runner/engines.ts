@@ -78,6 +78,41 @@ export interface EngineInvocation {
   secrets?: string[];
   /** The model the engine was told to run, when the engine itself doesn't say (OpenCode). */
   model?: string;
+  /** The session this run continues, if any. */
+  resumed?: string | null;
+}
+
+/** A session's cost so far as Claude Code last reported it, and when (ms). */
+export type SessionCosts = Record<string, { usd: number; at: number }>;
+
+/** Session totals are kept this long: longer than any session is resumed. */
+const SESSION_COST_KEEP_MS = 30 * 24 * 3600_000;
+
+/**
+ * This run's own cost (AK-115). Claude Code's total_cost_usd is the whole session's so far, so a
+ * resumed run costs the difference from the total the session reported at the end of its last run,
+ * and null when that total isn't known. OpenCode reports cost per step and Codex none, so theirs
+ * are already this run's.
+ */
+export function ownCost(engine: RunnerConfig["engine"], total: number | null, resumed: string | null, known: SessionCosts): number | null {
+  if (engine !== "claude" || total === null || !resumed) return total;
+  const before = known[resumed]?.usd;
+  if (before === undefined || total < before) return null;
+  return Math.round((total - before) * 1e6) / 1e6;
+}
+
+/**
+ * The session totals after a Claude Code run, dropping old ones. A run that reported no total leaves
+ * its session's unknown, so the next run of it records null rather than this run's cost too.
+ */
+export function rememberSessionCost(known: SessionCosts, sessions: (string | null)[], total: number | null, now: number): SessionCosts {
+  const kept: SessionCosts = Object.fromEntries(Object.entries(known).filter(([, s]) => now - s.at < SESSION_COST_KEEP_MS));
+  for (const s of sessions) {
+    if (!s) continue;
+    if (total === null) delete kept[s];
+    else kept[s] = { usd: total, at: now };
+  }
+  return kept;
 }
 
 /** Extra deny rules the runner always adds for Claude Code, derived from the owner's limits. */
@@ -275,11 +310,14 @@ export function localProviderConfig(cfg: RunnerConfig, provider: string, model: 
 
 /** The invocation for the agent's engine. OpenCode needs the agent's key (unless its model is local); the others never get one. */
 export function engineInvocation(cfg: RunnerConfig, mcp: McpLaunch, resumeSession: string | null, cwd: string, choice: ModelChoice, key?: () => string): EngineInvocation {
-  if (cfg.engine === "claude") return claudeInvocation(cfg, mcp, resumeSession, choice);
-  if (cfg.engine === "codex") return codexInvocation(cfg, mcp, resumeSession, cwd, choice);
-  if (isLocalProvider(opencodeProvider(cfg)!)) return opencodeInvocation(cfg, mcp, resumeSession, undefined, choice);
-  if (!key) throw new Error("OpenCode needs the agent's key.");
-  return opencodeInvocation(cfg, mcp, resumeSession, key(), choice);
+  const inv = (() => {
+    if (cfg.engine === "claude") return claudeInvocation(cfg, mcp, resumeSession, choice);
+    if (cfg.engine === "codex") return codexInvocation(cfg, mcp, resumeSession, cwd, choice);
+    if (isLocalProvider(opencodeProvider(cfg)!)) return opencodeInvocation(cfg, mcp, resumeSession, undefined, choice);
+    if (!key) throw new Error("OpenCode needs the agent's key.");
+    return opencodeInvocation(cfg, mcp, resumeSession, key(), choice);
+  })();
+  return { ...inv, resumed: resumeSession };
 }
 
 const clip = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, 200);

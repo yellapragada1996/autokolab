@@ -10,7 +10,7 @@ import { redactSecrets } from "../core/secrets.js";
 import type { Message, MessageKind, Room, RunState, TaskRun } from "../core/types.js";
 import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
-import { chooseModel, chooseReplyModel, engineInvocation, engineLabel, noUsage, runEngine, type EngineInvocation, type EngineRun, type McpLaunch, type ModelChoice, type PlanStep, type RunUsage } from "./engines.js";
+import { chooseModel, chooseReplyModel, engineInvocation, engineLabel, noUsage, ownCost, rememberSessionCost, runEngine, type EngineInvocation, type EngineRun, type McpLaunch, type ModelChoice, type PlanStep, type RunUsage, type SessionCosts } from "./engines.js";
 import { installHook } from "./githook.js";
 import { machineReport, overSpend, spendNotice, usageLimit, usageReport } from "./limit.js";
 import { readAgentKey } from "../core/keys.js";
@@ -580,6 +580,38 @@ export class Runner {
     return engineInvocation(this.cfg, mcp, resume, cwd, choice, () => readAgentKey(this.cfg.agent_id).key);
   }
 
+  /** Runs the engine; the result's cost is this run's own, not the session's so far (AK-115). */
+  private async runAgent(opts: Parameters<typeof runEngine>[0]): Promise<EngineRun> {
+    const run = await runEngine(opts);
+    if (this.cfg.engine !== "claude") return run;
+    const total = run.usage?.costUsd ?? null;
+    const known = this.sessionCosts();
+    const own = ownCost(this.cfg.engine, total, opts.inv.resumed ?? null, known);
+    if (run.usage) run.usage = { ...run.usage, costUsd: own };
+    if (own === null) delete run.costUsd;
+    else run.costUsd = own;
+    try {
+      mkdirSync(join(stateDir(), "usage"), { recursive: true });
+      writeFileSync(this.sessionCostsPath(), JSON.stringify(rememberSessionCost(known, [opts.inv.resumed ?? null, run.sessionId], total, Date.now())));
+    } catch (e) {
+      this.log(`Couldn't save my session's cost: ${(e as Error).message}`);
+    }
+    return run;
+  }
+
+  /** Each Claude Code session's cost so far, as it last reported it: kept across restarts. */
+  private sessionCostsPath(): string {
+    return join(stateDir(), "usage", `${this.ak.me.id}-sessions.json`);
+  }
+
+  private sessionCosts(): SessionCosts {
+    try {
+      return JSON.parse(readFileSync(this.sessionCostsPath(), "utf8")) as SessionCosts;
+    } catch {
+      return {};
+    }
+  }
+
   /** Words for a usage-limit wait: a subscription's limit, or an API provider's rate limit. */
   private limitWords(run: Pick<EngineRun, "rateLimited">): string {
     return run.rateLimited ? `${engineLabel(this.cfg)} is limiting how fast I can send requests` : `I've reached my ${engineLabel(this.cfg)} usage limit`;
@@ -734,7 +766,7 @@ export class Runner {
     const mcp = { command: process.execPath, args: mcpArgs(this.cfg.agent_id, room.name) };
     const choice = await this.modelChoice();
     const inv = this.invocation(mcp, null, clone, choice);
-    const result = await runEngine({ cfg: this.cfg, inv, cwd: clone, prompt, logFile: join(this.logDir, `${room.name}-hello.log`), signal: new AbortController().signal, onModel: this.reportModel(choice) });
+    const result = await this.runAgent({ cfg: this.cfg, inv, cwd: clone, prompt, logFile: join(this.logDir, `${room.name}-hello.log`), signal: new AbortController().signal, onModel: this.reportModel(choice) });
     this.addSpend(result);
     const text = redactSecrets(result.finalText.trim()).slice(0, 4000);
     if (result.isError || !text) throw new Error(text || "no reply");
@@ -1131,7 +1163,7 @@ export class Runner {
     let result;
     const startedAt = Date.now();
     try {
-      result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
+      result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
     } finally {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000, result);
@@ -1691,7 +1723,7 @@ export class Runner {
     let result!: EngineRun;
     const startedAt = Date.now();
     try {
-      result = await runEngine({
+      result = await this.runAgent({
         cfg,
         inv,
         cwd: worktree.path,
@@ -1891,7 +1923,7 @@ export class Runner {
     let result!: EngineRun;
     const startedAt = Date.now();
     try {
-      result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
+      result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
     } finally {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000, result);
@@ -1977,7 +2009,7 @@ export class Runner {
     let result!: EngineRun;
     const startedAt = Date.now();
     try {
-      result = await runEngine({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
+      result = await this.runAgent({ cfg, inv, cwd: worktree.path, prompt, logFile, signal: abort.signal, onModel: this.reportModel(choice) });
     } finally {
       this.current = null;
       this.addUsage((Date.now() - startedAt) / 1000, result);
