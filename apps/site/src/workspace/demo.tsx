@@ -40,7 +40,7 @@ const profile: Profile = { id: ANA, github_login: "ana", name: "Ana", avatar_url
 
 // A made-up commit and its passing tests, for tickets that have merged.
 const sha = (n: number) => n.toString(16).padStart(2, "0").repeat(20);
-const passing = (n: number): NonNullable<Ticket["pr_facts"]> => ({ sha: sha(n), checks: { passed: 48, total: 48, state: "success" }, files: { total: 3, risky: [] }, additions: 40 + n, deletions: n });
+const passing = (n: number): NonNullable<Ticket["pr_facts"]> => ({ sha: sha(n), checks: { passed: 48, total: 48, state: "success" }, files: { total: 3, risky: [], list: [{ path: "app/checkout.ts", additions: 22, deletions: 2 }, { path: "app/cart.ts", additions: 12, deletions: n }, { path: "tests/checkout.test.ts", additions: 6 + n, deletions: 0 }] }, additions: 40 + n, deletions: n });
 
 function ticket(n: number, t: Partial<Ticket> & Pick<Ticket, "title" | "status">): Ticket {
   return {

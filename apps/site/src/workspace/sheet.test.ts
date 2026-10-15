@@ -2,8 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { MERGE_OK_PREFIX, type TicketEvent } from "../lib/data";
 import { parse, showHref } from "../lib/router";
 import { BIRCH, CAPTAIN, ME, at, ticket, workspace } from "./fixtures";
-import { changeTotals, historyTime, workHistory, workRows, workSummary } from "./sheet";
+import { changedFiles, changeTotals, historyTime, workHistory, workRows, workSummary } from "./sheet";
 import { undoMessage, undoState } from "./sheet";
+import { sha256Hex } from "./diffLink";
 import { clock, type Turn } from "./captain";
 
 describe("Undo in Show the work", () => {
@@ -58,6 +59,18 @@ describe("Show the work sentences", () => {
     expect(changeTotals({ ...t, approved_sha: "d".repeat(40) })).toBeNull();
     expect(changeTotals({ ...t, approved_sha: null })).toBeNull();
     expect(changeTotals({ ...t, pr_facts: undefined })).toBeNull();
+  });
+
+  it("lists the approved commit's changed files with a link each (AK-134)", () => {
+    const sha = "c".repeat(40);
+    const pr_facts = { sha, checks: { passed: 48, total: 48, state: "success" as const }, files: { total: 2, risky: [], list: [{ path: "src/a.ts", additions: 6, deletions: 0 }, { path: "src/b.ts", additions: 4, deletions: 1 }] }, additions: 10, deletions: 1 };
+    const t = ticket({ key: "SH-2", pr_url: "https://github.com/ana/shop/pull/45", approved_sha: sha, pr_facts });
+    const files = changedFiles(t);
+    expect(files.map((f) => [f.path, f.additions, f.deletions])).toEqual([["src/a.ts", 6, 0], ["src/b.ts", 4, 1]]);
+    expect(files[0].href).toBe(`https://github.com/ana/shop/pull/45/files#diff-${sha256Hex("src/a.ts")}`);
+    // Only for the approved commit, and nothing before schema 27 (no list).
+    expect(changedFiles({ ...t, approved_sha: "d".repeat(40) })).toEqual([]);
+    expect(changedFiles({ ...t, pr_facts: { ...pr_facts, files: { total: 2, risky: [] } } })).toEqual([]);
   });
 
   it("shows open blockers when nothing else is waiting", () => {
