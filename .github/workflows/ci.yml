@@ -63,6 +63,10 @@ jobs:
       - name: Unit tests
         run: npm test -w autokolab
 
+      # Node 20 has no built-in WebSocket; turning Node 22's off checks the helper still works there (AK-105).
+      - name: Unit tests without a built-in WebSocket (as on Node 20)
+        run: npm test -w autokolab -- --execArgv=--no-experimental-websocket
+
       - name: Website unit tests
         run: npm test -w autokolab-site
 
