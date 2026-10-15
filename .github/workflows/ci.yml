@@ -21,21 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    services:
-      postgres:
-        # The official postgres:16 image, from its AWS mirror: Docker Hub rate-limits anonymous pulls.
-        image: public.ecr.aws/docker/library/postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
     # createdb, psql and dropdb in run-local.sh read these.
     env:
       PGHOST: localhost
@@ -70,10 +55,15 @@ jobs:
       - name: Website unit tests
         run: npm test -w autokolab-site
 
-      - name: Postgres client
+      # The runner comes with PostgreSQL installed but stopped. Using it means no image to download:
+      # Docker Hub and its AWS mirror both rate-limit pulls (AK-114).
+      - name: Start Postgres
         run: |
-          command -v psql || { sudo apt-get update -q && sudo apt-get install -y -q postgresql-client; }
-          psql --version
+          sudo systemctl start postgresql.service
+          for i in $(seq 1 30); do pg_isready -q && break; sleep 1; done
+          pg_isready
+          sudo -u postgres psql -h /var/run/postgresql -q -c "alter user $PGUSER with password '$PGPASSWORD'"
+          psql -tAc 'select version()'
 
       - name: Database access-rule tests
         run: bash supabase/tests/run-local.sh
