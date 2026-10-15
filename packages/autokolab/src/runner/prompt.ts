@@ -280,8 +280,10 @@ export interface ReviewPromptContext {
   files: string[];
   /** The files that wait for a person's OK (riskyFiles). */
   risky: string[];
-  /** `gh pr diff`; capped here. */
+  /** `gh pr diff`, or on a re-review the changes since `earlier.sha`; capped here. */
   diff: string;
+  /** A re-review (AK-117): the commit the lead sent back and what it said then. */
+  earlier?: { sha: string; finding: string };
   /** "DEC-17: Agents talk to each other freely". */
   decisions: string[];
   /** A read-only checkout at `sha`. */
@@ -295,19 +297,28 @@ export interface ReviewPromptContext {
  * to end it: approve this exact commit, or say what's missing and send it back.
  */
 export function buildReviewPrompt(ctx: ReviewPromptContext): string {
-  const { key, sha } = ctx;
+  const { key, sha, earlier } = ctx;
   const risky = new Set(ctx.risky);
   const files = ctx.files.length ? ctx.files.map((f) => `- ${f}${risky.has(f) ? "  (risky: a person OKs it before it merges)" : ""}`).join("\n") : "(gh listed none)";
   const extra = ctx.risky.filter((r) => !ctx.files.includes(r));
   const cut = ctx.diff.length > REVIEW_DIFF_LIMIT;
+  const range = earlier ? `${earlier.sha}..HEAD` : `origin/${ctx.base}...HEAD`;
   const diff = cut
-    ? `${ctx.diff.slice(0, REVIEW_DIFF_LIMIT)}\n\n[The diff is ${ctx.diff.length} characters; only the first ${REVIEW_DIFF_LIMIT} are shown. Read the rest in ${ctx.repoPath}: git diff origin/${ctx.base}...HEAD -- <file>, using the file list above.]`
+    ? `${ctx.diff.slice(0, REVIEW_DIFF_LIMIT)}\n\n[The diff is ${ctx.diff.length} characters; only the first ${REVIEW_DIFF_LIMIT} are shown. Read the rest in ${ctx.repoPath}: git diff ${range} -- <file>, using the file list above.]`
     : ctx.diff || "(empty)";
   // AK-96: a website change is looked at, not only tested.
   const look = changesScreens(ctx.files) ? `\n- ${reviewLook(ctx.repoPath, ctx.base)}` : "";
+  // AK-117: a re-review reads only the new commits, against what the last review asked for.
+  const intro = earlier
+    ? `A worker pushed new commits to ${key} after you sent it back at ${earlier.sha.slice(0, 7)}, and its tests passed. Review what changed since then.`
+    : `A worker finished ${key} and its tests passed. Review this one commit.`;
+  const before = earlier ? `\n=== What you said when you sent it back at ${earlier.sha} ===\n${earlier.finding.trim()}\n` : "";
+  const check = earlier
+    ? `- The rest of the PR was reviewed at ${earlier.sha.slice(0, 7)}; don't review it again from scratch. Check that the new commits fix what you said above and break nothing else, then that every "done means" item now holds. Read around the changes in the checkout when you need to.`
+    : `- Check every "done means" item against the diff. Tests passing isn't enough on its own.`;
   return `You are Captain, the lead agent of the AutoKolab project "${ctx.projectName}". You run as ${ctx.myName}, ${ctx.ownerName}'s agent. You are running unattended: no human is watching this session.
 
-A worker finished ${key} and its tests passed. Review this one commit.
+${intro}
 
 === The ticket ===
 ${key} · ${ctx.title}
@@ -325,8 +336,8 @@ Checks on this commit:
 ${ctx.checks.map((c) => `- ${c}`).join("\n") || "(none)"}
 Changed files:
 ${files}${extra.length ? `\nAlso risky: ${extra.join(", ")}` : ""}
-
-=== The diff ===
+${before}
+=== ${earlier ? `The diff since ${earlier.sha}` : "The diff"} ===
 ${diff}
 
 === Decisions in force ===
@@ -336,7 +347,7 @@ How to review:
 - ${LEAD_VOICE}
 - ${LEAD_APPROVAL}
 - The code at this commit is checked out in ${ctx.repoPath}. It's read only: read the surrounding code there, but don't change, commit or push anything. project_brief and ticket_get ${key} have the guide, the full decisions and the ticket's comments if you need them.
-- Check every "done means" item against the diff. Tests passing isn't enough on its own.${look}
+${check}${look}
 - Then do exactly one of these:
   1. Everything is right: ticket_approve key=${key} sha=${sha} with the evidence fields (less_sure, summary, line_file, line_code, line_plain, decisions, and question if a file above is risky).
   2. Something is missing or wrong: ticket_comment key=${key} saying plainly what's missing and how to fix it, then ticket_update key=${key} status=in_progress. That resumes the worker.

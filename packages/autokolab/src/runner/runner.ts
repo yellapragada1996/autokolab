@@ -10,14 +10,14 @@ import { redactSecrets } from "../core/secrets.js";
 import type { Message, MessageKind, Room, RunState, TaskRun } from "../core/types.js";
 import { claudeBin, mcpArgs } from "../setup/agents.js";
 import { loadRunnerConfig, runnerFiles, type RunnerConfig } from "./config.js";
-import { chooseModel, chooseReplyModel, engineInvocation, engineLabel, noUsage, ownCost, rememberSessionCost, runEngine, type EngineInvocation, type EngineRun, type McpLaunch, type ModelChoice, type PlanStep, type ReplyLimits, type RunUsage, type SessionCosts } from "./engines.js";
+import { chooseModel, chooseReplyModel, chooseReviewModel,engineInvocation, engineLabel, noUsage, ownCost, rememberSessionCost, runEngine, type EngineInvocation, type EngineRun, type McpLaunch, type ModelChoice, type PlanStep, type ReplyLimits, type RunUsage, type SessionCosts } from "./engines.js";
 import { installHook } from "./githook.js";
 import { machineReport, overSpend, spendNotice, usageLimit, usageReport } from "./limit.js";
 import { readAgentKey } from "../core/keys.js";
-import { askReviewMessage, checkResult, ghPrDiff, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
+import { askReviewMessage, checkResult, diffLines, earlierReview, ghPrDiff, lightReview, prLines, reviewFinding, ghPrMerge, ghPrView, mergeDecision, mergeNeedsHuman, mergedComment, pickReviewer, plainGhError, prFacts, prNumber, readyToMergeMessage, REVIEW_UNDECIDED_QUESTION, reviewDecision, reviewEndedUndecided, reviewNeedsHuman, riskyFiles, samePrFacts, settledByMerge, testsFailedComment, type MergeDecision, type PrCheck, type PrInfo, type ReviewRecord } from "./merge.js";
 import { BLOCKED_PREFIX, NO_REPLY, buildPrompt, buildReplyPrompt, buildReviewPrompt, buildTicketPrompt, buildTriagePrompt, parseOutcome, type ReplyMessage } from "./prompt.js";
 import { SHIP_FAILED_PREFIX, fetchBranch, movesToReview, ship, shipBody, shipNeedsHuman, shipPlan, trustedIo, worktreeFacts } from "./ship.js";
-import { checkoutCommit, currentBranch, ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
+import { checkoutCommit, currentBranch, diffSince,ensureClone, ensureTicketWorktree, ensureWorktree, headCommit, pruneWorktrees, ticketBranch, worktreeGitDir, type Worktree } from "./repos.js";
 
 // The runner for one agent: listens to all of its rooms and, when someone sends it work or a
 // teammate asks it something, starts the agent headless in that thread's own worktree. It also
@@ -1624,11 +1624,15 @@ export class Runner {
     if (reviewNeedsHuman(t.needs_human, "asked_reviewer") === null) await p.update(t.key, { needs_human: null });
   }
 
-  /** Set or (with undefined) forget what the runner did about a ticket waiting for review. */
+  /**
+   * Set or (with undefined) forget what the runner did about a ticket waiting for review. The last
+   * review's finding is kept unless `rec` says otherwise (`reviewed` set, even to undefined).
+   */
   private rememberReview(ticketId: string, rec: ReviewRecord | undefined): void {
     const st = this.ticketState();
     const reviews = { ...(st.reviews ?? {}) };
-    if (rec) reviews[ticketId] = rec;
+    const reviewed = rec && !("reviewed" in rec) ? reviews[ticketId]?.reviewed : rec?.reviewed;
+    if (rec) reviews[ticketId] = { ...rec, ...(reviewed ? { reviewed } : {}) };
     else delete reviews[ticketId];
     st.reviews = reviews;
     this.saveTicketState(st);
@@ -2100,12 +2104,24 @@ export class Runner {
     // Its own worktree at exactly this commit, never its person's checkout.
     const worktree = ensureTicketWorktree(ak.me.name, repo, "review", `ak/${ak.me.name}/review`);
     checkoutCommit(worktree, sha, prNumber(url));
+    // AK-117: after a send-back, only the new commits are reviewed, against what was said then.
+    const since = earlierReview(prev, url, sha);
+    const delta = since ? diffSince(worktree, since.sha) : null;
+    const earlier = since && delta !== null ? { sha: since.sha, finding: redactSecrets(since.finding) } : undefined;
     let diff: string;
-    try {
-      diff = ghPrDiff(url);
-    } catch (e) {
-      diff = `(gh couldn't get the diff: ${plainGhError((e as Error).message, where)} Read it in the checkout instead.)`;
+    let lines: number | null = null;
+    if (earlier) {
+      diff = delta!;
+      lines = diffLines(diff);
+    } else {
+      try {
+        diff = ghPrDiff(url);
+        lines = prLines(pr);
+      } catch (e) {
+        diff = `(gh couldn't get the diff: ${plainGhError((e as Error).message, where)} Read it in the checkout instead.)`;
+      }
     }
+    const weight = lightReview(pr, lines, cfg.review_small_lines);
     const word = { success: "passed", pending: "running", failure: "failed" } as const;
     const prompt = buildReviewPrompt({
       myName: ak.me.name,
@@ -2121,12 +2137,17 @@ export class Runner {
       files: (pr.files ?? []).map((f) => f.path),
       risky: riskyFiles(pr),
       diff: redactSecrets(diff),
+      ...(earlier ? { earlier } : {}),
       decisions: (await p.decisions()).filter((d) => !d.superseded_by).map((d) => `${d.key}: ${d.title}`),
       repoPath: worktree.path,
       base: p.project.default_branch || worktree.base,
     });
     const mcp = { command: process.execPath, args: mcpArgs(cfg.agent_id, undefined, p.project.slug) };
-    const choice = await this.modelChoice();
+    const choice = chooseReviewModel(cfg, await this.modelChoice(), weight.light);
+    // Which path it took, for comparing in run_usage (each review's row has its model and the
+    // ticket; a ticket's later rows are its re-reviews).
+    const path = `${earlier ? `changes since ${earlier.sha.slice(0, 7)}` : since ? "whole PR (couldn't diff from the last review)" : "whole PR"}, ${weight.light ? "light" : "full"} (${weight.why}) on ${choice.model ?? "the default model"} at ${choice.effort ?? "default"} effort`;
+    this.log(`${t.key} review path: ${path}.`);
     const inv = this.invocation(mcp, null, worktree.path, choice);
     const logFile = join(this.logDir, `${p.project.slug}-${t.key}-review-${Date.now()}.log`);
 
@@ -2166,10 +2187,15 @@ export class Runner {
       // It finished but neither approved nor sent it back: say so, or the ticket sits in Review unseen.
       try {
         const after = await p.ticket(t.key);
-        if (reviewEndedUndecided(after, url, await p.comments(t.id), ak.me.id, lastCommentId)) {
+        const comments = await p.comments(t.id);
+        if (reviewEndedUndecided(after, url, comments, ak.me.id, lastCommentId)) {
           this.log(`${t.key} review: ended without a decision; asking a person.`);
           await p.update(t.key, { needs_human: REVIEW_UNDECIDED_QUESTION });
         }
+        // Sent back with a finding: the next review looks only at what changes after this commit.
+        const finding = after.approved_sha ? "" : reviewFinding(comments, ak.me.id, lastCommentId);
+        const cur = this.ticketState().reviews?.[t.id];
+        if (cur) this.rememberReview(t.id, { ...cur, reviewed: finding ? { sha, pr: url, finding } : undefined });
       } catch (e) {
         this.log(`${t.key} review: couldn't check how it ended: ${(e as Error).message}`);
       }

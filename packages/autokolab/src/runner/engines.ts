@@ -185,6 +185,17 @@ export function chooseReplyModel(cfg: RunnerConfig, usual: ModelChoice): ModelCh
 }
 
 /**
+ * The lead's review (AK-117): a light one (small, nothing risky; see lightReview) runs on the toml's
+ * review_model_small and review_effort_small, each falling back to the usual choice. Every other
+ * review, and every review under model_locked, keeps the usual model and effort.
+ */
+export function chooseReviewModel(cfg: RunnerConfig, usual: ModelChoice, light: boolean): ModelChoice {
+  if (!light || cfg.model_locked) return usual;
+  const toml = engineToml(cfg);
+  return { model: toml.review_model_small || usual.model, effort: toml.review_effort_small ?? usual.effort };
+}
+
+/**
  * A follower's reply run (AK-116) reads and answers but never changes the worktree: no edits, no
  * commits, no pushes, and it stops after reply_max_turns turns. Captain's replies stay as they are.
  */

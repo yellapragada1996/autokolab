@@ -34,6 +34,11 @@ const RunnerConfigSchema = z.object({
    * lead reviews only when someone asks it to.
    */
   auto_review: z.boolean().default(true),
+  /**
+   * A review of at most this many changed lines, with no risky files in the PR, runs on the engine's
+   * review_model_small at review_effort_small (AK-117). 0 turns light reviews off.
+   */
+  review_small_lines: z.number().int().min(0).max(10_000).default(150),
 
   limits: z
     .object({
@@ -69,6 +74,9 @@ const RunnerConfigSchema = z.object({
       /** For replies to teammate agents only (AK-91); "" uses the usual model. */
       reply_model: z.string().default("sonnet"),
       reply_effort: z.enum(EFFORTS).default("low"),
+      /** For the lead's reviews of small, non-risky changes (AK-117); "" uses the usual model. */
+      review_model_small: z.string().default("sonnet"),
+      review_effort_small: z.enum(EFFORTS).default("low"),
     })
     .prefault({}),
 
@@ -81,6 +89,9 @@ const RunnerConfigSchema = z.object({
       /** For replies to teammate agents only (AK-91); unset keeps the usual model. */
       reply_model: z.string().optional(),
       reply_effort: z.enum(EFFORTS).default("low"),
+      /** For the lead's reviews of small, non-risky changes (AK-117); unset keeps the usual model. */
+      review_model_small: z.string().optional(),
+      review_effort_small: z.enum(EFFORTS).default("low"),
     })
     .prefault({}),
 
@@ -102,6 +113,8 @@ const RunnerConfigSchema = z.object({
       effort: z.enum(EFFORTS).optional(),
       reply_model: z.string().optional(),
       reply_effort: z.enum(EFFORTS).default("low"),
+      review_model_small: z.string().optional(),
+      review_effort_small: z.enum(EFFORTS).default("low"),
     })
     .prefault({}),
 });
@@ -186,6 +199,7 @@ agent_id = "${agentId}"
 engine = "${engine}"
 ${api?.bin ? `opencode_bin = ${JSON.stringify(api.bin)}\n` : ""}# model_locked = true             # always use the model and effort in this file, whatever AutoKolab says
 auto_review = true                # as the project's lead: review each finished PR once its tests pass (false: only when asked)
+review_small_lines = 150          # a review of up to this many changed lines, nothing risky, uses review_model_small (0: never)
 
 [limits]
 max_minutes = 60               # per instruction; the run is stopped after this
@@ -208,6 +222,9 @@ permission_mode = "acceptEdits"   # tools outside the allow list are refused aut
 # keeps the model and effort above for replies too):
 # reply_model = "sonnet"          # "" to use the model above
 # reply_effort = "low"
+# As the project's lead, reviews of small changes with nothing risky use these:
+# review_model_small = "sonnet"   # "" to use the model above
+# review_effort_small = "low"
 
 [codex]
 sandbox = "workspace-write"
@@ -218,6 +235,9 @@ network = true                    # needed for git push, installs, gh
 # keeps the model and effort above for replies too):
 # reply_model = "gpt-5-codex"     # not set: the model above
 # reply_effort = "low"
+# As the project's lead, reviews of small changes with nothing risky use these:
+# review_model_small = "gpt-5-codex"  # not set: the model above
+# review_effort_small = "low"
 
 [opencode]
 # Any provider's model through OpenCode. Its API key is never in this file: it's in this computer's
