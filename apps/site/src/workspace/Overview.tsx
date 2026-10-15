@@ -1,6 +1,5 @@
-import { visiblePoll } from "../lib/poll";
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { eventsBetween, type TicketEvent } from "../lib/data";
+import { eventsAfter, eventsBetween, type TicketEvent } from "../lib/data";
 import { go, href, onNav, openShow, type Route } from "../lib/router";
 import { AgentAvatar, Button, Logo } from "../ui";
 import type { CatchUpItem } from "./captain";
@@ -15,7 +14,6 @@ import {
   team,
   updatedText,
   watch,
-  WEEK_MS,
   type AskItem,
   type CrewRow,
   type Feature,
@@ -27,6 +25,7 @@ import {
 import type { CaptainRoom } from "./useCaptainRoom";
 import { costText } from "./agentCosts";
 import { useAgentCosts } from "./useAgentCosts";
+import { EVENTS_WINDOW_MS, useHistoryWindow } from "./useHistory";
 import type { Workspace } from "./useWorkspace";
 
 // Overview (DEC-24, AK-75, AK-111): for looking, not talking. Read top to bottom it answers, in order:
@@ -55,25 +54,15 @@ export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr:
     if (roomReady) startCatchUp();
   }, [roomReady, startCatchUp]);
 
-  // The last week's events, for the send-back count in "Something's off". Read again every few
-  // minutes; if they can't be read, that one item is simply missing.
+  // The last week's events, for the send-back count in "Something's off". Kept in memory and
+  // topped up by id every few minutes; a reconciliation catches edits and deletes (AK-154).
   const projectId = ws?.project.id;
   const demoEvents = ws?.demoEvents;
-  const [events, setEvents] = useState<TicketEvent[]>([]);
-  useEffect(() => {
-    if (!projectId || demoEvents) return;
-    let live = true;
-    const load = () =>
-      void eventsBetween(projectId, new Date(Date.now() - WEEK_MS), new Date())
-        .then((e) => live && setEvents(e))
-        .catch(() => undefined);
-    load();
-    const stopPoll = visiblePoll(load);
-    return () => {
-      live = false;
-      stopPoll();
-    };
-  }, [projectId, demoEvents]);
+  const { rows: liveEvents } = useHistoryWindow(demoEvents ? undefined : projectId, EVENTS_WINDOW_MS, {
+    read: (from, to) => (projectId ? eventsBetween(projectId, from, to) : Promise.resolve([] as TicketEvent[])),
+    readAfter: (afterId, from) => (projectId ? eventsAfter(projectId, afterId, from) : Promise.resolve([] as TicketEvent[])),
+  });
+  const events = demoEvents ?? liveEvents;
 
   const look = useMemo(() => (ws ? overview(ws, cr.needs, cr.plans, now) : null), [ws, cr.needs, cr.plans, now]);
   const members = cr.room?.members;
@@ -82,7 +71,7 @@ export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr:
     const seen = new Map((members ?? []).filter((m) => m.kind === "human").map((m) => [m.profile_id ?? m.id, m.last_seen_at]));
     return team(ws, now, seen, me);
   }, [ws, members, now, me]);
-  const watching = useMemo(() => (ws ? watch(ws, demoEvents ?? events, now) : []), [ws, demoEvents, events, now]);
+  const watching = useMemo(() => (ws ? watch(ws, events, now) : []), [ws, events, now]);
   if (!ws || !look || !people) return <Skeleton />;
 
   const slug = ws.project.slug;
