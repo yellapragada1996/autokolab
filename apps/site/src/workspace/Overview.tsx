@@ -1,3 +1,4 @@
+import { visiblePoll } from "../lib/poll";
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { eventsBetween, type TicketEvent } from "../lib/data";
 import { go, href, onNav, openShow, type Route } from "../lib/router";
@@ -37,8 +38,6 @@ import type { Workspace } from "./useWorkspace";
 const TONE_COLOR: Record<Tone, string> = { live: "var(--blue)", needs: "var(--amber)", problem: "var(--coral)", quiet: "var(--text-dim)", done: "var(--green)" };
 /** Requests listed in the Needs-you panel before "and n more". */
 const ASKS_SHOWN = 3;
-/** How often the last week's events are read again. */
-const EVENTS_EVERY_MS = 5 * 60_000;
 
 export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr: CaptainRoom }) {
   const { costs, error: costError } = useAgentCosts(ws);
@@ -69,10 +68,10 @@ export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr:
         .then((e) => live && setEvents(e))
         .catch(() => undefined);
     load();
-    const id = setInterval(load, EVENTS_EVERY_MS);
+    const stopPoll = visiblePoll(load);
     return () => {
       live = false;
-      clearInterval(id);
+      stopPoll();
     };
   }, [projectId, demoEvents]);
 

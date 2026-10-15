@@ -752,7 +752,7 @@ export const NEED_WHAT: Record<NeedKind, string> = {
  * the plain fallback (00-AMENDMENTS.md: "the question falls back to 'OK to merge this?'").
  */
 export function mergeQuestion(need: Need): string {
-  return need.ticket?.review?.question?.trim() || `OK to merge ${named(need.ticket?.title ?? "this")}?`;
+  return (need.ticket?.review?.question ?? need.ticket?.review_question)?.trim() || `OK to merge ${named(need.ticket?.title ?? "this")}?`;
 }
 
 /**
@@ -760,7 +760,7 @@ export function mergeQuestion(need: Need): string {
  * mergeOkQuestion): "<question> (<files>)", or the files alone. Null when there's nothing left.
  */
 export function riskyPart(need: Need): string | null {
-  const q = need.ticket?.review?.question?.trim();
+  const q = (need.ticket?.review?.question ?? need.ticket?.review_question)?.trim();
   let s = need.question.trim();
   if (q && s.startsWith(q)) s = s.slice(q.length).trim().replace(/^\((.*)\)$/s, "$1").trim();
   return s || null;
@@ -941,7 +941,7 @@ export function lookState(ws: Workspace, key: string): LookState {
 }
 
 /** The modal's title: Captain's plain-English summary of the change, else the ticket's title. */
-export const lookTitle = (t: Ticket) => t.review?.summary?.trim() || t.title;
+export const lookTitle = (t: Ticket) => (t.review?.summary ?? t.review_summary)?.trim() || t.title;
 
 export interface LookChip {
   text: string;

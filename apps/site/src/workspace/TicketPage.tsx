@@ -1,3 +1,4 @@
+import { useFullTicket } from "./useFullTicket";
 import { statusHere } from "./glance";
 import { areaWaits, areaWaitText } from "../lib/areas";
 import { reportError } from "../lib/errors";
@@ -37,23 +38,24 @@ import type { Workspace } from "./useWorkspace";
 // blocked by and unblocks, and the context its agent works with.
 
 export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; ticketKey: string }) {
-  const t = ws.byKey.get(ticketKey);
+  const listed = ws.byKey.get(ticketKey);
+  const { ticket: t, loading, error: recordError } = useFullTicket(listed, !!ws.demoDetails);
   const [detail, setDetail] = useState<{ steps: Step[]; comments: Comment[]; events: TicketEvent[] } | null>(null);
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
-    if (!t) return;
+    if (!listed) return;
     try {
-      setDetail(ws.demoDetails ? ws.demoDetails.get(t.id) ?? { steps: ws.steps.get(t.id) ?? [], comments: [], events: [] } : await ticketDetail(t.id));
+      setDetail(ws.demoDetails ? ws.demoDetails.get(listed.id) ?? { steps: ws.steps.get(listed.id) ?? [], comments: [], events: [] } : await ticketDetail(listed.id));
       setErr("");
     } catch (e) {
       setErr(reportError(e, "load the ticket"));
-      setDetail((d) => d ?? { steps: ws.steps.get(t.id) ?? [], comments: [], events: [] });
+      setDetail((d) => d ?? { steps: ws.steps.get(listed.id) ?? [], comments: [], events: [] });
     }
-  }, [t, ws.steps, ws.demoDetails]);
+  }, [listed, ws.steps, ws.demoDetails]);
   useEffect(() => {
     void load();
-  }, [load, ws]);
+  }, [load]);
 
   if (!t) {
     return (
@@ -65,6 +67,9 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
       </div>
     );
   }
+
+  if (recordError && loading) return <p role="alert">{recordError}</p>;
+  if (loading) return <p>Loading the ticket…</p>;
 
   const save = async (patch: TicketPatch) => {
     try {
@@ -134,7 +139,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
               )}
             </div>
           )}
-          {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
+          {(err || recordError) && <p role="alert" style={{ color: "var(--danger)", fontSize: 14 }}>{err || recordError}</p>}
 
           {t.summary && (
             <Panel title="What changed">
@@ -143,11 +148,11 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
           )}
 
           <Panel title="Description">
-            <EditableText value={t.description} onSave={(description) => save({ description })} placeholder="Add a description. The assigned agent reads this as its brief." />
+            <EditableText value={t.description ?? ""} onSave={(description) => save({ description })} placeholder="Add a description. The assigned agent reads this as its brief." />
           </Panel>
 
           <Panel title="Done means">
-            <ListEditor items={t.done_means} onSave={(done_means) => save({ done_means })} placeholder="One acceptance check per line" />
+            <ListEditor items={t.done_means ?? []} onSave={(done_means) => save({ done_means })} placeholder="One acceptance check per line" />
           </Panel>
 
           {(t.type === "epic" || kids.length > 0) && (
@@ -346,7 +351,7 @@ function EditableTitle({ value, onSave }: { value: string; onSave: (v: string) =
 function EditableText({ value, onSave, placeholder }: { value: string; onSave: (v: string) => void; placeholder: string }) {
   const [editing, setEditing] = useState(false);
   const [v, setV] = useState(value);
-  useEffect(() => setV(value), [value]);
+  useEffect(() => { if (!editing) setV(value); }, [value, editing]);
   if (!editing) {
     return (
       <div style={{ padding: "12px 14px", borderRadius: 12, background: "var(--surface)", border: "1px solid var(--line-soft)", cursor: "text" }} onClick={() => setEditing(true)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setEditing(true)} aria-label="Edit description">
@@ -372,7 +377,7 @@ function EditableText({ value, onSave, placeholder }: { value: string; onSave: (
 function ListEditor({ items, onSave, placeholder }: { items: string[]; onSave: (v: string[]) => void; placeholder: string }) {
   const [editing, setEditing] = useState(false);
   const [v, setV] = useState(items.join("\n"));
-  useEffect(() => setV(items.join("\n")), [items]);
+  useEffect(() => { if (!editing) setV(items.join("\n")); }, [items, editing]);
   if (!editing) {
     return (
       <div onClick={() => setEditing(true)} role="button" tabIndex={0} onKeyDown={(e) => e.key === "Enter" && setEditing(true)} style={{ cursor: "text", display: "grid", gap: 6 }}>

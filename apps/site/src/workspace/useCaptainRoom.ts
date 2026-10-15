@@ -2,7 +2,7 @@ import { statusHere } from "./glance";
 import { reportError } from "../lib/errors";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addComment, allowMerge, approveTicket, lastCaughtUp, markCaughtUp, updateTicket, type Agent, type Project, type Ticket } from "../lib/data";
-import { postToRoom, roomFor, roomMessages, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
+import { postToRoom, roomFor, roomFeed, mergeRoomMember, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
 import { catchUp, closingAnswers, closingReply, conversation, needsYou, NO_ANSWER_NEEDED, OK_START, plans as plansOf, settledWithoutYou, type Answer, type CatchUp, type Need, type Plan, type Turn } from "./captain";
 import { agentDot, agentOnline } from "./People";
 import type { Workspace } from "./useWorkspace";
@@ -114,23 +114,32 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   const [moved, setMoved] = useState<Set<string>>(new Set());
   const started = useRef(false);
 
+  const feed = useMemo(() => project.room_id ? roomFeed(project.room_id) : null, [project.room_id, profileId]);
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const refreshMembers = useCallback(async () => {
+    try { setRoom(await roomFor(project.room_id, profileId)); }
+    catch (e) { setLoadError(reportError(e, "load the room members")); }
+  }, [project.room_id, profileId]);
+
   const load = useCallback(async () => {
     try {
       // The preview goes through the same path, with the room and its messages each arriving late.
-      const r = demo ? await wait((demo.delayMs ?? 0) / 2).then(() => demo.room) : await roomFor(project.room_id, profileId);
-      const msgs = !r ? [] : demo ? await wait((demo.delayMs ?? 0) / 2).then(() => demo.messages) : await roomMessages(r.id);
+      const r = demo ? await wait((demo.delayMs ?? 0) / 2).then(() => demo.room) : (roomRef.current ?? await roomFor(project.room_id, profileId));
+      const msgs = !r ? [] : demo ? await wait((demo.delayMs ?? 0) / 2).then(() => demo.messages) : await feed!.load();
       // Set together, in one render. A reload keeps the old room and messages until the new ones
       // are in, so watching never flashes the page back to "Loading…".
       setLoaded(msgs);
-      setRoom(r);
+      setRoom((current) => current?.id === r?.id ? current : r);
       setLoadError("");
     } catch (e) {
       setLoadError(reportError(e, "load the room"));
       setRoom((x) => (x === undefined ? null : x));
     }
-  }, [project.room_id, profileId, demo]);
+  }, [project.room_id, profileId, demo, feed]);
 
   useEffect(() => {
+    roomRef.current = undefined;
     setRoom(undefined);
     setLoaded([]);
     setPending([]);
@@ -143,7 +152,11 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     started.current = false;
     void load();
   }, [load]);
-  useEffect(() => (room && !demo ? watchRoom(room.id, () => void load()) : undefined), [room?.id, load]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => (room && !demo ? watchRoom(room.id, () => void load(), {
+    memberIds: () => new Set(roomRef.current?.members.map((m) => m.id)),
+    onMember: (row) => setRoom((r) => mergeRoomMember(r, row)),
+    onMembership: () => void refreshMembers(),
+  }) : undefined), [room?.id, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const messages = useMemo(() => [...loaded, ...pending], [loaded, pending]);
   const captainId = project.lead_agent_id;

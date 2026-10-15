@@ -1,3 +1,4 @@
+import { useFullTicket } from "./useFullTicket";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { mergePolicyOf } from "../lib/data";
 import { closeLook } from "../lib/router";
@@ -17,7 +18,14 @@ const TITLE = "ak-look-title";
 export function LookFirst({ ws, cr, me, ticketKey, covered }: { ws: Workspace; cr: CaptainRoom; me: string; ticketKey: string; covered: boolean }) {
   const slug = ws.project.slug;
   const key = ticketKey.toUpperCase();
-  const state = lookState(ws, key);
+  const full = useFullTicket(ws.byKey.get(key), !!ws.demoDetails);
+  const record = full.ticket;
+  const detailedWs = record ? {
+    ...ws,
+    tickets: ws.tickets.map((t) => t.id === record.id ? record : t),
+    byKey: new Map(ws.byKey).set(key, record),
+  } : ws;
+  const state = lookState(detailedWs, key);
   // OK'd on this visit: stays green even after the reload shows the ticket as answered.
   const okd = cr.okd.find((n) => n.ticket?.key === key);
   const need = state.kind === "ask" ? state.need : (okd ?? null);
@@ -94,7 +102,9 @@ export function LookFirst({ ws, cr, me, ticketKey, covered }: { ws: Workspace; c
   }, [key]);
 
   let body: ReactNode;
-  if (okd) {
+  if (full.loading) {
+    body = <><CloseRow onClose={close} /><p id={TITLE} role={full.error ? "alert" : undefined}>{full.error || "Loading the evidence…"}</p></>;
+  } else if (okd) {
     body = (
       <>
         <CloseRow onClose={close} />
@@ -226,6 +236,7 @@ export function LookFirst({ ws, cr, me, ticketKey, covered }: { ws: Workspace; c
       }}
     >
       <section ref={panel} className="ak-look" role="dialog" aria-modal="true" aria-labelledby={TITLE} tabIndex={-1}>
+        {!full.loading && full.error && <p role="alert">{full.error}</p>}
         {body}
       </section>
     </div>

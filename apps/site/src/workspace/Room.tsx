@@ -1,7 +1,7 @@
 import { reportError } from "../lib/errors";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "../lib/session";
-import { isBookkeeping, postToRoom, problemOf, roomFor, roomMessages, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
+import { isBookkeeping, postToRoom, problemOf, roomFor, roomFeed, mergeRoomMember, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
 import { go } from "../lib/router";
 import { AgentAvatar, Button, PersonAvatar } from "../ui";
 import { ago, LeadBadge, Markdown } from "./bits";
@@ -72,23 +72,43 @@ export function Room({ ws, profile, demo }: { ws: Workspace; profile: Profile; d
     }
   };
 
+  const feed = useMemo(() => ws.project.room_id ? roomFeed(ws.project.room_id) : null, [ws.project.room_id, profile.id]);
+  const roomRef = useRef(room);
+  roomRef.current = room;
+  const refreshMembers = useCallback(async () => {
+    try { setRoom(await roomFor(ws.project.room_id, profile.id)); }
+    catch (e) { setErr(reportError(e, "load the room members")); }
+  }, [ws.project.room_id, profile.id]);
+
   const load = useCallback(async () => {
     if (demo) return;
     try {
-      const r = await roomFor(ws.project.room_id, profile.id);
-      setRoom(r);
-      if (r) setMessages(await roomMessages(r.id));
+      const r = roomRef.current ?? await roomFor(ws.project.room_id, profile.id);
+      setRoom((current) => current?.id === r?.id ? current : r);
+      if (r) setMessages(await feed!.load());
       setErr("");
     } catch (e) {
       setErr(reportError(e, "load the room"));
       setRoom((x) => (x === undefined ? null : x));
     }
-  }, [ws.project.room_id, profile.id, demo]);
+  }, [ws.project.room_id, profile.id, demo, feed]);
 
   useEffect(() => {
+    if (demo) {
+      setRoom(demo.room);
+      setMessages(demo.messages);
+      return;
+    }
+    roomRef.current = undefined;
+    setRoom(undefined);
+    setMessages([]);
     void load();
   }, [load]);
-  useEffect(() => (room && !demo ? watchRoom(room.id, () => void load()) : undefined), [room?.id, load]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => (room && !demo ? watchRoom(room.id, () => void load(), {
+    memberIds: () => new Set(roomRef.current?.members.map((m) => m.id)),
+    onMember: (row) => setRoom((r) => mergeRoomMember(r, row)),
+    onMembership: () => void refreshMembers(),
+  }) : undefined), [room?.id, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const byId = useMemo(() => new Map((room?.members ?? []).map((m) => [m.id, m])), [room]);
   const shown = thread ? messages.filter((m) => m.id === thread || m.thread_id === thread) : messages;

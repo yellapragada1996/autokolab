@@ -138,7 +138,7 @@ export function results(ws: Workspace, events: TicketEvent[], period: Period, no
 
   const merged = ws.tickets.filter((t) => t.type !== "epic" && t.status === "done" && !!t.pr_url && inRange(range, t.completed_at));
   const reviewed = merged.filter((t) => !!t.approved_sha);
-  const tested = reviewed.filter((t) => t.pr_facts?.sha === t.approved_sha && t.pr_facts?.checks.state === "success");
+  const tested = reviewed.filter((t) => (t.checks_sha ?? t.pr_facts?.sha) === t.approved_sha && (t.checks ?? t.pr_facts?.checks)?.state === "success");
 
   const count: Record<AskKind, number> = { risky_merge: 0, question: 0, problem: 0 };
   for (const e of evs) {

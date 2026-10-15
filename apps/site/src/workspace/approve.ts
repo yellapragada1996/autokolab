@@ -17,9 +17,9 @@ export const BUILT_IT = "You worked on this, so someone else has to approve it."
 /** "Tests: 48 of 48 passed on GitHub". */
 export const testsLine = (passed: number, total: number) => `Tests: ${passed} of ${total} passed on GitHub`;
 
-export function approveState(t: Pick<Ticket, "assignee_id" | "built_by" | "pr_facts">, me: string): ApproveState {
+export function approveState(t: Pick<Ticket, "assignee_id" | "built_by" | "pr_facts" | "checks" | "checks_sha">, me: string): ApproveState {
   if (t.assignee_id === me || (t.built_by ?? []).includes(me)) return { kind: "built", why: BUILT_IT };
-  const f = t.pr_facts;
+  const f = t.pr_facts ?? (t.checks_sha && t.checks ? { sha: t.checks_sha, checks: t.checks } : null);
   if (!f || !/^[0-9a-f]{40}$/i.test(f.sha)) return { kind: "not_yet", why: "Captain hasn't recorded this pull request's tests yet, so it can't be approved here yet." };
   const { passed, total, state } = f.checks;
   if (!total) return { kind: "not_yet", why: "No automatic tests ran on this pull request, so it can't be approved here." };
@@ -45,13 +45,13 @@ export type Approval =
   /** Approved, but the runner hasn't recorded which commit the pull request is at. */
   | { kind: "unknown"; approved: string };
 
-type ApprovalFields = Pick<Ticket, "status" | "pr_url" | "approved_sha" | "pr_facts">;
+type ApprovalFields = Pick<Ticket, "status" | "pr_url" | "approved_sha" | "pr_facts" | "checks" | "checks_sha">;
 
 export function approval(t: ApprovalFields): Approval {
   if (t.status !== "review" || !t.pr_url) return { kind: "none" };
   const approved = t.approved_sha?.trim().toLowerCase();
   if (!approved) return { kind: "never" };
-  const head = t.pr_facts?.sha?.trim().toLowerCase();
+  const head = (t.checks_sha ?? t.pr_facts?.sha)?.trim().toLowerCase();
   if (!head || !/^[0-9a-f]{40}$/.test(head)) return { kind: "unknown", approved };
   return head.startsWith(approved) ? { kind: "current", sha: approved } : { kind: "moved", approved, head };
 }

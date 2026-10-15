@@ -55,7 +55,7 @@ export function partLine(t: Ticket): string {
 export function outcomeOf(epic: Ticket): string | null {
   const s = epic.summary?.trim();
   if (s) return s;
-  const first = epic.description.trim().split(/\n\s*\n/)[0]?.trim() ?? "";
+  const first = (epic.description ?? "").trim().split(/\n\s*\n/)[0]?.trim() ?? "";
   return first && first.length <= 160 && !/[\n#*`>|]/.test(first) && !/^[-+]\s/.test(first) ? first : null;
 }
 
@@ -214,7 +214,8 @@ export function agentRows(ws: Workspace, now: Date): AgentRow[] {
       else if (/usage limit/i.test(a.status_note ?? "")) extra.push("usage limit");
       if (back) extra.push(`resumes ${aboutTime(back)} by itself`);
     }
-    if (t.pr_facts?.checks?.state === "success" && t.pr_facts.checks.total > 0) extra.splice(kind === "running" ? 1 : 0, 0, "tests passed");
+    const checks = t.checks ?? t.pr_facts?.checks;
+    if (checks?.state === "success" && checks.total > 0) extra.splice(kind === "running" ? 1 : 0, 0, "tests passed");
     const held = Math.max(0, now.getTime() - Date.parse(since));
     const heldText = held >= 60_000 ? awayText(held) : "just now";
     const detail = [feature ?? FIXES, ...extra, heldText].join(" · ");
@@ -676,7 +677,7 @@ export function watch(ws: Workspace, events: TicketEvent[], now: Date): WatchIte
   const out: WatchItem[] = [];
 
   for (const t of open) {
-    if ((t.status === "review" || t.status === "in_progress") && t.pr_facts?.checks?.state === "failure") out.push({ text: `Tests are failing on ${subject(t)}.`, tone: "problem", key: t.key });
+    if ((t.status === "review" || t.status === "in_progress") && (t.checks ?? t.pr_facts?.checks)?.state === "failure") out.push({ text: `Tests are failing on ${subject(t)}.`, tone: "problem", key: t.key });
   }
 
   const sentBack = new Map<string, number>();
