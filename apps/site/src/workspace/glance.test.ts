@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MERGE_OK_PREFIX, type Ticket, type TicketEvent } from "../lib/data";
 import { needsYou, type CatchUp } from "./captain";
 import { BIRCH, CAPTAIN, FJORD, ME, at, decision, ticket, workspace } from "./fixtures";
-import { agentRows, askItems, crew, dayIn, firstSentence, pulse, finishedWhen, isPhrase, outcomeOf, overview, partLine, plainPhrase, progressWord, resumeAt, sinceItems, sinceLine, stopReason, team, watch, withoutKeys, workTime, youLine } from "./glance";
+import { statusHere, agentRows, askItems, crew, dayIn, firstSentence, pulse, finishedWhen, isPhrase, outcomeOf, overview, partLine, plainPhrase, progressWord, resumeAt, sinceItems, sinceLine, stopReason, team, watch, withoutKeys, workTime, youLine } from "./glance";
 import type { Workspace } from "./useWorkspace";
 
 const NOW = new Date(at("12:00"));
@@ -478,4 +478,85 @@ describe("at a glance (AK-111)", () => {
     expect(firstSentence("Redis or Postgres? Postgres is simpler.")).toBe("Redis or Postgres?");
     expect(firstSentence("x".repeat(200), 20)).toHaveLength(20);
   });
+});
+
+
+describe("status in this project", () => {
+  const setup = () => {
+    const t = ticket({ key: "SH-90", status: "in_progress", assignee_id: BIRCH, title: "Local work" });
+    const ws = workspace([t]);
+    run(ws, BIRCH, t);
+    return { ws, t, a: ws.agentOf(BIRCH)! };
+  };
+  it("keeps the note and ticket for this project", () => {
+    const { ws, t, a } = setup();
+    Object.assign(a, { status_project_id: ws.project.id, status_note: "Making profiles" });
+    expect(statusHere(a, ws.project.id, ws.byId, NOW)).toMatchObject({ elsewhere: false, status_note: "Making profiles", current_ticket_id: t.id });
+    expect(team(ws, NOW).agents.find((x) => x.id === BIRCH)?.state).toBe("working");
+    expect(agentRows(ws, NOW).find((x) => x.agentId === BIRCH)?.key).toBe(t.key);
+  });
+  it.each(["building", "planning", "waiting_human", "blocked", "idle"] as const)("hides another project's %s status and counts it as busy", (status) => {
+    const { ws, a } = setup();
+    Object.assign(a, { status, status_project_id: "other", status_note: "Secret project title", current_ticket_id: "foreign-ticket" });
+    expect(statusHere(a, ws.project.id, ws.byId, NOW)).toMatchObject({ elsewhere: true, status_note: null, current_ticket_id: null });
+    const t = team(ws, NOW);
+    expect(t.agents.find((x) => x.id === BIRCH)).toMatchObject({ state: "elsewhere", label: "Busy in another project" });
+    const rows = agentRows(ws, NOW);
+    expect(rows.some((x) => x.agentId === BIRCH)).toBe(false);
+    expect(crew(t, rows).find((x) => x.id === BIRCH)).toMatchObject({ doing: "Busy in another project", key: null, feature: null });
+    expect(look(ws).state).not.toBe("working");
+    expect(JSON.stringify({ t, rows, watch: watch(ws, [], NOW) })).not.toContain("Secret project title");
+  });
+  it("recognises a foreign ticket from old helpers, even if a project id claims it is local", () => {
+    const { ws, a } = setup();
+    Object.assign(a, { current_ticket_id: "foreign-ticket", status_project_id: ws.project.id });
+    expect(statusHere(a, ws.project.id, ws.byId, NOW).elsewhere).toBe(true);
+    a.status_project_id = null;
+    expect(statusHere(a, ws.project.id, ws.byId, NOW).elsewhere).toBe(true);
+    expect(team(ws, NOW).agents.find((x) => x.id === BIRCH)?.state).toBe("elsewhere");
+  });
+  it("keeps old helpers' unscoped status when there is no foreign ticket", () => {
+    const { ws, a } = setup();
+    Object.assign(a, { status_project_id: null, current_ticket_id: null, status_note: "Planning here" });
+    expect(statusHere(a, ws.project.id, ws.byId, NOW)).toMatchObject({ elsewhere: false, status_note: "Planning here" });
+    expect(agentRows(ws, NOW).find((x) => x.agentId === BIRCH)?.key).toBe("SH-90");
+  });
+  it.each(["offline", "paused"] as const)("shows agent-wide %s without foreign text or a ticket", (status) => {
+    const { ws, a } = setup();
+    Object.assign(a, { status, status_project_id: "other", status_note: "Secret title", current_ticket_id: "foreign-ticket" });
+    expect(statusHere(a, ws.project.id, ws.byId, NOW)).toMatchObject({ elsewhere: false, status, status_note: null, current_ticket_id: null });
+    expect(team(ws, NOW).agents.find((x) => x.id === BIRCH)?.state).toBe(status === "offline" ? "offline" : "stopped");
+  });
+  it("keeps usage-limit waits, reset time and today's usage across projects", () => {
+    const { ws, a } = setup();
+    Object.assign(a, { status: "idle", status_project_id: "other", current_ticket_id: "foreign-ticket",
+      status_note: "Secret title. Waiting for my usage limit to reset, about 5:40 pm (UTC)",
+      waiting_until: at("17:40"), usage_day: "2026-10-10", used_today_s: 3600, daily_limit_s: 7200 });
+    const scoped = statusHere(a, ws.project.id, ws.byId, NOW);
+    expect(scoped).toMatchObject({ elsewhere: false, status_note: "Waiting for my usage limit to reset, about 5:40 pm (UTC)", current_ticket_id: null });
+    expect(team(ws, NOW).agents.find((x) => x.id === BIRCH)).toMatchObject({ state: "limit", usage: { text: "1 h of 2 h today" } });
+    a.waiting_until = null;
+    expect(team(ws, NOW).agents.find((x) => x.id === BIRCH)?.state).toBe("limit");
+  });
+  it("does not suggest moving work to an agent busy elsewhere", () => {
+    const waiting = Array.from({ length: 4 }, (_, i) => ticket({ key: `SH-${90 + i}`, assignee_id: FJORD }));
+    const ws = workspace(waiting);
+    seen(ws, BIRCH, { status: "planning", status_project_id: "other" });
+    expect(watch(ws, [], NOW).some((x) => x.text.includes("Birch is free"))).toBe(false);
+  });
+});
+
+
+it("hides a ticket explicitly known to belong to a different project", () => {
+  const t = ticket({ key: "OTHER-1", project_id: "other", title: "Private title" });
+  const ws = workspace([t]);
+  const a = run(ws, BIRCH, t);
+  expect(statusHere(a, ws.project.id, ws.byId, NOW)).toMatchObject({ elsewhere: true, current_ticket_id: null });
+});
+
+it("normalises a stale heartbeat to offline even when the status still says building", () => {
+  const ws = workspace([]);
+  const a = run(ws, BIRCH);
+  a.last_seen_at = at("10:00");
+  expect(statusHere(a, ws.project.id, ws.byId, NOW).status).toBe("offline");
 });

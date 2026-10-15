@@ -82,6 +82,8 @@ export interface Agent {
   status: "idle" | "planning" | "building" | "waiting_human" | "blocked" | "paused" | "offline";
   status_note: string | null;
   current_ticket_id: string | null;
+  /** Project whose work the status describes (schema 27; absent on older databases). */
+  status_project_id?: string | null;
   last_seen_at: string | null;
   /** Set from AutoKolab (schema 10); null means the agent's machine decides. */
   model: string | null;

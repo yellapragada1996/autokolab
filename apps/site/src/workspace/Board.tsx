@@ -192,7 +192,7 @@ export function Board({ ws, me, onNew, groupBy, needs }: { ws: Workspace; me: st
               {id === me ? " (you)" : ""}
             </span>
             {id === lead && <LeadBadge />}
-            {st && <span title={st.hover} style={{ color: "var(--text-muted)" }}>{st.word.toLowerCase()}</span>}
+            {st && <span title={st.hover} style={{ color: "var(--text-muted)" }}>{st.state === "elsewhere" ? "Busy in another project" : st.word.toLowerCase()}</span>}
           </>
         ),
       };

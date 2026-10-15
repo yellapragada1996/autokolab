@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type Ticket } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, reportAgentStatus, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type Ticket } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -1326,6 +1326,7 @@ export class Runner {
     this.current = { what: ids, abort };
     await this.updateRuns(job, { state: "running", branch: worktree.branch, started_at: now() });
     await ak.heartbeat("working").catch(() => undefined);
+    await this.setStatus("planning", "Reading the conversation", null, project?.project.id);
     this.log(`Working on ${ids} in ${room.name} (${worktree.branch})${isReply ? " as a reply" : ""}${resume ? ", continuing session" : ""}.`);
     // A follower's reply is short and its answer says enough: no start notice.
     const notice = this.limitWait?.kind === "message" || replyLimits ? null : startNotice(m.id, worktree.branch, Boolean(resume), job.fromInstructor);
@@ -1878,11 +1879,15 @@ export class Runner {
   }
 
   /** What this agent is doing, for the board and People. Quietly does nothing for v1-only agents. */
-  private setStatus(status: AgentStatus, note: string | null = null, ticketId: string | null = null): Promise<void> {
+  private setStatus(status: AgentStatus, note: string | null = null, ticketId: string | null = null, projectId?: string): Promise<void> {
     return this.inOrder(async () => {
       if (!this.isAgentRow || !this.projects.length) return;
       try {
-        await this.projects[0].status(status, note, ticketId);
+        const ticket = ticketId ? await this.ak.sb.from("tickets").select("project_id").eq("id", ticketId).maybeSingle() : null;
+        const id = projectId ?? ticket?.data?.project_id;
+        const p = this.projects.find((p) => p.project.id === id);
+        if (p) await p.status(status, note, ticketId);
+        else await reportAgentStatus(this.ak.sb, status, note, ticketId, undefined, id ?? null);
       } catch (e) {
         if ((e as Error).message.includes("only agents")) this.isAgentRow = false;
       }
@@ -1908,9 +1913,13 @@ export class Runner {
       void this.inOrder(async () => {
         if (!this.isAgentRow || !this.projects.length) return;
         try {
-          const { data, error } = await this.ak.sb.from("agents").select("status, status_note, current_ticket_id").eq("id", this.ak.me.id).maybeSingle();
+          const { data, error } = await this.ak.sb.from("agents").select("*").eq("id", this.ak.me.id).maybeSingle();
           if (error) throw new Error(error.message);
-          if (data) await this.projects[0].status(data.status as AgentStatus, data.status_note, data.current_ticket_id, r);
+          if (data) {
+            const p = this.projects.find((p) => p.project.id === data.status_project_id);
+            if (p) await p.status(data.status as AgentStatus, data.status_note, data.current_ticket_id, r);
+            else await reportAgentStatus(this.ak.sb, data.status as AgentStatus, data.status_note, data.current_ticket_id, r, data.status_project_id ?? null);
+          }
         } catch (e) {
           this.log(`Couldn't report my model: ${(e as Error).message}`);
         }
@@ -1922,8 +1931,13 @@ export class Runner {
   /** Keep "last seen" fresh without changing what the agent said it's doing. */
   private async touchAgent(): Promise<void> {
     if (!this.isAgentRow || !this.projects.length) return;
-    const { data } = await this.ak.sb.from("agents").select("status, status_note, current_ticket_id").eq("id", this.ak.me.id).maybeSingle();
-    if (data) await this.setStatus(data.status as AgentStatus, data.status_note, data.current_ticket_id);
+    await this.inOrder(async () => {
+      const { data } = await this.ak.sb.from("agents").select("*").eq("id", this.ak.me.id).maybeSingle();
+      if (!data) return;
+      const p = this.projects.find((p) => p.project.id === data.status_project_id);
+      if (p) await p.status(data.status as AgentStatus, data.status_note, data.current_ticket_id);
+      else await reportAgentStatus(this.ak.sb, data.status as AgentStatus, data.status_note, data.current_ticket_id, undefined, data.status_project_id ?? null);
+    });
   }
 
   /**
@@ -2272,7 +2286,7 @@ export class Runner {
     const abort = new AbortController();
     this.current = { what: `${t.key}'s question`, abort };
     await ak.heartbeat("working").catch(() => undefined);
-    await this.setStatus("planning", `Looking at ${p.nameOf(t.assignee_id)}'s question on ${t.key}`);
+    await this.setStatus("planning", `Looking at ${p.nameOf(t.assignee_id)}'s question on ${t.key}`, t.id, p.project.id);
     this.log(`Looking at the question on ${t.key} in ${p.project.name}.`);
     let result!: EngineRun;
     const startedAt = Date.now();

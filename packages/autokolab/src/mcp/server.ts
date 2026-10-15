@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { AutoKolab, RoomView } from "../core/client.js";
 import { formatItem, formatMember, formatMessage, formatWork } from "../core/format.js";
 import { connectFromConfig } from "../core/node.js";
-import { EFFORTS, NOTHING_UNSURE, PRIORITIES, ProjectView, STATUSES, TYPES, GUIDE_PARTS, modelChangeMessage, type ModelChange } from "../core/projects.js";
+import { EFFORTS, NOTHING_UNSURE, PRIORITIES, ProjectView, reportAgentStatus, type AgentStatus, STATUSES, TYPES, GUIDE_PARTS, modelChangeMessage, type ModelChange } from "../core/projects.js";
 import { detectRepo, resolveRoom } from "../core/repo.js";
 import { approvalMessage, ghPrView, plainGhError, prNumber, reviewFrom, reviewedShaProblem, riskyFiles, type ApproveArgs } from "../runner/merge.js";
 import { BULLETIN_KINDS, BULLETIN_STATES, MESSAGE_KINDS, type Message } from "../core/types.js";
@@ -99,19 +99,25 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
   // agent is doing while it uses the tools.
   const underRunner = process.env.AUTOKOLAB_RUNNER === "1";
   let quiet: NodeJS.Timeout | undefined;
-  const presence = async (c: AutoKolab, tool?: string): Promise<void> => {
+  const presence = async (c: AutoKolab, tool?: string, project?: string, room?: string): Promise<void> => {
     if (underRunner) return;
-    const { data } = await c.sb.from("agents").select("status, status_note, current_ticket_id").eq("id", c.me.id).maybeSingle();
+    const { data } = await c.sb.from("agents").select("*").eq("id", c.me.id).maybeSingle();
     if (!data) return; // not on a project board
     const note = tool ? ACTIVITY[tool] : undefined;
     if (note) {
-      await c.sb.rpc("agent_status", { p_status: "planning", p_note: note, p_ticket: data.current_ticket_id });
+      const roomRepo = room || fixedRoom ? resolveRoom(c, room ?? fixedRoom).room.repo : undefined;
+      const p = await ProjectView.find(c.sb, c.me.id, project ?? fixedProject, roomRepo ?? detectRepo());
+      const ticket = p?.project.id === data.status_project_id ? data.current_ticket_id : null;
+      if (p) await p.status("planning", note, ticket);
+      else await reportAgentStatus(c.sb, "planning", note, data.current_ticket_id, undefined, data.status_project_id ?? null);
       clearTimeout(quiet);
-      quiet = setTimeout(() => void c.sb.rpc("agent_status", { p_status: "idle", p_note: null, p_ticket: null }), QUIET_MS);
+      quiet = setTimeout(() => void (p ? p.status("idle") : reportAgentStatus(c.sb, "idle")).catch(() => undefined), QUIET_MS);
       quiet.unref();
     } else {
       const status = data.status === "offline" ? "idle" : data.status;
-      await c.sb.rpc("agent_status", { p_status: status, p_note: status === "idle" ? null : data.status_note, p_ticket: data.current_ticket_id });
+      const p = data.status_project_id ? await ProjectView.find(c.sb, c.me.id, data.status_project_id) : null;
+      if (p) await p.status(status as AgentStatus, status === "idle" ? null : data.status_note, data.current_ticket_id);
+      else await reportAgentStatus(c.sb, status as AgentStatus, status === "idle" ? null : data.status_note, data.current_ticket_id, undefined, data.status_project_id ?? null);
     }
   };
 
@@ -142,7 +148,7 @@ export async function runMcpServer(profile?: string, fixedRoom?: string, fixedPr
   (server as unknown as { registerTool: (...a: unknown[]) => unknown }).registerTool = (name: unknown, cfg: unknown, handler: unknown) =>
     register(name, cfg, async (...args: unknown[]) => {
       void ak()
-        .then((c) => presence(c, name as string))
+        .then((c) => presence(c, name as string, (args[0] as { project?: string })?.project, (args[0] as { room?: string })?.room))
         .catch(() => undefined);
       return (handler as (...x: unknown[]) => unknown)(...args);
     });
