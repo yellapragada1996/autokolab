@@ -1,3 +1,4 @@
+import { useFullTicket } from "./useFullTicket";
 import { Fragment, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { href, onNav, openShow, showHref, type ShowPart } from "../lib/router";
 import { evidence, type EvidenceKind, type EvidenceRow } from "./evidence";
@@ -22,7 +23,10 @@ export function SheetLink({ ticketKey, part = "summary", children, style }: { ti
 }
 
 export function EvidencePanel({ ws, ticket, id }: { ws: Workspace; ticket: Ticket; id?: string }) {
-  const rows = evidence(ws, ticket);
+  const full = useFullTicket(ticket, !!ws.demoDetails);
+  if (full.error) return <p role="alert">{full.error}</p>;
+  if (full.loading) return <p>Loading the evidence…</p>;
+  const rows = evidence(ws, full.ticket!);
   return (
     <div id={id} className="ak-enter" style={{ borderRadius: "var(--radius-lg)", background: "var(--surface-sunken)", border: "1px solid var(--border-subtle)", minWidth: 0, overflow: "hidden" }}>
       <ul aria-label={`How I know about ${ticket.key}`} style={{ listStyle: "none", margin: 0, padding: 0 }}>

@@ -1,3 +1,4 @@
+import { useFullTicket } from "./useFullTicket";
 import { plainError, reportError } from "../lib/errors";
 import { useEffect, useRef, useState } from "react";
 import { ticketDetail, type TicketEvent } from "../lib/data";
@@ -15,7 +16,7 @@ const PARTS: { id: ShowPart; label: string }[] = [
 ];
 
 export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Workspace; captain: CaptainRoom; ticketKey: string; part: ShowPart; demoEvents?: Map<string, TicketEvent[]> }) {
-  const ticket = ws.byKey.get(ticketKey);
+  const { ticket, loading, error: recordError } = useFullTicket(ws.byKey.get(ticketKey), !!ws.demoDetails);
   const panel = useRef<HTMLElement>(null);
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const [events, setEvents] = useState<TicketEvent[] | null>(null);
@@ -93,7 +94,7 @@ export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Wor
           </div>
           <button className="ak-show-close" type="button" onClick={closeShow} aria-label="Close Show the work">×</button>
         </header>
-        {!ticket ? <p style={{ padding: "22px 26px", fontSize: 14 }}>No ticket {ticketKey} in this project.</p> : <>
+        {recordError ? <p role="alert">{recordError}</p> : loading ? <p>Loading the ticket…</p> : !ticket ? <p style={{ padding: "22px 26px", fontSize: 14 }}>No ticket {ticketKey} in this project.</p> : <>
           <div className="ak-show-tabs" role="tablist" aria-label="Show the work sections">
             {PARTS.map((tab, i) => <button key={tab.id} ref={(el) => { tabs.current[i] = el; }} type="button" role="tab" id={`ak-show-tab-${tab.id}`} aria-controls="ak-show-panel" aria-selected={part === tab.id} tabIndex={part === tab.id ? 0 : -1} onClick={() => select(tab.id)} onKeyDown={(e) => arrow(e, i)}>{tab.label}</button>)}
           </div>
@@ -101,7 +102,7 @@ export function ShowWork({ ws, captain, ticketKey, part, demoEvents }: { ws: Wor
             {part === "summary" && <>
               <p className="ak-show-summary">{workSummary(ticket)}</p>
               {workRows(ws, ticket).length > 0 && <dl className="ak-show-rows">{workRows(ws, ticket).map((row) => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}{row.sha && <> · <code>{row.sha}</code></>}{row.at && <> · {new Date(row.at).toLocaleString()}</>}</dd></div>)}</dl>}
-              {ticket.done_means.length > 0 && <section className="ak-show-done"><h3>Done means</h3><ul>{ticket.done_means.map((item, i) => <li key={i}>{(ticket.approved_sha || ticket.status === "done") && <span aria-label="Met" className="ak-show-tick">✓</span>}{item}</li>)}</ul></section>}
+              {(ticket.done_means ?? []).length > 0 && <section className="ak-show-done"><h3>Done means</h3><ul>{(ticket.done_means ?? []).map((item, i) => <li key={i}>{(ticket.approved_sha || ticket.status === "done") && <span aria-label="Met" className="ak-show-tick">✓</span>}{item}</li>)}</ul></section>}
               {undo.kind === "risky" && <p className="ak-show-undo">This change needed an OK to merge (database, CI, dependencies or sign-in), so it can't be undone automatically. Ask Captain if it needs reversing.</p>}
               {undo.kind === "can" && <div className="ak-show-undo">
                 {askedAt ? <p>Asked Captain to undo this. It will show up as a new ticket.</p> : confirm ? <>

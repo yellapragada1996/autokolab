@@ -1,3 +1,4 @@
+import { useFullTicket } from "./useFullTicket";
 import { statusHere } from "./glance";
 import { areaWaits, areaWaitText } from "../lib/areas";
 import { reportError } from "../lib/errors";
@@ -37,7 +38,8 @@ import type { Workspace } from "./useWorkspace";
 // blocked by and unblocks, and the context its agent works with.
 
 export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; ticketKey: string }) {
-  const t = ws.byKey.get(ticketKey);
+  const listed = ws.byKey.get(ticketKey);
+  const { ticket: t, loading, error: recordError } = useFullTicket(listed, !!ws.demoDetails);
   const [detail, setDetail] = useState<{ steps: Step[]; comments: Comment[]; events: TicketEvent[] } | null>(null);
   const [err, setErr] = useState("");
 
@@ -53,7 +55,7 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
   }, [t, ws.steps, ws.demoDetails]);
   useEffect(() => {
     void load();
-  }, [load, ws]);
+  }, [load]);
 
   if (!t) {
     return (
@@ -65,6 +67,9 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
       </div>
     );
   }
+
+  if (recordError) return <p role="alert">{recordError}</p>;
+  if (loading) return <p>Loading the ticket…</p>;
 
   const save = async (patch: TicketPatch) => {
     try {
@@ -143,11 +148,11 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
           )}
 
           <Panel title="Description">
-            <EditableText value={t.description} onSave={(description) => save({ description })} placeholder="Add a description. The assigned agent reads this as its brief." />
+            <EditableText value={t.description ?? ""} onSave={(description) => save({ description })} placeholder="Add a description. The assigned agent reads this as its brief." />
           </Panel>
 
           <Panel title="Done means">
-            <ListEditor items={t.done_means} onSave={(done_means) => save({ done_means })} placeholder="One acceptance check per line" />
+            <ListEditor items={t.done_means ?? []} onSave={(done_means) => save({ done_means })} placeholder="One acceptance check per line" />
           </Panel>
 
           {(t.type === "epic" || kids.length > 0) && (

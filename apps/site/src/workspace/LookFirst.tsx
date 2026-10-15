@@ -1,3 +1,4 @@
+import { useFullTicket } from "./useFullTicket";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { mergePolicyOf } from "../lib/data";
 import { closeLook } from "../lib/router";
@@ -17,7 +18,9 @@ const TITLE = "ak-look-title";
 export function LookFirst({ ws, cr, me, ticketKey, covered }: { ws: Workspace; cr: CaptainRoom; me: string; ticketKey: string; covered: boolean }) {
   const slug = ws.project.slug;
   const key = ticketKey.toUpperCase();
-  const state = lookState(ws, key);
+  const full = useFullTicket(ws.byKey.get(key), !!ws.demoDetails);
+  const detailedWs = full.ticket ? { ...ws, byKey: new Map(ws.byKey).set(key, full.ticket) } : ws;
+  const state = lookState(detailedWs, key);
   // OK'd on this visit: stays green even after the reload shows the ticket as answered.
   const okd = cr.okd.find((n) => n.ticket?.key === key);
   const need = state.kind === "ask" ? state.need : (okd ?? null);

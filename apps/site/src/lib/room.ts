@@ -1,3 +1,4 @@
+import { visiblePoll } from "./poll";
 import { supabase } from "./session";
 
 // The room: the live chat where people and agents talk (one per repo). The website reads it as the
@@ -103,7 +104,16 @@ export async function roomFor(roomId: string | null, profileId: string): Promise
   return { ...room, members, me: mine ? (members.find((m) => m.id === mine.id) ?? null) : null };
 }
 
-export async function roomMessages(roomId: string, limit = 300): Promise<RoomMessage[]> {
+export async function roomMessages(roomId: string, limit = 300, after?: number): Promise<RoomMessage[]> {
+  if (after !== undefined) {
+    const out: RoomMessage[] = [];
+    for (let cursor = after; ; ) {
+      const rows = check<RoomMessage[]>(await supabase.from("messages").select("*").eq("room_id", roomId).gt("id", cursor).order("id").limit(limit));
+      out.push(...rows);
+      if (rows.length < limit) return out;
+      cursor = rows[rows.length - 1].id;
+    }
+  }
   const rows = check<RoomMessage[]>(await supabase.from("messages").select("*").eq("room_id", roomId).order("id", { ascending: false }).limit(limit));
   return rows.reverse();
 }
@@ -112,16 +122,50 @@ export async function postToRoom(roomId: string, body: string, to: string | null
   return check(await supabase.rpc("web_post", { p_room: roomId, p_body: body, p_to: to, p_thread: thread }));
 }
 
-/** New messages as they arrive (plus a safety refresh), until the returned function is called. */
-export function watchRoom(roomId: string, onChange: () => void): () => void {
+/** One cursor per room visit. Serialize reads so an older response cannot replace newer messages. */
+export function roomFeed(roomId: string) {
+  let rows: RoomMessage[] = [];
+  let after: number | undefined;
+  let reading = Promise.resolve(rows);
+  return {
+    load: () => {
+      reading = reading.catch(() => rows).then(async () => {
+        const next = await roomMessages(roomId, 300, after);
+        rows = [...rows, ...next];
+        after = rows.at(-1)?.id ?? 0;
+        return rows;
+      });
+      return reading;
+    },
+  };
+}
+
+export interface RoomWatch {
+  memberIds: () => Set<string>;
+  onMember: (row: Partial<RoomMember> & { revoked?: boolean }) => void;
+  onMembership: () => void;
+}
+
+/** Membership and presence updates never reload the conversation. */
+export function watchRoom(roomId: string, onMessages: () => void, watch: RoomWatch): () => void {
+  const refresh = () => { onMessages(); watch.onMembership(); };
   const ch = supabase
     .channel(`room-${roomId}-${Math.random().toString(36).slice(2)}`)
-    .on("postgres_changes" as never, { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${roomId}` }, onChange)
-    .on("postgres_changes" as never, { event: "UPDATE", schema: "public", table: "members" }, onChange)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${roomId}` }, onMessages)
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "members" }, (payload) => {
+      if (watch.memberIds().has(payload.new.id)) watch.onMember(payload.new);
+    })
+    .on("postgres_changes", { event: "*", schema: "public", table: "room_members", filter: `room_id=eq.${roomId}` }, watch.onMembership)
     .subscribe();
-  const poll = setInterval(onChange, 20_000);
+  const stopPoll = visiblePoll(refresh);
   return () => {
-    clearInterval(poll);
+    stopPoll();
     void supabase.removeChannel(ch);
   };
+}
+
+export function mergeRoomMember(room: Room | null | undefined, row: Partial<RoomMember> & { revoked?: boolean }): Room | null | undefined {
+  if (!room) return room;
+  const members = row.revoked ? room.members.filter((m) => m.id !== row.id) : room.members.map((m) => m.id === row.id ? { ...m, ...row } : m);
+  return { ...room, members, me: members.find((m) => m.id === room.me?.id) ?? null };
 }

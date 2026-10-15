@@ -1,10 +1,10 @@
 import { reportError } from "../lib/errors";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as data from "../lib/data";
 import type { Agent, Comment, Decision, Guide, Invite, Link, People, Project, RunUsage, Step, Ticket, TicketEvent } from "../lib/data";
 
 // One live snapshot of a project: tickets, steps, links, people, agents, decisions and the guide.
-// Re-loads whenever anything changes (realtime), so every screen stays current.
+// Realtime agent updates stay local; ticket and membership changes refresh the list.
 
 export interface Workspace {
   project: Project;
@@ -35,6 +35,8 @@ export interface Workspace {
 export function useWorkspace(project: Project | null): { ws: Workspace | null; error: string } {
   const [state, setState] = useState<Omit<Workspace, "reload" | "nameOf" | "agentOf" | "blockersOf" | "unblocks" | "childrenOf" | "byKey" | "byId"> | null>(null);
   const [error, setError] = useState("");
+  const current = useRef(state);
+  current.current = state;
 
   const load = useCallback(async () => {
     if (!project) return;
@@ -61,7 +63,18 @@ export function useWorkspace(project: Project | null): { ws: Workspace | null; e
     setState(null);
     if (!project) return;
     void load();
-    return data.watchProject(project.id, () => void load());
+    return data.watchProject(project.id, {
+      onChange: () => void load(),
+      ticketIds: () => new Set(current.current?.tickets.map((t) => t.id)),
+      agentIds: () => new Set(current.current?.people.agents.keys()),
+      onAgent: (row, deleted) => setState((s) => {
+        if (!s || !row.id || !s.people.agents.has(row.id)) return s;
+        const agents = new Map(s.people.agents);
+        if (deleted) agents.delete(row.id);
+        else agents.set(row.id, { ...agents.get(row.id)!, ...row });
+        return { ...s, people: { ...s.people, agents } };
+      }),
+    });
   }, [project, load]);
 
   const ws = useMemo<Workspace | null>(() => {

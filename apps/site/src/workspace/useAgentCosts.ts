@@ -1,3 +1,4 @@
+import { visiblePoll } from "../lib/poll";
 import { useEffect, useState } from "react";
 import { usageBetween, type RunUsage } from "../lib/data";
 import { reportError } from "../lib/errors";
@@ -26,10 +27,10 @@ export function useAgentCosts(ws: Workspace | null) {
       }
     };
     void load();
-    const timer = setInterval(() => void load(), 30_000);
+    const stopPoll = visiblePoll(() => void load());
     return () => {
       canceled = true;
-      clearInterval(timer);
+      stopPoll();
     };
   }, [ws?.project.id, ws?.demoUsage]);
   const costs = new Map<string, AgentCost>();

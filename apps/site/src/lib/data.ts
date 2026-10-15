@@ -1,4 +1,4 @@
-import type { RealtimeChannel } from "@supabase/supabase-js";
+import { visiblePoll } from "./poll";
 import { supabase, type Profile } from "./session";
 
 // Everything the workspace reads and writes. RLS on the server decides what each person sees.
@@ -134,7 +134,8 @@ export interface Ticket {
   number: number;
   key: string;
   title: string;
-  description: string;
+  /** Loaded on demand by ticketRecord, omitted from workspace lists. */
+  description?: string;
   type: TicketType;
   priority: Priority;
   status: Status;
@@ -143,7 +144,7 @@ export interface Ticket {
   assignee_id: string | null;
   assignee_type: "human" | "agent" | null;
   reporter_id: string;
-  done_means: string[];
+  done_means?: string[];
   branch: string | null;
   pr_url: string | null;
   needs_human: string | null;
@@ -165,6 +166,9 @@ export interface Ticket {
   review?: Review | null;
   /** What GitHub last said about the PR, recorded by Captain's runner (schema 18; absent before it). */
   pr_facts?: PrFacts | null;
+  /** Small projections for status and Results; no file list or full PR snapshot. */
+  checks?: PrFacts["checks"] | null;
+  checks_sha?: string | null;
   /** Everyone who worked on it; none of them can approve it (schema 17, narrowed by 21; absent before 17). */
   built_by?: string[] | null;
   /** The repo paths or globs it touches; empty means no check (schema 26; absent before it). */
@@ -435,8 +439,25 @@ export async function markCaughtUp(projectId: string): Promise<string> {
 
 // ------------------------------------------------------------------ tickets
 
+// Optional columns may not exist yet on an older server. Retry only missing columns,
+// without ever falling back to downloading descriptions or PR file lists.
+const TICKET_COLUMNS = "id,project_id,number,key,title,type,priority,status,labels,parent_id,assignee_id,assignee_type,reporter_id,branch,pr_url,needs_human,sort_order,created_at,updated_at,started_at,completed_at,approved_sha,approved_by,approved_at,merge_ok_by,merge_ok_at,summary,review,built_by,areas,checks:pr_facts->checks,checks_sha:pr_facts->>sha";
 export async function tickets(projectId: string): Promise<Ticket[]> {
-  return check(await supabase.from("tickets").select("*").eq("project_id", projectId).order("sort_order"));
+  let columns = TICKET_COLUMNS.split(",");
+  for (;;) {
+    const r = await supabase.from("tickets").select(columns.join(",")).eq("project_id", projectId).order("sort_order");
+    if (r.error?.code === "42703") {
+      const missing = /column (?:tickets\.)?(\w+) does not exist/.exec(r.error.message)?.[1];
+      const remaining = columns.filter((c) => c.split(":").pop()!.split("->")[0] !== missing);
+      if (remaining.length < columns.length) { columns = remaining; continue; }
+    }
+    return check(r) as unknown as Ticket[];
+  }
+}
+
+/** Full fields are read only when a person opens the ticket or its evidence. */
+export async function ticketRecord(id: string): Promise<Ticket> {
+  return check(await supabase.from("tickets").select("*").eq("id", id).single());
 }
 
 export async function allSteps(ticketIds: string[]): Promise<Step[]> {
@@ -628,26 +649,39 @@ export async function supersede(id: string, by: string | null): Promise<void> {
 
 // ------------------------------------------------------------------ live updates
 
-/** Re-run `onChange` whenever anything in the project's workspace changes (debounced). */
-export function watchProject(projectId: string, onChange: () => void): () => void {
+export interface ProjectWatch {
+  onChange: () => void;
+  ticketIds: () => Set<string>;
+  agentIds: () => Set<string>;
+  onAgent: (row: Partial<Agent>, deleted: boolean) => void;
+}
+
+/** Heartbeats only update an agent; changes outside this project are ignored. */
+export function watchProject(projectId: string, watch: ProjectWatch): () => void {
   let t: ReturnType<typeof setTimeout> | undefined;
   const bump = () => {
     clearTimeout(t);
-    t = setTimeout(onChange, 150);
+    t = setTimeout(watch.onChange, 150);
   };
-  const channels: RealtimeChannel[] = [];
   const ch = supabase.channel(`project-${projectId}-${Math.random().toString(36).slice(2)}`);
   for (const table of ["tickets", "ticket_events", "decisions", "project_guides", "project_members"]) {
-    ch.on("postgres_changes" as never, { event: "*", schema: "public", table, filter: `project_id=eq.${projectId}` }, bump);
+    ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `project_id=eq.${projectId}` }, bump);
   }
-  for (const table of ["ticket_steps", "ticket_links", "ticket_comments", "agents"]) {
-    ch.on("postgres_changes" as never, { event: "*", schema: "public", table }, bump);
+  for (const table of ["ticket_steps", "ticket_links", "ticket_comments"]) {
+    ch.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+      const row = payload.eventType === "DELETE" ? payload.old : payload.new;
+      if (watch.ticketIds().has(row.ticket_id)) bump();
+    });
   }
-  channels.push(ch.subscribe());
-  const poll = setInterval(onChange, 30_000);
+  ch.on("postgres_changes", { event: "*", schema: "public", table: "agents" }, (payload) => {
+    const row = payload.eventType === "DELETE" ? payload.old : payload.new;
+    if (watch.agentIds().has(row.id)) watch.onAgent(row, payload.eventType === "DELETE");
+  });
+  ch.subscribe();
+  const stopPoll = visiblePoll(watch.onChange);
   return () => {
     clearTimeout(t);
-    clearInterval(poll);
-    for (const c of channels) void supabase.removeChannel(c);
+    stopPoll();
+    void supabase.removeChannel(ch);
   };
 }
