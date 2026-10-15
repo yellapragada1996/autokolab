@@ -570,6 +570,38 @@ set role anon;
 select pg_temp.expect_error($q$select public.report_usage(0, 10800, '2026-10-11')$q$, 'permission denied');
 reset role;
 
+-- ------------------------------------------------ computer name and daily dollar limit (schema 25)
+reset role;
+select pg_temp.expect((select machine is null and daily_usd is null from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'computer and dollar limit start unset');
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e2';
+select pg_temp.expect((select machine = 'ana-mbp' and daily_usd = 5 from public.report_machine('ana-mbp', 5)), 'the agent reports its computer and limit');
+select pg_temp.expect((select machine = 'ana-mbp' and daily_usd = 2.5 from public.report_machine('ana-mbp', 2.499)), 'the limit is kept to cents');
+select pg_temp.expect((select machine = 'ana-mbp' and daily_usd is null from public.report_machine('ana-mbp', null)), 'an agent that spends no dollars has no limit');
+select pg_temp.expect((select daily_usd is null from public.report_machine('ana-mbp', 20000)), 'an impossible limit is stored as unknown');
+-- a name that isn't a plain hostname, or looks like a key, is stored as unknown, not refused
+select pg_temp.expect((select machine is null from public.report_machine('Ana''s Mac', 5)), 'an odd computer name is stored as unknown');
+select pg_temp.expect((select machine is null from public.report_machine('gsk_' || repeat('a1B2', 13), 5)), 'a key-like computer name is never stored');
+select pg_temp.expect((select machine = 'ana-mbp' and daily_usd = 5 from public.report_machine('ana-mbp', 5)), 'the agent reports again');
+select pg_temp.expect_error($q$update public.agents set machine = 'x' where id = '00000000-0000-0000-0000-0000000000e2'$q$, 'permission denied');
+select pg_temp.expect_error($q$update public.agents set daily_usd = 0 where id = '00000000-0000-0000-0000-0000000000e2'$q$, 'permission denied');
+-- only the agent itself: its owner can't write it, and a person isn't an agent
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000b2';
+select pg_temp.expect_error($q$update public.agents set machine = null, daily_usd = null where id = '00000000-0000-0000-0000-0000000000e2'$q$, 'permission denied');
+select pg_temp.expect_error($q$select public.report_machine('ana-mbp', 5)$q$, 'AUTOKOLAB_NOT_AGENT');
+-- another agent's report changes only its own row
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e1';
+select pg_temp.expect((select machine = 'lead-box' and daily_usd is null from public.report_machine('lead-box', null)), 'the lead reports its own computer');
+select pg_temp.expect((select machine = 'ana-mbp' and daily_usd = 5 from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'the lead''s report changed only its own row');
+-- everyone who can see the agent can read it; others don't see the agent at all
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e4';
+select pg_temp.expect((select machine = 'ana-mbp' and daily_usd = 5 from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'a teammate reads the computer and limit');
+set request.jwt.claim.sub = '00000000-0000-0000-0000-0000000000e3';
+select pg_temp.expect(not exists (select 1 from public.agents where id = '00000000-0000-0000-0000-0000000000e2'), 'outsiders don''t see it');
+set role anon;
+select pg_temp.expect_error($q$select public.report_machine('ana-mbp', 5)$q$, 'permission denied');
+reset role;
+
 -- ------------------------------------------------ merge setting and approvals (schema 12)
 reset role;
 -- Modelz (f1): Octo (b1) owns it, Mona (b2) is a person member, e1 leads, e2 and e4 are workers.

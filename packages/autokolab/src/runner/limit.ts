@@ -1,4 +1,5 @@
-import type { UsageReport } from "../core/projects.js";
+import type { MachineReport, UsageReport } from "../core/projects.js";
+import { looksLikeSecret } from "../core/secrets.js";
 import type { EngineRun } from "./engines.js";
 
 /**
@@ -31,6 +32,17 @@ export function usageReport(usedSeconds: number, maxHoursPerDay: number, waitUnt
         ? new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 5).toISOString()
         : null;
   return { used_s: used, limit_s: limit, day: `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}`, waiting_until: waiting };
+}
+
+/**
+ * What the runner tells the website about where it runs (AK-112): the computer's name, without a
+ * Mac's ".local", and an API-model agent's daily_usd. A name that isn't a plain hostname is sent as
+ * unknown, as the database would store it.
+ */
+export function machineReport(host: string, engine: string, dailyUsd: number): MachineReport {
+  const name = host.trim().replace(/\.local$/i, "");
+  const machine = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/.test(name) && !looksLikeSecret(name) ? name : null;
+  return { machine, daily_usd: engine === "opencode" && Number.isFinite(dailyUsd) && dailyUsd >= 0 && dailyUsd <= 10_000 ? dailyUsd : null };
 }
 
 /** How long an API-model agent waits after its provider's rate limit before trying again. */

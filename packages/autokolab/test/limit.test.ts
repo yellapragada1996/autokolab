@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ProjectView } from "../src/core/projects.js";
-import { usageLimit, usageReport } from "../src/runner/limit.js";
+import { machineReport, usageLimit, usageReport } from "../src/runner/limit.js";
 import { Runner } from "../src/runner/runner.js";
 
 const failed = (finalText: string) => ({ finalText, isError: true, aborted: false, timedOut: false });
@@ -103,5 +103,65 @@ describe("the usage a runner reports", () => {
     expect(sent).toHaveLength(4);
     runner.projects = [{ reportUsage: async () => Promise.reject(new Error("offline")) }];
     await expect(runner.reportUsage()).resolves.toBeUndefined();
+  });
+});
+
+describe("computer name and daily dollar limit (AK-112)", () => {
+  it("sends the hostname without .local, and daily_usd only for API-model agents", () => {
+    expect(machineReport("Anas-MacBook-Pro.local", "opencode", 5)).toEqual({ machine: "Anas-MacBook-Pro", daily_usd: 5 });
+    expect(machineReport("build-box", "opencode", 0)).toEqual({ machine: "build-box", daily_usd: 0 });
+    expect(machineReport("build-box", "claude", 5)).toEqual({ machine: "build-box", daily_usd: null });
+  });
+
+  it("sends an odd or key-like name as unknown", () => {
+    expect(machineReport("", "claude", 0).machine).toBeNull();
+    expect(machineReport("Ana's Mac", "claude", 0).machine).toBeNull();
+    expect(machineReport("x".repeat(64), "claude", 0).machine).toBeNull();
+    expect(machineReport(`gsk_${"a1B2".repeat(13)}`, "claude", 0).machine).toBeNull();
+    expect(machineReport("box", "opencode", Number.NaN).daily_usd).toBeNull();
+  });
+
+  it("stops asking a database that can't record it yet (before schema 25)", async () => {
+    const calls: { fn: string; args: unknown }[] = [];
+    const view = (error: { message: string; code?: string } | null) =>
+      Object.assign(Object.create(ProjectView.prototype), {
+        machineMissing: false,
+        sb: { rpc: async (fn: string, args: unknown) => (calls.push({ fn, args }), { data: error ? null : {}, error }) },
+      }) as ProjectView;
+    const report = machineReport("build-box", "opencode", 5);
+    const old = view({ code: "PGRST202", message: "Could not find the function public.report_machine(p_daily_usd, p_machine) in the schema cache" });
+    expect(await old.reportMachine(report)).toBe(false);
+    expect(await old.reportMachine(report)).toBe(false);
+    expect(calls).toEqual([{ fn: "report_machine", args: { p_machine: "build-box", p_daily_usd: 5 } }]);
+    expect(await view({ code: "42703", message: 'column "machine" of relation "agents" does not exist' }).reportMachine(report)).toBe(false);
+    expect(await view(null).reportMachine(report)).toBe(true);
+    await expect(view({ message: "AUTOKOLAB_NOT_AGENT: only agents report their computer" }).reportMachine(report)).rejects.toThrow(/only agents/);
+  });
+
+  it("sends only when it changed, sends no key or settings, and never fails the runner", async () => {
+    const sent: Record<string, unknown>[] = [];
+    let ok = true;
+    const runner = Object.assign(Object.create(Runner.prototype), {
+      machineSent: "",
+      cfg: { engine: "opencode", opencode: { daily_usd: 5, provider: "deepseek", key_env: "DEEPSEEK_API_KEY" } },
+      log: () => undefined,
+      projects: [{ reportMachine: async (m: Record<string, unknown>) => (sent.push(m), ok) }],
+    });
+    await runner.reportMachine();
+    await runner.reportMachine();
+    expect(sent).toHaveLength(1);
+    expect(Object.keys(sent[0]).sort()).toEqual(["daily_usd", "machine"]);
+    expect(sent[0].daily_usd).toBe(5);
+    runner.cfg.opencode.daily_usd = 2.5;
+    await runner.reportMachine();
+    expect(sent[1].daily_usd).toBe(2.5);
+    // An older server: asked again next time (the client is what stops asking), and nothing throws.
+    ok = false;
+    runner.cfg.opencode.daily_usd = 3;
+    await runner.reportMachine();
+    await runner.reportMachine();
+    expect(sent).toHaveLength(4);
+    runner.projects = [{ reportMachine: async () => Promise.reject(new Error("offline")) }];
+    await expect(runner.reportMachine()).resolves.toBeUndefined();
   });
 });
