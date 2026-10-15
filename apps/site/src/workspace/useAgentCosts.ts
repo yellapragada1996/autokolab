@@ -9,7 +9,7 @@ export function useAgentCosts(ws: Workspace | null) {
   const projectId = ws?.project.id;
   const { rows: held, error, at } = useHistoryWindow(demoUsage ? undefined : projectId, USAGE_WINDOW_MS, {
     read: (from, to) => (projectId ? usageBetween(projectId, from, to) : Promise.resolve([] as RunUsage[])),
-    readAfter: (afterId) => (projectId ? usageAfter(projectId, afterId) : Promise.resolve([] as RunUsage[])),
+    readAfter: (afterId, from) => (projectId ? usageAfter(projectId, afterId, from) : Promise.resolve([] as RunUsage[])),
   });
   const rows = demoUsage ?? held;
   const costs = new Map<string, AgentCost>();

@@ -17,8 +17,8 @@ export const RECONCILE_WINDOW_MS = 24 * 3600_000;
 export interface HistoryReader<T extends HistoryRow> {
   /** Everything between two times, oldest first. */
   read: (from: Date, to: Date) => Promise<T[]>;
-  /** Only rows added after an id, oldest first. */
-  readAfter: (afterId: number) => Promise<T[]>;
+  /** Only rows added after an id and inside the window, oldest first. */
+  readAfter: (afterId: number, from: Date) => Promise<T[]>;
 }
 
 /**
@@ -60,7 +60,7 @@ export function useHistoryWindow<T extends HistoryRow>(key: string | undefined, 
     const tick = async () => {
       const end = new Date();
       try {
-        const fresh = await readerRef.current.readAfter(cursor.current);
+        const fresh = await readerRef.current.readAfter(cursor.current, windowStart());
         if (!live) return;
         if (fresh.length) {
           cursor.current = Math.max(cursor.current, maxId(fresh));

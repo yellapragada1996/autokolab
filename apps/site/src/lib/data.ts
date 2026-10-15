@@ -575,12 +575,21 @@ export async function eventsBetween(projectId: string, from: Date, to: Date): Pr
 /**
  * Only events added after an id, oldest first, a page at a time (AK-154). The five-minute refresh
  * asks for these instead of re-reading the whole week; reconciliation covers edits and deletes.
+ * `from` keeps a tick inside the window even when the cursor is 0 (an empty window, or a failed
+ * first read), so it can never page through the project's whole history.
  */
-export async function eventsAfter(projectId: string, afterId: number): Promise<TicketEvent[]> {
+export async function eventsAfter(projectId: string, afterId: number, from: Date): Promise<TicketEvent[]> {
   const out: TicketEvent[] = [];
   for (let after = afterId; ; ) {
     const rows = check<TicketEvent[]>(
-      await supabase.from("ticket_events").select("*").eq("project_id", projectId).gt("id", after).order("id").limit(EVENTS_PAGE),
+      await supabase
+        .from("ticket_events")
+        .select("*")
+        .eq("project_id", projectId)
+        .gt("id", after)
+        .gte("created_at", from.toISOString())
+        .order("id")
+        .limit(EVENTS_PAGE),
     );
     if (!rows.length) return out;
     out.push(...rows);
@@ -645,12 +654,20 @@ export async function usageBetween(projectId: string, from: Date, to: Date): Pro
 
 /**
  * Only runs added after an id, oldest first, a page at a time (AK-154). Like usageBetween, a
- * database before schema 20 reads as no runs.
+ * database before schema 20 reads as no runs. `from` keeps a tick inside the window even when the
+ * cursor is 0, so an empty 48-hour window never turns into a read of all past runs.
  */
-export async function usageAfter(projectId: string, afterId: number): Promise<RunUsage[]> {
+export async function usageAfter(projectId: string, afterId: number, from: Date): Promise<RunUsage[]> {
   const out: RunUsage[] = [];
   for (let after = afterId; ; ) {
-    const r = await supabase.from("run_usage").select("*").eq("project_id", projectId).gt("id", after).order("id").limit(EVENTS_PAGE);
+    const r = await supabase
+      .from("run_usage")
+      .select("*")
+      .eq("project_id", projectId)
+      .gt("id", after)
+      .gte("created_at", from.toISOString())
+      .order("id")
+      .limit(EVENTS_PAGE);
     const e = r.error as { message: string; code?: string } | null;
     if (e && (e.code === "42P01" || e.code === "PGRST205")) return [];
     const rows = check<RunUsage[]>(r);

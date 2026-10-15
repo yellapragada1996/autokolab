@@ -60,7 +60,7 @@ export function Overview({ ws, me, cr }: { ws: Workspace | null; me: string; cr:
   const demoEvents = ws?.demoEvents;
   const { rows: liveEvents } = useHistoryWindow(demoEvents ? undefined : projectId, EVENTS_WINDOW_MS, {
     read: (from, to) => (projectId ? eventsBetween(projectId, from, to) : Promise.resolve([] as TicketEvent[])),
-    readAfter: (afterId) => (projectId ? eventsAfter(projectId, afterId) : Promise.resolve([] as TicketEvent[])),
+    readAfter: (afterId, from) => (projectId ? eventsAfter(projectId, afterId, from) : Promise.resolve([] as TicketEvent[])),
   });
   const events = demoEvents ?? liveEvents;
 
