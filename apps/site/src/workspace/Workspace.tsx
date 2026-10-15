@@ -24,6 +24,7 @@ import { plural } from "./story";
 import { TicketPage } from "./TicketPage";
 import { ShowWork } from "./ShowWork";
 import { useCaptainRoom, type DemoRoom } from "./useCaptainRoom";
+import { useDecisionNotifications } from "./useDecisionNotifications";
 import { useWorkspace, type Workspace as WS } from "./useWorkspace";
 
 // The project workspace (AK-43, 02-information-architecture.md): the AppShell with its sidebar
@@ -96,6 +97,7 @@ export function Workspace({
   const error = live.error;
   // The conversation with Captain: shared by the Captain page and the sidebar badge, so they agree.
   const captain = useCaptainRoom(project, ws, profile.id, demoRoom);
+  const notifications = useDecisionNotifications(profile.id, project.id, project.slug, captain.needs, !!ws && captain.room !== undefined);
   const [addAgent, setAddAgent] = useState(false);
   const [newTicket, setNewTicket] = useState<{ status?: Status } | null>(null);
   const [paletteOpen, setPaletteOpen] = useCommandPalette();
@@ -209,7 +211,7 @@ export function Workspace({
           ) : route.view === "board" || route.view === "goals" ? (
             <Board ws={ws} me={me} needs={captain.needs} groupBy={route.view === "goals" ? "epic" : "assignee"} onNew={(status) => setNewTicket({ status })} />
           ) : route.view === "settings" ? (
-            <Settings ws={ws} me={me} onProjectChanged={onProjectChanged} />
+            <Settings ws={ws} me={me} notifications={notifications} onProjectChanged={onProjectChanged} />
           ) : route.view === "results" ? (
             <Results ws={ws} />
           ) : route.view === "backlog" ? (
