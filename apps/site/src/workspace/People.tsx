@@ -520,8 +520,6 @@ function AddPerson({ ws }: { ws: Workspace }) {
 function ApiAgentDetails({ ws, agent: a, mine, spend, missing }: { ws: Workspace; agent: Agent; mine: boolean; spend: string | null; missing: boolean }) {
   const [action, setAction] = useState<string | null>(null);
   const local = (a.effective_model ?? a.model)?.startsWith("ollama/");
-  const settings = `~/.config/autokolab/runners/${a.display_name}.toml`;
-  const there = a.machine ? `On ${a.machine}` : "On that computer";
   return <span style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6, fontSize: 13, color: "var(--text-muted)" }}>
     <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>{providerModel(a.effective_model ?? a.model)} <StatusPill tone="neutral">{local ? "Local model" : "Pay-per-use"}</StatusPill></span>
     {!local && <span>Key stored on {a.machine ?? `${a.owner_profile_id ? `${ws.nameOf(a.owner_profile_id)}'s` : "its owner's"} computer`}.</span>}
@@ -531,9 +529,16 @@ function ApiAgentDetails({ ws, agent: a, mine, spend, missing }: { ws: Workspace
       <span style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {["Change model", ...local ? [] : ["Change daily limit"], "Pause", "Remove"].map((label) => <Button key={label} variant="ghost" size="sm" onClick={() => setAction(action === label ? null : label)} aria-expanded={action === label}>{label}</Button>)}
       </span>
-      {action && <span style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 8, lineHeight: 1.6, overflowWrap: "anywhere" }}>
-        {action === "Change model" ? <>{there},edit <code>{settings}</code>. Under <code>[opencode]</code>, change <code>model</code> to the model name from your provider. Restart its runner. To replace its key, run <code>autokolab key set {a.display_name}</code>.</> : action === "Change daily limit" ? <>{there},edit <code>{settings}</code>. Under <code>[opencode]</code>, set <code>daily_usd = 5</code> to your dollar limit (0 means no limit), then restart its runner.</> : action === "Pause" ? <>Run <code>autokolab pause {a.display_name}</code> in a terminal. To start it again, run <code>autokolab resume {a.display_name}</code>.</> : <>{there},run <code>autokolab pause {a.display_name}</code>{!local && <> and <code>autokolab key remove {a.display_name}</code></>}. Ask the project owner to run <code>autokolab remove {a.display_name}</code> to remove it from the team.</>}
-      </span>}
+      {action && <ApiActionHint action={action} agent={a} local={!!local} />}
     </>}
+  </span>;
+}
+
+/** What to do on the agent's computer for one of the API agent's actions. */
+export function ApiActionHint({ action, agent: a, local }: { action: string; agent: Agent; local: boolean }) {
+  const settings = `~/.config/autokolab/runners/${a.display_name}.toml`;
+  const there = a.machine ? `On ${a.machine}` : "On that computer";
+  return <span style={{ padding: 12, border: "1px solid var(--border)", borderRadius: 8, lineHeight: 1.6, overflowWrap: "anywhere" }}>
+    {action === "Change model" ? <>{there}, edit <code>{settings}</code>. Under <code>[opencode]</code>, change <code>model</code> to the model name from your provider. Restart its runner. To replace its key, run <code>autokolab key set {a.display_name}</code>.</> : action === "Change daily limit" ? <>{there}, edit <code>{settings}</code>. Under <code>[opencode]</code>, set <code>daily_usd = 5</code> to your dollar limit (0 means no limit), then restart its runner.</> : action === "Pause" ? <>Run <code>autokolab pause {a.display_name}</code> in a terminal. To start it again, run <code>autokolab resume {a.display_name}</code>.</> : <>{there}, run <code>autokolab pause {a.display_name}</code>{!local && <> and <code>autokolab key remove {a.display_name}</code></>}. Ask the project owner to run <code>autokolab remove {a.display_name}</code> to remove it from the team.</>}
   </span>;
 }
