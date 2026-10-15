@@ -975,19 +975,23 @@ export class ProjectView {
    * New comments by anyone but this agent on its open tickets, after the given comment ids (AK-146).
    * Each ticket is asked only for comments newer than the id already handled, so an idle runner
    * downloads nothing. `looping` means only agents commented and they've gone back and forth too
-   * often: don't resume; the trailing authors are read to keep that count exact.
+   * often: don't resume; the trailing authors are read to keep that count exact. `stuck` means the
+   * ticket is waiting on a person to fix a machine's setup (AK-149): an agent's comment must not
+   * start the worker again; only a person's comment does.
    */
-  async newComments(after: Record<string, number>): Promise<{ ticket: TicketLight; comments: Comment[]; looping: boolean }[]> {
+  async newComments(after: Record<string, number>): Promise<{ ticket: TicketLight; comments: Comment[]; looping: boolean; stuck: boolean }[]> {
     const mine = (await this.ticketsLight()).filter((t) => t.assignee_id === this.meId && ["in_progress", "review"].includes(t.status));
-    const out: { ticket: TicketLight; comments: Comment[]; looping: boolean }[] = [];
+    const out: { ticket: TicketLight; comments: Comment[]; looping: boolean; stuck: boolean }[] = [];
     for (const t of mine) {
       const since = after[t.id] ?? 0;
       const fresh = check<Comment[]>(await this.sb.from("ticket_comments").select("*").eq("ticket_id", t.id).gt("id", since).order("id"));
       this.noteDownload(fresh);
       const act = commentsToAct(fresh, since, this.meId);
       if (!act.length) continue;
-      const looping = !act.some((c) => c.author_type === "human") && (await this.tailStreak(t.id)) >= AGENT_COMMENT_LIMIT;
-      out.push({ ticket: t, comments: act, looping });
+      const human = act.some((c) => c.author_type === "human");
+      const looping = !human && (await this.tailStreak(t.id)) >= AGENT_COMMENT_LIMIT;
+      const stuck = !human && envStopKind(t.needs_human) !== null;
+      out.push({ ticket: t, comments: act, looping, stuck });
     }
     return out;
   }
@@ -1294,23 +1298,28 @@ export function untriaged<T extends Pick<Ticket, "id" | "needs_human">>(question
  */
 export type EnvStopKind = "read-only-git" | "no-network" | "missing-tool" | "no-browser";
 
+// These match real tool and git error text, not everyday English ("I couldn't write the migration").
 // The order matters: a browser message can also say "not installed", so it's matched before a tool.
 const ENV_STOPS: { kind: EnvStopKind; test: RegExp }[] = [
   {
     kind: "no-browser",
-    test: /(?:couldn'?t|could not|can'?t|cannot|failed|unable to).{0,30}start.{0,30}browser|browser.{0,40}(?:couldn'?t|could not|failed|can'?t|cannot|unable|won'?t).{0,20}start|failed to launch.{0,20}browser|playwright.{0,40}(?:not installed|missing|failed)|chrome.{0,20}not found|no browser/i,
+    // Playwright/Puppeteer's own launch failures, never the words "no browser".
+    test: /browserType\.launch|executable doesn'?t exist|(?:failed|unable) to launch (?:the )?browser|browser[^\n]{0,40}(?:couldn'?t|could not|failed|can'?t|cannot|unable|won'?t)[^\n]{0,20}start|(?:couldn'?t|could not|can'?t|cannot)[^\n]{0,20}start[^\n]{0,20}browser/i,
   },
   {
     kind: "read-only-git",
-    test: /read[- ]?only.{0,30}(?:git|repo|repository|file|filesystem|disk|worktree|\.git)|(?:git|repo|repository|worktree|\.git).{0,40}read[- ]?only|permission denied|EACCES|EPERM|couldn'?t (?:push|write)|can'?t (?:push|write)|failed to (?:push|write)|cannot write|could not write|unable to (?:create|write|lock)|fatal: (?:unable|cannot|could not).{0,30}(?:write|create|lock|open)/i,
+    // A git or filesystem write failure: the phrase carries the context itself.
+    test: /read-only file system|EROFS|\bgit\b[^\n]{0,40}(?:read[- ]?only|permission denied|unable to (?:create|write)|cannot (?:open|create|write|lock)|could not (?:open|create|write|lock))|(?:read[- ]?only|permission denied|unable to (?:create|write)|cannot (?:open|create|write|lock)|could not (?:open|create|write|lock))[^\n]{0,40}(?:\.git[\\/]?|\bgit\b|repository|worktree)|\.git[\\/]?[^\n]{0,80}lock|unable to create[^\n]{0,80}\.git|can'?t write to (?:the )?(?:\.git|git|repo)/i,
   },
   {
     kind: "no-network",
-    test: /could not resolve host|network is unreachable|network unreachable|temporary failure in name resolution|connection (?:refused|reset|timed out)|failed to connect|could not connect|no internet|(?:can'?t|couldn'?t) reach (?:the )?(?:internet|github)|unable to access.{0,20}github|failed to fetch|(?:github|network|internet).{0,20}offline|offline.{0,20}(?:github|network|internet)/i,
+    // A network error itself, or one next to git and GitHub, never "Failed to fetch when offline".
+    test: /could not resolve host|temporary failure in name resolution|network is unreachable|network unreachable|fatal: could not read from remote repository|fatal: unable to access|(?:github\.com|remote|\bgit\b|\bpush\b|\bfetch\b)[^\n]{0,60}(?:connection refused|failed to connect|could not connect|connection timed out|connection reset|timed out)|(?:connection refused|failed to connect|could not connect|connection timed out|connection reset)[^\n]{0,60}(?:github\.com|remote|\bgit\b|\bpush\b|\bfetch\b)|(?:can'?t|couldn'?t) reach (?:the )?(?:internet|github)|no internet|unable to access 'https?:\/\//i,
   },
   {
     kind: "missing-tool",
-    test: /command not found|not found in (?:the )?path|missing (?:a |an |the )?(?:tool|binary|executable)|no such file or directory.{0,30}(?:command|binary|executable|tool)|(?:cannot|couldn'?t|could not|can'?t) find.{0,30}(?:binary|executable|tool|command)|(?:binary|tool|command|executable|gh|git|node|npm|npx|python|pip|docker|playwright|chrome|rg|jq).{0,20}(?:isn'?t|is not|not) installed/i,
+    // A shell or binary failure, never "missing a tool" as an idea.
+    test: /command not found|spawn[^\n]{0,40}ENOENT|not found in (?:the )?\$?PATH|missing (?:a |an |the )?(?:tool|binary|executable)|no such file or directory[^\n]{0,30}(?:command|binary|executable|tool)|(?:cannot|couldn'?t|could not|can'?t) find[^\n]{0,30}(?:binary|executable|tool|command)|(?:binary|tool|command|executable|gh|git|node|npm|npx|python|pip|docker|playwright|chrome|rg|jq)[^\n]{0,20}(?:isn'?t|is not|not) installed/i,
   },
 ];
 
@@ -1328,9 +1337,21 @@ const ENV_STOP_FIX: Record<EnvStopKind, string> = {
   "no-browser": "computer can't start a browser the agent needs",
 };
 
+/** The tool a missing-tool stop names ("gh", "playwright"), so its owner knows what to install (AK-149). */
+export function missingTool(question: string | null | undefined): string | null {
+  if (!question) return null;
+  const m =
+    question.match(/\bspawn\s+([^\s,;:]+)\s+ENOENT/i) ??
+    question.match(/([^\s,;:]+):\s*command not found/i) ??
+    question.match(/command not found:?\s*([^\s,;:]+)/i) ??
+    question.match(/([^\s,;:]+)\s+(?:isn'?t|is not|not) installed/i);
+  return m ? m[1].replace(/['"]/g, "").slice(0, 40) : null;
+}
+
 /** One plain sentence for "Needs you" when a machine's setup stops an agent (AK-149). */
-export function envStopQuestion(agent: string, owner: string, kind: EnvStopKind): string {
-  return `${agent}'s ${ENV_STOP_FIX[kind]}; ${owner} needs to fix its settings.`;
+export function envStopQuestion(agent: string, owner: string, kind: EnvStopKind, tool?: string | null): string {
+  const what = kind === "missing-tool" && tool ? `computer is missing the tool ${tool}` : ENV_STOP_FIX[kind];
+  return `${agent}'s ${what}; ${owner} needs to fix its settings.`;
 }
 
 /** A change to an agent's model and effort; what isn't named stays as it is. */

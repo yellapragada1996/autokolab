@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import type { AutoKolab } from "../core/client.js";
-import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, LIGHT_TTL_MS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, envStopKind, envStopQuestion, reportAgentStatus, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type Ticket, type TicketLight } from "../core/projects.js";
+import { AGENT_COMMENT_LIMIT, AGENT_LOOP_QUESTION, LEAD_BUILT_QUESTION, LIGHT_TTL_MS, MERGE_FAILED_PREFIX, MERGE_GH_PREFIX, MODEL_CHANGE_PREFIX, NO_CHECKS_QUESTION, REVIEW_FAILED_PREFIX, REVIEW_LIMIT_QUESTION, ProjectView, envStopKind, envStopQuestion, missingTool, reportAgentStatus, isMergeQuestion, isReviewQuestion, untriaged, type AgentStatus, type Comment, type MergePolicy, type RanWith, type RunKind, type RunPath, type RunUsageRow, type Ticket, type TicketLight } from "../core/projects.js";
 import { stateDir } from "../core/config.js";
 import { connectFromConfig } from "../core/node.js";
 import { redactSecrets } from "../core/secrets.js";
@@ -1554,7 +1554,14 @@ export class Runner {
     if (!Object.keys(st.notes ?? {}).length && this.projects.every((p) => p.boardFresh()) && Date.now() - this.boardScannedAt < LIGHT_TTL_MS) return null;
     this.boardScannedAt = Date.now();
     for (const project of this.projects) {
-      for (const { ticket, comments, looping } of await project.newComments(st.seen)) {
+      for (const { ticket, comments, looping, stuck } of await project.newComments(st.seen)) {
+        if (stuck) {
+          // The machine's setup is stopping this worker: an agent's comment doesn't start it again,
+          // only a person's does (AK-149). No comment of ours is needed.
+          st.seen[ticket.id] = comments[comments.length - 1].id;
+          this.saveTicketState(st);
+          continue;
+        }
         if (!looping) return this.startJob(project, ticket, comments);
         // Agents keep answering each other here: stop resuming and hand it to a person.
         st.seen[ticket.id] = comments[comments.length - 1].id;
@@ -1627,8 +1634,13 @@ export class Runner {
               stuck[ticket.id] = key;
               handled[ticket.id] = ticket.needs_human!;
               const who = project.ownerOf(ticket.assignee_id);
+              const worker = project.nameOf(ticket.assignee_id);
               this.log(`${ticket.key}: stuck_env (${env}); asking ${who}.`);
-              await project.update(ticket.key, { needs_human: envStopQuestion(project.nameOf(ticket.assignee_id), who, env) }).catch((e) => this.log(`Couldn't update ${ticket.key}: ${(e as Error).message}`));
+              // Keep the worker's own words on the ticket, so a misfire is recoverable and the
+              // owner sees the real error, before "Needs you" becomes the plain sentence (AK-149).
+              const said = ticket.needs_human!.trim();
+              await project.comment(ticket.key, `${worker} stopped on:\n\n${said}`).catch((e) => this.log(`Couldn't comment on ${ticket.key}: ${(e as Error).message}`));
+              await project.update(ticket.key, { needs_human: envStopQuestion(worker, who, env, missingTool(said)) }).catch((e) => this.log(`Couldn't update ${ticket.key}: ${(e as Error).message}`));
             }
             continue;
           }
