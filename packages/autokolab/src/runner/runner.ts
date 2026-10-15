@@ -164,14 +164,35 @@ export function shouldWake(m: Pick<Message, "sender_id" | "to_id" | "thread_id" 
 /** A teammate agent's message of these kinds only needs a reply, not work (AK-91). */
 export const REPLY_KINDS: MessageKind[] = ["question", "answer", "chat"];
 
-/**
- * A job is a reply when every message in it is another agent's question, answer or chat: it runs
- * with the slim reply prompt on the reply model. A person's message, a task and a review request are
- * work, and keep the full prompt and session. A follower's job about its own open ticket is a reply
- * whatever the kind: the ticket's build run does the work (AK-116).
- */
-export function isReplyJob(messages: Pick<Message, "sender_id" | "kind">[], isHuman: (id: string) => boolean, aboutOwnTicket = false): boolean {
-  return messages.length > 0 && messages.every((m) => !isHuman(m.sender_id) && (aboutOwnTicket || REPLY_KINDS.includes(m.kind)));
+/** A conservative rule for a person's question that needs an answer, not board work. */
+export function isPlainQuestion(body: string): boolean {
+  const text = body.trim();
+  if (/^(hi|hello|hey|thanks|thank you)[!. ]*$/i.test(text)) return true;
+  if (!/\?$/.test(text) && !/^(what|why|how|where|when|who|which|is|are|do|does|did|can|could|would)\b/i.test(text)) return false;
+  if (/\b(?:please|(?:can|could|would|will)\s+(?:you|we)|let's|we need to|i want you to)\s+(?:please\s+)?(?:\w+\s+){0,2}(?:fix|build|add|create|write|change|update|remove|delete|merge|assign|review|plan|investigate|check|make|move|start|stop|run)\b/i.test(text)) return false;
+  return /^(what|why|how|where|when|who|which|is|are|do|does|did|can|could|would)\b/i.test(text);
+}
+
+/** Teammate questions and a person's plain questions use the slim reply run. */
+export function isReplyJob(messages: Pick<Message, "sender_id" | "kind" | "body">[], isHuman: (id: string) => boolean, aboutOwnTicket = false, captain = false): boolean {
+  return messages.length > 0 && messages.every((m) => isHuman(m.sender_id)
+    ? captain && ["chat", "question", "answer"].includes(m.kind) && isPlainQuestion(m.body)
+    : aboutOwnTicket || REPLY_KINDS.includes(m.kind));
+}
+
+/** Ignore runner notices when checking whether Captain spoke to the person during a work run. */
+export function captainReplied(thread: Pick<Message, "id" | "sender_id" | "to_id" | "body">[], captainId: string, personId: string, afterId: number): boolean {
+  return thread.some((m) => m.id > afterId && m.sender_id === captainId && m.to_id === personId && !isRunnerNotice(m.body));
+}
+
+/** A real opening in the person's thread, sent before the work engine can touch tickets. */
+export function captainFirstReply(body: string): string {
+  const full = redactSecrets(body.trim().replace(/\s+/g, " "));
+  const request = full.slice(0, 110).trim();
+  const excerpt = request.length < full.length ? `${request.replace(/[.,;: ]+$/, "")}…` : request;
+  return excerpt
+    ? `I’ve got your message: “${excerpt}” I’ll look into it and update you here.`
+    : "I’ve got your message. I’ll look into it and update you here.";
 }
 
 /** Tickets whose build run is still to come or under way, so it does the work a message asks for. */
@@ -1280,9 +1301,10 @@ export class Runner {
     const project = this.roomProject(room);
     const lead = ak.membership(room.id)?.role === "lead" || Boolean(project?.iAmLead);
     const own = lead || !project || messages.some((x) => ak.isHuman(x.sender_id)) ? [] : await this.ownTickets(project, messages);
-    const isReply = isReplyJob(messages, (id) => ak.isHuman(id), own.length > 0);
+    const personChat = lead && messages.some((x) => ak.isHuman(x.sender_id));
+    const isReply = isReplyJob(messages, (id) => ak.isHuman(id), own.length > 0, lead);
     // A follower's reply can't change anything and stops at reply_max_turns; Captain's stay as they are.
-    const replyLimits: ReplyLimits | undefined = isReply && !lead ? { maxTurns: cfg.limits.reply_max_turns } : undefined;
+    const replyLimits: ReplyLimits | undefined = isReply && (!lead || personChat) ? { maxTurns: cfg.limits.reply_max_turns } : undefined;
     let resume: string | null;
     let prompt: string;
     let choice: ModelChoice;
@@ -1328,8 +1350,9 @@ export class Runner {
     await ak.heartbeat("working").catch(() => undefined);
     this.log(`Working on ${ids} in ${room.name} (${worktree.branch})${isReply ? " as a reply" : ""}${resume ? ", continuing session" : ""}.`);
     // A follower's reply is short and its answer says enough: no start notice.
-    const notice = this.limitWait?.kind === "message" || replyLimits ? null : startNotice(m.id, worktree.branch, Boolean(resume), job.fromInstructor);
+    const notice = this.limitWait?.kind === "message" || replyLimits || personChat ? null : startNotice(m.id, worktree.branch, Boolean(resume), job.fromInstructor);
     if (notice) await this.say(room.id, run.thread_root, sender.id, notice);
+    if (personChat && !isReply) await this.say(room.id, run.thread_root, sender.id, captainFirstReply(m.body), "chat");
 
     let result;
     const startedAt = Date.now();
@@ -1368,7 +1391,18 @@ export class Runner {
     // A teammate's question, task or review request gets an answer, which wakes them; anything
     // else is a report, which wakes nobody (AK-90).
     const reply = replyAs([m, ...job.more.map((x) => x.message)], (id) => ak.isHuman(id));
-    if (!quiet) await this.say(room.id, run.thread_root, reply.to, report, state === "done" ? reply.kind : "status");
+    if (personChat && !isReply) {
+      const alreadySaid = await ak.threadMessages(room.id, run.thread_root)
+        .then((thread) => captainReplied(thread, ak.me.id, sender.id, m.id))
+        .catch(() => false);
+      // The final text is the closing line. It is also the safety net when Captain forgot to post
+      // its first reply. Never leave a person's chat silent because the model returned NO_REPLY.
+      const closing = quiet ? "I finished looking into this, but I don't have a clear update yet. I'll follow up here." : report;
+      if (!alreadySaid) this.log(`Captain posted no reply in thread #${run.thread_root}; posting the final message as a fallback.`);
+      await this.say(room.id, run.thread_root, sender.id, closing, state === "done" ? "chat" : "status");
+    } else if (personChat) {
+      await this.say(room.id, run.thread_root, sender.id, quiet ? "I couldn't answer that yet. I'll take another look." : report, state === "done" ? "chat" : "status");
+    } else if (!quiet) await this.say(room.id, run.thread_root, reply.to, report, state === "done" ? reply.kind : "status");
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
     // Cost is an API-price estimate (not a bill on a Claude subscription); keep it out of the room.
     this.log(`${ids} ${state}.${result.costUsd !== undefined ? ` (estimated API cost $${result.costUsd.toFixed(2)})` : ""}`);
@@ -1423,6 +1457,7 @@ export class Runner {
       followUp,
       ownTickets: own.keys,
       handedOver: own.handedOver,
+      fromPerson: ak.isHuman(job.message.sender_id),
     });
   }
 

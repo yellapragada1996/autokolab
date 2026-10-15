@@ -13,6 +13,24 @@ import type { Workspace } from "./useWorkspace";
 
 export type TurnKind = "you" | "captain" | "question" | "bookkeeping" | "problem";
 
+/** Keep tool labels out of the chat while showing a useful live step. */
+export function captainWorkActivity(note: string | null | undefined): string {
+  const steps: Record<string, string> = {
+    "Reading the board": "checking the board",
+    "Reading a ticket": "reading a ticket",
+    "Writing tickets": "writing a ticket",
+    "Updating tickets": "updating a ticket", // Older helpers can still send this label.
+    "Updating the ticket": "updating a ticket",
+    "Commenting on a ticket": "adding a ticket note",
+    "Recording a decision": "recording the decision",
+    "Reading a decision": "checking a decision",
+    "Talking in the room": "talking with the team",
+    "Reading the room": "reading the conversation",
+    "Waiting for a reply": "waiting for a teammate",
+  };
+  return `Captain is working on your message…${note && steps[note] ? ` ${steps[note]}.` : ""}`;
+}
+
 /** One message between a person and Captain. */
 export interface Turn {
   id: number;

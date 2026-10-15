@@ -5,6 +5,7 @@ import { AgentAvatar, Button } from "../ui";
 import { Markdown } from "./bits";
 import {
   answeredLine,
+  captainWorkActivity,
   catchUpItems,
   catchUpSummary,
   catchUpText,
@@ -155,7 +156,7 @@ function Conversation({ ws, cr, me, pulse, onTarget }: { ws: Workspace; cr: Capt
         {cr.working && (
           <span role="status" className="ak-indent" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--text-dim)" }}>
             <span className="ak-live" aria-hidden="true" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--blue)", flex: "none" }} />
-            {(cr.captain && agentDot(cr.captain) === "working" && cr.captain.status_note) || "Captain is reading…"}
+            {captainWorkActivity(cr.captain && agentDot(cr.captain) === "working" ? cr.captain.status_note : null)}
           </span>
         )}
         <div aria-live="polite" className="sr-only">
