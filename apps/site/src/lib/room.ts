@@ -151,11 +151,16 @@ export function watchRoom(roomId: string, onMessages: () => void, watch: RoomWat
   const refresh = () => { onMessages(); watch.onMembership(); };
   const ch = supabase
     .channel(`room-${roomId}-${Math.random().toString(36).slice(2)}`)
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${roomId}` }, onMessages)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${roomId}` }, (payload) => {
+      if (payload.new.room_id === roomId) onMessages();
+    })
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "members" }, (payload) => {
       if (watch.memberIds().has(payload.new.id)) watch.onMember(payload.new);
     })
-    .on("postgres_changes", { event: "*", schema: "public", table: "room_members", filter: `room_id=eq.${roomId}` }, watch.onMembership)
+    .on("postgres_changes", { event: "*", schema: "public", table: "room_members", filter: `room_id=eq.${roomId}` }, (payload) => {
+      const row = payload.eventType === "DELETE" ? payload.old : payload.new;
+      if (row.room_id === roomId) watch.onMembership();
+    })
     .subscribe();
   const stopPoll = visiblePoll(refresh);
   return () => {

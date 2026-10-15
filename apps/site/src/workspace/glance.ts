@@ -214,7 +214,8 @@ export function agentRows(ws: Workspace, now: Date): AgentRow[] {
       else if (/usage limit/i.test(a.status_note ?? "")) extra.push("usage limit");
       if (back) extra.push(`resumes ${aboutTime(back)} by itself`);
     }
-    if ((t.checks ?? t.pr_facts?.checks)?.state === "success" && (t.checks ?? t.pr_facts?.checks)!.total > 0) extra.splice(kind === "running" ? 1 : 0, 0, "tests passed");
+    const checks = t.checks ?? t.pr_facts?.checks;
+    if (checks?.state === "success" && checks.total > 0) extra.splice(kind === "running" ? 1 : 0, 0, "tests passed");
     const held = Math.max(0, now.getTime() - Date.parse(since));
     const heldText = held >= 60_000 ? awayText(held) : "just now";
     const detail = [feature ?? FIXES, ...extra, heldText].join(" · ");

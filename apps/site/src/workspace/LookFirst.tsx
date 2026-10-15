@@ -19,7 +19,12 @@ export function LookFirst({ ws, cr, me, ticketKey, covered }: { ws: Workspace; c
   const slug = ws.project.slug;
   const key = ticketKey.toUpperCase();
   const full = useFullTicket(ws.byKey.get(key), !!ws.demoDetails);
-  const detailedWs = full.ticket ? { ...ws, byKey: new Map(ws.byKey).set(key, full.ticket) } : ws;
+  const record = full.ticket;
+  const detailedWs = record ? {
+    ...ws,
+    tickets: ws.tickets.map((t) => t.id === record.id ? record : t),
+    byKey: new Map(ws.byKey).set(key, record),
+  } : ws;
   const state = lookState(detailedWs, key);
   // OK'd on this visit: stays green even after the reload shows the ticket as answered.
   const okd = cr.okd.find((n) => n.ticket?.key === key);
@@ -97,7 +102,9 @@ export function LookFirst({ ws, cr, me, ticketKey, covered }: { ws: Workspace; c
   }, [key]);
 
   let body: ReactNode;
-  if (okd) {
+  if (full.error || full.loading) {
+    body = <><CloseRow onClose={close} /><p id={TITLE} role={full.error ? "alert" : undefined}>{full.error || "Loading the evidence…"}</p></>;
+  } else if (okd) {
     body = (
       <>
         <CloseRow onClose={close} />

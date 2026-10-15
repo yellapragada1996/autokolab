@@ -44,15 +44,15 @@ export function TicketPage({ ws, me, ticketKey }: { ws: Workspace; me: string; t
   const [err, setErr] = useState("");
 
   const load = useCallback(async () => {
-    if (!t) return;
+    if (!listed) return;
     try {
-      setDetail(ws.demoDetails ? ws.demoDetails.get(t.id) ?? { steps: ws.steps.get(t.id) ?? [], comments: [], events: [] } : await ticketDetail(t.id));
+      setDetail(ws.demoDetails ? ws.demoDetails.get(listed.id) ?? { steps: ws.steps.get(listed.id) ?? [], comments: [], events: [] } : await ticketDetail(listed.id));
       setErr("");
     } catch (e) {
       setErr(reportError(e, "load the ticket"));
-      setDetail((d) => d ?? { steps: ws.steps.get(t.id) ?? [], comments: [], events: [] });
+      setDetail((d) => d ?? { steps: ws.steps.get(listed.id) ?? [], comments: [], events: [] });
     }
-  }, [t, ws.steps, ws.demoDetails]);
+  }, [listed, ws.steps, ws.demoDetails]);
   useEffect(() => {
     void load();
   }, [load]);

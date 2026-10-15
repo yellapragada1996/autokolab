@@ -84,7 +84,7 @@ export function Room({ ws, profile, demo }: { ws: Workspace; profile: Profile; d
     if (demo) return;
     try {
       const r = roomRef.current ?? await roomFor(ws.project.room_id, profile.id);
-      setRoom(r);
+      setRoom((current) => current?.id === r?.id ? current : r);
       if (r) setMessages(await feed!.load());
       setErr("");
     } catch (e) {

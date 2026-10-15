@@ -130,7 +130,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
       // Set together, in one render. A reload keeps the old room and messages until the new ones
       // are in, so watching never flashes the page back to "Loading…".
       setLoaded(msgs);
-      setRoom(r);
+      setRoom((current) => current?.id === r?.id ? current : r);
       setLoadError("");
     } catch (e) {
       setLoadError(reportError(e, "load the room"));

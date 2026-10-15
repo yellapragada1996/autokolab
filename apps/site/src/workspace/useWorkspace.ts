@@ -67,8 +67,9 @@ export function useWorkspace(project: Project | null): { ws: Workspace | null; e
       onChange: () => void load(),
       ticketIds: () => new Set(current.current?.tickets.map((t) => t.id)),
       agentIds: () => new Set(current.current?.people.agents.keys()),
+      decisionIds: () => new Set(current.current?.decisions.map((d) => d.id)),
       onAgent: (row, deleted) => setState((s) => {
-        if (!s || !row.id || !s.people.agents.has(row.id)) return s;
+        if (!s || s.project.id !== project.id || !row.id || !s.people.agents.has(row.id)) return s;
         const agents = new Map(s.people.agents);
         if (deleted) agents.delete(row.id);
         else agents.set(row.id, { ...agents.get(row.id)!, ...row });

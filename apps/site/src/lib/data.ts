@@ -164,6 +164,8 @@ export interface Ticket {
   summary?: string | null;
   /** What the reviewer recorded with its approval (schema 16): the evidence behind "How do you know?". */
   review?: Review | null;
+  review_summary?: string | null;
+  review_question?: string | null;
   /** What GitHub last said about the PR, recorded by Captain's runner (schema 18; absent before it). */
   pr_facts?: PrFacts | null;
   /** Small projections for status and Results; no file list or full PR snapshot. */
@@ -441,7 +443,7 @@ export async function markCaughtUp(projectId: string): Promise<string> {
 
 // Optional columns may not exist yet on an older server. Retry only missing columns,
 // without ever falling back to downloading descriptions or PR file lists.
-const TICKET_COLUMNS = "id,project_id,number,key,title,type,priority,status,labels,parent_id,assignee_id,assignee_type,reporter_id,branch,pr_url,needs_human,sort_order,created_at,updated_at,started_at,completed_at,approved_sha,approved_by,approved_at,merge_ok_by,merge_ok_at,summary,review,built_by,areas,checks:pr_facts->checks,checks_sha:pr_facts->>sha";
+const TICKET_COLUMNS = "id,project_id,number,key,title,type,priority,status,labels,parent_id,assignee_id,assignee_type,reporter_id,branch,pr_url,needs_human,sort_order,created_at,updated_at,started_at,completed_at,approved_sha,approved_by,approved_at,merge_ok_by,merge_ok_at,summary,review_summary:review->>summary,review_question:review->>question,built_by,areas,checks:pr_facts->checks,checks_sha:pr_facts->>sha";
 export async function tickets(projectId: string): Promise<Ticket[]> {
   let columns = TICKET_COLUMNS.split(",");
   for (;;) {
@@ -653,6 +655,7 @@ export interface ProjectWatch {
   onChange: () => void;
   ticketIds: () => Set<string>;
   agentIds: () => Set<string>;
+  decisionIds: () => Set<string>;
   onAgent: (row: Partial<Agent>, deleted: boolean) => void;
 }
 
@@ -665,7 +668,11 @@ export function watchProject(projectId: string, watch: ProjectWatch): () => void
   };
   const ch = supabase.channel(`project-${projectId}-${Math.random().toString(36).slice(2)}`);
   for (const table of ["tickets", "ticket_events", "decisions", "project_guides", "project_members"]) {
-    ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `project_id=eq.${projectId}` }, bump);
+    ch.on("postgres_changes", { event: "*", schema: "public", table, filter: `project_id=eq.${projectId}` }, (payload) => {
+      const row = payload.eventType === "DELETE" ? payload.old : payload.new;
+      // DELETE events may carry just the primary key and cannot be server-filtered.
+      if (row.project_id === projectId || (table === "tickets" && watch.ticketIds().has(row.id)) || (table === "decisions" && watch.decisionIds().has(row.id))) bump();
+    });
   }
   for (const table of ["ticket_steps", "ticket_links", "ticket_comments"]) {
     ch.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {

@@ -326,6 +326,8 @@ The work happened in two generations. **Version 1** proved the core idea with a 
 - **Live updates:** every screen refreshes through Supabase Realtime when anything changes, plus a 30-second safety refresh.
 - Works at phone width.
 
+The website keeps agent and room presence live through realtime updates without reloading tickets or chat history. Workspace lists leave out long ticket fields; opening a ticket or its evidence loads the full record. After the first Room load, chat reads only messages newer than the last one received. Safety reads run every five minutes, skip hidden tabs and catch up when the tab becomes visible again.
+
 **The database for projects (done, applied)**: migration `004_workspace.sql` (schema version 4)
 
 - Tables: `projects`, `agents`, `project_members`, `tickets`, `ticket_steps`, `ticket_links`, `ticket_comments`, `ticket_events` (history), `decisions`, `project_guides`.
