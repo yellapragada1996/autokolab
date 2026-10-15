@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { formatMember } from "../src/core/format.js";
@@ -55,10 +55,12 @@ describe("secret detection", () => {
     "xoxb-1234567890-abcdefghij",
     "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
     "sk_live_abcdefghijklmnop",
+    `gsk_${"a1B2".repeat(13)}`,
+    `xai-${"a1B2".repeat(20)}`,
   ];
   it.each(bad)("flags %s", (s) => expect(looksLikeSecret(`use ${s} please`)).toBe(true));
   it("leaves normal text alone", () => {
-    for (const s of ["Fix the zones API", "See PR #12, branch zones-api", "sk-learn is a library", "commit 3f1c2a9e1b2c"]) {
+    for (const s of ["Fix the zones API", "gsk_ prefix means Groq", "the xai-sdk package", "See PR #12, branch zones-api", "sk-learn is a library", "commit 3f1c2a9e1b2c"]) {
       expect(looksLikeSecret(s)).toBe(false);
     }
   });
@@ -66,7 +68,11 @@ describe("secret detection", () => {
     expect(redactSecrets("key: ghp_abcdefghijklmnopqrstuvwxyz0123456789 end")).toBe("key: [redacted] end");
   });
   it("matches the database's pattern list", () => {
-    const sql = readFileSync(new URL("../sql/001_init.sql", import.meta.url), "utf8");
+    // The newest migration that replaces the function is the one the database runs.
+    const dir = new URL("../sql/", import.meta.url);
+    const latest = readdirSync(dir).filter((f) => f.endsWith(".sql")).sort().reverse()
+      .find((f) => readFileSync(new URL(f, dir), "utf8").includes("function public.looks_like_secret"));
+    const sql = readFileSync(new URL(latest!, dir), "utf8");
     const block = sql.slice(sql.indexOf("function public.looks_like_secret"), sql.indexOf("-- ---", sql.indexOf("function public.looks_like_secret")));
     const sqlPatterns = [...block.matchAll(/'([^']+)'/g)].map((m) => m[1]);
     const src = readFileSync(new URL("../src/core/secrets.ts", import.meta.url), "utf8");
