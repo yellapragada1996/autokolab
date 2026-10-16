@@ -229,7 +229,7 @@ describe("plain reasons for provider errors", () => {
 
   it("OpenCode's own refusal names the model it likely meant (AK-143)", () => {
     // Recorded from OpenCode 1.19.0 run with -m deepseek/deepseek-v4-flash.
-    const out = [...fixture("opencode-model-not-found.jsonl"), ...fixture("opencode-model-not-found.log")].join("\n");
+    const out = [...fixture("opencode-model-not-found.jsonl"), ...fixture("opencode-model-not-found.stderr")].join("\n");
     expect(providerProblem(out, "deepseek", "deepseek/deepseek-v4-flash")).toEqual({
       kind: "model",
       reason: "deepseek-v4-flash isn't a DeepSeek model in OpenCode (did you mean deepseek-flash?); pick another model for me",
@@ -407,7 +407,7 @@ process.stdin.on("end", async () => {
   }
   if (input.includes("NOMODEL")) {
     for (const line of ${JSON.stringify(fixture("opencode-model-not-found.jsonl"))}) console.log(line);
-    for (const line of ${JSON.stringify(fixture("opencode-model-not-found.log"))}) process.stderr.write(line + "\\n");
+    for (const line of ${JSON.stringify(fixture("opencode-model-not-found.stderr"))}) process.stderr.write(line + "\\n");
     // More log after it, enough to push it out of the last 2000 characters.
     for (let i = 0; i < 40; i++) process.stderr.write('level=ERROR message="share subscriber failed" type=session.updated cause="Cause([Interrupt])"\\n');
     process.exit(1);
