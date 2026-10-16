@@ -11,6 +11,7 @@ import {
   modelName,
   validName,
 } from "./agentOptions";
+import { OPENCODE_MODELS } from "./opencodeModels.snapshot";
 
 describe("agent options and CON-25", () => {
   const setup = {
@@ -62,12 +63,21 @@ describe("agent options and CON-25", () => {
     expect(providerModel("google/gemini-2.5-pro")).toBe("Gemini · gemini-2.5-pro");
     expect(providerModel("openrouter/mistralai/devstral-2512")).toBe("OpenRouter · mistralai/devstral-2512");
   });
+  it("offers only models OpenCode accepts (AK-143)", () => {
+    // Ollama runs whatever is pulled on that computer, so OpenCode has no list for it.
+    for (const p of PROVIDERS.filter((p) => p.id !== "ollama")) {
+      const known = OPENCODE_MODELS[p.id];
+      expect(known, `no OpenCode list for ${p.id}`).toBeDefined();
+      for (const m of p.models) expect(known, `${p.id}/${m}`).toContain(m);
+    }
+    expect(OPENCODE_MODELS.deepseek).not.toContain("deepseek-v4-flash");
+  });
 });
 
 describe("connecting and code expiry", () => {
   const setup = {
     provider: "deepseek" as const,
-    model: "deepseek-v4-flash",
+    model: "deepseek-flash",
     name: "ana-deepseek",
     dailyUsd: 5,
   };
@@ -76,7 +86,7 @@ describe("connecting and code expiry", () => {
     ...workspace([]).agentOf(BIRCH)!,
     vendor: "opencode" as const,
     display_name: setup.name,
-    effective_model: "deepseek/deepseek-v4-flash",
+    effective_model: "deepseek/deepseek-flash",
     last_seen_at: new Date(now).toISOString(),
   };
   it("recognizes only this owner's new agent with the chosen model", () => {

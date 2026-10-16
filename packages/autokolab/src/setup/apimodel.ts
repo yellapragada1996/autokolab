@@ -19,7 +19,7 @@ export interface ApiAgentOptions {
   engine: "opencode";
   /** OpenCode's provider id, e.g. "deepseek". */
   provider: string;
-  /** The model's id at that provider, e.g. "deepseek-chat". */
+  /** The model's id at that provider, e.g. "deepseek-flash". */
   model: string;
   /** The agent's name; unset lets the website pick one. */
   name?: string;
@@ -48,7 +48,7 @@ export function apiAgentOptions(o: { engine?: string; provider?: string; model?:
   }
   let model = (o.model ?? "").trim();
   if (model.startsWith(`${provider}/`)) model = model.slice(provider.length + 1);
-  if (!model) throw new Error(`Say which ${providerName(provider)} model the agent uses, e.g. --model ${provider === "deepseek" ? "deepseek-chat" : "<model>"}.`);
+  if (!model) throw new Error(`Say which ${providerName(provider)} model the agent uses, e.g. --model ${provider === "deepseek" ? "deepseek-flash" : "<model>"}.`);
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,79}$/.test(model)) throw new Error(`"${model}" doesn't look like a model name.`);
   const name = o.name?.trim().toLowerCase();
   if (name !== undefined && !/^[a-z0-9][a-z0-9-]{1,39}$/.test(name)) {

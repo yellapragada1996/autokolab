@@ -1,10 +1,13 @@
-/** Suggestions, not a fixed catalogue. Provider ids match the helper and OpenCode. */
+/**
+ * Suggestions, not a fixed catalogue. Provider ids match the helper and OpenCode, and every model is
+ * one OpenCode accepts (pinned by opencodeModels.snapshot.ts, AK-143).
+ */
 export const PROVIDERS = [
   {
     id: "deepseek",
     name: "DeepSeek",
     description: "Coding and reasoning with pay-per-use pricing",
-    models: ["deepseek-v4-flash", "deepseek-v4-pro"],
+    models: ["deepseek-flash", "deepseek-v4-pro"],
     keyUrl: "https://platform.deepseek.com/api_keys",
   },
   {
@@ -25,7 +28,7 @@ export const PROVIDERS = [
     id: "mistral",
     name: "Mistral",
     description: "Coding models from Mistral",
-    models: ["devstral-latest", "mistral-large-latest"],
+    models: ["mistral-large-latest", "codestral-latest"],
     keyUrl: "https://console.mistral.ai/api-keys",
   },
   {

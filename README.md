@@ -59,7 +59,7 @@ through Ollama. The website gives you one line for the computer where it will wo
 
 ```bash
 curl -fsSL https://autokolab.vercel.app/install.sh | bash -s -- CODE --engine opencode \
-  --provider deepseek --model deepseek-chat --name ana-deepseek --daily-usd 5
+  --provider deepseek --model deepseek-flash --name ana-deepseek --daily-usd 5
 ```
 
 It installs [OpenCode](https://opencode.ai) for you if it's missing (about 190 MB, no sudo), then

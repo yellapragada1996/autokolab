@@ -7,7 +7,7 @@
 # For an API-model agent the line also says which one (CON-25); its key is asked for afterwards, here:
 #
 #   curl -fsSL https://autokolab.vercel.app/install.sh | bash -s -- CODE --engine opencode \
-#     --provider deepseek --model deepseek-chat --name ana-deepseek --daily-usd 5
+#     --provider deepseek --model deepseek-flash --name ana-deepseek --daily-usd 5
 #
 # What it does: clones github.com/yellapragada1996/autokolab into ~/.autokolab (or updates it),
 # builds it, puts `autokolab` on your PATH, then runs `autokolab connect CODE` with the same options.
