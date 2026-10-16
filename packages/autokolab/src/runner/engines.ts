@@ -3,7 +3,7 @@ import { createWriteStream, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { isLocalProvider, LOCAL_PROVIDERS, providerKeyEnv, providerName } from "../core/providers.js";
+import { isLocalProvider, LOCAL_PROVIDERS, notAnOpencodeModel, providerKeyEnv, providerName } from "../core/providers.js";
 import { EFFORTS, opencodeProvider, type Effort, type RunnerConfig } from "./config.js";
 
 // Starts Claude Code, Codex or OpenCode headless with the task as its prompt, using their supported
@@ -452,7 +452,14 @@ export function providerProblem(output: string, provider: string, model: string)
   if (/insufficient[ _](balance|credit|funds|quota)|exceeded your current quota|credit balance is too low|out of credits?|payment required|HTTP 402\b|statusCode":?402/i.test(output)) {
     return { kind: "credit", reason: `my ${name} account has no credit left; add credit on ${name}'s site` };
   }
-  if (/ProviderModelNotFoundError|model[_ ]not[_ ](found|exist)|model .{0,80}(does not|doesn't) exist|unknown model|invalid model|no such model/i.test(output)) {
+  // OpenCode's own refusal, before it asks the provider: "Model not found: deepseek/x. Did you mean: a, b?"
+  const notFound = output.match(/ProviderModelNotFoundError: Model not found: (\S+?)\.?(?: Did you mean: ([^?"\n]+)\?)?(?=["')\n\\]|$)/);
+  if (notFound || /ProviderModelNotFoundError/.test(output)) {
+    const bare = (m: string) => (m.startsWith(`${provider}/`) ? m.slice(provider.length + 1) : m);
+    const near = notFound?.[2]?.split(",")[0]?.trim();
+    return { kind: "model", reason: `${notAnOpencodeModel(provider, bare(notFound?.[1] ?? model))}${near ? ` (did you mean ${bare(near)}?)` : ""}; pick another model for me` };
+  }
+  if (/model[_ ]not[_ ](found|exist)|model .{0,80}(does not|doesn't) exist|unknown model|invalid model|no such model/i.test(output)) {
     return { kind: "model", reason: `${name} doesn't have the model ${model}; pick another model for me` };
   }
   if (/HTTP 401\b|HTTP 403\b|statusCode":?40[13]|authentication[ _]fail|invalid[ _-]?api[ _-]?key|incorrect api key|api key (is )?(invalid|not valid)|unauthori[sz]ed/i.test(output)) {
@@ -628,11 +635,14 @@ export async function runEngine(opts: {
       opts.onLine?.(line);
     });
     let stderrTail = "";
+    // OpenCode's refusal of an unknown model, kept even once later log lines push it out of the tail.
+    let modelNotFound = "";
     let rateErrors = 0;
     createInterface({ input: child.stderr }).on("line", (raw) => {
       const line = scrub(raw);
       log.write(line + "\n");
       stderrTail = (stderrTail + line + "\n").slice(-2000);
+      if (!modelNotFound && line.includes("ProviderModelNotFoundError")) modelNotFound = line.slice(0, 2000);
       // A run stopped before its first event still has a session to continue later.
       if (cfg.engine === "opencode" && !run.sessionId) run.sessionId = line.match(/\bsession\.id=(ses_\w+)/)?.[1] ?? null;
       // OpenCode retries a rate-limited provider on its own, for as long as it takes, and says so only
@@ -659,9 +669,15 @@ export async function runEngine(opts: {
       }
     }
     if (cfg.engine === "opencode" && (run.isError || run.exitCode !== 0) && !run.timedOut && !run.aborted) {
-      const problem = providerProblem(`${run.finalText}\n${stderrTail}`, opencodeProvider(cfg) ?? "", inv.model ?? "");
+      const problem = providerProblem(`${run.finalText}\n${modelNotFound}\n${stderrTail}`, opencodeProvider(cfg) ?? "", inv.model ?? "");
       if (problem) run.problem = problem;
       if (problem?.kind === "rate") run.rateLimited = true;
+      // OpenCode's own words for it say nothing ("Unexpected server error. Check server logs…"):
+      // the plain reason replaces them (AK-143).
+      if (problem) {
+        const rest = run.finalText.replace(/^Error: Unexpected server error\b.*$/gim, "").trim();
+        run.finalText = rest || `Stopped: ${problem.reason}.`;
+      }
     }
     if (run.rateLimited) {
       run.isError = true;

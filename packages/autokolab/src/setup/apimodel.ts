@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ReadStream, WriteStream } from "node:tty";
 import { dataDir, findProfile, readConfigFile } from "../core/config.js";
 import { keyFile, keyProblem, readAgentKey, removeAgentKey, saveAgentKey, type KeySource, type KeyStore } from "../core/keys.js";
-import { isLocalProvider, LOCAL_PROVIDERS, PROVIDERS, providerName } from "../core/providers.js";
+import { isLocalProvider, LOCAL_PROVIDERS, notAnOpencodeModel, PROVIDERS, providerName } from "../core/providers.js";
 import { loadRunnerConfig, opencodeProvider, runnerFileFor, type RunnerConfig } from "../runner/config.js";
 import { which } from "./agents.js";
 import { info, ok, warn } from "./ui.js";
@@ -238,7 +238,7 @@ export function checkOpencodeModel(bin: string, provider: string, model: string,
   const near = closestModel(model, known);
   return {
     ok: false,
-    message: `${model} isn't a ${providerName(provider)} model in OpenCode.${near ? ` Did you mean ${near}?` : ""} Put the right name after --model, then run the line again.`,
+    message: `${notAnOpencodeModel(provider, model)}.${near ? ` Did you mean ${near}?` : ""} Put the right name after --model, then run the line again.`,
   };
 }
 

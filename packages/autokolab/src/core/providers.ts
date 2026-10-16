@@ -70,6 +70,12 @@ export function providerName(id: string): string {
   return PROVIDERS[id]?.name ?? LOCAL_PROVIDERS[id]?.name ?? id;
 }
 
+/** "x isn't a DeepSeek model in OpenCode" (AK-143): what connect and the runner say about a model OpenCode doesn't have. */
+export function notAnOpencodeModel(id: string, model: string): string {
+  const name = providerName(id);
+  return `${model} isn't ${/^[aeiou]/i.test(name) ? "an" : "a"} ${name} model in OpenCode`;
+}
+
 /** The variable that carries this provider's key: the owner's override first, then the known one. */
 export function providerKeyEnv(id: string, override?: string): string | null {
   if (override) return override;
