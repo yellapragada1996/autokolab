@@ -1,24 +1,32 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { eventsAfter, eventsBetween, type TicketEvent } from "../lib/data";
 import { go, href, onNav, openShow, type Route } from "../lib/router";
 import { EVENTS_WINDOW_MS, useHistoryWindow } from "./useHistory";
-import { overviewGlance } from "./glance";
+import { overviewGlance, type OverviewGlance } from "./glance";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
 
 /** The approved Overview: one answer, then the person, team, goals and delivery. */
-export function Overview({ ws, cr }: { ws: Workspace | null; me: string; cr: CaptainRoom }) {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => { const id = setInterval(() => setNow(new Date()), 30_000); return () => clearInterval(id); }, []);
+export function visibleOverview(view: OverviewGlance) {
+  return { ...view, requests: view.requests.slice(0, 2), team: view.team.slice(0, 3), goals: view.goals.slice(0, 2), delivered: view.delivered.slice(0, 2) };
+}
+
+export function Overview({ ws, cr, error }: { ws: Workspace | null; me: string; cr: CaptainRoom; error?: string }) {
+  const [now] = useState(() => new Date());
   const projectId = ws?.project.id;
   const demoEvents = ws?.demoEvents;
-  const { rows: liveEvents } = useHistoryWindow(demoEvents ? undefined : projectId, EVENTS_WINDOW_MS, {
+  const { rows: liveEvents, ready: historyReady } = useHistoryWindow(demoEvents ? undefined : projectId, EVENTS_WINDOW_MS, {
     read: (from, to) => projectId ? eventsBetween(projectId, from, to) : Promise.resolve([] as TicketEvent[]),
     readAfter: (afterId, from) => projectId ? eventsAfter(projectId, afterId, from) : Promise.resolve([] as TicketEvent[]),
   });
   const events = demoEvents ?? liveEvents;
-  const view = useMemo(() => ws ? overviewGlance(ws, cr.needs, cr.plans, events, now) : null, [ws, cr.needs, cr.plans, events, now]);
-  if (!ws || !view) return <div className="ak-overview"><h1>Overview</h1><p>Loading your project…</p></div>;
+  const roomReady = cr.room !== undefined;
+  const calculated = useMemo(() => ws && (demoEvents || historyReady) && roomReady ? overviewGlance(ws, cr.needs, cr.plans, events, now) : null, [ws, cr.needs, cr.plans, events, now, demoEvents, historyReady, roomReady]);
+  const held = useRef<OverviewGlance | null>(null);
+  if (calculated) held.current = calculated;
+  const fullView = calculated ?? held.current;
+  const view = useMemo(() => fullView && visibleOverview(fullView), [fullView]);
+  if (!ws || !view || !fullView) return <div className="ak-overview"><h1>Overview</h1><p role={error || cr.loadError ? "alert" : undefined}>{error || cr.loadError || "Loading your project…"}</p></div>;
   const slug = ws.project.slug;
   const captain: Route = { view: "captain", project: slug };
   const work: Route = { view: "board", project: slug };
@@ -27,6 +35,7 @@ export function Overview({ ws, cr }: { ws: Workspace | null; me: string; cr: Cap
   return (
     <div className="ak-overview">
       <h1>Overview</h1>
+      {(error || cr.loadError) && <p className="ak-overview-error" role="alert">{error || cr.loadError}</p>}
       <p className="ak-overview-state">{view.sentence}</p>
       {view.next && <p className="ak-overview-next"><strong>Next from Captain:</strong> {view.next}</p>}
 
@@ -46,6 +55,7 @@ export function Overview({ ws, cr }: { ws: Workspace | null; me: string; cr: Cap
             <span className="ak-overview-dot amber" aria-hidden="true"/><div className="ak-overview-row-main">{r.text}</div>
             <button type="button" className="ak-overview-link ak-overview-row-end" onClick={() => answer(r.key)}>Open in Captain →</button>
           </div>)}</div>
+          {fullView.requests.length > view.requests.length && <a className="ak-overview-foot-link" href={href(captain)} onClick={onNav(captain)}>Open in Captain →</a>}
         </section>}
         {view.state === "problem" && view.problem && <section className="ak-overview-section" aria-label="Problem">
           <h2>What happened</h2><div className="ak-overview-list"><div className="ak-overview-row ak-overview-request">
@@ -60,6 +70,7 @@ export function Overview({ ws, cr }: { ws: Workspace | null; me: string; cr: Cap
             {r.tone !== "quiet" && <span className={`ak-overview-dot ${r.tone === "problem" ? "coral" : ""}`} aria-label={r.state}/>}
             <span className="ak-overview-row-end">{r.state}</span>
           </div>)}</div>
+          {fullView.team.length > view.team.length && <a className="ak-overview-foot-link" href={href({ view: "people", project: slug })} onClick={onNav({ view: "people", project: slug })}>See the team →</a>}
         </section>}
         {view.goals.length > 0 && <section className="ak-overview-section" aria-label="Goals">
           <h2>Goals</h2><div className="ak-overview-list">{view.goals.map((g) => <div className="ak-overview-row ak-overview-goal" key={g.id}>
@@ -68,14 +79,14 @@ export function Overview({ ws, cr }: { ws: Workspace | null; me: string; cr: Cap
           </div>)}</div>
           <a className="ak-overview-foot-link" href={href(work)} onClick={onNav(work)}>See all work →</a>
         </section>}
-        {view.goals.length === 0 && <a className="ak-overview-foot-link" href={href(work)} onClick={onNav(work)}>See all work →</a>}
         {view.delivered.length > 0 && <section className="ak-overview-section" aria-label="Delivered today">
           <h2>Delivered today</h2><div className="ak-overview-list">{view.delivered.map((d) => <div className="ak-overview-row" key={d.key}>
             <span className="ak-overview-dot green" aria-hidden="true"/><div className="ak-overview-row-main">{d.text}</div>
             <button type="button" className="ak-overview-link ak-overview-row-end" onClick={() => openShow(d.key)}>Show the record →</button>
           </div>)}</div>
+          {fullView.delivered.length > view.delivered.length && <a className="ak-overview-foot-link" href={href(work)} onClick={onNav(work)}>See all work →</a>}
         </section>}
-        {view.state === "calm" && view.goals.every((g) => g.total > 0 && g.done === g.total) && <p className="ak-overview-note">Have another goal? Tell Captain when you’re ready.</p>}
+        {view.state === "calm" && fullView.goals.length > 0 && fullView.goals.every((g) => g.total > 0 && g.done === g.total) && <p className="ak-overview-note">Have another goal? Tell Captain when you’re ready.</p>}
       </>}
     </div>
   );

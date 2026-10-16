@@ -176,8 +176,9 @@ h1, h2, h3, p { margin: 0; }
 .ak-overview-topbar .ak-header-actions { display: none !important; }
 .ak-overview { width: min(100%, 760px); margin: 0 auto; padding: 56px 32px 70px; color: var(--text-body); font-size: 14px; line-height: 1.45; }
 .ak-overview h1 { margin: 0 0 28px; color: var(--text); font-size: 30px; font-weight: 650; letter-spacing: -.02em; line-height: 1.15; }
-.ak-overview-state { max-width: 690px; color: var(--text); font-size: 26px; font-weight: 560; letter-spacing: -.02em; line-height: 1.3; }
-.ak-overview-next { margin-top: 14px; color: var(--text-muted); font-size: 14px; }
+.ak-overview-error { margin: 0 0 16px; color: var(--coral); font-size: 13px; }
+.ak-overview-state { margin: 0; max-width: 690px; color: var(--text); font-size: 26px; font-weight: 560; letter-spacing: -.02em; line-height: 1.3; }
+.ak-overview-next { margin: 14px 0 0; color: var(--text-muted); font-size: 14px; }
 .ak-overview-next strong { color: var(--text-body); font-weight: 600; }
 .ak-overview-section { margin-top: 42px; }
 .ak-overview-section h2 { margin: 0 0 12px; color: var(--text-secondary); font-size: 13px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
@@ -200,7 +201,7 @@ h1, h2, h3, p { margin: 0; }
 .ak-overview-goal .ak-overview-quiet { font-size: 13px; }
 .ak-overview-progress { color: var(--text-secondary); font-size: 13px; white-space: nowrap; }
 .ak-overview-foot-link { display: inline-flex; align-items: center; margin-top: 13px; }
-.ak-overview-note { margin-top: 18px; color: var(--text-muted); font-size: 13px; }
+.ak-overview-note { margin: 18px 0 0; color: var(--text-muted); font-size: 13px; }
 .ak-overview-setup { align-items: flex-start; }
 .ak-overview-step { display: grid; place-items: center; flex: 0 0 24px; height: 24px; color: var(--text-secondary); border: 1px solid var(--border-strong); border-radius: 50%; font: 12px var(--font-mono); }
 @media (max-width: 1099px) {
