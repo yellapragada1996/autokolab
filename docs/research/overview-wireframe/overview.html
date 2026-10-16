@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AutoKolab · Overview wireframe</title>
+  <style>
+    /* Values copied from autokolab-ux-handoff/tokens.css so this file opens offline. */
+    :root {
+      --bg: #0B0D11; --sidebar: #0E1116; --surface: #12151B;
+      --surface-sunken: #0F1217; --surface-hover: #161A21;
+      --surface-active: #181C23; --surface-raised: #232833;
+      --avatar-bg: #232833; --avatar-fg: #C9CED6;
+      --border-subtle: #1C2029; --border: #1F242D;
+      --border-strong: #2A303B; --border-focus: #4A515D; --track: #2A303B;
+      --text: #E9EBEF; --text-body: #D4D8DE; --text-secondary: #C9CED6;
+      --text-muted: #A2A9B5; --text-dim: #858C98;
+      --amber: #F4C25B; --green: #5CCB9A; --blue: #7EA6FF;
+      --blue-text: #A9C2FF; --coral: #FF8A78;
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+      --text-12: 12px; --text-13: 13px; --text-14: 14px;
+      --text-15: 15px; --text-21: 21px; --text-26: 26px; --text-30: 30px;
+      --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+      --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+      --radius-sm: 7px; --radius-md: 10px; --radius-lg: 12px;
+      --radius-xl: 16px;
+      --shadow-md: 0 10px 24px rgba(0, 0, 0, .35);
+      --shadow-lg: 0 30px 80px rgba(0, 0, 0, .55);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body { margin: 0; color: var(--text); background: var(--bg); font: var(--text-14)/1.45 var(--font-sans); }
+    button, summary { font: inherit; }
+    button { cursor: pointer; }
+    :focus-visible { outline: 2px solid var(--border-focus); outline-offset: 3px; }
+    .guide { max-width: 1440px; margin: 0 auto; padding: 32px 32px 28px; }
+    .guide-kicker, .frame-label, .eyebrow, .note-number { color: var(--text-dim); font-size: var(--text-12); font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+    .guide h1 { margin: 8px 0 6px; font-size: var(--text-26); letter-spacing: -.02em; }
+    .guide p { margin: 0; color: var(--text-muted); }
+    .state-picker { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+    .state-picker button { min-height: 40px; padding: 8px 14px; color: var(--text-secondary); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); }
+    .state-picker button[aria-pressed="true"] { color: var(--text); background: var(--surface-raised); border-color: var(--border-strong); }
+    .stage { width: max-content; max-width: 100%; margin: 0 auto; padding: 0 32px 80px; }
+    .stage-row { display: flex; align-items: flex-start; gap: 28px; margin-top: 12px; }
+    .frame { border: 1px solid var(--border-strong); border-radius: var(--radius-xl); overflow: hidden; background: var(--bg); box-shadow: var(--shadow-md); }
+    .desktop-frame { width: 1440px; height: 900px; }
+    .app { display: flex; height: 100%; }
+    .sidebar { flex: 0 0 230px; display: flex; flex-direction: column; padding: 24px 16px 18px; border-right: 1px solid var(--border); background: var(--sidebar); }
+    .brand { display: block; width: 160px; height: 48px; object-fit: contain; object-position: left center; margin: 0 0 24px 12px; }
+    .project-name { padding: 0 12px; color: var(--text-muted); font-size: var(--text-13); }
+    .nav-list { display: grid; gap: 4px; margin-top: 28px; }
+    .nav-item { display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: var(--text-secondary); border-radius: var(--radius-md); font-size: var(--text-14); }
+    button.nav-item { width: 100%; text-align: left; background: none; border: 0; }
+    button.nav-item:hover { background: var(--surface-hover); }
+    .nav-item.selected { color: var(--text); background: var(--surface-active); font-weight: 600; }
+    .project-menu { margin-top: auto; border-top: 1px solid var(--border); padding-top: 12px; }
+    .project-menu summary { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 0 12px; color: var(--text-muted); border-radius: var(--radius-md); cursor: pointer; list-style: none; }
+    .project-menu summary::-webkit-details-marker { display: none; }
+    .project-menu summary:hover { background: var(--surface-hover); }
+    .project-menu summary::after { content: '⌄'; font-size: 18px; }
+    .project-menu[open] summary::after { content: '⌃'; }
+    .project-menu ul { list-style: none; margin: 0; padding: 4px 12px 0; color: var(--text-muted); font-size: var(--text-13); }
+    .project-menu li { padding: 8px 0; }
+    .project-menu li button { color: var(--text-muted); background: none; border: 0; padding: 0; text-align: left; }
+    .project-menu li button:hover { color: var(--text); }
+    .page { flex: 1; min-width: 0; overflow-y: auto; }
+    .page-top { min-height: 70px; display: flex; align-items: center; justify-content: space-between; padding: 0 48px; border-bottom: 1px solid var(--border-subtle); }
+    .page-top strong { font-size: var(--text-14); font-weight: 600; }
+    .page-top .time { color: var(--text-dim); font-size: var(--text-12); }
+    .reading-column { width: min(100%, 760px); margin: 0 auto; padding: 56px 32px 70px; }
+    .page-title { margin: 0 0 28px; font-size: var(--text-30); font-weight: 650; letter-spacing: -.02em; line-height: 1.15; }
+    .state-headline { margin: 0; max-width: 690px; color: var(--text); font-size: var(--text-26); font-weight: 560; letter-spacing: -.02em; line-height: 1.3; }
+    .next-line { margin: 14px 0 0; color: var(--text-muted); font-size: var(--text-14); }
+    .next-line strong { color: var(--text-body); font-weight: 600; }
+    .section { margin-top: 42px; }
+    .section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
+    .section-heading h2 { margin: 0; color: var(--text-secondary); font-size: var(--text-13); font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+    .section-heading button, .text-button { border: 0; background: none; color: var(--blue-text); font-size: var(--text-13); padding: 4px 0; }
+    .text-button:hover, .section-heading button:hover { text-decoration: underline; }
+    .list { border-top: 1px solid var(--border); }
+    .row { display: flex; align-items: center; gap: 14px; min-height: 57px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+    .row-main { min-width: 0; flex: 1; }
+    .row-main strong { font-weight: 600; }
+    .row-main .quiet { color: var(--text-muted); }
+    .avatar { flex: 0 0 28px; display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--radius-sm); background: var(--avatar-bg); color: var(--avatar-fg); font-size: var(--text-12); font-weight: 650; }
+    .status-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--blue); }
+    .status-dot.amber { background: var(--amber); }
+    .status-dot.coral { background: var(--coral); }
+    .status-dot.green { background: var(--green); }
+    .row-end { flex: 0 0 auto; color: var(--text-muted); font-size: var(--text-12); white-space: nowrap; }
+    .need-row { gap: 12px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .need-row .row-main { color: var(--text-body); }
+    .goal-row { align-items: flex-start; gap: 18px; padding: 14px 0; }
+    .goal-row .row-main { display: grid; gap: 3px; }
+    .goal-row .quiet { font-size: var(--text-13); }
+    .goal-progress { color: var(--text-secondary); font-size: var(--text-13); white-space: nowrap; }
+    .delivered-label { display: inline-flex; align-items: center; gap: 8px; color: var(--text-body); }
+    .delivered-label .status-dot { flex-basis: 6px; width: 6px; height: 6px; }
+    .section-foot { margin-top: 13px; }
+    .inline-note { margin: 18px 0 0; color: var(--text-muted); font-size: var(--text-13); }
+    .setup-row { align-items: flex-start; }
+    .step-number { display: grid; place-items: center; flex: 0 0 24px; height: 24px; color: var(--text-secondary); border: 1px solid var(--border-strong); border-radius: 50%; font: var(--text-12) var(--font-mono); }
+    .annotations { flex: 0 0 280px; padding: 8px 0 0; color: var(--text-muted); }
+    .annotations h2 { margin: 0 0 12px; color: var(--text); font-size: var(--text-15); }
+    .annotations ol { margin: 0; padding: 0; list-style: none; }
+    .annotations li { padding: 14px 0; border-top: 1px solid var(--border); }
+    .annotations li p { margin: 4px 0 0; }
+    .annotations .state-specific { margin-top: 20px; }
+    .phone-row { margin-top: 54px; }
+    .phone-frame { width: 390px; min-height: 844px; }
+    .phone-app { display: flex; flex-direction: column; min-height: 844px; }
+    .phone-top { display: flex; align-items: center; justify-content: space-between; height: 60px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--sidebar); }
+    .phone-top .brand { width: 130px; height: 40px; margin: 0; }
+    .phone-top .project-name { padding: 0; font-size: var(--text-12); }
+    .phone-main { flex: 1; }
+    .phone-main .reading-column { width: 100%; padding: 34px 20px 44px; }
+    .phone-main .page-title { margin-bottom: 24px; font-size: var(--text-26); }
+    .phone-main .state-headline { font-size: var(--text-21); }
+    .phone-main .section { margin-top: 32px; }
+    .phone-main .row { align-items: flex-start; }
+    .phone-main .row-end { margin-left: auto; }
+    .phone-main .team-row .row-end { display: none; }
+    .phone-main .goal-row { flex-wrap: wrap; gap: 2px 12px; }
+    .phone-main .goal-progress { order: 2; margin-left: 0; }
+    .phone-main .goal-row .row-main { flex-basis: 100%; }
+    .phone-main .need-row { flex-wrap: wrap; }
+    .phone-main .need-row .row-end { flex-basis: 100%; margin-left: 19px; }
+    .phone-main .text-button { display: inline-flex; align-items: center; min-height: 44px; }
+    .phone-nav { display: grid; grid-template-columns: repeat(4, 1fr); min-height: 64px; border-top: 1px solid var(--border); background: var(--sidebar); }
+    .phone-nav span, .phone-nav button { display: grid; place-items: center; color: var(--text-muted); font-size: var(--text-12); }
+    .phone-nav button { background: none; border: 0; }
+    .phone-nav button:hover { background: var(--surface-hover); }
+    .phone-nav .selected { color: var(--text); font-weight: 650; border-top: 2px solid var(--text-secondary); }
+    .phone-row .annotations { max-width: 280px; }
+    .state-view[hidden] { display: none; }
+    dialog { width: min(560px, calc(100% - 32px)); padding: 28px; color: var(--text-body); background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); }
+    dialog::backdrop { background: var(--bg); opacity: .72; }
+    dialog h2 { margin: 0 0 12px; color: var(--text); font-size: var(--text-21); }
+    dialog p { margin: 0 0 10px; }
+    dialog ul { margin: 0 0 20px; padding-left: 20px; }
+    dialog .close { min-height: 40px; padding: 8px 16px; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-md); }
+    @media (max-width: 700px) {
+      .guide { padding: 20px 20px 12px; }
+      .guide h1 { font-size: var(--text-21); }
+      .state-picker { flex-wrap: nowrap; overflow-x: auto; margin-right: -20px; padding: 0 20px 8px 0; }
+      .state-picker button { flex: 0 0 auto; min-height: 44px; }
+      .stage { width: 100%; padding: 0 0 48px; }
+      .desktop-row { display: none; }
+      .phone-row { display: block; margin-top: 12px; }
+      .frame-label { padding: 0 20px; }
+      .phone-frame { width: 100%; min-height: 0; border-left: 0; border-right: 0; border-radius: 0; box-shadow: none; }
+      .phone-app { min-height: 760px; }
+      .annotations { max-width: none !important; padding: 28px 20px 0; }
+      dialog .close { min-height: 44px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="guide">
+    <div class="guide-kicker">Overview study · sample project</div>
+    <h1>One glance, then the record</h1>
+    <p>Choose a situation. The same Overview changes with the project; the phone frame follows the selected state.</p>
+    <div class="state-picker" aria-label="Project situation">
+      <button type="button" data-state-button="busy" aria-pressed="true">Busy</button>
+      <button type="button" data-state-button="needed" aria-pressed="false">You are needed</button>
+      <button type="button" data-state-button="calm" aria-pressed="false">Calm</button>
+      <button type="button" data-state-button="problem" aria-pressed="false">Captain is handling a problem</button>
+      <button type="button" data-state-button="new" aria-pressed="false">Brand new</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="frame-label">Desktop · 1440 px</div>
+    <div class="stage-row desktop-row">
+      <div class="frame desktop-frame">
+        <div class="app">
+          <aside class="sidebar" aria-label="App shell">
+            <img class="brand" src="autokolab-logo.svg" alt="AutoKolab">
+            <div class="project-name">Northstar Shop</div>
+            <nav class="nav-list" aria-label="Project navigation">
+              <button class="nav-item" type="button" data-dialog="captainPage">Captain</button>
+              <span class="nav-item selected" aria-current="page">Overview</span>
+              <button class="nav-item" type="button" data-dialog="team">Team</button>
+            </nav>
+            <details class="project-menu"><summary>Project</summary><ul><li><button type="button" data-dialog="work">Work and records</button></li><li><button type="button" data-dialog="project">Settings</button></li><li><button type="button" data-dialog="teamConversation">Team conversation</button></li></ul></details>
+          </aside>
+          <div class="page">
+            <div class="page-top"><strong>Northstar Shop</strong><span class="time">Updated just now</span></div>
+            <div class="reading-column">
+              <h1 class="page-title">Overview</h1>
+              <div id="desktop-content">
+                <section class="state-view" data-state="busy" aria-label="Busy project">
+                  <p class="state-headline">Checkout and account access are moving. Three agents are working, and nothing needs you.</p>
+                  <p class="next-line"><strong>Next from Captain:</strong> I’ll review the receipt change when Tern finishes it.</p>
+                  <section class="section" aria-label="Team at work">
+                    <div class="section-heading"><h2>Who is doing what</h2></div>
+                    <div class="list">
+                      <div class="row team-row"><span class="avatar" aria-hidden="true">B</span><div class="row-main"><strong>Birch</strong> <span class="quiet">· fixing payment retries</span></div><span class="status-dot" aria-label="Working"></span><span class="row-end">Working</span></div>
+                      <div class="row team-row"><span class="avatar" aria-hidden="true">F</span><div class="row-main"><strong>Fjord</strong> <span class="quiet">· checking Google sign-in</span></div><span class="status-dot" aria-label="Working"></span><span class="row-end">Working</span></div>
+                      <div class="row team-row"><span class="avatar" aria-hidden="true">T</span><div class="row-main"><strong>Tern</strong> <span class="quiet">· finishing receipt emails</span></div><span class="status-dot" aria-label="Working"></span><span class="row-end">Working</span></div>
+                    </div>
+                  </section>
+                  <section class="section" aria-label="Goals">
+                    <div class="section-heading"><h2>Goals</h2></div>
+                    <div class="list">
+                      <div class="row goal-row"><div class="row-main"><strong>Checkout</strong><span class="quiet">Next: try a full test purchase</span></div><span class="goal-progress">4 of 7 tasks done</span></div>
+                      <div class="row goal-row"><div class="row-main"><strong>Account access</strong><span class="quiet">Next: check the sign-in wording</span></div><span class="goal-progress">2 of 4 tasks done</span></div>
+                    </div>
+                    <div class="section-foot"><button class="text-button" type="button" data-dialog="work">See all work →</button></div>
+                  </section>
+                  <section class="section" aria-label="Delivered today">
+                    <div class="section-heading"><h2>Delivered today</h2></div>
+                    <div class="list"><div class="row"><div class="row-main"><span class="delivered-label"><span class="status-dot green" aria-hidden="true"></span>Saved cards now appear at checkout.</span></div><button class="text-button row-end" type="button" data-dialog="proof">Show the record →</button></div></div>
+                  </section>
+                </section>
+
+                <section class="state-view" data-state="needed" aria-label="A person is needed" hidden>
+                  <p class="state-headline">Checkout is waiting on one choice. Account access work continues.</p>
+                  <p class="next-line"><strong>Next from Captain:</strong> I’ll move Checkout forward as soon as you answer.</p>
+                  <section class="section" aria-label="Needs you">
+                    <div class="section-heading"><h2>You are needed</h2></div>
+                    <div class="row need-row"><span class="status-dot amber" aria-hidden="true"></span><div class="row-main">Should guests be able to use saved cards? Birch is waiting for your answer.</div><button class="text-button row-end" type="button" data-dialog="captain">Open in Captain →</button></div>
+                  </section>
+                  <section class="section" aria-label="Team at work">
+                    <div class="section-heading"><h2>Who is doing what</h2></div>
+                    <div class="list">
+                      <div class="row team-row"><span class="avatar" aria-hidden="true">B</span><div class="row-main"><strong>Birch</strong> <span class="quiet">· waiting on the saved cards choice</span></div><span class="row-end">Waiting</span></div>
+                      <div class="row team-row"><span class="avatar" aria-hidden="true">F</span><div class="row-main"><strong>Fjord</strong> <span class="quiet">· checking Google sign-in</span></div><span class="status-dot" aria-label="Working"></span><span class="row-end">Working</span></div>
+                    </div>
+                  </section>
+                  <section class="section" aria-label="Goals"><div class="section-heading"><h2>Goals</h2></div><div class="list"><div class="row goal-row"><div class="row-main"><strong>Checkout</strong><span class="quiet">Next: decide how saved cards work for guests</span></div><span class="goal-progress">4 of 7 tasks done</span></div><div class="row goal-row"><div class="row-main"><strong>Account access</strong><span class="quiet">Next: check the sign-in wording</span></div><span class="goal-progress">2 of 4 tasks done</span></div></div><div class="section-foot"><button class="text-button" type="button" data-dialog="work">See all work →</button></div></section>
+                </section>
+
+                <section class="state-view" data-state="calm" aria-label="Calm project" hidden>
+                  <p class="state-headline">The current work is done. Nothing is in progress, and nothing needs you.</p>
+                  <section class="section" aria-label="Goals"><div class="section-heading"><h2>Goals</h2></div><div class="list"><div class="row goal-row"><div class="row-main"><strong>Checkout</strong><span class="quiet">Finished yesterday</span></div><span class="goal-progress">7 of 7 tasks done</span></div><div class="row goal-row"><div class="row-main"><strong>Account access</strong><span class="quiet">Finished today</span></div><span class="goal-progress">4 of 4 tasks done</span></div></div><div class="section-foot"><button class="text-button" type="button" data-dialog="work">See all work →</button></div></section>
+                  <section class="section" aria-label="Delivered today"><div class="section-heading"><h2>Delivered today</h2></div><div class="list"><div class="row"><div class="row-main"><span class="delivered-label"><span class="status-dot green" aria-hidden="true"></span>Google sign-in is ready to use.</span></div><button class="text-button row-end" type="button" data-dialog="proof">Show the record →</button></div></div></section>
+                  <p class="inline-note">Have another goal? Tell Captain when you’re ready.</p>
+                </section>
+
+                <section class="state-view" data-state="problem" aria-label="Captain is handling a problem" hidden>
+                  <p class="state-headline">Payment retry tests failed. Captain is fixing the problem; you do not need to act.</p>
+                  <p class="next-line"><strong>Next from Captain:</strong> I’ll rerun the tests and report back when they pass.</p>
+                  <section class="section" aria-label="Problem"><div class="section-heading"><h2>What happened</h2></div><div class="row need-row"><span class="status-dot coral" aria-hidden="true"></span><div class="row-main">The retry change did not pass its tests. Birch is correcting it.</div><button class="text-button row-end" type="button" data-dialog="problem">Show the record →</button></div></section>
+                  <section class="section" aria-label="Team at work"><div class="section-heading"><h2>Who is doing what</h2></div><div class="list"><div class="row team-row"><span class="avatar" aria-hidden="true">B</span><div class="row-main"><strong>Birch</strong> <span class="quiet">· correcting the retry change</span></div><span class="status-dot" aria-label="Working"></span><span class="row-end">Working</span></div><div class="row team-row"><span class="avatar" aria-hidden="true">F</span><div class="row-main"><strong>Fjord</strong> <span class="quiet">· checking Google sign-in</span></div><span class="status-dot" aria-label="Working"></span><span class="row-end">Working</span></div></div></section>
+                  <section class="section" aria-label="Goals"><div class="section-heading"><h2>Goals</h2></div><div class="list"><div class="row goal-row"><div class="row-main"><strong>Checkout</strong><span class="quiet">Next: rerun payment retry tests</span></div><span class="goal-progress">4 of 7 tasks done</span></div><div class="row goal-row"><div class="row-main"><strong>Account access</strong><span class="quiet">Next: check the sign-in wording</span></div><span class="goal-progress">2 of 4 tasks done</span></div></div><div class="section-foot"><button class="text-button" type="button" data-dialog="work">See all work →</button></div></section>
+                </section>
+
+                <section class="state-view" data-state="new" aria-label="Brand-new project" hidden>
+                  <p class="state-headline">Nothing has started yet. Connect Captain, then tell it what you want to make.</p>
+                  <section class="section" aria-label="First steps"><div class="section-heading"><h2>Start here</h2></div><div class="list"><div class="row setup-row"><span class="step-number">1</span><div class="row-main"><strong>Connect Captain</strong><div class="quiet">Give Captain a way to answer you and manage the work.</div></div></div><div class="row setup-row"><span class="step-number">2</span><div class="row-main"><strong>Tell Captain your first goal</strong><div class="quiet">A sentence is enough. Captain will take it from there.</div></div></div></div><div class="section-foot"><button class="text-button" type="button" data-dialog="setup">Connect Captain →</button></div></section>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <aside class="annotations" id="design-notes" aria-label="Wireframe annotations">
+        <h2>Why this shape</h2>
+        <ol>
+          <li><span class="note-number">01 · The answer</span><p>The first sentence says what is happening and whether you are needed. No number tiles come before it.</p></li>
+          <li><span class="note-number">02 · The handoff</span><p>“Next from Captain” names the next move only when there is one. The page is for looking; direction goes to Captain.</p></li>
+          <li><span class="note-number">03 · Current work</span><p>Each agent’s current task appears once. Team can focus on people and availability.</p></li>
+          <li><span class="note-number">04 · Goals and proof</span><p>Goals show completed tasks and the next meaningful step. Delivery has one direct path to its record.</p></li>
+          <li><span class="note-number">05 · Left out</span><p>No zero counts, models, machine details, review queue, or repeated board. “See all work” opens the deeper view.</p></li>
+        </ol>
+        <div class="state-specific"><span class="note-number">Across states</span><p>Amber appears only beside a real request to the person. Coral names a problem Captain owns. Empty blocks disappear rather than showing zero.</p></div>
+      </aside>
+    </div>
+
+    <div class="frame-label phone-row-label" style="margin-top: 54px">Phone · 390 px</div>
+    <div class="stage-row phone-row">
+      <div class="frame phone-frame">
+        <div class="phone-app">
+          <div class="phone-top"><img class="brand" src="autokolab-logo.svg" alt="AutoKolab"><span class="project-name">Northstar Shop</span></div>
+          <div class="phone-main"><div class="reading-column"><h1 class="page-title">Overview</h1><div id="phone-content"></div></div></div>
+          <nav class="phone-nav" aria-label="Project navigation"><button type="button" data-dialog="captainPage">Captain</button><span class="selected" aria-current="page">Overview</span><button type="button" data-dialog="team">Team</button><button type="button" data-dialog="project">Project</button></nav>
+        </div>
+      </div>
+      <aside class="annotations" aria-label="Phone annotations"><h2>On a phone</h2><ol><li><span class="note-number">06 · Same order</span><p>The state, any request to you, current work, goals and delivery keep the same reading order. Links remain ordinary tap targets.</p></li><li><span class="note-number">07 · Navigation</span><p>Captain stays first. Overview remains a separate place for looking; Team and Project stay reachable.</p></li></ol></aside>
+    </div>
+  </main>
+
+  <dialog id="detail-dialog" aria-labelledby="detail-title"><h2 id="detail-title"></h2><div id="detail-body"></div><button class="close" type="button">Close</button></dialog>
+  <script>
+    const details = {
+      proof: ['Delivery record', '<p>Saved cards now appear at checkout.</p><ul><li>Built by Birch; reviewed by Captain.</li><li>48 of 48 tests passed.</li><li>Delivered today at 10:40 am.</li></ul><p>In the full app, this opens the exact change and its evidence.</p>'],
+      work: ['All work', '<p>Checkout: 4 of 7 tasks done. Account access: 2 of 4 tasks done.</p><p>In the full app, this opens the work list and lets you inspect each task.</p>'],
+      captain: ['Talk to Captain', '<p>Should guests be able to use saved cards? Birch is waiting for your answer.</p><p>In the full app, this opens Captain’s message with the answer choices.</p>'],
+      problem: ['Problem record', '<p>Payment retry tests failed. Birch is correcting the change, and Captain will review the next result.</p><p>No action is needed from you.</p>'],
+      setup: ['Connect Captain', '<p>In the full app, this opens the project setup step for connecting Captain.</p>'],
+      captainPage: ['Captain', '<p>In the full app, this opens your conversation with Captain.</p>'],
+      team: ['Team', '<p>In the full app, this opens the people and availability page.</p>'],
+      project: ['Project', '<p>In the full app, this menu contains work and records, settings, and the team conversation.</p>'],
+      teamConversation: ['Team conversation', '<p>In the full app, this opens the team’s conversation and its record.</p>']
+    };
+    const dialog = document.getElementById('detail-dialog');
+    function showState(state) {
+      document.querySelectorAll('[data-state-button]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.stateButton === state)));
+      document.querySelectorAll('.state-view').forEach(view => { view.hidden = view.dataset.state !== state; });
+      const current = document.querySelector('.state-view[data-state="' + state + '"]');
+      document.getElementById('phone-content').innerHTML = current.innerHTML;
+    }
+    document.addEventListener('click', event => {
+      const stateButton = event.target.closest('[data-state-button]');
+      if (stateButton) showState(stateButton.dataset.stateButton);
+      const detailButton = event.target.closest('[data-dialog]');
+      if (detailButton) {
+        const [title, body] = details[detailButton.dataset.dialog];
+        document.getElementById('detail-title').textContent = title;
+        document.getElementById('detail-body').innerHTML = body;
+        dialog.showModal();
+      }
+      if (event.target.matches('dialog .close')) dialog.close();
+    });
+    showState('busy');
+  </script>
+</body>
+</html>
