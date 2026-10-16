@@ -4,7 +4,7 @@ import { keyProblem, saveAgentKey, type KeyStore } from "../core/keys.js";
 import { connectFromConfig } from "../core/node.js";
 import { isLocalProvider, providerName } from "../core/providers.js";
 import { ensureRunnerConfig } from "../runner/config.js";
-import { askHidden, checkKey, findOpencode, installOpencode, keyFromEnv, type ApiAgentOptions } from "./apimodel.js";
+import { askHidden, checkKey, checkOpencodeModel, findOpencode, installOpencode, keyFromEnv, type ApiAgentOptions } from "./apimodel.js";
 import { CLIENT_ENGINE, ENGINE_CLIENT, register, type Engine } from "./agents.js";
 import { ENGINE_LABEL, INSTALL } from "./connect.js";
 import { canRead, toolStatus } from "./machine.js";
@@ -44,7 +44,8 @@ export interface ConnectOptions {
   service?: boolean;
   /** One API-model agent instead of Claude Code and Codex (CON-25). */
   api?: ApiAgentOptions | null;
-  /** For tests: the network, and the key prompt. */
+  /** For tests: OpenCode, the network, and the key prompt. */
+  opencodeBin?: string;
   fetch?: typeof fetch;
   ask?: (question: string) => Promise<string>;
   keyStore?: Partial<KeyStore>;
@@ -205,7 +206,7 @@ async function connectApiAgent(rawCode: string, api: ApiAgentOptions, opts: Conn
   const model = `${api.provider}/${api.model}`;
 
   console.log(`\n  ${bold(`Adding ${api.name ?? "an agent"} (${name}) to this computer`)}`);
-  const bin = setupTools ? findOpencode() ?? installOpencode() : undefined;
+  const bin = opts.opencodeBin ?? (setupTools ? findOpencode() ?? installOpencode() : undefined);
   const baseUrl = local ? process.env.OLLAMA_HOST?.replace(/^(?!https?:\/\/)/, "http://") : undefined;
 
   // The key, checked with the provider before anything is created.
@@ -215,7 +216,12 @@ async function connectApiAgent(rawCode: string, api: ApiAgentOptions, opts: Conn
     const problem = keyProblem(key);
     if (problem) throw new Error(`${problem} Then run the line again.`);
   }
-  const check = await checkKey(api.provider, key, { model: api.model, baseUrl, fetch: f });
+  // OpenCode's names are the ones that count (AK-143): a model the provider lists under another name
+  // never runs. When OpenCode can't say, the provider's own list is the next best check.
+  const known = bin && !local ? checkOpencodeModel(bin, api.provider, api.model, key) : null;
+  if (known && !known.ok) throw new Error(known.message);
+  if (bin && !local && !known) warn(`I couldn't ask OpenCode whether it has ${api.model}; the agent's first run will show it.`);
+  const check = await checkKey(api.provider, key, { model: known ? undefined : api.model, baseUrl, fetch: f });
   if (!check.ok) throw new Error(check.message);
   if (check.note) warn(check.note);
   else ok(local ? `${name} is running and has ${api.model}` : `${name} accepted the key`);

@@ -192,6 +192,56 @@ export async function checkKey(provider: string, key: string | null, o: CheckOpt
   return { ok: true };
 }
 
+// ---------------------------------------------------------------- the model, by OpenCode's names
+
+/** Edits to turn one name into the other. */
+function distance(a: string, b: string): number {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length];
+}
+
+/** The known name closest to a mistyped one, when one is close enough to be a likely meaning. */
+export function closestModel(model: string, known: string[]): string | null {
+  let best: string | null = null;
+  let bestD = Math.max(3, Math.floor(model.length / 3)) + 1;
+  for (const k of known) {
+    const d = distance(model.toLowerCase(), k.toLowerCase());
+    if (d < bestD) [best, bestD] = [k, d];
+  }
+  return best;
+}
+
+export type ModelCheckResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * Whether OpenCode itself has the model (AK-143), from its own list: `opencode models <provider>`.
+ * OpenCode lists a provider only once it has a key for it, so the key goes in that command's
+ * environment, never its arguments. Null when OpenCode couldn't say; the first run will show it then.
+ */
+export function checkOpencodeModel(bin: string, provider: string, model: string, key: string | null, o: { timeoutMs?: number } = {}): ModelCheckResult | null {
+  const keyEnv = PROVIDERS[provider]?.keyEnv;
+  const env = { ...process.env, ...(keyEnv && key ? { [keyEnv]: key } : {}) };
+  const r = spawnSync(bin, ["models", provider], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: o.timeoutMs ?? 60_000 });
+  if (r.status !== 0 || typeof r.stdout !== "string") return null;
+  const known = r.stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith(`${provider}/`))
+    .map((l) => l.slice(provider.length + 1));
+  if (!known.length) return null;
+  if (known.includes(model)) return { ok: true };
+  const near = closestModel(model, known);
+  return {
+    ok: false,
+    message: `${model} isn't a ${providerName(provider)} model in OpenCode.${near ? ` Did you mean ${near}?` : ""} Put the right name after --model, then run the line again.`,
+  };
+}
+
 // ---------------------------------------------------------------- OpenCode itself
 
 /** The version AutoKolab was tested with (DEC-26). */
