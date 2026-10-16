@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Project, Status, TicketEvent } from "../lib/data";
 import { go, href, onNav, type ProjectView, type Route } from "../lib/router";
 import type { Profile } from "../lib/session";
-import { AgentAvatar, Button, Icon, Logo, PersonAvatar, Svg } from "../ui";
+import { AgentAvatar, Button, FullLogo, Icon, Svg } from "../ui";
 import { CommandPalette, useCommandPalette, type Command } from "../ui/CommandPalette";
 import { workHeadline } from "./work";
 import { Backlog } from "./Backlog";
@@ -11,7 +11,6 @@ import { CaptainHome } from "./CaptainHome";
 import { ConnectAgents } from "./Connect";
 import { Decisions } from "./Decisions";
 import { Room } from "./Room";
-import { cityFromTimezone, localTime } from "../lib/place";
 import { GuidePage } from "./GuidePage";
 import { ListView } from "./ListView";
 import { LookFirst } from "./LookFirst";
@@ -20,7 +19,6 @@ import { Overview } from "./Overview";
 import { People } from "./People";
 import { PlanPage } from "./PlanPage";
 import { Results, Settings } from "./Settings";
-import { plural } from "./story";
 import { TicketPage } from "./TicketPage";
 import { ShowWork } from "./ShowWork";
 import { useCaptainRoom, type DemoRoom } from "./useCaptainRoom";
@@ -44,11 +42,11 @@ interface NavItem {
 const NAV_MAIN: NavItem[] = [
   { id: "captain", label: "Captain", icon: Icon.captain, sub: "Your point of contact for this project", under: ["captain", "plan"] },
   { id: "overview", label: "Overview", icon: Icon.home, sub: "Who is working on what, and which features are being built, next and done", key: "O", under: ["overview"] },
-  { id: "board", label: "Work", icon: Icon.board, sub: "Who is doing what, and what is waiting next", key: "W", under: ["board", "goals", "backlog", "list", "ticket"] },
-  { id: "room", label: "Room", icon: Icon.chat, sub: "Where people and agents talk, live. @name to talk to someone.", key: "R", under: ["room"] },
-  { id: "people", label: "People", icon: Icon.people, sub: "Who works here and what each agent is doing", key: "P", under: ["people", "connect"] },
+  { id: "people", label: "Team", icon: Icon.people, sub: "People and agents working on this project", key: "P", under: ["people", "connect"] },
 ];
 const NAV_RECORDS: NavItem[] = [
+  { id: "board", label: "Work", icon: Icon.board, sub: "All work and goals", key: "W", under: ["board", "goals", "backlog", "list", "ticket"] },
+  { id: "room", label: "Room", icon: Icon.chat, sub: "The team conversation", key: "R", under: ["room"] },
   { id: "decisions", label: "Decisions", icon: Icon.decisions, sub: "Settled choices, and the Project Guide every agent reads first", key: "D", under: ["decisions", "guide"] },
   { id: "results", label: "Results", icon: Icon.results, sub: "Whether it's working", key: "S", under: ["results"] },
   { id: "settings", label: "Settings", icon: Icon.settings, sub: "How hands-off this project is, and who can join", under: ["settings"] },
@@ -165,12 +163,13 @@ export function Workspace({
   const tabs = section?.id === "board" && route.view !== "ticket" ? WORK_TABS : section?.id === "decisions" ? DECISION_TABS : null;
 
   return (
-    <div style={{ minHeight: "100%", display: "flex", flexWrap: "wrap", alignItems: "stretch" }}>
-      <Sidebar ws={ws} needs={captain.needs.length} project={project} projects={projects} route={route} profile={profile} onSignOut={onSignOut} />
+    <div className="ak-workspace-shell" style={{ minHeight: "100%", display: "flex", flexWrap: "wrap", alignItems: "stretch" }}>
+      <Sidebar needs={captain.needs.length} project={project} projects={projects} route={route} onSignOut={onSignOut} />
 
-      <main style={{ flex: "999 1 560px", minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <header className="ak-page" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: title ? "18px 28px" : "12px 28px", borderBottom: title ? "1px solid var(--line-soft)" : 0, flexWrap: "wrap" }}>
-          {title && (
+      <main className={route.view === "overview" ? "ak-workspace-main ak-workspace-main-overview" : "ak-workspace-main"} style={{ flex: "999 1 560px", minWidth: 0, display: "flex", flexDirection: "column" }}>
+        <header className={route.view === "overview" ? "ak-page ak-overview-topbar" : "ak-page"} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: title ? "18px 28px" : "12px 28px", borderBottom: title ? "1px solid var(--line-soft)" : 0, flexWrap: "wrap" }}>
+          {route.view === "overview" && <><strong className="ak-overview-project-title">{project.name}</strong><span className="ak-overview-updated">Updated just now</span></>}
+          {title && route.view !== "overview" && (
             <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
               {route.view === "captain" && <AgentAvatar name="Captain" size={32} status={captain.working ? "working" : undefined} ring="var(--bg)" />}
               <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
@@ -179,7 +178,7 @@ export function Workspace({
               </div>
             </div>
           )}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
+          <div className="ak-header-actions" style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
             <Button variant="secondary" size="sm" className="ak-tap" onClick={() => setPaletteOpen(true)} title="Search and jump anywhere (⌘K)" aria-keyshortcuts="Meta+K Control+K">
               <Svg size={15} width={2}>
                 {Icon.search}
@@ -193,7 +192,7 @@ export function Workspace({
             )}
           </div>
         </header>
-        <div className="ak-page" style={{ flex: 1, padding: route.view === "ticket" ? "8px 28px 48px" : route.view === "captain" ? "0 28px" : "22px 28px 40px", minWidth: 0, display: "flex", flexDirection: "column", gap: tabs ? 16 : 0 }}>
+        <div className={route.view === "overview" ? "ak-page ak-overview-page" : "ak-page"} style={{ flex: 1, padding: route.view === "overview" ? 0 : route.view === "ticket" ? "8px 28px 48px" : route.view === "captain" ? "0 28px" : "22px 28px 40px", minWidth: 0, display: "flex", flexDirection: "column", gap: tabs ? 16 : 0 }}>
           {tabs && <Tabs label={`${section!.label} views`} tabs={tabs} current={route.view} project={project.slug} />}
           {error && <p style={{ color: "var(--danger)", fontSize: 14, marginBottom: 12 }}>{error}</p>}
           {route.view === "overview" ? (
@@ -251,125 +250,37 @@ export function Workspace({
 
 // ------------------------------------------------------------------ sidebar
 
-function Sidebar({
-  ws,
-  needs,
-  project,
-  projects,
-  route,
-  profile,
-  onSignOut,
-}: {
-  ws: WS | null;
-  /** The badge: open "needs you" items, the same list as Captain's headline and cards. */
-  needs: number;
-  project: Project;
-  projects: Project[];
-  route: Extract<Route, { project: string }>;
-  profile: Profile;
-  onSignOut: () => void;
+export function Sidebar({ needs, project, projects, route, onSignOut }: {
+  needs: number; project: Project; projects: Project[];
+  route: Extract<Route, { project: string }>; onSignOut: () => void;
 }) {
-  const agents = ws ? ws.people.agents.size : 0;
-  const humans = ws?.people.members.filter((m) => m.actor_type === "human") ?? [];
-  const item = (n: NavItem) => {
+  const nav = (n: NavItem) => {
+    const to: Route = { view: n.id, project: project.slug };
     const active = n.under.includes(route.view);
-    return (
-      <a
-        key={n.id}
-        className="ak-row"
-        href={href({ view: n.id, project: project.slug })}
-        onClick={onNav({ view: n.id, project: project.slug })}
-        aria-current={active ? "page" : undefined}
-        title={n.key ? `${n.label} · G then ${n.key}` : n.label}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "9px 10px",
-          borderRadius: 9,
-          textDecoration: "none",
-          fontSize: 14,
-          ...(active ? { background: "var(--surface-active)", color: "var(--text)", fontWeight: 500 } : { color: "var(--text-muted)" }),
-        }}
-      >
-        <Svg size={16}>{n.icon}</Svg>
-        {n.label}
-        {n.id === "captain" && needs > 0 && (
-          <span aria-label={`${needs} need${needs === 1 ? "s" : ""} you`} style={{ marginLeft: "auto", minWidth: 20, height: 20, padding: "0 6px", borderRadius: 999, background: "var(--amber)", color: "var(--amber-ink)", fontSize: 12, fontWeight: 600, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-            {needs}
-          </span>
-        )}
-      </a>
-    );
+    return <a key={n.id} className="ak-shell-nav-item" href={href(to)} onClick={onNav(to)} aria-current={active ? "page" : undefined} title={n.key ? `${n.label} · G then ${n.key}` : n.label}>
+      {n.label}{n.id === "captain" && needs > 0 && <span className="ak-shell-need" aria-label={`${needs} need you`}>{needs}</span>}
+    </a>;
   };
-  return (
-    <aside className="ak-nav" aria-label="Project navigation" style={{ flex: "1 1 220px", maxWidth: 260, display: "flex", flexDirection: "column", gap: 20, padding: "20px 12px", background: "var(--sidebar)", borderRight: "1px solid var(--border-subtle)" }}>
-      <label style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, padding: "4px 8px", borderRadius: 10, cursor: "pointer", flex: "none" }}>
-        <Logo size={26} />
-        <span className="ak-hide" style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, flex: 1 }}>
-          <span style={{ fontSize: 15, fontWeight: 600, letterSpacing: "-0.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{project.name}</span>
-          <span style={{ fontSize: 12, color: "var(--faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {ws ? `${plural(humans.length, "person", "people")} · ${plural(agents, "agent")}` : (project.repo ?? "")}
-          </span>
-        </span>
-        <span className="ak-hide" aria-hidden="true" style={{ color: "var(--faint)", fontSize: 12 }}>▾</span>
-        <select
-          aria-label="Switch project"
-          value={project.slug}
-          onChange={(e) => (e.target.value === "__new" ? go({ view: "new-project" }) : go({ view: "captain", project: e.target.value }))}
-          style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
-        >
-          {projects.map((p) => (
-            <option key={p.id} value={p.slug}>
-              {p.name}
-            </option>
-          ))}
-          <option value="__new">+ New project</option>
-        </select>
-      </label>
-
-      <nav aria-label="Pages" style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        {NAV_MAIN.map(item)}
-        <div role="separator" style={{ height: 1, background: "var(--border-subtle)", margin: "8px 10px" }} />
-        {NAV_RECORDS.map(item)}
-      </nav>
-
-      <div className="ak-hide" style={{ marginTop: "auto", display: "flex", flexDirection: "column", alignItems: "stretch", gap: 8, padding: "0 6px" }}>
-        {ws && <TeamClocks ws={ws} />}
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <PersonAvatar name={profile.name} src={profile.avatar_url} size={22} you />
-          <span style={{ fontSize: 13, color: "var(--text-2)", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile.name}</span>
-          <Button variant="ghost" size="sm" onClick={onSignOut} style={{ height: 28, padding: "0 8px", fontSize: 12 }}>
-            Sign out
-          </Button>
-        </div>
-      </div>
-    </aside>
-  );
+  const item = (view: ProjectView, label: string) => {
+    const to: Route = { view, project: project.slug };
+    return <li key={view}><a href={href(to)} onClick={onNav(to)}>{label}</a></li>;
+  };
+  return <aside className="ak-nav ak-shell-nav" aria-label="Project navigation">
+    <div className="ak-shell-brand"><FullLogo height={48}/></div>
+    <label className="ak-shell-project">
+      <span>{project.name}</span><span aria-hidden="true">⌄</span>
+      <select aria-label="Switch project" value={project.slug} onChange={(e) => e.target.value === "__new" ? go({ view: "new-project" }) : go({ view: "captain", project: e.target.value })}>
+        {projects.map((p) => <option key={p.id} value={p.slug}>{p.name}</option>)}<option value="__new">+ New project</option>
+      </select>
+    </label>
+    <nav className="ak-shell-pages" aria-label="Pages">{NAV_MAIN.map(nav)}</nav>
+    <details className="ak-shell-project-menu"><summary>Project</summary><ul>
+      {item("board", "Work and records")}{item("room", "Team conversation")}{item("decisions", "Decisions")}{item("guide", "Guide")}{item("results", "Results")}{item("settings", "Settings")}
+      <li><button type="button" onClick={onSignOut}>Sign out</button></li>
+    </ul></details>
+  </aside>;
 }
 
-/** "Toronto 11:02 · Stockholm 17:02": each place the team works from, on one small line. */
-function TeamClocks({ ws }: { ws: WS }) {
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => tick((x) => x + 1), 30_000);
-    return () => clearInterval(t);
-  }, []);
-  const places = new Map<string, string>();
-  for (const m of ws.people.members) {
-    const p = m.actor_type === "human" ? ws.people.profiles.get(m.actor_id) : undefined;
-    if (!p?.timezone || places.has(p.timezone)) continue;
-    places.set(p.timezone, p.city || cityFromTimezone(p.timezone));
-  }
-  if (!places.size) return null;
-  return (
-    <span style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5 }}>
-      {[...places].map(([tz, city]) => `${city} ${localTime(tz)}`).join(" · ")}
-    </span>
-  );
-}
-
-/** The views inside a page (Work's By agent · By feature · Later · All tickets; Decisions' Guide · Decisions). */
 function Tabs({ label, tabs, current, project }: { label: string; tabs: { id: ProjectView; label: string }[]; current: string; project: string }) {
   return (
     <nav aria-label={label} style={{ display: "flex", gap: 4, padding: 3, borderRadius: 10, background: "var(--surface)", border: "1px solid var(--border)", alignSelf: "flex-start", maxWidth: "100%", overflowX: "auto" }}>
