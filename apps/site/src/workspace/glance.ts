@@ -832,3 +832,62 @@ export function crew(t: Team, rows: AgentRow[]): CrewRow[] {
     })
     .sort((x, y) => CREW_ORDER.indexOf(x.state) - CREW_ORDER.indexOf(y.state));
 }
+
+// The approved Overview wireframe's five first-glance situations. Keep this separate from the
+// older board projection above: these lines describe the project's actual records in plain words.
+export interface OverviewGlance {
+  state: "busy" | "needed" | "calm" | "problem" | "new";
+  sentence: string;
+  next: string | null;
+  requests: { key: string; text: string }[];
+  problem: WatchItem | null;
+  team: { id: string; name: string; task: string; state: string; tone: Tone; key: string | null }[];
+  goals: { id: string; name: string; next: string; done: number; total: number }[];
+  delivered: { key: string; text: string }[];
+}
+
+export function overviewGlance(ws: Workspace, needs: Need[], plans: Plan[], events: TicketEvent[], now: Date): OverviewGlance {
+  const look = overview(ws, needs, plans, now);
+  const actualRequests = needs.filter((n) => n.kind !== "problem");
+  const requests = askItems(ws, actualRequests, plans, now).map((a) => ({ key: a.key, text: a.title }));
+  const runnerProblem = needs.find((n) => n.kind === "problem");
+  const problem = watch(ws, events, now).find((w) => w.tone === "problem") ?? (runnerProblem ? { text: withoutKeys(ws, firstSentence(runnerProblem.question)), tone: "problem" as const, key: runnerProblem.ticket?.key } : null);
+  const state: OverviewGlance["state"] = ws.tickets.length === 0 ? "new" : requests.length ? "needed" : problem ? "problem" : look.state === "working" ? "busy" : "calm";
+  const activeGoals = look.features.now.filter((f) => f.active && f.id !== "fixes").map((f) => f.name);
+  const working = look.rows.filter((r) => r.kind === "running" || r.kind === "reviewing").length;
+  const firstHeld = actualRequests.find((n) => n.ticket)?.ticket;
+  const heldGoal = firstHeld ? featureName(ws, firstHeld) : look.features.now.find((f) => f.waits && f.id !== "fixes")?.name;
+  const otherGoal = look.features.now.find((f) => f.active && f.name !== heldGoal && f.id !== "fixes")?.name;
+  const sentence = state === "new"
+    ? ws.project.lead_agent_id ? "Nothing has started yet. Tell Captain what you want to make." : "Nothing has started yet. Connect Captain, then tell it what you want to make."
+    : state === "needed"
+      ? `${heldGoal ?? "Work"} is waiting on your answer.${otherGoal ? ` ${otherGoal} work continues.` : ""}`
+      : state === "problem"
+        ? `${problem!.text.replace(/\.$/, "")}. Captain is handling it; you do not need to act.`
+        : state === "busy"
+          ? `${activeGoals.length ? listed(activeGoals) : "Work"} ${activeGoals.length <= 1 ? "is" : "are"} moving. ${working ? `${plural(working, "agent")} ${working === 1 ? "is" : "are"} working` : "The team is working"}, and nothing needs you.`
+          : look.features.next.length || look.features.now.length ? "Nothing is in progress, and nothing needs you." : "The current work is done. Nothing is in progress, and nothing needs you.";
+  const reviewing = ws.tickets.filter((t) => t.type !== "epic" && t.status === "review" && !t.approved_sha && !t.needs_human).sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at))[0];
+  const next = state === "needed" ? `I’ll move ${heldGoal ?? "the work"} forward as soon as you answer.`
+    : state === "problem" ? "I’ll check the next result and report back."
+    : reviewing ? `I’ll review ${withoutKeys(ws, named(reviewing.title))} next.`
+    : null;
+  const teamRows = agentRows(ws, now).map((r) => ({
+    id: r.agentId, name: r.name,
+    task: r.kind === "waiting" ? `waiting for your answer before ${plainPhrase(ws, ws.byKey.get(r.key)!)}` : r.doing.replace(/^is /, ""),
+    state: r.kind === "waiting" ? "Waiting" : r.kind === "stopped" ? "Stopped" : "Working",
+    tone: r.kind === "stopped" ? "problem" as const : r.kind === "waiting" ? "quiet" as const : "live" as const,
+    key: r.key,
+  }));
+  const features = [...look.features.now, ...look.features.next, ...look.features.done].filter((f) => f.id !== "fixes");
+  const goals = features.map((f) => {
+    const parts = ws.childrenOf(f.id).filter((t) => t.status !== "canceled").sort((a, b) => a.sort_order - b.sort_order);
+    const nextPart = parts.find((t) => actualRequests.some((n) => n.ticket?.id === t.id)) ?? parts.find((t) => t.status === "ready") ?? parts.find((t) => t.status === "backlog") ?? parts.find((t) => t.status !== "done");
+    return { id: f.id, name: f.name, next: nextPart ? `Next: ${withoutKeys(ws, partLine(nextPart)).replace(/^[A-Z]/, (c) => c.toLowerCase())}` : f.finishedAt ? finishedWhen(f.finishedAt, now) : "Not started", done: f.done, total: f.total };
+  });
+  const today = (iso: string | null) => !!iso && new Date(iso).toDateString() === now.toDateString();
+  const delivered = ws.tickets.filter((t) => t.type !== "epic" && t.status === "done" && today(t.completed_at))
+    .sort((a, b) => Date.parse(b.completed_at ?? "") - Date.parse(a.completed_at ?? ""))
+    .map((t) => ({ key: t.key, text: withoutKeys(ws, t.summary?.trim() || partLine(t)) }));
+  return { state, sentence, next, requests, problem, team: teamRows, goals, delivered };
+}
