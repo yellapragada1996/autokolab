@@ -32,35 +32,50 @@ export interface Workspace {
   demoInvites?: Invite[];
 }
 
+type WorkspaceData = Omit<Workspace, "reload" | "nameOf" | "agentOf" | "blockersOf" | "unblocks" | "childrenOf" | "byKey" | "byId">;
+
+/** A poll with the same records must keep the same snapshot, including its derived Overview. */
+export function keepUnchangedWorkspace(previous: WorkspaceData | null, next: WorkspaceData): WorkspaceData {
+  const signature = (snapshot: WorkspaceData) => JSON.stringify({ project: snapshot.project, tickets: snapshot.tickets, steps: [...snapshot.steps], links: snapshot.links, people: { members: snapshot.people.members, profiles: [...snapshot.people.profiles], agents: [...snapshot.people.agents] }, decisions: snapshot.decisions, guide: snapshot.guide });
+  return previous && signature(previous) === signature(next) ? previous : next;
+}
+
 export function useWorkspace(project: Project | null): { ws: Workspace | null; error: string } {
-  const [state, setState] = useState<Omit<Workspace, "reload" | "nameOf" | "agentOf" | "blockersOf" | "unblocks" | "childrenOf" | "byKey" | "byId"> | null>(null);
+  const [state, setState] = useState<WorkspaceData | null>(null);
   const [error, setError] = useState("");
   const current = useRef(state);
   current.current = state;
+  const projectRef = useRef(project);
+  projectRef.current = project;
+  const request = useRef(0);
 
   const load = useCallback(async () => {
-    if (!project) return;
+    const selected = projectRef.current;
+    if (!selected) return;
+    const run = ++request.current;
     try {
-      const tickets = await data.tickets(project.id);
+      const tickets = await data.tickets(selected.id);
       const ids = tickets.map((t) => t.id);
       const [steps, links, people, decisions, guide] = await Promise.all([
         data.allSteps(ids),
         data.links(ids),
-        data.people(project.id),
-        data.decisions(project.id),
-        data.guide(project.id),
+        data.people(selected.id),
+        data.decisions(selected.id),
+        data.guide(selected.id),
       ]);
+      if (run !== request.current) return;
       const stepMap = new Map<string, Step[]>();
       for (const s of steps) stepMap.set(s.ticket_id, [...(stepMap.get(s.ticket_id) ?? []), s]);
-      setState({ project, tickets, steps: stepMap, links, people, decisions, guide });
+      setState((previous) => keepUnchangedWorkspace(previous, { project: projectRef.current ?? selected, tickets, steps: stepMap, links, people, decisions, guide }));
       setError("");
     } catch (e) {
-      setError(reportError(e, "load the project"));
+      if (run === request.current) setError(reportError(e, "load the project"));
     }
-  }, [project]);
+  }, [project?.id]);
 
   useEffect(() => {
-    setState(null);
+    request.current++;
+    setState((held) => held?.project.id === project?.id ? held : null);
     if (!project) return;
     void load();
     return data.watchProject(project.id, {

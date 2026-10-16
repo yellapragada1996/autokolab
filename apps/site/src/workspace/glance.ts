@@ -849,10 +849,17 @@ export interface OverviewGlance {
 export function overviewGlance(ws: Workspace, needs: Need[], plans: Plan[], events: TicketEvent[], now: Date): OverviewGlance {
   const look = overview(ws, needs, plans, now);
   const actualRequests = needs.filter((n) => n.kind !== "problem");
-  const requests = askItems(ws, actualRequests, plans, now).map((a) => ({ key: a.key, text: a.title }));
+  const requests = askItems(ws, actualRequests, plans, now).map((a) => {
+    const need = actualRequests.find((n) => n.key === a.key);
+    const question = need ? withoutKeys(ws, firstSentence(need.question)) : "";
+    const text = need?.kind === "ticket_question" && need.ticket?.assignee_id
+      ? `${question}${/[.?!]$/.test(question) ? "" : "."} ${whoName(ws, need.ticket.assignee_id)} is waiting for your answer.`
+      : a.title;
+    return { key: a.key, text };
+  });
   const runnerProblem = needs.find((n) => n.kind === "problem");
   const problem = watch(ws, events, now).find((w) => w.tone === "problem") ?? (runnerProblem ? { text: withoutKeys(ws, firstSentence(runnerProblem.question)), tone: "problem" as const, key: runnerProblem.ticket?.key } : null);
-  const state: OverviewGlance["state"] = ws.tickets.length === 0 ? "new" : requests.length ? "needed" : problem ? "problem" : look.state === "working" ? "busy" : "calm";
+  const state: OverviewGlance["state"] = requests.length ? "needed" : problem ? "problem" : ws.tickets.length === 0 ? "new" : look.state === "working" ? "busy" : "calm";
   const activeGoals = look.features.now.filter((f) => f.active && f.id !== "fixes").map((f) => f.name);
   const working = look.rows.filter((r) => r.kind === "running" || r.kind === "reviewing").length;
   const firstHeld = actualRequests.find((n) => n.ticket)?.ticket;

@@ -25,8 +25,9 @@ export interface HistoryReader<T extends HistoryRow> {
  * A window of rows that stays current with less traffic. `key` identifies the source (the project
  * id); when it is undefined or empty nothing is read. `at` is when the last read succeeded.
  */
-export function useHistoryWindow<T extends HistoryRow>(key: string | undefined, windowMs: number, reader: HistoryReader<T>): { rows: T[]; error: string; at: Date } {
+export function useHistoryWindow<T extends HistoryRow>(key: string | undefined, windowMs: number, reader: HistoryReader<T>): { rows: T[]; error: string; at: Date; ready: boolean } {
   const [rows, setRows] = useState<T[]>([]);
+  const [loadedKey, setLoadedKey] = useState<string | undefined>(undefined);
   const [error, setError] = useState("");
   const [at, setAt] = useState(() => new Date());
   const readerRef = useRef(reader);
@@ -36,11 +37,13 @@ export function useHistoryWindow<T extends HistoryRow>(key: string | undefined, 
   useEffect(() => {
     if (!key) {
       setRows([]);
+      setLoadedKey(undefined);
       return;
     }
     let live = true;
     cursor.current = 0;
     setRows([]);
+    setLoadedKey(undefined);
     const windowStart = () => new Date(Date.now() - windowMs);
 
     const initial = async () => {
@@ -52,8 +55,12 @@ export function useHistoryWindow<T extends HistoryRow>(key: string | undefined, 
         setRows(trimWindow(all, windowStart()));
         setError("");
         setAt(end);
+        setLoadedKey(key);
       } catch (e) {
-        if (live) setError(reportError(e, "read history"));
+        if (live) {
+          setError(reportError(e, "read history"));
+          setLoadedKey(key);
+        }
       }
     };
 
@@ -95,5 +102,5 @@ export function useHistoryWindow<T extends HistoryRow>(key: string | undefined, 
     };
   }, [key, windowMs]);
 
-  return { rows, error, at };
+  return { rows, error, at, ready: loadedKey === key };
 }

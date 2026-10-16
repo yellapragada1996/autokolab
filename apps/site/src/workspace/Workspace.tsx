@@ -194,9 +194,9 @@ export function Workspace({
         </header>
         <div className={route.view === "overview" ? "ak-page ak-overview-page" : "ak-page"} style={{ flex: 1, padding: route.view === "overview" ? 0 : route.view === "ticket" ? "8px 28px 48px" : route.view === "captain" ? "0 28px" : "22px 28px 40px", minWidth: 0, display: "flex", flexDirection: "column", gap: tabs ? 16 : 0 }}>
           {tabs && <Tabs label={`${section!.label} views`} tabs={tabs} current={route.view} project={project.slug} />}
-          {error && <p style={{ color: "var(--danger)", fontSize: 14, marginBottom: 12 }}>{error}</p>}
+          {error && route.view !== "overview" && <p style={{ color: "var(--danger)", fontSize: 14, marginBottom: 12 }}>{error}</p>}
           {route.view === "overview" ? (
-            <Overview ws={ws} me={me} cr={captain} />
+            <Overview ws={ws} me={me} cr={captain} error={error} />
           ) : !ws ? (
             <p style={{ color: "var(--faint)" }}>Loading {project.name}…</p>
           ) : route.view === "ticket" ? (
