@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { ReadStream, WriteStream } from "node:tty";
 import { dataDir, findProfile, readConfigFile } from "../core/config.js";
 import { keyFile, keyProblem, readAgentKey, removeAgentKey, saveAgentKey, type KeySource, type KeyStore } from "../core/keys.js";
-import { isLocalProvider, LOCAL_PROVIDERS, PROVIDERS, providerName } from "../core/providers.js";
+import { isLocalProvider, LOCAL_PROVIDERS, notAnOpencodeModel, PROVIDERS, providerName } from "../core/providers.js";
 import { loadRunnerConfig, opencodeProvider, runnerFileFor, type RunnerConfig } from "../runner/config.js";
 import { which } from "./agents.js";
 import { info, ok, warn } from "./ui.js";
@@ -19,7 +19,7 @@ export interface ApiAgentOptions {
   engine: "opencode";
   /** OpenCode's provider id, e.g. "deepseek". */
   provider: string;
-  /** The model's id at that provider, e.g. "deepseek-chat". */
+  /** The model's id at that provider, e.g. "deepseek-flash". */
   model: string;
   /** The agent's name; unset lets the website pick one. */
   name?: string;
@@ -48,7 +48,7 @@ export function apiAgentOptions(o: { engine?: string; provider?: string; model?:
   }
   let model = (o.model ?? "").trim();
   if (model.startsWith(`${provider}/`)) model = model.slice(provider.length + 1);
-  if (!model) throw new Error(`Say which ${providerName(provider)} model the agent uses, e.g. --model ${provider === "deepseek" ? "deepseek-chat" : "<model>"}.`);
+  if (!model) throw new Error(`Say which ${providerName(provider)} model the agent uses, e.g. --model ${provider === "deepseek" ? "deepseek-flash" : "<model>"}.`);
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]{0,79}$/.test(model)) throw new Error(`"${model}" doesn't look like a model name.`);
   const name = o.name?.trim().toLowerCase();
   if (name !== undefined && !/^[a-z0-9][a-z0-9-]{1,39}$/.test(name)) {
@@ -190,6 +190,56 @@ export async function checkKey(provider: string, key: string | null, o: CheckOpt
     return { ok: true, note: `${name} accepted the key, but doesn't list a model called ${model}. If the agent's first run fails, pick another model on the People page.` };
   }
   return { ok: true };
+}
+
+// ---------------------------------------------------------------- the model, by OpenCode's names
+
+/** Edits to turn one name into the other. */
+function distance(a: string, b: string): number {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j] + 1, next[j - 1] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length];
+}
+
+/** The known name closest to a mistyped one, when one is close enough to be a likely meaning. */
+export function closestModel(model: string, known: string[]): string | null {
+  let best: string | null = null;
+  let bestD = Math.max(3, Math.floor(model.length / 3)) + 1;
+  for (const k of known) {
+    const d = distance(model.toLowerCase(), k.toLowerCase());
+    if (d < bestD) [best, bestD] = [k, d];
+  }
+  return best;
+}
+
+export type ModelCheckResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * Whether OpenCode itself has the model (AK-143), from its own list: `opencode models <provider>`.
+ * OpenCode lists a provider only once it has a key for it, so the key goes in that command's
+ * environment, never its arguments. Null when OpenCode couldn't say; the first run will show it then.
+ */
+export function checkOpencodeModel(bin: string, provider: string, model: string, key: string | null, o: { timeoutMs?: number } = {}): ModelCheckResult | null {
+  const keyEnv = PROVIDERS[provider]?.keyEnv;
+  const env = { ...process.env, ...(keyEnv && key ? { [keyEnv]: key } : {}) };
+  const r = spawnSync(bin, ["models", provider], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: o.timeoutMs ?? 60_000 });
+  if (r.status !== 0 || typeof r.stdout !== "string") return null;
+  const known = r.stdout
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith(`${provider}/`))
+    .map((l) => l.slice(provider.length + 1));
+  if (!known.length) return null;
+  if (known.includes(model)) return { ok: true };
+  const near = closestModel(model, known);
+  return {
+    ok: false,
+    message: `${notAnOpencodeModel(provider, model)}.${near ? ` Did you mean ${near}?` : ""} Put the right name after --model, then run the line again.`,
+  };
 }
 
 // ---------------------------------------------------------------- OpenCode itself

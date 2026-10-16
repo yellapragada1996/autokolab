@@ -349,6 +349,27 @@ export interface RunOutcome {
   quiet: boolean;
 }
 
+/**
+ * What a ticket run that failed or timed out says (AK-143): the plain reason first, then the agent's
+ * own words when they add anything. A wrong model, key or empty account fails every run until
+ * someone acts, so the agent's status says it too (`agentNote`); a rate limit just waits.
+ */
+export function failedTicketReport(
+  result: Pick<EngineRun, "timedOut" | "problem">,
+  text: string,
+  key: string,
+  maxMinutes: number,
+): { why: string; comment: string; agentNote: string | null } {
+  const why = result.timedOut ? `hit the ${maxMinutes}-minute limit` : result.problem?.reason ?? "the run failed";
+  const stopped = `Stopped: ${why}.`;
+  const stuck = !result.timedOut && result.problem && result.problem.kind !== "rate";
+  return {
+    why,
+    comment: `${stopped}${text && text !== stopped ? `\n\n${text}` : ""}`,
+    agentNote: stuck ? `Stopped on ${key}: ${why}`.slice(0, 200) : null,
+  };
+}
+
 /** How a finished run is recorded and reported. */
 export function runOutcome(
   result: Pick<EngineRun, "aborted" | "timedOut" | "isError" | "turnCapped">,
@@ -2432,13 +2453,16 @@ export class Runner {
     const after = await p.ticket(t.key);
     const ourPr = (u?: string) => (u && u.toLowerCase().startsWith(`https://github.com/${repo}/pull/`) ? u : undefined);
     let outcome: string;
+    let agentNote: string | null = null;
     if (result.aborted) {
       outcome = "stopped";
       await p.comment(t.key, `Stopped: ${this.stopping ? "my runner was shut down" : `${ak.ownerName(ak.me)} paused me`}.${text ? `\n\nWhere it got to:\n${text}` : ""}`).catch(() => undefined);
     } else if (result.timedOut || result.isError) {
       outcome = "failed";
-      const why = result.timedOut ? `hit the ${cfg.limits.max_minutes}-minute limit` : result.problem?.reason ?? "the run failed";
-      await p.comment(t.key, `Stopped: ${why}.${text ? `\n\n${text}` : ""}`).catch(() => undefined);
+      const report = failedTicketReport(result, text, t.key, cfg.limits.max_minutes);
+      const why = report.why;
+      agentNote = report.agentNote;
+      await p.comment(t.key, report.comment).catch(() => undefined);
       await p.update(t.key, { needs_human: `I stopped: ${why}. Comment here to have me continue, or check the log on ${ak.ownerName(ak.me)}'s computer.` }).catch(() => undefined);
     } else if (text.startsWith(BLOCKED_PREFIX)) {
       outcome = "blocked";
@@ -2482,7 +2506,8 @@ export class Runner {
         }
       }
     }
-    await this.setStatus(ak.me.paused ? "paused" : "idle");
+    if (agentNote && !ak.me.paused) await this.setStatus("blocked", agentNote, t.id);
+    else await this.setStatus(ak.me.paused ? "paused" : "idle");
     await ak.heartbeat(this.stateNow()).catch(() => undefined);
     this.log(`${t.key} ${outcome}.${result.costUsd !== undefined ? ` (estimated API cost $${result.costUsd.toFixed(2)})` : ""}`);
   }
@@ -2737,7 +2762,7 @@ export class Runner {
       // Paused or shut down: that wasn't a review, so it runs again later and doesn't count.
       this.rememberReview(t.id, prev);
     } else if (result.timedOut || result.isError) {
-      const why = result.timedOut ? `it hit the ${cfg.limits.max_minutes}-minute limit` : "the run failed";
+      const why = result.timedOut ? `it hit the ${cfg.limits.max_minutes}-minute limit` : result.problem?.reason ?? "the run failed";
       const after = await p.ticket(t.key).catch(() => t);
       if (!after.needs_human && !after.approved_sha) {
         await p.update(t.key, { needs_human: `${REVIEW_FAILED_PREFIX}: ${why}. Can you look, or check the log on ${ak.ownerName(ak.me)}'s computer?` }).catch(() => undefined);

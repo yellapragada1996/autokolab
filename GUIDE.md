@@ -232,7 +232,7 @@ Besides Claude Code and Codex, an agent can run any provider's model through **O
 
 ```bash
 curl -fsSL https://autokolab.vercel.app/install.sh | bash -s -- CODE --engine opencode \
-  --provider deepseek --model deepseek-chat --name ana-deepseek --daily-usd 5
+  --provider deepseek --model deepseek-flash --name ana-deepseek --daily-usd 5
 ```
 
 `autokolab connect CODE` takes the same options (without them it connects Claude Code and Codex as before). It creates that one agent:

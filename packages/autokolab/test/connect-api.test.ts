@@ -1,12 +1,12 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readConfigFile, writeConfigFile } from "../src/core/config.js";
 import { keyFile, keyProblem, readAgentKey, removeAgentKey, saveAgentKey } from "../src/core/keys.js";
 import { loadRunnerConfig, parseRunnerConfig, runnerConfigPath, runnerTemplate } from "../src/runner/config.js";
 import { engineInvocation, opencodeInvocation } from "../src/runner/engines.js";
-import { apiAgentOptions, checkKey, keyCheck, keyFromEnv, keyRemove, keySet, OPENCODE_VERSION, opencodePackageJson } from "../src/setup/apimodel.js";
+import { apiAgentOptions, checkKey, checkOpencodeModel, closestModel, keyCheck, keyFromEnv, keyRemove, keySet, OPENCODE_VERSION, opencodePackageJson } from "../src/setup/apimodel.js";
 import { runConnect } from "../src/setup/pair.js";
 
 // Connecting an API-model agent from a terminal (AK-108, CON-25): the connect line's options, the key
@@ -275,6 +275,67 @@ describe("autokolab connect with an API model", () => {
     expect(calls[0].url).toBe("http://127.0.0.1:11500/api/tags");
     expect(loadRunnerConfig("ana-local").opencode).toMatchObject({ provider: "ollama", model: "qwen2.5-coder:7b", base_url: "http://127.0.0.1:11500" });
     expect(out.join("\n")).not.toContain("Your key is stored");
+  });
+});
+
+describe("connect checks the model against OpenCode's own list (AK-143)", () => {
+  // A stand-in for `opencode models <provider>`, from a real OpenCode 1.19.0: it lists a provider only
+  // when it has a key, and says "Provider not found" otherwise. It keeps its arguments for the test.
+  const bin = mkdtempSync(join(tmpdir(), "ak-opencode-models-"));
+  const fake = join(bin, "opencode");
+  writeFileSync(
+    fake,
+    `#!/usr/bin/env node
+require("fs").writeFileSync(${JSON.stringify(join(bin, "args"))}, JSON.stringify(process.argv.slice(2)));
+if (process.argv[2] !== "models" || !process.env.DEEPSEEK_API_KEY) {
+  console.error("Error: Provider not found: " + process.argv[3]);
+  process.exit(1);
+}
+console.log("deepseek/deepseek-flash\\ndeepseek/deepseek-v4-pro");
+`,
+    { mode: 0o755 },
+  );
+  afterAll(() => rmSync(bin, { recursive: true, force: true }));
+  const broken = join(bin, "broken");
+  writeFileSync(broken, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  const connect = (model: string, opencodeBin = fake) => {
+    process.env.AK108_KEY = KEY;
+    const net = fakeNet({ models: ["deepseek-v4-flash", "deepseek-v4-pro"] });
+    const go = runConnect("7KQM2PXA", { site: "https://ak.test", api: apiAgentOptions({ ...line, model, keyEnv: "AK108_KEY" }), setupTools: false, opencodeBin, keyStore: linux, fetch: net.f });
+    return { go, calls: net.calls };
+  };
+
+  it("refuses a model OpenCode doesn't have, with the name it likely meant, and creates nothing", async () => {
+    const { go, calls } = connect("deepseek-v4-flash");
+    await expect(go).rejects.toThrow("deepseek-v4-flash isn't a DeepSeek model in OpenCode. Did you mean deepseek-flash? Put the right name after --model, then run the line again.");
+    expect(calls.map((c) => c.url)).not.toContain("https://ak.test/api/connect");
+    expect(files(home)).toEqual([]);
+  });
+
+  it("takes a model OpenCode has, even when the provider's own list names it differently", async () => {
+    const { go, calls } = connect("deepseek-flash");
+    await expect(go).resolves.toMatchObject({ agents: [{ name: "ana-deepseek", created: true }] });
+    expect(calls.map((c) => c.url)).toEqual(["https://api.deepseek.com/models", "https://ak.test/api/connect"]);
+    expect(out.join("\n")).not.toMatch(/doesn't list a model/);
+    // The key reached OpenCode in its environment only, never its arguments.
+    expect(JSON.parse(readFileSync(join(bin, "args"), "utf8"))).toEqual(["models", "deepseek"]);
+    expect(out.join("\n")).not.toContain(KEY);
+  });
+
+  it("carries on when OpenCode can't say, falling back to the provider's list", async () => {
+    const { go } = connect("deepseek-flash", broken);
+    await expect(go).resolves.toMatchObject({ agents: [{ created: true }] });
+    const said = out.join("\n");
+    expect(said).toContain("I couldn't ask OpenCode whether it has deepseek-flash");
+    expect(said).toMatch(/doesn't list a model called deepseek-flash/);
+  });
+
+  it("suggests only a name that's close", () => {
+    expect(closestModel("deepseek-v4-flash", ["deepseek-flash", "deepseek-v4-pro"])).toBe("deepseek-flash");
+    expect(closestModel("devstral-latest", ["codestral-latest", "mistral-large-latest"])).toBe("codestral-latest");
+    expect(closestModel("gpt-5", ["deepseek-flash", "deepseek-v4-pro"])).toBeNull();
+    expect(checkOpencodeModel(fake, "deepseek", "llama", KEY)).toEqual({ ok: false, message: "llama isn't a DeepSeek model in OpenCode. Put the right name after --model, then run the line again." });
+    expect(checkOpencodeModel(fake, "deepseek", "deepseek-v4-pro", null)).toBeNull();
   });
 });
 

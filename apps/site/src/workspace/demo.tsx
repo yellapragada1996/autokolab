@@ -262,7 +262,7 @@ ran("reply", LEAD, null, 95, 0.12);
 ran("build", BUILDER, "t2", 30, 0.5);
 demoUsage.at(-1)!.path = "conflict_fix";
 ran("build", "api-demo", null, 1, 1);
-Object.assign(demoUsage.at(-1)!, { model: "deepseek/deepseek-v4-flash", cost_usd: 1.2, created_at: new Date(now).toISOString() });
+Object.assign(demoUsage.at(-1)!, { model: "deepseek/deepseek-flash", cost_usd: 1.2, created_at: new Date(now).toISOString() });
 ran("build", "api-no-cost", null, 1, 1);
 Object.assign(demoUsage.at(-1)!, { model: "ollama/qwen3-coder", cost_usd: null, created_at: new Date(now).toISOString() });
 
@@ -296,7 +296,7 @@ history.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
 
 const agents: Agent[] = [
   { id: "busy-elsewhere", owner_profile_id: LEE, owner_label: "lee", vendor: "codex", display_name: "lee-builder", status: "building", status_note: "Private work in a different project", status_project_id: "other-project", current_ticket_id: "other-project-ticket", last_seen_at: iso(1), model: null, effort: null, model_set_by: null, model_set_at: null, ...usedIn("Europe/Stockholm", 45, 3) },
-  { id: "api-demo", owner_profile_id: ANA, owner_label: "ana", vendor: "opencode", display_name: "ana-api", status: "idle", status_note: null, current_ticket_id: null, last_seen_at: iso(1), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "deepseek/deepseek-v4-flash", effective_at: iso(2), ...usedIn("America/Toronto", 12, 3), machine: "ana-mbp", daily_usd: 5 },
+  { id: "api-demo", owner_profile_id: ANA, owner_label: "ana", vendor: "opencode", display_name: "ana-api", status: "idle", status_note: null, current_ticket_id: null, last_seen_at: iso(1), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "deepseek/deepseek-flash", effective_at: iso(2), ...usedIn("America/Toronto", 12, 3), machine: "ana-mbp", daily_usd: 5 },
   { id: "api-no-cost", owner_profile_id: ANA, owner_label: "ana", vendor: "opencode", display_name: "ana-local", status: "idle", status_note: null, current_ticket_id: null, last_seen_at: iso(1), model: null, effort: null, model_set_by: null, model_set_at: null, effective_model: "ollama/qwen3-coder", effective_at: iso(2) },
   { id: LEAD, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "ana-claude", status: "idle", status_note: "Planned the Sign-in goal", current_ticket_id: null, last_seen_at: iso(3), model: "opus", effort: "high", model_set_by: ANA, model_set_at: iso(60), effective_model: "claude-opus-5-5", effective_effort: "high", effective_at: iso(20), ...usedIn("America/Toronto", 35, 3) },
   { id: BUILDER, owner_profile_id: ANA, owner_label: "ana", vendor: "claude", display_name: "builder", status: nobodyRuns ? "idle" : "building", status_note: nobodyRuns ? null : "Creating profiles for new users", current_ticket_id: nobodyRuns ? null : "t2", last_seen_at: iso(1), model: "sonnet", effort: "medium", model_set_by: LEAD, model_set_at: iso(30), effective_model: "haiku", effective_effort: "medium", effective_at: iso(1), ...usedIn("America/Toronto", 70, 3) },

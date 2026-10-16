@@ -21,7 +21,7 @@ import {
   type EngineRun,
 } from "../src/runner/engines.js";
 import { RATE_LIMIT_WAIT_MS, overSpend, spendNotice, usageLimit } from "../src/runner/limit.js";
-import { Runner } from "../src/runner/runner.js";
+import { Runner, failedTicketReport } from "../src/runner/runner.js";
 
 // API-model agents through OpenCode (AK-107, DEC-26, CON-25). The sample output in fixtures/ is from
 // a real `opencode run --format json` (OpenCode 1.19) against a stand-in for DeepSeek's API.
@@ -223,8 +223,19 @@ describe("plain reasons for provider errors", () => {
     const stdout = "Error: Unexpected server error. Check server logs for details.";
     const stderr = 'level=ERROR message=failed error="ProviderModelNotFoundError: Model not found: deepseek/deepseek-chat."';
     expect(why(stdout)).toBeNull();
-    expect(why(`${stdout}\n${stderr}`)).toEqual({ kind: "model", reason: "DeepSeek doesn't have the model deepseek/deepseek-chat; pick another model for me" });
-    expect(why("Error: Model Not Exist (HTTP 400)")?.kind).toBe("model");
+    expect(why(`${stdout}\n${stderr}`)).toEqual({ kind: "model", reason: "deepseek-chat isn't a DeepSeek model in OpenCode; pick another model for me" });
+    expect(why("Error: Model Not Exist (HTTP 400)")).toEqual({ kind: "model", reason: "DeepSeek doesn't have the model deepseek/deepseek-chat; pick another model for me" });
+  });
+
+  it("OpenCode's own refusal names the model it likely meant (AK-143)", () => {
+    // Recorded from OpenCode 1.19.0 run with -m deepseek/deepseek-v4-flash.
+    const out = [...fixture("opencode-model-not-found.jsonl"), ...fixture("opencode-model-not-found.stderr")].join("\n");
+    expect(providerProblem(out, "deepseek", "deepseek/deepseek-v4-flash")).toEqual({
+      kind: "model",
+      reason: "deepseek-v4-flash isn't a DeepSeek model in OpenCode (did you mean deepseek-flash?); pick another model for me",
+    });
+    const routed = 'error="ProviderModelNotFoundError: Model not found: openrouter/qwen/qwen3-codr. Did you mean: openrouter/qwen/qwen3-coder?"';
+    expect(providerProblem(routed, "openrouter", "openrouter/qwen/qwen3-codr")?.reason).toBe("qwen/qwen3-codr isn't an OpenRouter model in OpenCode (did you mean qwen/qwen3-coder?); pick another model for me");
   });
 
   it("rate limits, and nothing for other failures", () => {
@@ -394,6 +405,13 @@ process.stdin.on("end", async () => {
     }
     await new Promise((r) => setTimeout(r, 60000));
   }
+  if (input.includes("NOMODEL")) {
+    for (const line of ${JSON.stringify(fixture("opencode-model-not-found.jsonl"))}) console.log(line);
+    for (const line of ${JSON.stringify(fixture("opencode-model-not-found.stderr"))}) process.stderr.write(line + "\\n");
+    // More log after it, enough to push it out of the last 2000 characters.
+    for (let i = 0; i < 40; i++) process.stderr.write('level=ERROR message="share subscriber failed" type=session.updated cause="Cause([Interrupt])"\\n');
+    process.exit(1);
+  }
   for (const line of ${JSON.stringify(fixture("opencode-run.jsonl"))}) console.log(line);
   const key = process.env.DEEPSEEK_API_KEY;
   console.log(JSON.stringify({ type: "text", sessionID: "s1", part: { type: "text", text: "key " + (key ? "given: " + key : "missing") + ", config " + (fs.existsSync(process.env.OPENCODE_CONFIG) ? "found" : "missing") } }));
@@ -424,6 +442,27 @@ process.stdin.on("end", async () => {
     expect(run.finalText).toBe("Stopped: DeepSeek is limiting how fast I can send requests.");
     expect(usageLimit(run)).not.toBeNull();
   }, 20_000);
+
+  it("a model OpenCode doesn't have: the plain reason and the likely name, not \"Unexpected server error\" (AK-143)", async () => {
+    const run = await go("NOMODEL");
+    expect(run).toMatchObject({ isError: true, exitCode: 1 });
+    expect(run.rateLimited).toBeFalsy();
+    const reason = "deepseek-v4-flash isn't a DeepSeek model in OpenCode (did you mean deepseek-flash?); pick another model for me";
+    expect(run.problem).toEqual({ kind: "model", reason });
+    expect(run.finalText).toBe(`Stopped: ${reason}.`);
+
+    // On the ticket and on the agent.
+    const report = failedTicketReport(run, run.finalText, "AK-9", 60);
+    expect(report.comment).toBe(`Stopped: ${reason}.`);
+    expect(report.agentNote).toBe(`Stopped on AK-9: ${reason}`.slice(0, 200));
+    expect(report.comment + report.agentNote).not.toMatch(/Unexpected server error/);
+  });
+
+  it("a failed run without a known reason, or one that only waits, doesn't mark the agent", () => {
+    expect(failedTicketReport({ timedOut: false }, "Error: boom", "AK-9", 60)).toEqual({ why: "the run failed", comment: "Stopped: the run failed.\n\nError: boom", agentNote: null });
+    expect(failedTicketReport({ timedOut: true }, "", "AK-9", 60)).toMatchObject({ comment: "Stopped: hit the 60-minute limit.", agentNote: null });
+    expect(failedTicketReport({ timedOut: false, problem: { kind: "rate", reason: "busy" } }, "", "AK-9", 60).agentNote).toBeNull();
+  });
 
   it("scrubs only real secret values", () => {
     expect(scrubber([KEY, ""])(`a ${KEY} b ${KEY}`)).toBe("a [redacted] b [redacted]");

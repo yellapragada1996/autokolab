@@ -473,7 +473,7 @@ program
   .option("--site <url>", "the AutoKolab website", undefined)
   .option("--engine <engine>", "add one API-model agent instead: opencode")
   .option("--provider <provider>", "its model provider, e.g. deepseek, google, openai, mistral, openrouter, ollama")
-  .option("--model <model>", "its model, e.g. deepseek-chat")
+  .option("--model <model>", "its model, e.g. deepseek-flash")
   .option("--name <name>", "its name, e.g. ana-deepseek")
   .option("--daily-usd <dollars>", "its spending limit per day in US dollars (0: no limit)")
   .option("--key-env <name>", "read its API key from this environment variable instead of asking")
