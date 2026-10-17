@@ -29,7 +29,8 @@ Everything that exists today keeps a home. The mapping table in section 6 lists 
 
 ### 1.1 How I looked
 
-- I read every route, screen and shared component in `apps/site/src`, the handoff package, the coherence review (AK-145), the Overview wireframe, DEC-22, DEC-24 and `GUIDE.md`. `docs/product-vision.md` does not exist in this checkout.
+- I went through every route and screen in `apps/site/src` (the router, the shell, each page, the command palette and the phone styles), the handoff package, the coherence review (AK-145), the Overview wireframe, DEC-22, DEC-24 and `GUIDE.md`. `docs/product-vision.md` does not exist in this checkout.
+- For the backend I listed every CLI command, MCP tool, database function and server function, and checked which ones a page uses.
 - I did not run the site or take screenshots. This is a research ticket that changes no pages, and a source review was enough to list what exists. Everything in this section is **from the source**, not from using the app.
 - I did not read the other agent's work. Its folder (`docs/research/tabs-codex/`) is not on `main`, and I did not look at its branch or ticket.
 
@@ -150,7 +151,38 @@ Frequency is how often a typical person does it. Importance is what goes wrong i
 
 ## 3. How comparable products organise this
 
-COMPARE_PLACEHOLDER
+✅ Found by searching the web on 17 October 2026, from each product's own help pages and changelogs. I re-read the Claude Projects and Linear agents pages myself. **Could not reach:** help.openai.com (403), two Linear docs pages (404). For Codex cloud's task list and usage page I found only secondary sources, so I leave those out. I have not used these products for this research.
+
+### 3.1 What they do
+
+| Product | Main navigation | Where "needs you" lives | Phone | Settings, cost | Agents' work |
+| --- | --- | --- | --- | --- | --- |
+| **Claude Code · Projects** ([docs](https://code.claude.com/docs/en/claude-projects)) | One ongoing **conversation** where Claude coordinates the work, with an **Overview** pane beside it. Overview groups threads: Ready for review, **Waiting on you**, Working, and others. Its other tabs: Library, Pull requests, Routines. | A dot on the Overview button; desktop notifications when a thread needs input or fails. | The Code tab in the Claude app. | Project settings → **Usage**: tokens by thread and by model. | Each task is a thread with its own transcript, shown as a status card in the conversation. |
+| **Linear** ([guide](https://linear.app/enablement/guide/navigating-linear), [agents](https://linear.app/developers/agents)) | Sidebar: **Inbox**, My issues, Workspace (projects, views), Your teams. Items can be hidden or reordered ([changelog](https://linear.app/changelog/2024-12-18-personalized-sidebar)). | **Inbox**, first in the sidebar, split into Priority and Other since Sept 2026 ([changelog](https://linear.app/changelog/2026-09-03-priority-inbox)). | A bottom bar you can customise ([changelog](https://linear.app/changelog/2026-01-22-customize-your-navigation-in-linear-mobile)). | Click the workspace name → Settings (Account, Features, Administration, Teams). | Agents are **delegates**: "humans maintain ownership while agents act on their behalf". No separate agents area; their activity shows on the issue. |
+| **GitHub · Copilot agent** ([sessions](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/track-copilot-sessions), [Agents tab](https://github.blog/changelog/2026-01-26-introducing-the-agents-tab-in-your-repository)) | A page of all agent sessions, and an **Agents** tab in each repo beside Code, Pull requests and Issues. | The Notifications inbox. | Bottom tabs: Home, Notifications, Explore, Profile ([changelog](https://github.blog/changelog/2026-04-01-github-mobile-stay-in-flow-with-a-refreshed-copilot-tab-and-native-session-logs)). | Billing in account settings; a usage bar under your avatar. | A session log: reasoning, tools, tokens, length. You can steer or stop. |
+| **Slack** ([sidebar](https://slack.com/help/articles/360000411963-Use-Slack-with-a-screen-reader)) | Home, DMs, **Activity**, To-dos, Agents & Tools, and **More** for whatever no longer fits. | **Activity**: one feed with filters ([help](https://slack.com/help/articles/46751260742035-Introducing-the-new-Activity-view-in-Slack)). | Home, DMs, Activity, and **You** for your status and preferences. | Your preferences: your picture. Billing: the organisation's name. | Agents got their own top-level item. |
+| **Devin** ([release notes](https://docs.devin.ai/release-notes/overview)) | A sidebar of sessions grouped **Working, Ready, Blocked, Inactive**. Knowledge is under Settings, not in the main menu ([docs](https://docs.devin.ai/product-guides/knowledge)). | A bell for "finished or needs your attention", with All and Unread. | The bell opens full-screen on mobile web. | Settings → Usage & limits ([docs](https://docs.devin.ai/admin/billing/usage)); cost per session in Session Insights ([docs](https://docs.devin.ai/product-guides/session-insights)). | Inside a session: Shell, IDE, Browser and a **Progress** tab ([docs](https://docs.devin.ai/work-with-devin/devin-session-tools)). |
+| **Cursor · cloud agents** ([docs](https://cursor.com/docs/cloud-agent/web-and-mobile)) | A web page of agents; agents can also start from Slack, GitHub or Linear. | The phone app shows agents in an inbox and notifies when one finishes a turn. | A native iOS app; on Android the website installed as an app (PWA). | A dashboard with spending. A spend limit must be set before first use ([docs](https://cursor.com/docs/cloud-agent)). | Per-agent conversation. |
+| **Notion** ([sidebar](https://www.notion.com/help/navigate-with-the-sidebar)) | Search, Home, AI chats, Meetings, **Inbox**, then your pages. Settings at the bottom. | Inbox, with filters; "Automations & runs" is its own kind ([help](https://www.notion.com/help/updates-and-notifications)). | Always-visible bottom bar: Home, Search, Inbox, Create ([help](https://www.notion.com/help/workspaces-on-mobile)). | A credits dashboard per agent ([help](https://www.notion.com/help/track-usage-in-the-notion-credits-dashboard)). | Each custom agent has an **Activity** tab: what triggered it, what it did, any errors ([help](https://www.notion.com/help/custom-agent)). |
+| **Basecamp 5** ([Basecamp 5](https://basecamp.com/5)) | One Basecamp menu (also ⌘K) instead of many links; "My Bar" for your assignments. | "New For You" in the sidebar; "Don't Forget" pins one until it's dealt with. | Not confirmed for version 5. | — | Built for non-technical teams: an **Activity** record "organized by topic, clearly attributed, and time-stamped" ([features](https://basecamp.com/features)). |
+
+### 3.2 What to borrow and what to avoid (💭)
+
+**Borrow:**
+1. **A conversation as home, with status kept separate.** Claude Projects is the closest match to AutoKolab: one conversation that coordinates the work, plus an Overview of what is waiting on you. It confirms DEC-24's split (Captain to talk, Overview to look).
+2. **"Waiting on you" as the one interrupting state.** Claude Projects, Devin and Linear's Priority inbox each lift "needs you" above everything else. AutoKolab's amber dot and Captain badge do the same. Keep it the only badge.
+3. **Your things under your picture.** Slack, GitHub and Linear all put personal preferences and sign-out on your avatar or name, not among project settings. Hence the **You** menu.
+4. **A readable record of what agents did.** Notion's agent Activity ("triggered by, did, errors"), Basecamp's attributed Activity, and Devin's cost per session all make the past easy to check. That is the **History** tab.
+5. **Cost next to the work, in plain units.** Claude Projects shows usage by thread, Notion by agent, Devin by session; Cursor makes you set a limit first. AutoKolab already asks for a daily limit on API agents. Show cost per agent, in time or dollars as reported.
+6. **Four slots on a phone.** GitHub, Notion and Slack all keep about four. Captain · Overview · History · More fits.
+7. **Agents act for people.** Linear's "delegate, not assignee" is the right framing: a ticket is done *by Birch, for Ana*.
+
+**Avoid:**
+1. **A navigation that grows.** Slack added items until it needed a "More" overflow; Linear made its sidebar hideable. Start with three and make every new thing earn a tab.
+2. **An all-events feed as the default** (Slack's Activity). For a non-coder, that's noise. AutoKolab's Room is that feed; it belongs one click deep.
+3. **Engineer panes by default** (Devin's Shell and IDE, GitHub's session log with tokens). Keep them behind "Show the work".
+4. **A separate inbox when the conversation is already one.** Every one of these products has an inbox because work arrives from many places. In AutoKolab, everything that needs you arrives from Captain, so Captain is the inbox.
+5. **Relying on ⌘K.** All of them have it, but labelled tabs are what a non-coder uses.
 
 ---
 
@@ -181,8 +213,8 @@ Desktop, 1440 wide:
 │ AutoKolab        │  Overview                         [Search ⌘K]     │
 │ Shop ⌄           │ ───────────────────────────────────────────────── │
 │                  │  The team is building Checkout and Sign-in.       │
-│ ▸ Captain    (1) │  Next from Captain: review Fjord's Apple Pay.     │
-│   Overview       │                                                   │
+│   Captain    (1) │  Next from Captain: review Fjord's Apple Pay.     │
+│ ▸ Overview       │                                                   │
 │   History        │  You are needed                                   │
 │                  │  ● Should shared computers stay signed in?  Open →│
 │                  │                                                   │
@@ -272,7 +304,7 @@ Phone, 390 wide:
 3. **Shipped**: one line per goal or ticket that shipped, newest first, each with its plain summary ("Shoppers can pay with Apple Pay") and "Record →". Five, then "See all".
 4. **Decided**: one line per decision made this period, in plain words, with who decided and when ("Stay signed in on shared computers: no · Ana · Tue"). Three, then "All decisions →".
 5. **Went wrong, and was handled**: one line per problem this period, each with what was done. Hidden when none. (Later, each opens its heads-up page.)
-6. **What it cost**: one line per kind of agent. API agents in dollars ("Fjord · DeepSeek · $3.20 of a $5 daily limit"); subscription agents in time ("Birch · Claude Code on Ana's subscription · 9 hours"). Never a made-up dollar figure for a subscription.
+6. **What it cost**: one line per kind of agent. API agents in dollars ("Fjord · DeepSeek · $3.20 of a $5 daily limit"); subscription agents in time ("Birch · Claude Code on Ana's subscription · 9 hours"). Never a made-up dollar figure for a subscription. (✅ The data exists: `run_usage` records tokens, cost and seconds per run; `report_usage` records time used today and the daily limit.)
 
 **One click deeper:**
 - **All the work**: today's Work page (board, by goal, later, all tickets).
@@ -311,6 +343,7 @@ Your name and place · **Notifications** (moved from Settings: they are per pers
 | **Captain · Overview only, everything else in More** | The smallest, and tempting. But History would be in a menu, and History is where trust is earned. Second choice if raghavendra wants two. |
 | **Captain · Overview · Work · Team** | Four primary places, two of them machinery. Work is how agents organise; people ask Captain or look at goals. |
 | **One page: Captain with status on top** | Tried and dropped in DEC-24. |
+| **Overview as a pane beside Captain on wide screens** (as Claude Projects does) | Attractive at 1440 px, but it brings back the dashboard next to the chat that DEC-24 removed, and it can't work on a phone. Worth trying later as an option, not as the structure. |
 | **A separate Inbox or Activity tab** (Slack, Linear) | Captain's conversation already is the inbox: every "needs you" arrives there, and Overview lists them. A third place would repeat it. |
 | **Room as a primary tab** (handoff phone design) | Raw agent chat is noisy for a non-coder. It stays one click from every ticket, goal and History, and in More. |
 | **Name the new tab "Results", "Record" or "Activity"** | "Results" sounds like metrics only; "Record" sounds like a log; "Activity" sounds like live status, which is Overview's job. "History" says "the past" plainly. |
@@ -369,13 +402,13 @@ Today Overview already says "Work has stopped on …" and shows a coral row (✅
 | Thing | Owner | Member | Agent owner (for their own agent) |
 | --- | --- | --- | --- |
 | Captain, Overview, History | Sees and uses | Sees and uses | — |
-| Answer a risky merge | Yes | Yes, unless they built it (✅ nobody approves their own work) | — |
+| Answer a question, OK a plan or a risky merge | Yes | Yes (✅ `allow_merge` is open to any person in the project) | — |
 | Invite people, choose Captain | Changes | Sees who can, no controls | — |
 | How merging works, Pause everyone | Changes | Reads, with "Only Ana can change this" | — |
 | Model, effort, daily limit, pause | For their own agents | For their own agents | Changes; others read |
 | Rules (Guide, decisions) | Edits Guide | Reads | — |
-| Export | Yes | Yes 💭 (it's the same record they can already read) | — |
-| Cost | Sees all | Sees all 💭 (transparency) | Sees their own in more detail |
+| Export | Yes | Yes (✅ as today: Results is open to every member) | — |
+| Cost | Sees all | Sees all (✅ as today: Team and Results show every agent's spend to everyone) | Sees their own in more detail |
 
 Owner-only controls never disappear for members. They show read-only with who can change them (✅ handoff N05, and `Merging` in `People.tsx` already does this).
 
@@ -436,6 +469,11 @@ Owner-only controls never disappear for members. They show read-only with who ca
 | ⌘K | Header, keyboard | Same; phone search icon | Kept; grows (5.4). |
 | Old addresses (`/board`, `/backlog`, `/list`, `/guide`, `/t/<key>`) | Redirects | Same | Kept. New: `/history`; `/people` keeps working. |
 | Dev previews (`?preview=`) | Development only | Same | Untouched. |
+| *Backend only:* pause or resume an agent | CLI | More → Team, on the agent, for its owner | New button (question 10). |
+| *Backend only:* remove a person or an agent | CLI; database allows it | More → Team, owner only | New button. |
+| *Backend only:* an agent's own limits (hours, dollars) | The agent's machine | More → Team, on the agent, read-only | Shown, changed on the machine. |
+| *Backend only:* rename the project, change its repo | Database allows it | More → Settings, owner only | Later, rare. |
+| *Backend only:* work log, v1 bulletin board, machine set-up, keys, updates | CLI, MCP, the helper's local app | Not on the website | Stays agent or machine machinery. |
 
 Nothing is removed except the Room's roster (a repeat of Team), "Give it a first ticket", and possibly the traffic line. Everything else is kept, moved or merged.
 
@@ -451,7 +489,7 @@ Nothing is removed except the Room's roster (a repeat of Team), "Give it a first
 | 4 | **Who writes decisions?** | Captain records them after a person answers (AK-145, step 5). People may add one in Rules → Detailed. | Decides whether "Record a decision" stays a main button. |
 | 5 | **What does "cost" mean for subscription agents?** | Show time worked and "on Ana's subscription"; dollars only where the tool reports them (API agents). | A made-up dollar number would break trust; "free" would be wrong too. |
 | 6 | **Should Overview say "since you last looked"?** | **Not yet.** Captain's catch-up already does this; Overview stays "now and today". | Prevents the same fact in two places. |
-| 7 | **Can members see cost and export the record?** | **Yes.** It's the same record they can already read piece by piece. | Transparency inside the team; an owner could want it private. |
+| 7 | **Should members keep seeing cost and the export?** They can today. | **Yes.** It's the same record they can already read piece by piece. | Putting cost on a tab makes it more visible; an owner might want it private. |
 | 8 | **Keep "AutoKolab traffic" (bytes downloaded) on Results?** | **Move it under Full numbers**, or to a developer-only view. | It answers a question only builders of AutoKolab ask. |
 | 9 | **Should the phone keep four slots (Captain · Overview · History · More)?** | **Yes.** The handoff's Work and Room tabs fail the non-coder test. | Phone is where answers to Captain happen. |
 | 10 | **Should Pause and Remove for an agent become buttons on the website?** | **Yes, for the agent's owner**, writing to the database for the runner to read. Today they are terminal commands shown as text. | Needed for "pause my agent", and for Pause everyone (DEC-22 build phase 7). |
@@ -466,5 +504,6 @@ Nothing is removed except the Room's roster (a repeat of Team), "Give it a first
 ## 8. What I could not check
 
 - I did not open the running site at desktop or phone width. Sections 1 and 5 come from the source code.
-- The product comparison in section 3 is limited to what the sources below say; I did not use those products for this research.
+- The product comparison in section 3 is limited to what the linked pages say. I did not use those products for this research. OpenAI's help pages refused the request, so Codex cloud is left out.
+- I could not run the database access-rule tests (`supabase/tests/run-local.sh` needs Postgres's `createdb`, which isn't installed here). This change touches no code or database.
 - "How often" and the job ranking are my estimates from the roles in the code and the handoff's journeys, not from usage data. The app records no page visits.
