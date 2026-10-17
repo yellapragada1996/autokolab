@@ -16,13 +16,13 @@ The app has 8 tabs.
 | Thing shown or done | Single owning tab |
 | --- | --- |
 | Project state, today's briefing, catch-up, setup checklist | Overview |
-| Conversation with Captain; questions and answers; proposed plans and acceptance; review approval and permission to release | Captain |
+| Conversation with Captain; questions, answers and blocking alerts; proposed plans and acceptance; review approval and permission to release | Captain |
 | All work, goals, progress, assignments, next steps, blockers, delivered work, edits, comments, history, tests and proof | Work |
 | Agent conversation, replies and activity messages | Room |
 | Members, locations, local times, machines, connection problems, availability, models, limits, choosing Captain, connecting agents, invitations and joining | Team |
 | Decisions made, reasons, replaced choices, project purpose, design and standing rules | Decisions |
 | Delivery measurements, spending, usage, missing-data explanations, traffic measurements and audit download | Results |
-| Release policy, notification preferences, project creation and initial repository choice | Settings |
+| Release policy, notification preferences, project list, creation and initial repository choice | Settings |
 
 Only Overview repeats information in brief. Team drops assignments and spending; Room drops its roster; Results drops delivery and question lists. Other tabs link to the owner without copying details or controls. Search stays within its owning tab.
 
@@ -43,6 +43,7 @@ Only Overview repeats information in brief. Team drops assignments and spending;
 | Decisions, Guide | Merged into Decisions; guidance and reasons together, without repeating rules. |
 | Results | Results; individual deliveries move to Work, questions to Captain. |
 | Settings, Create project | Merged into Settings; creation remains available before a project exists. Invitations move to Team. |
+| Home/project list | Merged into Settings; project management stays together. Switching remains a direct control. |
 | Notifications | Preferences stay in Settings; alerts open Captain's question. No inbox page. |
 | Search/command popup | Removed; Work gets search, actions stay with their owners. |
 | Sign-in, Welcome/profile | Merged into the account control; no separate app pages. |
@@ -51,6 +52,6 @@ Only Overview repeats information in brief. Team drops assignments and spending;
 
 Non-tabs: account provides sign-in, profile editing and sign-out inline; the project switcher only selects an existing project.
 
-Captain opens first. All eight tabs remain visible on desktop and phone, wrapping when needed. Merged content stays on the page, without collapsed panels. No menus, nested tabs or separate detail pages. This proposal keeps DEC-22's single contact and DEC-24's chat/Overview split, replacing the handoff's deeper navigation.
+Captain opens first. All eight tabs stay visible on desktop and phone, wrapping as needed. Merged content stays inline: no collapsed panels, menus, nested tabs or separate detail pages.
 
 I would merge Work and Results first: measurements could sit beside the work they measure on one continuous page.
