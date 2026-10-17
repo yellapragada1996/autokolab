@@ -1,6 +1,6 @@
 import { statusHere } from "./agentStatus";
 export { statusHere } from "./agentStatus";
-import { MERGE_OK_PREFIX, type Agent, type Ticket, type TicketEvent } from "../lib/data";
+import { MERGE_OK_PREFIX, type Agent, type Step, type Ticket, type TicketEvent } from "../lib/data";
 import { localTime } from "../lib/place";
 import { awayText, catchUpItems, clock, goalName, named, RUNNER_PROBLEM, type CatchUp, type Need, type Plan } from "./captain";
 import { agentDot, agentOnline, epicOf, plural } from "./story";
@@ -833,68 +833,157 @@ export function crew(t: Team, rows: AgentRow[]): CrewRow[] {
     .sort((x, y) => CREW_ORDER.indexOf(x.state) - CREW_ORDER.indexOf(y.state));
 }
 
-// The approved Overview wireframe's five first-glance situations. Keep this separate from the
-// older board projection above: these lines describe the project's actual records in plain words.
+// Overview v5. This projection has no timers, fetching, or changes to the board's older helpers.
+export type OverviewAgentState = "working" | "reviewing" | "waiting" | "stopped" | "limit" | "paused" | "idle" | "offline";
+export type OverviewSegment = "d" | "u" | "w" | "x" | "t";
+export const SEGMENT_ORDER: OverviewSegment[] = ["d", "u", "w", "x", "t"];
+export const SEGMENT_WORD: Record<OverviewSegment, string> = { d: "done", u: "in progress", w: "waiting on you", x: "stopped", t: "to go" };
+export interface OverviewAgent {
+  id: string;
+  name: string;
+  state: OverviewAgentState;
+  word: string;
+  doing: string;
+  key: string | null;
+  goalId: string | null;
+  steps: Step[];
+  step: number | null;
+  waiting: number;
+}
+export interface OverviewTicket {
+  key: string;
+  title: string;
+  segment: OverviewSegment;
+  detail: string;
+  description: string;
+}
+export interface OverviewGoal {
+  id: string;
+  name: string;
+  tickets: OverviewTicket[];
+  finished: string | null;
+}
+export interface OverviewSentence {
+  text: string;
+  tone?: "soft" | "stopped";
+  link?: { text: string; to: "people" | "captain" };
+}
 export interface OverviewGlance {
-  state: "busy" | "needed" | "calm" | "problem" | "new";
-  sentence: string;
-  next: string | null;
-  requests: { key: string; text: string }[];
-  problem: WatchItem | null;
-  team: { id: string; name: string; task: string; state: string; tone: Tone; key: string | null }[];
-  goals: { id: string; name: string; next: string; done: number; total: number }[];
-  delivered: { key: string; text: string }[];
+  projectId: string;
+  slug: string;
+  headings: OverviewSentence[];
+  croc: "new" | "calm" | null;
+  requests: { key: string; text: string; meta: string; action: string }[];
+  team: OverviewAgent[];
+  goals: OverviewGoal[];
+}
+const overviewTicketOrder = (a: Ticket, b: Ticket) => a.sort_order - b.sort_order || a.key.localeCompare(b.key);
+const overviewAge = (since: string, now: Date) => {
+  const minutes = Math.max(0, Math.floor((now.getTime() - Date.parse(since)) / 60_000));
+  return !Number.isFinite(minutes) ? "" : minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min` : minutes < 1440 ? `${Math.floor(minutes / 60)} h` : plural(Math.floor(minutes / 1440), "day");
+};
+
+/** All agents, in a fixed order. A ticket assignment alone never claims an agent is running. */
+export function overviewAgents(ws: Workspace, now: Date): OverviewAgent[] {
+  return [...ws.people.agents.values()].sort((a, b) =>
+    Number(b.id === ws.project.lead_agent_id) - Number(a.id === ws.project.lead_agent_id) || a.display_name.localeCompare(b.display_name) || a.id.localeCompare(b.id)
+  ).map((raw) => {
+    const a = statusHere(raw, ws.project.id, ws.byId, now);
+    const assigned = ws.tickets.filter(t => isWork(t) && isOpen(t) && t.assignee_id === a.id).sort(overviewTicketOrder);
+    const current = a.current_ticket_id ? ws.byId.get(a.current_ticket_id) : null;
+    const t = a.elsewhere ? null : current && isWork(current) && isOpen(current) ? current : assigned.find(t => t.status === "in_progress") ?? null;
+    const limit = (!!a.waiting_until && Date.parse(a.waiting_until) > now.getTime()) || /usage limit|daily limit/i.test(a.status_note ?? "");
+    const live = !a.elsewhere && agentDot(a, now) === "working";
+    const state: OverviewAgentState = raw.status === "paused" ? "paused" : limit ? "limit" : a.status === "offline" ? "offline"
+      : live ? t?.status === "review" ? "reviewing" : "working"
+      : a.status === "waiting_human" || (t && asksPerson(t)) ? "waiting"
+      : a.status === "blocked" || (t?.needs_human && RUNNER_PROBLEM.test(t.needs_human)) ? "stopped" : "idle";
+    const words: Record<OverviewAgentState, string> = { working: "Working", reviewing: "Reviewing", waiting: "Waiting on you", stopped: "Stopped", limit: "Limit reached", paused: "Paused", idle: "Idle", offline: "Offline" };
+    const steps = t ? [...(ws.steps.get(t.id) ?? [])].sort((a, b) => a.idx - b.idx) : [];
+    const at = steps.findIndex(s => s.status === "now");
+    const reason = t?.needs_human && RUNNER_PROBLEM.test(t.needs_human) ? withoutKeys(ws, stopReason(t.needs_human)) : null;
+    const doing = ["idle", "offline"].includes(state) && !a.elsewhere ? "" : reason && state === "stopped" ? `${t!.title} · ${reason}` : t ? `${state === "reviewing" ? "Reviewing " : ""}${isPhrase(t.summary) ? t.summary : t.title}`
+      : a.elsewhere ? "Working in another project" : !["idle", "offline", "paused"].includes(state) ? withoutKeys(ws, a.status_note ?? "") : "";
+    return { id: a.id, name: whoName(ws, a.id), state, word: state === "offline" && a.last_seen_at ? `Offline · ${overviewAge(a.last_seen_at, now)}` : words[state], doing,
+      key: t?.key ?? null, goalId: t && !["idle", "offline"].includes(state) ? epicOf(ws, t)?.id ?? "fixes" : null,
+      steps, step: at < 0 ? null : at + 1, waiting: assigned.filter(t => t.status === "ready" || t.status === "in_progress").length };
+  });
 }
 
-export function overviewGlance(ws: Workspace, needs: Need[], plans: Plan[], events: TicketEvent[], now: Date): OverviewGlance {
-  const look = overview(ws, needs, plans, now);
-  const actualRequests = needs.filter((n) => n.kind !== "problem");
-  const requests = askItems(ws, actualRequests, plans, now).map((a) => {
-    const need = actualRequests.find((n) => n.key === a.key);
-    const question = need ? withoutKeys(ws, firstSentence(need.question)) : "";
-    const text = need?.kind === "ticket_question" && need.ticket?.assignee_id
-      ? `${question}${/[.?!]$/.test(question) ? "" : "."} ${whoName(ws, need.ticket.assignee_id)} is waiting for your answer.`
-      : a.title;
-    return { key: a.key, text };
+/** Per-ticket shape and words, with no inference that failed checks mean failed test cases. */
+function overviewTicket(ws: Workspace, t: Ticket, team: OverviewAgent[], needs: Need[]): OverviewTicket {
+  const agents = team.filter(a => a.key === t.key);
+  const builder = team.find(a => a.id === t.assignee_id);
+  const reviewer = agents.find(a => a.state === "reviewing");
+  const who = t.assignee_id ? whoName(ws, t.assignee_id) : null;
+  const need = needs.find(n => n.ticket?.id === t.id && n.kind !== "problem");
+  const checks = t.checks ?? t.pr_facts?.checks;
+  const stopped = t.needs_human && RUNNER_PROBLEM.test(t.needs_human) || (t.status === "in_progress" && builder && ["stopped", "limit"].includes(builder.state));
+  const segment: OverviewSegment = t.status === "done" ? "d" : need || asksPerson(t) ? "w" : stopped || checks?.state === "failure" ? "x" : ["in_progress", "review"].includes(t.status) ? "u" : "t";
+  const step = builder?.key === t.key && builder.step ? ` · step ${builder.step} of ${builder.steps.length}` : "";
+  const detail = segment === "d" ? "Done" : segment === "w" ? "Waiting on you" : segment === "x" ? `Stopped${who ? ` · ${who}` : ""}`
+    : segment === "t" ? `To go${builder?.state === "offline" ? ` · ${builder.name}, offline` : ""}`
+    : reviewer ? `${reviewer.name} reviewing` : t.status === "review" ? "In review"
+    : who ? `${who}${builder?.state === "paused" ? " · paused" : builder?.state === "offline" ? " · offline" : step}` : "In progress";
+  const reason = segment !== "x" ? null : checks?.state === "failure" ? "Checks failed" : t.needs_human && RUNNER_PROBLEM.test(t.needs_human) ? stopReason(t.needs_human) : null;
+  return { key: t.key, title: t.title, segment, detail, description: [SEGMENT_WORD[segment], detail, reason].filter(Boolean).join(" · ") };
+}
+
+/** Reference heading table, using only situations supported by the real records. */
+export function overviewHeadings(team: OverviewAgent[], goals: OverviewGoal[], setup: "none" | "captain" | "agents" | "choose" | null, allDone: number): OverviewSentence[] {
+  if (setup === "none") return [{ text: "Nothing is connected yet.", tone: "soft" }, { text: "Connect your computer to bring in Captain.", link: { text: "Connect your computer", to: "people" } }];
+  if (setup === "choose") return [{ text: "Captain hasn’t been chosen yet.", tone: "soft" }, { text: "Choose Captain to start building.", link: { text: "Choose Captain", to: "people" } }];
+  if (setup === "captain") return [{ text: "Captain is here, but nobody builds yet.", tone: "soft" }, { text: "Add an agent to start building.", link: { text: "Add an agent", to: "people" } }];
+  if (setup === "agents") return [{ text: "Nothing has started yet.", tone: "soft" }, { text: "Tell Captain what you want to make.", link: { text: "Tell Captain", to: "captain" } }];
+  const working = team.filter(a => a.state === "working" || a.state === "reviewing");
+  const active = goals.filter(g => working.some(a => a.goalId === g.id));
+  const names = active.map(g => g.name);
+  const target = names.length === 1 ? names[0] : names.length === 2 && names.join("").length <= 32 ? listed(names) : plural(names.length, "goal");
+  const out: OverviewSentence[] = [];
+  if (!working.length) {
+    if (allDone) out.push({ text: `All ${plural(allDone, "goal")} ${allDone === 1 ? "is" : "are"} done.` });
+    out.push({ text: "No agents are working right now.", ...(allDone ? { tone: "soft" as const } : {}) });
+  } else if (working.length === 1) {
+    const a = working[0];
+    out.push({ text: active.length ? `${a.name} is ${a.state === "reviewing" ? "reviewing" : "working on"} ${target}.` : `${a.name} is working.` });
+  } else {
+    out.push({ text: `${working.length} agents are working${active.length && working.every(a => a.goalId) ? ` on ${target}` : ""}.` });
+  }
+  const stopped = team.filter(a => a.state === "stopped" || a.state === "limit").map(a => a.name);
+  if (stopped.length) out.push({ text: `${listed(stopped)} ${stopped.length > 1 ? "have" : "has"} stopped.`, tone: "stopped" });
+  for (const a of team.filter(a => a.state === "offline" && a.waiting)) out.push({ text: `${a.name} is offline with ${plural(a.waiting, "ticket")} waiting.`, tone: "soft" });
+  if (team.some(a => a.name === "Captain" && a.state === "offline" && !a.waiting)) out.push({ text: "Captain is offline.", tone: "soft" });
+  const done = goals.filter(g => g.finished && g.id !== "fixes").map(g => g.name);
+  if (done.length && !allDone) out.push({ text: `${listed(done)} ${done.length > 1 ? "are" : "is"} done.` });
+  return out;
+}
+
+export function overviewGlance(ws: Workspace, needs: Need[], plans: Plan[], now: Date): OverviewGlance {
+  const team = overviewAgents(ws, now);
+  const work = ws.tickets.filter(isWork).sort(overviewTicketOrder);
+  const epics = ws.tickets.filter(t => t.type === "epic" && t.status !== "canceled").sort(overviewTicketOrder);
+  const groups: { id: string; name: string; parts: Ticket[]; epic: Ticket | null }[] = epics.map(e => ({ id: e.id, name: goalName(e.title), parts: work.filter(t => epicOf(ws, t)?.id === e.id), epic: e }));
+  const fixes = work.filter(t => !epicOf(ws, t));
+  if (fixes.length) groups.push({ id: "fixes", name: FIXES, parts: fixes, epic: null });
+  const completed = groups.filter(g => g.parts.length && g.parts.every(t => t.status === "done"));
+  const allDone = epics.length > 0 && completed.filter(g => g.id !== "fixes").length === epics.length && work.every(t => t.status === "done") ? epics.length : 0;
+  const goals = groups.filter(g => g.parts.length).map(g => {
+    const finished = g.parts.every(t => t.status === "done") ? g.parts.map(t => t.completed_at).filter((x): x is string => !!x).sort().at(-1) ?? g.epic?.completed_at ?? null : null;
+    return { id: g.id, name: g.name, finished,
+      tickets: g.parts.map(t => overviewTicket(ws, t, team, needs)).sort((a, b) => SEGMENT_ORDER.indexOf(a.segment) - SEGMENT_ORDER.indexOf(b.segment)) };
+  }).filter(g => !g.tickets.every(t => t.segment === "d") || !!g.finished && new Date(g.finished).toDateString() === now.toDateString())
+    .sort((a, b) => Number(!!a.finished) - Number(!!b.finished));
+  // A stale current_ticket_id must not hide an agent inside a goal that is no longer shown.
+  for (const a of team) if (a.goalId && !goals.some(g => g.id === a.goalId)) a.goalId = null;
+  const setup = !work.length && !epics.length ? !ws.project.lead_agent_id ? team.length ? "choose" : "none" : team.every(a => a.id === ws.project.lead_agent_id) ? "captain" : "agents" : null;
+  const requests = needs.filter(n => n.kind !== "problem").sort((a, b) => Date.parse(b.since) - Date.parse(a.since) || a.key.localeCompare(b.key)).map(n => {
+    const plan = n.kind === "plan" ? plans.find(p => p.turnId === n.turnId) : null;
+    const who = n.ticket?.assignee_id ? whoName(ws, n.ticket.assignee_id) : null;
+    const meta = n.kind === "plan" ? ["Captain’s plan", plan ? plural(plan.tickets.length, "ticket") : null]
+      : n.kind === "ticket_question" && who ? [`${who} is waiting`] : ["Captain is asking"];
+    return { key: n.key, text: n.said || n.question, meta: [...meta, overviewAge(n.since, now)].filter(Boolean).join(" · "),
+      action: n.kind === "plan" ? "Review the plan in Captain" : ["risky_merge", "approval"].includes(n.kind) ? "Review in Captain" : "Answer in Captain" };
   });
-  const runnerProblem = needs.find((n) => n.kind === "problem");
-  const problem = watch(ws, events, now).find((w) => w.tone === "problem") ?? (runnerProblem ? { text: withoutKeys(ws, firstSentence(runnerProblem.question)), tone: "problem" as const, key: runnerProblem.ticket?.key } : null);
-  const state: OverviewGlance["state"] = requests.length ? "needed" : problem ? "problem" : ws.tickets.length === 0 ? "new" : look.state === "working" ? "busy" : "calm";
-  const activeGoals = look.features.now.filter((f) => f.active && f.id !== "fixes").map((f) => f.name);
-  const working = look.rows.filter((r) => r.kind === "running" || r.kind === "reviewing").length;
-  const firstHeld = actualRequests.find((n) => n.ticket)?.ticket;
-  const heldGoal = firstHeld ? featureName(ws, firstHeld) : look.features.now.find((f) => f.waits && f.id !== "fixes")?.name;
-  const otherGoal = look.features.now.find((f) => f.active && f.name !== heldGoal && f.id !== "fixes")?.name;
-  const sentence = state === "new"
-    ? ws.project.lead_agent_id ? "Nothing has started yet. Tell Captain what you want to make." : "Nothing has started yet. Connect Captain, then tell it what you want to make."
-    : state === "needed"
-      ? `${heldGoal ?? "Work"} is waiting on your answer.${otherGoal ? ` ${otherGoal} work continues.` : ""}`
-      : state === "problem"
-        ? `${problem!.text.replace(/\.$/, "")}. Captain is handling it; you do not need to act.`
-        : state === "busy"
-          ? `${activeGoals.length ? listed(activeGoals) : "Work"} ${activeGoals.length <= 1 ? "is" : "are"} moving. ${working ? `${plural(working, "agent")} ${working === 1 ? "is" : "are"} working` : "The team is working"}, and nothing needs you.`
-          : look.features.next.length || look.features.now.length ? "Nothing is in progress, and nothing needs you." : "The current work is done. Nothing is in progress, and nothing needs you.";
-  const reviewing = ws.tickets.filter((t) => t.type !== "epic" && t.status === "review" && !t.approved_sha && !t.needs_human).sort((a, b) => Date.parse(a.updated_at) - Date.parse(b.updated_at))[0];
-  const next = state === "needed" ? `I’ll move ${heldGoal ?? "the work"} forward as soon as you answer.`
-    : state === "problem" ? "I’ll check the next result and report back."
-    : reviewing ? `I’ll review ${withoutKeys(ws, named(reviewing.title))} next.`
-    : null;
-  const teamRows = agentRows(ws, now).map((r) => ({
-    id: r.agentId, name: r.name,
-    task: r.kind === "waiting" ? `waiting for your answer before ${plainPhrase(ws, ws.byKey.get(r.key)!)}` : r.doing.replace(/^is /, ""),
-    state: r.kind === "waiting" ? "Waiting" : r.kind === "stopped" ? "Stopped" : "Working",
-    tone: r.kind === "stopped" ? "problem" as const : r.kind === "waiting" ? "quiet" as const : "live" as const,
-    key: r.key,
-  }));
-  const features = [...look.features.now, ...look.features.next, ...look.features.done].filter((f) => f.id !== "fixes");
-  const goals = features.map((f) => {
-    const parts = ws.childrenOf(f.id).filter((t) => t.status !== "canceled").sort((a, b) => a.sort_order - b.sort_order);
-    const nextPart = parts.find((t) => actualRequests.some((n) => n.ticket?.id === t.id)) ?? parts.find((t) => t.status === "ready") ?? parts.find((t) => t.status === "backlog") ?? parts.find((t) => t.status !== "done");
-    return { id: f.id, name: f.name, next: nextPart ? `Next: ${withoutKeys(ws, partLine(nextPart)).replace(/^[A-Z]/, (c) => c.toLowerCase())}` : f.finishedAt ? finishedWhen(f.finishedAt, now) : "Not started", done: f.done, total: f.total };
-  });
-  const today = (iso: string | null) => !!iso && new Date(iso).toDateString() === now.toDateString();
-  const delivered = ws.tickets.filter((t) => t.type !== "epic" && t.status === "done" && today(t.completed_at))
-    .sort((a, b) => Date.parse(b.completed_at ?? "") - Date.parse(a.completed_at ?? ""))
-    .map((t) => ({ key: t.key, text: withoutKeys(ws, t.summary?.trim() || partLine(t)) }));
-  return { state, sentence, next, requests, problem, team: teamRows, goals, delivered };
+  return { projectId: ws.project.id, slug: ws.project.slug, team, goals, requests,
+    headings: overviewHeadings(team, goals, setup, allDone), croc: setup ? "new" : allDone && !requests.length && team.every(a => ["idle", "offline", "paused"].includes(a.state)) ? "calm" : null };
 }
