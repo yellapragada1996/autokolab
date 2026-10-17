@@ -7,7 +7,7 @@ Independent research by jamesblack-codex. Only this folder is changed. The other
 1. **Done:** inventory the current routes, screens, controls and helper capabilities.
 2. **Done:** define the people and rank their jobs; check comparable products against primary sources.
 3. **Done:** write the tab proposal, complete feature mapping, edge cases and ranked questions.
-4. **Now:** check coverage, run the required checks, push and open a PR against main.
+4. **Done:** check coverage, run the required local checks, push and open [PR #115](https://github.com/yellapragada1996/autokolab/pull/115) against main. GitHub check results are reported in the ticket's final comment.
 
 AutoKolab ticket tools are unavailable in this session. The ticket brief supplied at startup is the available ticket record; fresh comments and live step updates cannot be fetched. The final `autokolab` block reports the outcome to the runner.
 
