@@ -4,7 +4,7 @@ import { StepTicks } from "./StepTicks";
 
 export function AgentRow({ agent, slug, highlight, selected }: { agent: OverviewAgent; slug: string; highlight?: (key: string | null) => void; selected?: string | null }) {
   const quiet = ["idle", "offline", "paused"].includes(agent.state);
-  const ring = ["working", "reviewing"].includes(agent.state) ? "live" : agent.state === "waiting" ? "wait" : ["stopped", "limit"].includes(agent.state) ? "stop" : null;
+  const ring = ["working", "reviewing"].includes(agent.state) ? "live" : agent.state === "waiting" ? "wait" : ["failed", "blocked", "limit"].includes(agent.state) ? "stop" : null;
   return <li><OverviewLink className={`row agent${!agent.goalId && agent.doing ? " has-work" : ""}${quiet ? " quiet" : ""}${ring ? ` s-${ring}-row` : ""}${agent.key && selected === agent.key ? " hover" : ""}`}
     to={agent.key ? { view: "ticket", project: slug, key: agent.key } : { view: "people", project: slug }}
     onMouseEnter={() => highlight?.(agent.key)} onMouseLeave={() => highlight?.(null)} onFocus={() => highlight?.(agent.key)} onBlur={() => highlight?.(null)}>

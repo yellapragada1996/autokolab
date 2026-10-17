@@ -41,13 +41,13 @@ describe("Overview data from project records", () => {
   });
 
   it.each([
-    ["building", "Working"], ["waiting_human", "Waiting on you"], ["blocked", "Stopped"], ["paused", "Paused"], ["idle", "Idle"], ["offline", "Offline · 1 min"],
+    ["building", "Working"], ["waiting_human", "Waiting on you"], ["blocked", "Blocked"], ["paused", "Paused"], ["idle", "Idle"], ["offline", "Offline · 1 min"],
   ] as const)("maps %s to the truthful state word %s", (status, word) => {
     const ws = setup(); ws.agentOf(BIRCH)!.status = status;
     expect(view(ws).team.find(a => a.id === BIRCH)?.word).toBe(word);
   });
 
-  it("distinguishes a reported limit and a live review from idle or stopped", () => {
+  it("distinguishes a reported limit and a live review from idle or blocked", () => {
     const ws = setup();
     Object.assign(ws.agentOf(BIRCH)!, { status: "idle", waiting_until: at("13:00") });
     expect(view(ws).team.find(a => a.id === BIRCH)?.word).toBe("Limit reached");
@@ -63,14 +63,15 @@ describe("Overview data from project records", () => {
     const a = overviewAgents(ws, now).find(a => a.id === BIRCH)!;
     expect(a).toMatchObject({ key: null, goalId: null, doing: "Working in another project" });
     expect(JSON.stringify(a)).not.toContain("Secret");
-    expect(a.state).not.toBe("working");
+    expect(a.state).toBe("working");
+    expect(view(ws).headings.map(h => h.text).join(" ")).not.toContain("Birch is working");
   });
 
   it("orders the five segment shapes with matching counts and no zero legend entries", () => {
     const result = view();
     expect(result.goals[0].tickets.map(t => t.segment)).toEqual(["d", "u", "w", "x", "t"]);
-    expect(progressCounts(result.goals[0]).map(x => `${x.count} ${x.word}`)).toEqual(["1 done", "1 in progress", "1 waiting on you", "1 stopped", "1 to go"]);
-    expect(result.goals[0].tickets[1].detail).toBe("Birch · step 2 of 3");
+    expect(progressCounts(result.goals[0]).map(x => `${x.count} ${x.word}`)).toEqual(["1 done", "1 in progress", "1 waiting on you", "1 run failed", "1 to go"]);
+    expect(result.goals[0].tickets[1].detail).toBe("In progress · Birch · step 2 of 3");
     expect(result.goals[0].tickets[3].description).toContain("GitHub couldn't be reached");
     expect(result.requests).toHaveLength(1);
     expect(result.requests[0]).toMatchObject({ text: "Save guest cards?", meta: "Fjord is waiting · 4 h", action: "Answer in Captain" });
@@ -87,7 +88,7 @@ describe("Overview data from project records", () => {
 
   it("shows paused and offline tickets honestly without changing in-progress to to-go", () => {
     const ws = setup(); ws.agentOf(BIRCH)!.status = "paused";
-    expect(view(ws).goals[0].tickets.find(t => t.key === "SH-3")).toMatchObject({ segment: "u", detail: "Birch · paused" });
+    expect(view(ws).goals[0].tickets.find(t => t.key === "SH-3")).toMatchObject({ segment: "u", detail: "In progress · Birch · paused" });
     ws.agentOf(BIRCH)!.status = "offline";
     expect(view(ws).team.find(a => a.id === BIRCH)).toMatchObject({ goalId: null, doing: "" });
     ws.byKey.get("SH-6")!.assignee_id = BIRCH;
@@ -148,5 +149,89 @@ describe("Overview data from project records", () => {
     const ws = setup(); const before = view(ws);
     ws.tickets.reverse(); ws.people.agents = new Map([...ws.people.agents].reverse());
     expect(view(ws)).toEqual(before);
+  });
+});
+
+
+describe("Overview status evidence", () => {
+  it("separates a failed run, a generic block and failed checks", () => {
+    const ws = setup();
+    const a = ws.agentOf(BIRCH)!;
+    const task = ws.byKey.get("SH-3")!;
+    a.status = "blocked";
+    task.needs_human = "I stopped: the run failed. Comment here to have me continue.";
+    let result = view(ws);
+    expect(result.team.find(a => a.id === BIRCH)?.word).toBe("Failed");
+    expect(result.headings).toContainEqual({ text: "Birch's run failed.", tone: "problem" });
+    expect(result.goals[0].tickets.find(t => t.key === task.key)).toMatchObject({ segment: "x", problem: "Run failed", detail: "Run failed · Birch" });
+    task.needs_human = "I couldn't start: GitHub is unavailable.";
+    result = view(ws);
+    expect(result.team.find(a => a.id === BIRCH)?.word).toBe("Blocked");
+    expect(result.goals[0].tickets.find(t => t.key === task.key)?.problem).toBe("Blocked");
+    task.needs_human = null; a.status = "building";
+    task.checks = { state: "failure", passed: 1, total: 2 };
+    result = view(ws);
+    expect(result.team.find(a => a.id === BIRCH)?.word).toBe("Working");
+    expect(result.goals[0].tickets.find(t => t.key === task.key)?.problem).toBe("Checks failed");
+    expect(result.headings).toContainEqual({ text: "Checkout: checks failed.", tone: "problem" });
+  });
+
+  it("shows a limit's expected resume time, expires it and keeps offline and pause separate", () => {
+    const ws = setup(); const a = ws.agentOf(BIRCH)!;
+    Object.assign(a, { status: "idle", waiting_until: at("13:00"), status_note: "Waiting for my usage limit to reset, about 1pm" });
+    expect(view(ws).team.find(a => a.id === BIRCH)).toMatchObject({ word: "Limit reached", doing: expect.stringContaining("Expected to resume") });
+    expect(view(ws).goals[0].tickets.find(t => t.key === "SH-3")?.problem).toBe("Limit reached");
+    expect(view(ws).headings).toContainEqual({ text: "Birch reached a usage limit.", tone: "problem" });
+    a.waiting_until = at("11:59");
+    expect(view(ws).team.find(a => a.id === BIRCH)?.word).toBe("Idle");
+    a.waiting_until = at("13:00"); a.last_seen_at = at("11:55");
+    expect(view(ws).team.find(a => a.id === BIRCH)?.state).toBe("offline");
+    a.status = "paused";
+    expect(view(ws).team.find(a => a.id === BIRCH)?.word).toBe("Paused");
+    expect(view(ws).goals[0].tickets.find(t => t.key === "SH-3")?.segment).toBe("u");
+  });
+
+  it("recognises the spend report without guessing a reset or trusting arbitrary limit words", () => {
+    const ws = setup(); const a = ws.agentOf(BIRCH)!; a.status = "idle";
+    a.status_note = "I've spent today's $5 limit on OpenAI. I'll carry on tomorrow.";
+    expect(view(ws).team.find(a => a.id === BIRCH)?.word).toBe("Limit reached");
+    expect(view(ws).team.find(a => a.id === BIRCH)?.doing).toContain("carry on tomorrow");
+    a.status_note = "Investigating the usage limit bug";
+    expect(view(ws).team.find(a => a.id === BIRCH)?.word).toBe("Idle");
+  });
+
+  it("requires another builder's review ticket before calling a live agent Reviewing", () => {
+    const ws = setup(); ws.byKey.get("SH-3")!.status = "review";
+    expect(view(ws).team.find(a => a.id === BIRCH)?.word).toBe("Working");
+    expect(view(ws).goals[0].tickets.find(t => t.key === "SH-3")).toMatchObject({ segment: "r", detail: "In review" });
+  });
+
+  it("does not spread one agent's problem to other tickets or another project", () => {
+    const ws = setup(); const a = ws.agentOf(BIRCH)!;
+    ws.byKey.get("SH-6")!.assignee_id = BIRCH;
+    ws.byKey.get("SH-6")!.status = "in_progress";
+    Object.assign(a, { status: "idle", waiting_until: at("13:00") });
+    expect(view(ws).goals[0].tickets.find(t => t.key === "SH-6")?.segment).toBe("u");
+    Object.assign(a, { status_project_id: "other", current_ticket_id: "foreign", status_note: "Private project" });
+    const result = view(ws);
+    expect(result.team.find(a => a.id === BIRCH)).toMatchObject({ key: null, goalId: null });
+    expect(result.goals[0].tickets.find(t => t.key === "SH-3")?.segment).toBe("u");
+    expect(JSON.stringify(result)).not.toContain("Private project");
+  });
+
+  it("keeps questions actionable and done tickets done despite old problems", () => {
+    const ws = setup(); const t = ws.byKey.get("SH-3")!;
+    t.checks = { state: "failure", passed: 0, total: 1 }; t.needs_human = "Which provider?";
+    expect(view(ws).goals[0].tickets.find(x => x.key === t.key)).toMatchObject({ segment: "w", description: expect.stringContaining("Checks failed") });
+    t.status = "done";
+    expect(view(ws).goals[0].tickets.find(x => x.key === t.key)).toMatchObject({ segment: "d", detail: "Done" });
+  });
+
+  it("counts different red problems separately in the legend", () => {
+    const ws = setup(); const a = ws.agentOf(BIRCH)!;
+    Object.assign(a, { status: "idle", waiting_until: at("13:00") });
+    ws.byKey.get("SH-6")!.checks = { state: "failure", passed: 0, total: 1 };
+    expect(progressCounts(view(ws).goals[0]).filter(x => x.segment === "x").map(x => `${x.count} ${x.word}`))
+      .toEqual(["1 checks failed", "1 limit reached", "1 run failed"]);
   });
 });

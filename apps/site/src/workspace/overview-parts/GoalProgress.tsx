@@ -3,7 +3,11 @@ import { SEGMENT_ORDER, SEGMENT_WORD, type OverviewGoal } from "../glance";
 import { OverviewLink } from "./Link";
 
 export function progressCounts(goal: OverviewGoal) {
-  return SEGMENT_ORDER.map(segment => ({ segment, word: SEGMENT_WORD[segment], count: goal.tickets.filter(t => t.segment === segment).length })).filter(x => x.count);
+  return SEGMENT_ORDER.flatMap(segment => {
+    const tickets = goal.tickets.filter(t => t.segment === segment);
+    const words = [...new Set(tickets.map(t => t.problem?.toLowerCase() ?? SEGMENT_WORD[segment]))].sort();
+    return words.map(word => ({ segment, word, count: tickets.filter(t => (t.problem?.toLowerCase() ?? SEGMENT_WORD[segment]) === word).length }));
+  });
 }
 
 export function GoalProgress({ goal, slug, selected, highlight }: { goal: OverviewGoal; slug: string; selected: string | null; highlight: (key: string | null) => void }) {
@@ -28,13 +32,13 @@ export function GoalProgress({ goal, slug, selected, highlight }: { goal: Overvi
           }} />)}</span>
         <span className="n-tasks">{count} {count === 1 ? "ticket" : "tickets"} <svg className="chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
       </span>
-      <span className="legend" aria-hidden="true">{counts.map(x => <span className="lg" key={x.segment}><span className={`gs ${x.segment}`} /><span><b>{x.count}</b> {x.word}</span></span>)}</span>
+      <span className="legend" aria-hidden="true">{counts.map(x => <span className={`lg ${x.segment}`} key={`${x.segment}-${x.word}`}><span className={`gs ${x.segment}`} /><span><b>{x.count}</b> {x.word}</span></span>)}</span>
     </button>
     <div className="tray" id={id} hidden={!open}><ul>{goal.tickets.map(t => <li key={t.key}>
       <OverviewLink className={`trow${selected === t.key ? " hl" : ""}`} to={{ view: "ticket", project: slug, key: t.key }}
         onMouseEnter={() => highlight(t.key)} onMouseLeave={() => highlight(null)} onFocus={() => highlight(t.key)} onBlur={() => highlight(null)}>
         <span className={`gs ${t.segment}`} aria-hidden="true" /><span className="t-key">{t.key}</span>
-        <span className="t-title" title={t.title}>{t.title}</span><span className="t-meta">{t.detail}</span><span className="t-go" aria-hidden="true">→</span>
+        <span className="t-title" title={t.title}>{t.title}</span><span className={`t-meta ${t.segment}`}>{t.detail}</span><span className="t-go" aria-hidden="true">→</span>
         <span className="sr-only">, {t.description}</span>
       </OverviewLink>
     </li>)}</ul></div>
