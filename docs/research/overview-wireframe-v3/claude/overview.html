@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AutoKolab · Overview wireframe v3</title>
+  <!-- Same font the site loads. Offline, it falls back to the system font and everything still works. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ---------------------------------------------------------------------------
+       Tokens. Dark values are copied from autokolab-ux-handoff/tokens.css so the
+       file opens offline. Light is a proposal (tokens.css has no light theme).
+       Two additions, both for progress lines:
+         --done       the croc green from the logo (#5DC46A), used only for "done".
+         --done-edge  the croc's ink outline (#14231A), drawn round done segments
+                      in light, the way the logo is drawn. Transparent in dark.
+       --------------------------------------------------------------------------- */
+    :root, [data-theme="dark"] {
+      --bg: #0B0D11; --sidebar: #0E1116; --card: #12151B; --card-hover: #171B22;
+      --surface-hover: #161A21; --surface-active: #1B2028; --surface-raised: #232833;
+      --avatar-bg: #232833; --avatar-fg: #C9CED6;
+      --border-subtle: #1C2029; --border: #1F242D; --border-strong: #2A303B; --card-edge: transparent;
+      --track: #2A303B;
+      --text: #E9EBEF; --text-body: #D4D8DE; --text-secondary: #C9CED6;
+      --text-muted: #A2A9B5; --text-dim: #858C98;
+      --amber: #F4C25B; --blue: #7EA6FF; --coral: #FF8A78; --coral-text: #FFB8A8;
+      --done: #5DC46A; --done-edge: transparent;
+      --focus: #A2A9B5;
+      --skeleton: #181C23;
+      --frame-shadow: 0 24px 64px rgba(0, 0, 0, .45);
+      color-scheme: dark;
+    }
+    [data-theme="light"] {
+      /* A warm paper white: it sits better next to the croc green than a blue-grey. */
+      --bg: #F6F6F2; --sidebar: #EEEEE8; --card: #FFFFFF; --card-hover: #F9F9F6;
+      --surface-hover: #EBEBE5; --surface-active: #E3E3DC; --surface-raised: #E3E3DC;
+      --avatar-bg: #E6E7E1; --avatar-fg: #3A404B;
+      --border-subtle: #E6E6E0; --border: #DEDED7; --border-strong: #CFCFC7; --card-edge: #E4E4DD;
+      --track: #DADBD3;
+      --text: #111318; --text-body: #262A32; --text-secondary: #3A404B;
+      --text-muted: #535A66; --text-dim: #5F6672;
+      --amber: #B7791F; --blue: #2F6BD8; --coral: #D1453B; --coral-text: #B4372E;
+      --done: #5DC46A; --done-edge: #14231A;
+      --focus: #5B6370;
+      --skeleton: #E9E9E3;
+      --frame-shadow: 0 24px 64px rgba(17, 19, 24, .12);
+      color-scheme: light;
+    }
+    :root {
+      --font-sans: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+      --tracking-label: 0.08em;
+      --radius-sm: 7px; --radius-md: 10px; --radius-lg: 12px; --radius-xl: 16px; --radius-2xl: 18px;
+      --ease-out: cubic-bezier(.2, .8, .2, 1);
+      --dur-hover: 160ms;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); }
+    body { font: 400 14px/1.5 var(--font-sans); -webkit-font-smoothing: antialiased; }
+    button { font: inherit; color: inherit; }
+    a { color: inherit; text-decoration: none; }
+    .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+    /* ===========================================================================
+       The bench: the page around the frames (controls and notes). Not the design.
+       =========================================================================== */
+    .bench { padding: 28px 32px 20px; }
+    .kicker { color: var(--text-dim); font: 500 12px/1.4 var(--font-mono); }
+    .bench h1 { margin: 6px 0 4px; font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
+    .bench p { margin: 0; max-width: 820px; color: var(--text-muted); }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 20px; }
+    .control { display: inline-flex; align-items: center; gap: 8px; }
+    .control-label { color: var(--text-dim); font-size: 12px; font-weight: 600; }
+    .seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: var(--sidebar); border: 1px solid var(--border); border-radius: var(--radius-md); }
+    .seg button { min-height: 34px; padding: 0 12px; color: var(--text-muted); background: none; border: 0; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; font-weight: 500; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out); }
+    .seg button:hover { color: var(--text); background: var(--surface-hover); }
+    .seg button[aria-pressed="true"] { color: var(--text); background: var(--surface-raised); }
+    .seg button .rec { color: var(--text-dim); font-weight: 400; }
+
+    .workbench { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 32px; padding: 0 32px 48px; }
+    .stage { min-width: 0; overflow-x: auto; }
+    .frames { display: flex; align-items: flex-start; gap: 40px; width: max-content; zoom: var(--fit, 1); }
+    .frame-col { margin: 0; }
+    .frame-col figcaption { margin: 0 0 12px; color: var(--text-dim); font: 500 12px/1.4 var(--font-mono); }
+    .device { position: relative; overflow: hidden; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius-xl); box-shadow: var(--frame-shadow); }
+
+    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100% - 32px); padding: 12px 16px; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-md); font-size: 13px; opacity: 0; pointer-events: none; transition: opacity 160ms var(--ease-out); z-index: 5; }
+    .toast.show { opacity: 1; }
+
+    /* ===========================================================================
+       Shell: desktop sidebar, phone top bar and bottom tabs (same as v2).
+       =========================================================================== */
+    .desktop { display: grid; grid-template-columns: 232px 1fr; width: 1440px; height: 900px; }
+    .sidebar { display: flex; flex-direction: column; padding: 24px 12px; background: var(--sidebar); border-right: 1px solid var(--border-subtle); }
+    /* The logo SVG has no size of its own, so both are set (viewBox is 787 × 227). */
+    .logo { display: block; width: 111px; height: 32px; margin: 0 12px; }
+    .project { margin: 16px 12px 0; color: var(--text-muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nav { display: grid; gap: 2px; margin: 32px 0 0; padding: 0; list-style: none; }
+    .nav li.gap { margin-top: 16px; }
+    .nav a { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; color: var(--text-secondary); border-radius: var(--radius-sm); font-size: 14px; transition: background-color var(--dur-hover) var(--ease-out); }
+    .nav a:hover { color: var(--text); background: var(--surface-hover); }
+    .nav a:active { background: var(--surface-active); }
+    .nav a[aria-current="page"] { color: var(--text); background: var(--surface-active); font-weight: 500; }
+    .nav-count { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-secondary); font: 500 12px/1 var(--font-mono); }
+    .dot { flex: none; display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+    .dot.amber { background: var(--amber); }
+    .dot.coral { background: var(--coral); }
+
+    .screen { position: relative; min-width: 0; overflow-y: auto; container-type: inline-size; scrollbar-width: thin; overflow-anchor: auto; }
+
+    .phone { display: flex; flex-direction: column; width: 390px; height: 844px; border-radius: 36px; }
+    .phone-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 56px; padding: 0 20px; background: var(--sidebar); border-bottom: 1px solid var(--border-subtle); flex: none; }
+    .phone-top .logo { width: 83px; height: 24px; margin: 0; }
+    .phone-top .project { margin: 0; }
+    .phone .screen { flex: 1; }
+    .tabbar { position: relative; flex: none; background: var(--sidebar); border-top: 1px solid var(--border-subtle); padding-bottom: 18px; }
+    .tabbar ul { display: flex; margin: 0; padding: 0 8px; list-style: none; overflow-x: auto; scrollbar-width: none; }
+    .tabbar ul::-webkit-scrollbar { display: none; }
+    .tabbar a { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 64px; min-height: 48px; padding: 0 12px; color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+    .tabbar a:active { background: var(--surface-active); }
+    .tabbar a[aria-current="page"] { color: var(--text); font-weight: 600; }
+    .tabbar a[aria-current="page"]::before { content: ""; position: absolute; top: 0; left: 12px; right: 12px; height: 2px; background: var(--text); border-radius: 0 0 2px 2px; }
+    .tabbar::after { content: ""; position: absolute; top: 0; right: 0; bottom: 18px; width: 40px; background: linear-gradient(to right, transparent, var(--sidebar)); pointer-events: none; }
+
+    /* ===========================================================================
+       Overview. One component; the frame's width picks desktop or phone
+       (container query), so both frames run the same markup.
+       =========================================================================== */
+    .ov { width: 100%; max-width: 1120px; padding: 56px 56px 72px; }
+
+    /* Section titles: sentence case with a hairline running to the edge. They help you
+       find a part; they are never the first thing you read. */
+    .part-title { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; color: var(--text-muted); font-size: 14px; font-weight: 600; line-height: 20px; }
+    .part-title::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+    .part + .part { margin-top: 40px; }
+
+    /* Rows share this: one link, one Tab stop, a hover fill that bleeds into the gutter. */
+    .row { display: grid; align-items: center; margin: 0 -12px; padding: 10px 12px; border-radius: var(--radius-md); cursor: pointer; transition: background-color var(--dur-hover) var(--ease-out); }
+    .row:hover { background: var(--surface-hover); }
+    .card .row:hover { background: var(--card-hover); }
+    .row:active { background: var(--surface-active); }
+    .row:focus-visible { outline-offset: -2px; border-radius: var(--radius-md); }
+    .list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+
+    /* 1 · Needs you: no box. A small amber mark, a big question, who waits and how long. */
+    .needs { margin-bottom: 40px; padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+    .needs .part-title { color: var(--text-secondary); }
+    .need { grid-template-columns: 10px minmax(0, 1fr) auto; column-gap: 18px; align-items: start; padding-top: 12px; padding-bottom: 12px; }
+    .need-mark { width: 10px; height: 10px; margin-top: 10px; border-radius: 50%; background: var(--amber); }
+    .need-q { color: var(--text); font-size: 21px; font-weight: 500; line-height: 1.38; letter-spacing: -0.01em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .need-meta { display: block; margin-top: 4px; color: var(--text-muted); font-size: 14px; }
+    .need-act { align-self: center; color: var(--text-secondary); font-size: 14px; font-weight: 500; white-space: nowrap; }
+    .need:hover .need-act { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+    .more { display: inline-flex; align-items: center; min-height: 36px; margin-top: 4px; color: var(--text-secondary); font-size: 14px; font-weight: 500; border-radius: var(--radius-sm); }
+    .more:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+    .needs .more { margin-left: 28px; }
+
+    /* 2 · Heading: the focal point. The largest thing on the page by a wide margin. */
+    .head { display: flex; align-items: center; gap: 24px; }
+    .headline { margin: 0; max-width: 20em; color: var(--text); font-size: 44px; font-weight: 600; line-height: 1.12; letter-spacing: -0.035em; text-wrap: balance; }
+    .headline .nw { white-space: nowrap; }
+    .headline a { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 7px; text-decoration-color: var(--border-strong); transition: text-decoration-color var(--dur-hover) var(--ease-out); }
+    .headline a:hover { text-decoration-color: var(--text); }
+    .headline .stopped { color: var(--coral-text); }
+    .head + .part { margin-top: 48px; }
+    /* The croc only turns up when there is nothing to report: resting in calm, eager when new.
+       The SVG is the original, unchanged. */
+    .croc { flex: none; display: block; width: 72px; height: 73px; }
+    .croc.new { width: 112px; height: 113px; }
+    .croc.calm { transform: rotate(-8deg); }
+
+    /* Presence: a neutral initial with a ring in its status colour. Working agents' rings
+       breathe slowly; under reduced motion the ring stays and only the breathing stops. */
+    .av { position: relative; flex: none; display: grid; place-items: center; width: 32px; height: 32px; color: var(--avatar-fg); background: var(--avatar-bg); border-radius: 10px; font-size: 13px; font-weight: 600; --gap: var(--card); }
+    .av.s-live { box-shadow: 0 0 0 2px var(--gap), 0 0 0 4px var(--blue); }
+    .av.s-wait { box-shadow: 0 0 0 2px var(--gap), 0 0 0 4px var(--amber); }
+    .av.s-stop { box-shadow: 0 0 0 2px var(--gap), 0 0 0 4px var(--coral); }
+    .av.s-live::after { content: ""; position: absolute; inset: -4px; border: 2px solid var(--blue); border-radius: 14px; opacity: 0; animation: breathe 2.8s var(--ease-out) infinite; animation-delay: var(--delay, 0s); }
+    @keyframes breathe { 0% { opacity: .55; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.4); } }
+    .quiet .av { color: var(--text-dim); background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); }
+
+    /* An agent's step in its ticket: one short bar per planned step. Real data (ticket_steps),
+       so it is drawn as steps, never as a percentage. */
+    .steps { display: inline-flex; align-items: center; gap: 8px; color: var(--text-dim); font: 500 12px/1 var(--font-mono); white-space: nowrap; }
+    .ticks { display: inline-flex; gap: 3px; }
+    .tick { width: 12px; height: 4px; border-radius: 2px; background: var(--track); }
+    .tick.d { background: var(--text-dim); }
+    .tick.n { background: var(--blue); }
+    .s-wait-row .tick.n { background: var(--amber); }
+    .s-stop-row .tick.n { background: var(--coral); }
+
+    /* Goal progress: one rounded segment per ticket, like the bumps on the croc's back.
+       Done is croc green; being built right now is blue; the rest is track. Over 16 tickets
+       the segments merge into one continuous line. The count always sits beside it. */
+    .gl { display: flex; gap: 3px; height: 10px; flex: 1; min-width: 0; }
+    .gs { flex: 1; min-width: 4px; border-radius: 5px; background: var(--track); }
+    .gs.d { background: var(--done); box-shadow: inset 0 0 0 1.5px var(--done-edge); }
+    .gs.u { background: var(--blue); }
+    .gl.cont { gap: 0; border-radius: 5px; overflow: hidden; background: var(--track); }
+    .gl.cont .gs { border-radius: 0; }
+    .count { flex: none; color: var(--text-muted); font: 500 13px/1 var(--font-mono); white-space: nowrap; }
+    .count b { color: var(--text); font-weight: 600; }
+    .progress { display: flex; align-items: center; gap: 14px; }
+
+    /* ---------- Cards (recommended): one card per goal, its line and its crew ---------- */
+    .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+    .card { padding: 20px 24px 12px; background: var(--card); border: 1px solid var(--card-edge); border-radius: var(--radius-2xl); }
+    .card-head { display: block; margin: -8px -12px 4px; padding: 8px 12px 12px; border-radius: var(--radius-lg); cursor: pointer; transition: background-color var(--dur-hover) var(--ease-out); }
+    .card-head:hover { background: var(--card-hover); }
+    .card-name { display: block; margin-bottom: 12px; color: var(--text); font-size: 21px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .crew { border-top: 1px solid var(--border); padding-top: 6px; }
+    .crew .agent { grid-template-columns: 32px minmax(0, 1fr) auto; grid-template-areas: "av name state" "av doing doing" "av steps steps"; column-gap: 14px; row-gap: 2px; min-height: 60px; }
+    .card-empty { padding: 14px 0 10px; color: var(--text-dim); font-size: 14px; }
+    /* Agents without work sit outside the boxes: they aren't part of a goal. */
+    .free { padding: 20px 0 0; }
+    .free .part-title { margin-bottom: 8px; }
+    .free .list { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); column-gap: 24px; }
+    .free .agent { grid-template-columns: 32px minmax(0, 1fr); grid-template-areas: "av name" "av state"; column-gap: 14px; row-gap: 0; min-height: 56px; }
+    .free.span { grid-column: 1 / -1; }
+    .free.solo .part-title { display: none; }
+    .after { margin-top: 12px; }
+
+    /* Agent row parts (both structures) */
+    .agent .av { grid-area: av; align-self: start; margin-top: 2px; }
+    .a-name { grid-area: name; color: var(--text); font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .a-doing { grid-area: doing; color: var(--text-secondary); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .a-doing:empty { display: none; }
+    .a-state { grid-area: state; justify-self: end; color: var(--text-secondary); font-size: 13px; font-weight: 500; white-space: nowrap; }
+    .free .a-state { justify-self: start; }
+    .agent .steps { grid-area: steps; margin-top: 4px; }
+    .agent.quiet .a-name { color: var(--text-muted); font-weight: 500; }
+    .agent.quiet .a-state, .agent.quiet .a-doing { color: var(--text-dim); }
+
+    /* ---------- Rows (the alternative): two flat lists, no boxes ---------- */
+    .lay-rows .agent { grid-template-columns: 32px 168px minmax(0, 1fr) 150px 132px; grid-template-areas: "av name doing steps state"; column-gap: 16px; min-height: 56px; }
+    .lay-rows .agent .av { align-self: center; margin-top: 0; }
+    .lay-rows .agent .steps { margin-top: 0; }
+    .lay-rows .a-state { justify-self: start; }
+    /* The ring's gap matches what is behind it: the card inside a card, the page elsewhere. */
+    .free .av, .lay-rows .av { --gap: var(--bg); }
+    .goal-row { grid-template-columns: 220px minmax(0, 1fr) 112px; column-gap: 20px; min-height: 52px; }
+    .goal-row .g-name { color: var(--text); font-size: 17px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* Loading and load failed */
+    .sk { display: block; background: var(--skeleton); border-radius: var(--radius-sm); }
+    .sk-card { height: 196px; border-radius: var(--radius-2xl); }
+    .sk-row { display: grid; grid-template-columns: 32px 168px 1fr; align-items: center; gap: 16px; min-height: 56px; }
+    .muted-head { color: var(--text-muted); }
+    .problem-line { display: flex; align-items: baseline; gap: 12px; margin: 20px 0 0; max-width: 56ch; color: var(--text-secondary); font-size: 17px; }
+    .problem-line .dot { transform: translateY(-2px); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; margin-top: 28px; padding: 0 18px; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-md); font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color var(--dur-hover) var(--ease-out); }
+    .btn:hover { background: var(--surface-active); }
+
+    /* Phone: the same component under 600px of width. */
+    @container (max-width: 600px) {
+      .ov { padding: 24px 20px 40px; }
+      .headline { font-size: 30px; line-height: 1.15; letter-spacing: -0.03em; }
+      /* Inline link: padding grows the tap area to 44px without moving the text. */
+      .headline a { padding: 6px 0; text-underline-offset: 5px; }
+      .head { gap: 16px; align-items: flex-start; }
+      .croc { width: 56px; height: 57px; }
+      .croc.new { width: 80px; height: 81px; }
+      .head + .part { margin-top: 32px; }
+      .part + .part { margin-top: 32px; }
+      .needs { margin-bottom: 28px; padding-bottom: 20px; }
+      .need { grid-template-columns: 10px minmax(0, 1fr); column-gap: 14px; min-height: 44px; }
+      .need-mark { margin-top: 8px; grid-row: 1 / span 2; }
+      .need-q { font-size: 17px; line-height: 1.45; }
+      .need-act { grid-column: 2; margin-top: 8px; }
+      .needs .more { margin-left: 24px; }
+      .more { min-height: 44px; }
+      .cards { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+      .card { padding: 16px 16px 8px; border-radius: var(--radius-xl); }
+      .card-head { margin: -4px -8px 4px; padding: 4px 8px 12px; min-height: 44px; }
+      .card-name { font-size: 19px; margin-bottom: 10px; }
+      .crew .agent { column-gap: 12px; margin: 0 -8px; padding: 10px 8px; }
+      .a-doing { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .free { padding-top: 12px; }
+      .free .list { grid-template-columns: minmax(0, 1fr); }
+      .free .agent { min-height: 52px; }
+      .lay-rows .agent { grid-template-columns: 32px minmax(0, 1fr) auto; grid-template-areas: "av name state" "av doing doing" "av steps steps"; column-gap: 12px; row-gap: 2px; min-height: 60px; }
+      .lay-rows .agent .av { align-self: start; margin-top: 2px; }
+      .lay-rows .agent .steps { margin-top: 4px; }
+      .lay-rows .a-state { justify-self: end; }
+      .goal-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name count" "line line"; row-gap: 10px; min-height: 64px; }
+      .goal-row .g-name { grid-area: name; font-size: 16px; }
+      .goal-row .gl { grid-area: line; }
+      .goal-row .count { grid-area: count; }
+      .sk-row { grid-template-columns: 32px 1fr; }
+      .sk-row .sk:last-child { display: none; }
+      .sk-card { height: 168px; }
+      .btn { min-height: 44px; }
+    }
+
+    /* "Reduce motion" on the bench previews what people with that setting see. */
+    body.still *, body.still *::before, body.still *::after { animation: none !important; transition-duration: 0ms !important; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0ms !important; animation: none !important; }
+    }
+
+    /* ===========================================================================
+       Notes column
+       =========================================================================== */
+    .notes { position: sticky; top: 16px; align-self: start; max-height: calc(100vh - 32px); overflow-y: auto; padding: 4px 4px 24px 0; scrollbar-width: thin; }
+    .notes h2 { margin: 0 0 4px; font-size: 17px; font-weight: 600; }
+    .notes > p { margin: 0 0 16px; color: var(--text-muted); font-size: 13px; }
+    .state-note { margin: 0 0 20px; padding: 12px 14px; color: var(--text-body); background: var(--sidebar); border-radius: var(--radius-md); font-size: 13px; }
+    .state-note strong { display: block; margin-bottom: 4px; color: var(--text-dim); font: 500 12px/1.4 var(--font-mono); }
+    .note { padding: 14px 0; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 13px; }
+    .note h3 { margin: 0 0 6px; color: var(--text); font-size: 14px; font-weight: 600; }
+    .note p { margin: 0 0 6px; }
+    .note b { color: var(--text-body); font-weight: 600; }
+    .note table { width: 100%; border-collapse: collapse; font: 12px/1.4 var(--font-mono); }
+    .note td, .note th { padding: 3px 0; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    .note th { color: var(--text-dim); font-weight: 500; }
+    .swatch { display: inline-block; width: 18px; height: 8px; margin-right: 4px; border-radius: 4px; vertical-align: 1px; }
+
+    /* Screenshot mode (?shot=desktop or ?shot=phone): one frame at 1:1, nothing else. */
+    body.shot .bench, body.shot .notes, body.shot figcaption, body.shot .toast { display: none; }
+    body.shot .workbench { display: block; padding: 0; }
+    body.shot .stage { overflow: visible; }
+    body.shot .frames { zoom: 1; gap: 0; }
+    body.shot .device { border: 0; border-radius: 0; box-shadow: none; }
+    body.shot.shot-desktop .frame-phone, body.shot.shot-phone .frame-desktop { display: none; }
+
+    @media (max-width: 1100px) {
+      .workbench { grid-template-columns: minmax(0, 1fr); }
+      .notes { position: static; max-height: none; }
+    }
+    @media (max-width: 700px) {
+      .bench { padding-left: 20px; padding-right: 20px; }
+      .workbench { padding: 0 20px 40px; }
+      .seg button { min-height: 44px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="bench">
+    <div class="kicker">AK-174 · Overview wireframe v3 · sample project</div>
+    <h1>Overview: what needs you, who is on what, and how far it has got</h1>
+    <p>Pick a situation and a structure. Both frames show the same page; the phone follows the desktop. Links in the frames say where they'd go. The notes on the right explain each choice.</p>
+    <div class="controls">
+      <div class="control" role="group" aria-label="Situation">
+        <span class="control-label" aria-hidden="true">Situation</span>
+        <div class="seg" id="states">
+          <button type="button" data-state="busy">Busy</button>
+          <button type="button" data-state="questions">Questions waiting</button>
+          <button type="button" data-state="stopped">Agent stopped</button>
+          <button type="button" data-state="calm">Calm</button>
+          <button type="button" data-state="new">Brand-new</button>
+          <button type="button" data-state="many">10+ agents</button>
+          <button type="button" data-state="loading">Loading</button>
+          <button type="button" data-state="failed">Load failed</button>
+        </div>
+      </div>
+      <div class="control" role="group" aria-label="Structure">
+        <span class="control-label" aria-hidden="true">Structure</span>
+        <div class="seg">
+          <button type="button" data-layout="cards">Cards <span class="rec">· recommended</span></button>
+          <button type="button" data-layout="rows">Rows</button>
+        </div>
+      </div>
+      <div class="control" role="group" aria-label="Theme">
+        <span class="control-label" aria-hidden="true">Theme</span>
+        <div class="seg">
+          <button type="button" data-theme-choice="dark">Dark</button>
+          <button type="button" data-theme-choice="light">Light</button>
+        </div>
+      </div>
+      <div class="control" role="group" aria-label="View">
+        <span class="control-label" aria-hidden="true">View</span>
+        <div class="seg">
+          <button type="button" id="still-toggle" aria-pressed="false">Reduce motion</button>
+          <button type="button" id="fit-toggle" aria-pressed="true">Fit to window</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="workbench">
+    <main class="stage">
+      <div class="frames" id="frames">
+        <figure class="frame-col frame-desktop">
+          <figcaption>Desktop · 1440 × 900</figcaption>
+          <div class="device desktop">
+            <aside class="sidebar">
+              <img class="logo" src="autokolab-logo.svg" alt="AutoKolab">
+              <div class="project" title="Northstar Shop">Northstar Shop</div>
+              <nav aria-label="Project">
+                <ul class="nav" id="nav-desktop"></ul>
+              </nav>
+            </aside>
+            <div class="screen" id="screen-desktop"></div>
+          </div>
+        </figure>
+        <figure class="frame-col frame-phone">
+          <figcaption>Phone · 390 × 844</figcaption>
+          <div class="device phone">
+            <div class="phone-top">
+              <img class="logo" src="autokolab-logo.svg" alt="AutoKolab">
+              <span class="project" title="Northstar Shop">Northstar Shop</span>
+            </div>
+            <div class="screen" id="screen-phone"></div>
+            <nav class="tabbar" aria-label="Project">
+              <ul id="nav-phone"></ul>
+            </nav>
+          </div>
+        </figure>
+      </div>
+    </main>
+
+    <aside class="notes" aria-labelledby="notes-h">
+      <h2 id="notes-h">Why it looks like this</h2>
+      <p>Short notes on each choice. The first one changes with the situation.</p>
+      <div class="state-note" id="state-note" aria-live="polite"></div>
+
+      <section class="note">
+        <h3>Cards, and why</h3>
+        <p><b>Recommended: one card per goal.</b> Each card holds a goal's name, its progress line, and the agents building it right now. So one box answers three questions together: what is being built, how far it has got, and who is on it. That is what makes it an overview rather than two lists you have to match up by eye.</p>
+        <p>Every box groups something real: a goal and its crew. Agents with no work are <b>not boxed</b>; they sit in a plain list after the cards (or in the empty grid cell when the cards leave one). No box sits inside another; the card has no border in dark and a hairline in light.</p>
+        <p><b>Rows</b> (the switch) keeps v2's fixed-order agent list and puts each goal's line beside its name. It's calmer and scans better past 15 agents, but you have to connect agents to goals yourself. Cost of Cards: an agent moves to another card when its work moves to another goal. That move is the news, so I think it's worth it.</p>
+      </section>
+
+      <section class="note">
+        <h3>Focal point and the first five seconds</h3>
+        <p><b>0–1 s:</b> a waiting question, if there is one: first on the page and the only amber. <b>1–2 s:</b> the heading, 44 px and the largest thing by far (30 px on a phone). <b>2–4 s:</b> the green lines: how far each goal has got. <b>4–5 s:</b> the rings: who is moving.</p>
+        <p>Squint test: the heading is the one dark mass, the green lines are the one colour mass. Nothing else competes.</p>
+      </section>
+
+      <section class="note">
+        <h3>Progress, drawn honestly</h3>
+        <p><b>Goals:</b> one segment per ticket, so "4 of 7 done" is literally four of seven pieces. <span class="swatch" style="background:var(--done);box-shadow:inset 0 0 0 1.5px var(--done-edge)"></span>done <span class="swatch" style="background:var(--blue)"></span>being built now <span class="swatch" style="background:var(--track)"></span>not started. The count is always beside the line, in text, so it's never colour alone. Over 16 tickets the segments merge into one continuous line.</p>
+        <p><b>Agents:</b> the record has the agent's planned steps (<code>ticket_steps</code>), not how much of the work is done. So an agent shows "step 3 of 5" as short bars, one per step, and never a percentage. Steps can be re-planned, so the bars show where it is, not how long is left. An agent with no planned steps (Captain while it reviews) shows no bars; its breathing ring alone says it's working.</p>
+        <p>The ring breathes only while the agent's runner is reporting; when that stops, the ring goes still and the word changes.</p>
+      </section>
+
+      <section class="note">
+        <h3>Character: what makes it AutoKolab</h3>
+        <p><b>The croc green means done.</b> The logo's green (#5DC46A) is used for one thing: finished work in the progress lines. So the brand colour grows on the page as the project gets done. In light theme, done segments get the croc's dark ink outline, drawn like the logo.</p>
+        <p><b>The lines are the croc's back.</b> Rounded segments with small gaps, like the bumps along its spine, instead of a generic smooth bar.</p>
+        <p><b>The croc turns up when there's nothing to report.</b> Tilted and resting when it's calm, larger and looking toward "Tell Captain" when the project is new. Never on loading or errors: a failure isn't cute.</p>
+        <p><b>Presence, not dots.</b> Each agent is a neutral tile with a ring in its status colour; working ones breathe slowly, staggered so they don't pulse in step.</p>
+        <p><b>Numbers in Geist Mono</b>, like a build log. Big confident type for the one sentence that matters, and everything else much smaller.</p>
+      </section>
+
+      <section class="note">
+        <h3>What's loud, what's quiet</h3>
+        <p><b>Loud:</b> the heading; the waiting question; "has stopped" in coral in the heading. <b>Middle:</b> goal names and their lines. <b>Quiet:</b> section titles (sentence case, with a hairline), step bars, idle agents (outlined tiles, grey words, no ring).</p>
+        <p>Colour only means status: <b>green</b> done, <b>blue</b> working, <b>amber</b> needs you, <b>coral</b> stopped. Every colour has a word next to it. Avatars stay neutral.</p>
+      </section>
+
+      <section class="note">
+        <h3>Same elements as v2, plus lines</h3>
+        <p>Needs you (only when waiting, a small amber mark, no box), the heading with the "has stopped" clause, every agent with what it is building or Idle, and the goals being built. Progress lines are the only new thing.</p>
+        <p>Not here: Next from Captain, delivered list, freshness label, count tiles, calm footer.</p>
+      </section>
+
+      <section class="note">
+        <h3>Phone, keyboard, motion</h3>
+        <p>Phone: same order, cards stack, an agent row becomes three short lines (name and state; what it's doing; steps). Every target is 44 px or more. Each card header and each agent row is one link and one Tab stop; the card itself is not a link, so there are no links inside links.</p>
+        <p>Motion is only the ring breathing and a 160 ms hover fade. Under reduced motion both stop; the rings stay as still rings. Use "Reduce motion" above to see it.</p>
+      </section>
+
+      <section class="note">
+        <h3>Contrast (checked)</h3>
+        <table>
+          <tr><th>Against its background</th><th>Dark</th><th>Light</th></tr>
+          <tr><td>Heading, names</td><td id="c-text">16.3</td><td id="c-text-l">17.6</td></tr>
+          <tr><td>Doing, details</td><td id="c-sec">12.3</td><td id="c-sec-l">10.0</td></tr>
+          <tr><td>Quiet words, steps</td><td id="c-dim">5.5</td><td id="c-dim-l">5.6</td></tr>
+          <tr><td>Done segment</td><td id="c-done">8.9</td><td id="c-done-l">16.0*</td></tr>
+          <tr><td>Rings (blue, amber, coral)</td><td id="c-ring">7.6–11.1</td><td id="c-ring-l">3.1–5.2</td></tr>
+        </table>
+        <p style="margin-top:6px">Text needs 4.5:1, lines and rings 3:1. *In light, the croc green alone is 2.2:1 on white; its ink outline (16:1) is what makes it pass. Values are worked out by the page from the colours in use.</p>
+      </section>
+
+      <section class="note">
+        <h3>Where this goes against the handoff</h3>
+        <p><b>Progress lines:</b> v2 and my spec said "no bar". The ticket reverses that; this follows the ticket.</p>
+        <p><b>Done colour:</b> tokens.css has <code>--green</code> #5CCB9A for done. This uses the logo's #5DC46A so the brand and "done" are one colour. If kept, the token should change.</p>
+        <p><b>Light theme</b> is a proposal; tokens.css has none. <b>Focus ring</b> uses <code>--text-muted</code>, as in v2, because <code>--border-focus</code> is under 3:1.</p>
+      </section>
+    </aside>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    // Only the switches. The data is made up.
+    const TABS = ['Captain', 'Overview', 'Work', 'Team', 'Room', 'Decisions', 'Results', 'Settings'];
+    const WORD = { working: 'Working', reviewing: 'Reviewing', waiting: 'Waiting on you', stopped: 'Stopped', limit: 'Limit reached', idle: 'Idle', offline: 'Offline' };
+    const RING = { working: 'live', reviewing: 'live', waiting: 'wait', stopped: 'stop', limit: 'stop', idle: '', offline: '' };
+
+    // A(name, state, doing, goal, [step, of])
+    const A = (name, state, doing = '', goal = null, step = null) => ({ name, state, doing, goal, step });
+    // G(name, done, underway, total)
+    const G = (name, done, under, total) => ({ name, done, under, total });
+
+    const STATES = {
+      busy: {
+        note: 'Three agents are working; nothing needs you, so the page opens on the heading. Checkout has two tickets being built (Birch building, Captain reviewing), so two blue segments. Captain has no planned steps while it reviews, so it shows no step bars. Wren and Oriole have no work and sit outside the cards.',
+        headline: '3 agents are working on Checkout and Sign-in.',
+        goals: [G('Checkout', 4, 2, 7), G('Sign-in', 1, 1, 3)],
+        agents: [
+          A('Captain', 'reviewing', "reviewing Birch's guest checkout", 'Checkout'),
+          A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', [3, 5]),
+          A('Fjord', 'working', 'adding Google sign-in', 'Sign-in', [1, 4]),
+          A('Oriole', 'offline', 'last seen 3 h ago'),
+          A('Wren', 'idle'),
+        ],
+      },
+      questions: {
+        note: 'Three things wait on you. Two show, oldest first; the third folds into "and 1 more in Captain". The long question stops after two lines. Fjord is waiting on you, so its ring and its current step bar are amber too: the question and the agent it holds up connect.',
+        needs: [
+          { q: 'Should guests be able to save cards?', meta: 'Fjord is waiting · 2 h', act: 'Answer in Captain' },
+          { q: 'OK to merge "Sign-up emails"? It changes the database: everyone who signed up before today will be marked as an email sign-in, and that can’t be undone automatically.', meta: 'Captain is asking · 25 min', act: 'Review in Captain' },
+        ],
+        more: 'and 1 more in Captain',
+        count: 3,
+        headline: '3 agents are working on Checkout and Sign-in.',
+        goals: [G('Checkout', 4, 2, 7), G('Sign-in', 2, 2, 5)],
+        agents: [
+          A('Captain', 'reviewing', "reviewing Kestrel's email sign-in", 'Sign-in'),
+          A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', [3, 5]),
+          A('Fjord', 'waiting', 'adding guest checkout', 'Checkout', [2, 4]),
+          A('Kestrel', 'working', 'moving sign-in to email links', 'Sign-in', [4, 6]),
+          A('Wren', 'idle'),
+        ],
+      },
+      stopped: {
+        note: 'Tern stopped while it had work. The heading adds "Tern has stopped." in coral, and Tern\'s row has a coral ring, "Stopped" and the reason. One goal leaves one grid cell empty, so the agents with no work fill it instead of a gap.',
+        headlineHtml: '2 agents are working on Checkout. <span class="stopped">Tern has stopped.</span>',
+        goals: [G('Checkout', 4, 3, 7)],
+        agents: [
+          A('Captain', 'reviewing', "reviewing Birch's saved cards", 'Checkout'),
+          A('Birch', 'working', 'adding a "remove card" button', 'Checkout', [1, 3]),
+          A('Tern', 'stopped', 'was sending receipt emails · tests failing', 'Checkout', [4, 5]),
+          A('Wren', 'idle'),
+        ],
+      },
+      calm: {
+        note: 'Nothing is working and nothing needs you, so there are no cards and no lines. The croc sits beside the heading, tilted and resting: the only time it appears besides a new project. The agent list loses its title, because the heading already says nobody is working.',
+        headline: 'No agents are working right now.',
+        croc: 'calm',
+        goals: [],
+        agents: [
+          A('Captain', 'idle'),
+          A('Birch', 'idle'),
+          A('Fjord', 'idle'),
+          A('Tern', 'offline', 'last seen yesterday'),
+          A('Wren', 'idle'),
+        ],
+      },
+      new: {
+        note: 'A brand-new project. A larger croc looks toward the heading, and "Tell Captain" in it is the link: no button, no checklist. Only Captain is listed, and there is nothing being built yet, so there are no cards.',
+        headlineHtml: 'Nothing has started yet. <a href="#" data-go="Captain, ready for your first message">Tell Captain</a> what you want to make.',
+        croc: 'new',
+        goals: [],
+        agents: [A('Captain', 'idle')],
+      },
+      many: {
+        note: '13 agents and 7 goals. Every goal with an agent on it gets a card (six here); goals nobody is on fold into "and 1 more in Work". The long goal name wraps to two lines; the long agent name cuts with "…". Receipts has 18 tickets, so its line is continuous instead of segments. Moss hit its daily limit while it had work, so the heading adds "Moss has stopped."',
+        headlineHtml: '8 agents are working on Checkout, <span class="nw">Sign-in</span> and 4 more goals. <span class="stopped">Moss has stopped.</span>',
+        goals: [G('Checkout', 4, 2, 7), G('Sign-in', 2, 3, 5), G('Search', 1, 2, 4), G('Receipts', 9, 1, 18), G('Admin dashboard', 0, 1, 3), G('Guest checkout with saved cards and Apple Pay for returning customers on mobile', 0, 1, 6)],
+        moreGoals: 'and 1 more in Work',
+        agents: [
+          A('Captain', 'reviewing', "reviewing Heron's search filters", 'Search'),
+          A('Alder', 'working', 'building the admin dashboard', 'Admin dashboard', [2, 6]),
+          A('Bartholomew-on-jamesblack-laptop', 'working', 'rewriting the password reset emails so they match the new sign-in wording', 'Sign-in', [2, 3]),
+          A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', [3, 5]),
+          A('Fjord', 'working', 'adding guest checkout', 'Checkout', [1, 4]),
+          A('Heron', 'working', 'adding search filters', 'Search', [5, 5]),
+          A('Juniper', 'idle'),
+          A('Kestrel', 'working', 'moving sign-in to email links', 'Sign-in', [4, 6]),
+          A('Lark', 'offline', 'last seen 3 h ago'),
+          A('Moss', 'limit', 'daily limit · back at 09:00', 'Guest checkout with saved cards and Apple Pay for returning customers on mobile', [2, 4]),
+          A('Oriole', 'idle'),
+          A('Tern', 'working', 'sending receipt emails', 'Receipts'),
+          A('Wren', 'idle'),
+        ],
+      },
+      loading: {
+        note: 'The first load. Still shapes sit where the cards or rows will be, so nothing jumps when they arrive; they don\'t shimmer. It appears only if loading takes longer than about 0.4 s. A refresh keeps the last view until the new one is ready.',
+        loading: true,
+      },
+      failed: {
+        note: 'The first load failed. One sentence says what went wrong, one says what it means for you (the agents keep working), and one button tries again. No croc here. If a later refresh fails, the old view stays with one line above it: "Couldn\'t refresh. This is how things were at 9:41. Try again."',
+        failed: true,
+      },
+    };
+
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const isQuiet = a => a.state === 'idle' || a.state === 'offline';
+
+    function goalLine(g) {
+      const cont = g.total > 16;
+      let segs;
+      if (cont) {
+        segs = `<span class="gs d" style="flex:none;width:${(g.done / g.total * 100).toFixed(2)}%"></span><span class="gs u" style="flex:none;width:${(g.under / g.total * 100).toFixed(2)}%"></span>`;
+      } else {
+        segs = Array.from({ length: g.total }, (_, i) => `<span class="gs${i < g.done ? ' d' : i < g.done + g.under ? ' u' : ''}"></span>`).join('');
+      }
+      return `<span class="gl${cont ? ' cont' : ''}" aria-hidden="true">${segs}</span>`;
+    }
+    const count = g => `<span class="count" aria-hidden="true"><b>${g.done}</b> of ${g.total} done</span>`;
+    const goalLabel = g => `${g.name}, ${g.done} of ${g.total} done${g.under ? `, ${g.under} being built now` : ''}`;
+
+    function steps(a) {
+      if (!a.step) return '';
+      const [at, of] = a.step;
+      const ticks = Array.from({ length: of }, (_, i) => `<span class="tick${i < at - 1 ? ' d' : i === at - 1 ? ' n' : ''}"></span>`).join('');
+      return `<span class="steps" aria-hidden="true"><span class="ticks">${ticks}</span>step ${at} of ${of}</span>`;
+    }
+
+    let ringIndex = 0;
+    function agentRow(a) {
+      const ring = RING[a.state];
+      const said = [a.name, WORD[a.state], a.doing, a.step ? `step ${a.step[0]} of ${a.step[1]}` : ''].filter(Boolean).join(', ');
+      const to = isQuiet(a) ? `Team, ${esc(a.name)}` : `Work, ${esc(a.name)}’s ticket`;
+      const delay = ring === 'live' ? ` style="--delay:${(-0.7 * ringIndex++).toFixed(1)}s"` : '';
+      const state = a.state === 'offline' && a.doing ? `Offline · ${esc(a.doing.replace('last seen ', ''))}` : WORD[a.state];
+      const doing = a.state === 'offline' ? '' : esc(a.doing);
+      return `<li><a class="row agent${isQuiet(a) ? ' quiet' : ''}${ring ? ` s-${ring}-row` : ''}" href="#" aria-label="${esc(said)}" data-go="${to}">
+        <span class="av${ring ? ` s-${ring}` : ''}"${delay} aria-hidden="true">${esc(a.name[0])}</span>
+        <span class="a-name" title="${esc(a.name)}">${esc(a.name)}</span>
+        <span class="a-doing" title="${doing}">${doing}</span>
+        ${steps(a)}
+        <span class="a-state">${state}</span></a></li>`;
+    }
+
+    // Fixed order inside any list: Captain first, then by name.
+    const byName = (x, y) => (x.name === 'Captain' ? -1 : y.name === 'Captain' ? 1 : x.name.localeCompare(y.name));
+
+    function needsPart(s) {
+      if (!s.needs?.length) return '';
+      return `
+        <section class="needs" aria-labelledby="h-needs">
+          <h2 class="part-title" id="h-needs">Needs you</h2>
+          <ul class="list">
+            ${s.needs.map(n => `<li><a class="row need" href="#" data-go="Captain, scrolled to this message">
+              <span class="need-mark" aria-hidden="true"></span>
+              <span><span class="need-q" title="${esc(n.q)}">${esc(n.q)}</span><span class="need-meta">${esc(n.meta)}</span></span>
+              <span class="need-act">${esc(n.act)} →</span></a></li>`).join('')}
+          </ul>
+          ${s.more ? `<a class="more" href="#" data-go="Captain, at the oldest open question">${esc(s.more)} →</a>` : ''}
+          <p class="sr-only" role="status">${s.count || s.needs.length} questions need you</p>
+        </section>`;
+    }
+
+    function headPart(s) {
+      // Hyphenated names such as Sign-in never break at the hyphen.
+      const text = s.headlineHtml || esc(s.headline).replace(/(\S+-\S+)/g, '<span class="nw">$1</span>');
+      const croc = s.croc ? `<img class="croc ${s.croc}" src="autokolab-croc.svg" alt="" aria-hidden="true">` : '';
+      return `<div class="head">${croc}<p class="headline">${text}</p></div>`;
+    }
+
+    function cardsView(s) {
+      const cards = s.goals.map(g => {
+        const crew = s.agents.filter(a => a.goal === g.name).sort(byName);
+        return `<section class="card" aria-label="${esc(g.name)}">
+          <a class="card-head" href="#" aria-label="${esc(goalLabel(g))}" data-go="Work, grouped by ${esc(g.name)}">
+            <span class="card-name" title="${esc(g.name)}">${esc(g.name)}</span>
+            <span class="progress">${goalLine(g)}${count(g)}</span>
+          </a>
+          ${crew.length ? `<ul class="list crew">${crew.map(agentRow).join('')}</ul>` : '<p class="card-empty">Nobody on this right now.</p>'}
+        </section>`;
+      });
+      const free = s.agents.filter(a => !a.goal).sort(byName);
+      // Agents with no goal fill the empty cell when the cards leave one; otherwise a full row.
+      const cls = !s.goals.length ? 'solo' : s.goals.length % 2 ? '' : 'span';
+      const freeHtml = free.length ? `<section class="free ${cls}" aria-labelledby="h-free">
+          <h2 class="part-title" id="h-free">Not working right now</h2>
+          <ul class="list">${free.map(agentRow).join('')}</ul>
+        </section>` : '';
+      if (!s.goals.length) return `<div class="part">${freeHtml}</div>`;
+      return `<div class="part" aria-label="Being built">
+          <h2 class="sr-only">Being built</h2>
+          <div class="cards">${cards.join('')}${freeHtml}</div>
+          ${s.moreGoals ? `<a class="more after" href="#" data-go="Work, all goals">${esc(s.moreGoals)} →</a>` : ''}
+        </div>`;
+    }
+
+    function rowsView(s) {
+      const agents = `<section class="part" aria-labelledby="h-agents">
+          <h2 class="part-title" id="h-agents">Agents</h2>
+          <ul class="list">${[...s.agents].sort(byName).map(agentRow).join('')}</ul>
+        </section>`;
+      const goals = s.goals.length ? `<section class="part" aria-labelledby="h-goals">
+          <h2 class="part-title" id="h-goals">Being built</h2>
+          <ul class="list">${s.goals.map(g => `<li><a class="row goal-row" href="#" aria-label="${esc(goalLabel(g))}" data-go="Work, grouped by ${esc(g.name)}">
+            <span class="g-name" title="${esc(g.name)}">${esc(g.name)}</span>${goalLine(g)}${count(g)}</a></li>`).join('')}</ul>
+          ${s.moreGoals ? `<a class="more" href="#" data-go="Work, all goals">${esc(s.moreGoals)} →</a>` : ''}
+        </section>` : '';
+      return agents + goals;
+    }
+
+    function overview(s, layout) {
+      ringIndex = 0;
+      if (s.loading) {
+        const body = layout === 'cards'
+          ? `<div class="cards"><span class="sk sk-card"></span><span class="sk sk-card"></span></div>`
+          : [0.5, 0.42, 0.62, 0.36].map(w => `<div class="sk-row"><span class="sk" style="width:32px;height:32px;border-radius:10px"></span><span class="sk" style="height:12px;width:${Math.round(w * 200)}px"></span><span class="sk" style="height:12px;width:${Math.round(w * 100)}%"></span></div>`).join('');
+        return `<div class="ov" aria-busy="true">
+          <h1 class="sr-only">Overview</h1>
+          <div class="head"><p class="headline muted-head" role="status">Loading your project…</p></div>
+          <div class="part" aria-hidden="true">${body}</div>
+        </div>`;
+      }
+      if (s.failed) return `<div class="ov">
+          <h1 class="sr-only">Overview</h1>
+          <div role="alert">
+            <div class="head"><p class="headline">Couldn’t load this project.</p></div>
+            <p class="problem-line"><span class="dot coral" aria-hidden="true"></span><span>AutoKolab can’t be reached right now. Your agents keep working on their own machines.</span></p>
+          </div>
+          <button class="btn" type="button" data-go="Loads the page again">Try again</button>
+        </div>`;
+      return `<div class="ov lay-${layout}"><h1 class="sr-only">Overview</h1>${needsPart(s)}${headPart(s)}${layout === 'cards' ? cardsView(s) : rowsView(s)}</div>`;
+    }
+
+    function nav(s, phone) {
+      const n = s.count || s.needs?.length;
+      return TABS.map(t => {
+        const current = t === 'Overview' ? ' aria-current="page"' : '';
+        const badge = t === 'Captain' && n
+          ? `<span class="nav-count"><span class="dot amber" aria-hidden="true"></span><span aria-hidden="true">${n}</span><span class="sr-only">, ${n} need you</span></span>` : '';
+        const gap = !phone && t === 'Decisions' ? ' class="gap"' : '';
+        return `<li${gap}><a href="#"${current} data-go="the ${t} tab">${t}${badge}</a></li>`;
+      }).join('');
+    }
+
+    const params = new URLSearchParams(location.search);
+    let current = params.get('state') in STATES ? params.get('state') : 'busy';
+    let layout = params.get('layout') === 'rows' ? 'rows' : 'cards';
+
+    function render() {
+      const s = STATES[current];
+      document.getElementById('screen-desktop').innerHTML = overview(s, layout);
+      document.getElementById('screen-phone').innerHTML = overview(s, layout);
+      document.getElementById('nav-desktop').innerHTML = nav(s, false);
+      document.getElementById('nav-phone').innerHTML = nav(s, true);
+      document.querySelectorAll('[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === current)));
+      document.querySelectorAll('[data-layout]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.layout === layout)));
+      const label = document.querySelector(`[data-state="${current}"]`).textContent;
+      document.getElementById('state-note').innerHTML = `<strong>This situation · ${esc(label)}</strong>${esc(s.note)}`;
+    }
+
+    function setTheme(theme) {
+      document.documentElement.dataset.theme = theme;
+      document.querySelectorAll('[data-theme-choice]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === theme)));
+    }
+
+    function fit() {
+      const on = document.getElementById('fit-toggle').getAttribute('aria-pressed') === 'true';
+      const room = document.querySelector('.stage').clientWidth - 8;
+      document.getElementById('frames').style.setProperty('--fit', on ? Math.min(1, room / (1440 + 390 + 40)).toFixed(3) : 1);
+    }
+
+    // Contrast table: worked out from the colours actually in use, per theme.
+    function lum(hex) {
+      const c = hex.replace('#', '').match(/../g).map(h => parseInt(h, 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    }
+    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+    function contrast() {
+      const root = document.documentElement, was = root.dataset.theme, out = {};
+      for (const t of ['dark', 'light']) {
+        root.dataset.theme = t;
+        const v = n => getComputedStyle(root).getPropertyValue(n).trim();
+        const bg = v('--bg'), card = v('--card');
+        const min = (fg) => Math.min(ratio(fg, bg), ratio(fg, card));
+        const sfx = t === 'dark' ? '' : '-l';
+        out['c-text' + sfx] = min(v('--text')).toFixed(1);
+        out['c-sec' + sfx] = min(v('--text-secondary')).toFixed(1);
+        out['c-dim' + sfx] = min(v('--text-dim')).toFixed(1);
+        out['c-done' + sfx] = (t === 'dark' ? ratio(v('--done'), card) : ratio(v('--done-edge'), card)).toFixed(1) + (t === 'light' ? '*' : '');
+        const rings = ['--blue', '--amber', '--coral'].map(c => min(v(c)));
+        out['c-ring' + sfx] = `${Math.min(...rings).toFixed(1)}–${Math.max(...rings).toFixed(1)}`;
+      }
+      root.dataset.theme = was;
+      for (const [id, val] of Object.entries(out)) document.getElementById(id).textContent = val;
+    }
+
+    let toastTimer;
+    document.addEventListener('click', e => {
+      const st = e.target.closest('[data-state]');
+      if (st) { current = st.dataset.state; return render(); }
+      const ly = e.target.closest('[data-layout]');
+      if (ly) { layout = ly.dataset.layout; return render(); }
+      const th = e.target.closest('[data-theme-choice]');
+      if (th) return setTheme(th.dataset.themeChoice);
+      if (e.target.closest('#still-toggle')) {
+        const b = document.getElementById('still-toggle');
+        const on = b.getAttribute('aria-pressed') !== 'true';
+        b.setAttribute('aria-pressed', String(on));
+        document.body.classList.toggle('still', on);
+        return;
+      }
+      if (e.target.closest('#fit-toggle')) {
+        const b = document.getElementById('fit-toggle');
+        b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'));
+        return fit();
+      }
+      const go = e.target.closest('[data-go]');
+      if (go) {
+        e.preventDefault();
+        const t = document.getElementById('toast');
+        t.textContent = `In the app this opens: ${go.dataset.go}`;
+        t.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+      }
+    });
+
+    const shot = params.get('shot');
+    if (shot === 'desktop' || shot === 'phone') document.body.classList.add('shot', `shot-${shot}`);
+    if (params.get('still') === '1') { document.body.classList.add('still'); document.getElementById('still-toggle').setAttribute('aria-pressed', 'true'); }
+    contrast();
+    // Dark is the product's default ("night shift"); light is a proposal.
+    setTheme(params.get('theme') === 'light' ? 'light' : 'dark');
+    render();
+    fit();
+    addEventListener('resize', fit);
+  </script>
+</body>
+</html>
