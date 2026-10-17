@@ -1,0 +1,886 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AutoKolab · Overview v5 · Codex recreation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- The sample records and copy are from Claude's v5. The components below are independently written. -->
+<script id="story" type="application/json">{"situations":[{"id":"a1","g":"A","n":"1","title":"One question waiting","needs":[{"type":"question","q":"Should guests be able to save cards?","on":"Raghav","who":"Fjord","age":"2 h","ticket":"Guest checkout"}],"goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"wait","who":"Fjord","step":[2,4],"why":"Fjord asked about saved cards","k":"w","key":"AK-46","on":"Raghav"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"build","who":"Kestrel","step":[1,4],"why":"","k":"u","key":"AK-49"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]}],"agents":[{"name":"Captain","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"waiting","doing":"adding guest checkout","goal":"Checkout","task":"Guest checkout","step":[2,4],"on":"Raghav"},{"name":"Kestrel","state":"working","doing":"adding Google sign-in","goal":"Sign-in","task":"Google sign-in","step":[1,4]},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Raghav sees one plain question from Fjord at the top of the page. Raghav should answer it: the row opens Captain on that exact message, where the answer goes.","first":"The question: top of the page, the only filled amber, 21 px. The Captain tab shows 1.","quiet":"The heading and cards. Fjord's amber ring and the amber segment in Checkout (\"1 waiting on you\") repeat the question quietly."},{"id":"a2","g":"A","n":"2","title":"Several things waiting","needs":[{"type":"plan","q":"OK Captain’s plan for Search?","on":"Raghav","who":"Captain","age":"10 min","goal":"Search","size":"4 tickets, about a day"},{"type":"risky","q":"OK to merge “Sign-up emails”? It can’t be undone.","on":"Raghav","who":"Captain","age":"25 min","ticket":"Sign-up emails","why":"it changes the database","only":"Only Raghav, the owner, can OK a risky change"},{"type":"captain","q":"Which comes first after Checkout: Search or Receipts?","on":"Raghav","who":"Captain","age":"1 h"},{"type":"question","q":"Should guests be able to save cards?","on":"Raghav","who":"Fjord","age":"2 h","ticket":"Guest checkout"},{"type":"question","q":"Should receipts show prices with tax, or without?","on":"Raghav","who":"Tern","age":"3 h","ticket":"Receipt emails"}],"goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"wait","who":"Fjord","step":[2,4],"why":"Fjord asked about saved cards","k":"w","key":"AK-46","on":"Raghav"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-49"},{"title":"Email sign-in links","st":"build","who":"Kestrel","step":[4,6],"why":"","k":"u","key":"AK-51"},{"title":"Sign-up emails","st":"wait","who":"Captain","step":null,"why":"Captain asks to merge it","k":"w","key":"AK-52","on":"Raghav"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]},{"name":"Receipts","tasks":[{"title":"Receipt template","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-53"},{"title":"Receipt emails","st":"wait","who":"Tern","step":[3,5],"why":"Tern asked about tax on receipts","k":"w","key":"AK-54","on":"Raghav"},{"title":"Receipt PDF","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-55"}]}],"agents":[{"name":"Captain","state":"waiting","doing":"asking to merge Kestrel's sign-up emails","goal":"Sign-in","task":"Sign-up emails","step":null,"on":"Raghav"},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"waiting","doing":"adding guest checkout","goal":"Checkout","task":"Guest checkout","step":[2,4],"on":"Raghav"},{"name":"Kestrel","state":"working","doing":"moving sign-in to email links","goal":"Sign-in","task":"Email sign-in links","step":[4,6]},{"name":"Tern","state":"waiting","doing":"sending receipt emails","goal":"Receipts","task":"Receipt emails","step":[3,5],"on":"Raghav"},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Five things wait on Raghav. The three newest show, then \"and 2 more in Captain\". Raghav works through them in Captain: each row opens its own message, and \"and 2 more\" opens the oldest one still open.","first":"The three rows, newest first. The Captain tab shows 5.","quiet":"The heading. Three amber segments and three amber rings show which work each answer frees.","added":"Nothing. The limit is 3 rows, as the spec says (v4 showed 2)."},{"id":"a3","g":"A","n":"3","title":"A plan waiting for approval","needs":[{"type":"plan","q":"OK Captain’s plan for Search?","on":"Raghav","who":"Captain","age":"10 min","goal":"Search","size":"4 tickets, about a day"}],"goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"review","who":"Captain","step":null,"why":"","k":"u","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"build","who":"Fjord","step":[1,4],"why":"","k":"u","key":"AK-49"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]}],"agents":[{"name":"Captain","state":"reviewing","doing":"reviewing Birch's guest checkout","goal":"Checkout","task":"Guest checkout","step":null},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"working","doing":"adding Google sign-in","goal":"Sign-in","task":"Google sign-in","step":[1,4]},{"name":"Oriole","state":"offline","doing":"","goal":null,"task":null,"step":null,"seen":"3 h ago"},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Captain has a plan for a new goal, Search. Raghav reads it in Captain and says OK or asks for changes: the row opens the plan message. Search gets a card only once it has tickets.","first":"The plan row. Its grey line says how big the plan is.","quiet":"Everything else: the work already going on doesn't change while a plan waits.","added":"Nothing. No card for Search yet: a plan has no tickets, so it has no line."},{"id":"a4","g":"A","n":"4","title":"A risky change waiting for your OK","needs":[{"type":"risky","q":"OK to merge “Sign-up emails”? It can’t be undone.","on":"Raghav","who":"Captain","age":"25 min","ticket":"Sign-up emails","why":"it changes the database","only":"Only Raghav, the owner, can OK a risky change"}],"goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"build","who":"Fjord","step":[2,4],"why":"","k":"u","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-49"},{"title":"Email sign-in links","st":"build","who":"Kestrel","step":[4,6],"why":"","k":"u","key":"AK-51"},{"title":"Sign-up emails","st":"wait","who":"Captain","step":null,"why":"Captain asks to merge it","k":"w","key":"AK-52","on":"Raghav"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]}],"agents":[{"name":"Captain","state":"waiting","doing":"asking to merge Kestrel's sign-up emails","goal":"Sign-in","task":"Sign-up emails","step":null,"on":"Raghav"},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"working","doing":"adding guest checkout","goal":"Checkout","task":"Guest checkout","step":[2,4]},{"name":"Kestrel","state":"working","doing":"moving sign-in to email links","goal":"Sign-in","task":"Email sign-in links","step":[4,6]},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Captain wants Raghav's OK to merge a change that can't be undone automatically. Raghav reviews it in Captain: the row opens the merge request, where the OK is.","first":"The merge question: \"It can't be undone.\" Its grey line says why (it changes the database).","quiet":"Captain's amber ring and the amber \"Sign-up emails\" segment in Sign-in. The other agents keep working.","added":"Nothing. No red, no warning box: the risk is said in words, as DEC-24 asks."},{"id":"a5","g":"A","n":"5","title":"Only the owner can answer, seen by a member","viewer":{"name":"James","role":"member","label":"Seen by James, a member"},"needs":[{"type":"risky","q":"OK to merge “Sign-up emails”? It can’t be undone.","on":"Raghav","who":"Captain","age":"25 min","ticket":"Sign-up emails","why":"it changes the database","only":"Only Raghav, the owner, can OK a risky change"}],"goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"build","who":"Fjord","step":[2,4],"why":"","k":"u","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-49"},{"title":"Email sign-in links","st":"build","who":"Kestrel","step":[4,6],"why":"","k":"u","key":"AK-51"},{"title":"Sign-up emails","st":"wait","who":"Captain","step":null,"why":"Captain asks to merge it","k":"w","key":"AK-52","on":"Raghav"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]}],"agents":[{"name":"Captain","state":"waiting","doing":"asking to merge Kestrel's sign-up emails","goal":"Sign-in","task":"Sign-up emails","step":null,"on":"Raghav"},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"working","doing":"adding guest checkout","goal":"Checkout","task":"Guest checkout","step":[2,4]},{"name":"Kestrel","state":"working","doing":"moving sign-in to email links","goal":"Sign-in","task":"Email sign-in links","step":[4,6]},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"The same moment as A4, seen by James. Only Raghav can OK a risky change, so nothing needs James: the row says who must answer and opens the ticket in Work, read only. There is nothing to answer here.","first":"The heading. The \"Waiting on Raghav\" row is quieter than Needs you: smaller, grey, a hollow amber mark, and no count on the Captain tab.","quiet":"The row; the segment reads \"1 waiting on Raghav\", and Captain's word reads \"Waiting on Raghav\".","added":"\u003cb>A quiet version of the Needs you row\u003c/b>, titled with who must answer. It answers what nothing else does for a member: why Sign-in is held, and who can free it. It has no answer control and links to the ticket, not Captain."},{"id":"a6","g":"A","n":"6","title":"A goal held up by your answer","needs":[{"type":"question","q":"Should guests be able to save cards?","on":"Raghav","who":"Fjord","age":"1 day","ticket":"Guest checkout","cost":"Checkout is on hold"}],"goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Guest checkout","st":"wait","who":"Fjord","step":[2,4],"why":"Fjord asked about saved cards","k":"w","key":"AK-46","on":"Raghav"},{"title":"Saved cards","st":"todo","who":null,"step":null,"why":"on hold until you answer Fjord","k":"t","key":"AK-45","short":"To go · on hold"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"on hold until you answer Fjord","k":"t","key":"AK-47","short":"To go · on hold"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"build","who":"Birch","step":[2,4],"why":"","k":"u","key":"AK-49"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]}],"agents":[{"name":"Captain","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Birch","state":"working","doing":"adding Google sign-in","goal":"Sign-in","task":"Google sign-in","step":[2,4]},{"name":"Fjord","state":"waiting","doing":"held on guest checkout until you answer","goal":"Checkout","task":"Guest checkout","step":[2,4],"on":"Raghav"},{"name":"Oriole","state":"offline","doing":"","goal":null,"task":null,"step":null,"seen":"3 h ago"},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Checkout can't move until Raghav answers Fjord. The row says what waiting costs (\"Checkout is on hold\"), Fjord's ring is amber, and Checkout's line has no blue at all. The row opens Captain on Fjord's question.","first":"The question, with what waiting costs, in its grey line.","quiet":"Checkout's card: one amber segment, two to go \"on hold\" (point at them, or open the line). The heading names only Sign-in, the goal that is moving.","added":"Nothing. \"Checkout is on hold\" is part of the row's grey line."},{"id":"a7","g":"A","n":"7","title":"Something needs you and an agent has stopped","needs":[{"type":"question","q":"Should guests be able to save cards?","on":"Raghav","who":"Fjord","age":"2 h","ticket":"Guest checkout"}],"goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"wait","who":"Fjord","step":[2,4],"why":"Fjord asked about saved cards","k":"w","key":"AK-46","on":"Raghav"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"build","who":"Kestrel","step":[1,4],"why":"","k":"u","key":"AK-49"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]},{"name":"Receipts","tasks":[{"title":"Receipt template","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-53"},{"title":"Receipt emails","st":"stop","who":"Tern","step":[4,5],"why":"its run failed","k":"x","key":"AK-54"},{"title":"Receipt PDF","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-55"}]}],"agents":[{"name":"Captain","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"waiting","doing":"adding guest checkout","goal":"Checkout","task":"Guest checkout","step":[2,4],"on":"Raghav"},{"name":"Kestrel","state":"working","doing":"adding Google sign-in","goal":"Sign-in","task":"Google sign-in","step":[1,4]},{"name":"Tern","state":"stopped","doing":"was sending receipt emails · its run failed","goal":"Receipts","task":"Receipt emails","step":[4,5]},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Fjord waits on a question while Tern has stopped. The question comes first; then the heading says \"Tern has stopped.\" in coral. Raghav answers in Captain; Tern's row opens its ticket in Work, which says what went wrong.","first":"The question; then the coral sentence in the heading.","quiet":"Tern's coral ring and the broken coral segment in Receipts. Fjord's amber ring."},{"id":"b8","g":"B","n":"8","title":"Brand-new project, nothing connected","setup":"none","croc":"new","goals":[],"agents":[],"caption":"A new project with nothing connected yet. Raghav connects a computer: the link opens Team on \"Connect a computer\". The croc waits beside the heading.","first":"The heading's link, \"Connect your computer\".","quiet":"The croc; \"Nothing is connected yet.\" in grey."},{"id":"b9","g":"B","n":"9","title":"Captain connected, no agents yet","setup":"captain","croc":"new","goals":[],"agents":[{"name":"Captain","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Captain is connected and nobody else. Raghav adds an agent: the link opens Team on \"Add an agent\". Captain's row is the only row.","first":"The heading's link, \"Add an agent\".","quiet":"Captain's row, \"Idle\". The croc."},{"id":"b10","g":"B","n":"10","title":"Agents connected, no goal yet","setup":"agents","croc":"new","goals":[],"agents":[{"name":"Captain","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Birch","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Fjord","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Agents are ready, but nobody has said what to make. Raghav tells Captain: the link opens Captain, ready for a first message. The same as v4's brand-new.","first":"The heading's link, \"Tell Captain\".","quiet":"The three idle agents. The croc."},{"id":"b11","g":"B","n":"11","title":"First goal just started","goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"build","who":"Birch","step":[1,4],"why":"","k":"u","key":"AK-41"},{"title":"Shipping address form","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-42"},{"title":"Order summary","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-43"},{"title":"Card payments","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-44"},{"title":"Saved cards","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-45"}]}],"agents":[{"name":"Captain","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Birch","state":"working","doing":"building the cart page","goal":"Checkout","task":"Cart page","step":[1,4]},{"name":"Fjord","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Captain turned the first goal into five tickets and Birch started the first. The croc leaves, because now there is something to report. Nothing to do: the goal's name opens Work, Birch's row opens the cart page ticket.","first":"The heading, \"Birch is working on Checkout.\"","quiet":"Captain and Fjord, idle, beside the card.","added":"Nothing. A goal with nothing done yet has no green, and the words say \"1 in progress · 4 to go\", not \"0 done\"."},{"id":"b12","g":"B","n":"12","title":"A member who just joined, with nothing to do","viewer":{"name":"Priya","role":"member","fresh":true,"label":"Seen by Priya, a member who joined today"},"goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"review","who":"Captain","step":null,"why":"","k":"u","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"build","who":"Fjord","step":[1,4],"why":"","k":"u","key":"AK-49"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]}],"agents":[{"name":"Captain","state":"reviewing","doing":"reviewing Birch's guest checkout","goal":"Checkout","task":"Guest checkout","step":null},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"working","doing":"adding Google sign-in","goal":"Sign-in","task":"Google sign-in","step":[1,4]},{"name":"Oriole","state":"offline","doing":"","goal":null,"task":null,"step":null,"seen":"3 h ago"},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Priya joined today and nothing waits on Priya. It's the same page everyone sees, plus one grey line that says where to start. The link opens Captain. The line goes once Priya has written to Captain.","first":"The heading.","quiet":"The grey \"Tell Captain what you want to make.\" line.","added":"\u003cb>One heading sentence\u003c/b> for someone who has never written to Captain. It's a sentence, not a box or a tour."},{"id":"c13","g":"C","n":"13","title":"Busy (the v4 hero)","goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"review","who":"Captain","step":null,"why":"","k":"u","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"build","who":"Fjord","step":[1,4],"why":"","k":"u","key":"AK-49"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]}],"agents":[{"name":"Captain","state":"reviewing","doing":"reviewing Birch's guest checkout","goal":"Checkout","task":"Guest checkout","step":null},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"working","doing":"adding Google sign-in","goal":"Sign-in","task":"Google sign-in","step":[1,4]},{"name":"Oriole","state":"offline","doing":"","goal":null,"task":null,"step":null,"seen":"3 h ago"},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"v4's busy page, unchanged. Nothing needs Raghav, so it opens on the heading. Goal names open Work; lines open their tickets; agents open their ticket, or Team if they have none.","first":"The heading, then the two lines.","quiet":"Oriole (offline) and Wren (idle), outside the cards."},{"id":"c14","g":"C","n":"14","title":"Only one agent working","goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]}],"agents":[{"name":"Captain","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Wren","state":"offline","doing":"","goal":null,"task":null,"step":null,"seen":"yesterday"}],"caption":"Only Birch is working. The heading names Birch instead of counting. One card; the idle agents fill the space beside it.","first":"The heading, \"Birch is working on Checkout.\"","quiet":"Captain, Fjord and Wren, beside the card.","added":"Nothing. Naming one agent follows the spec (\"Birch is working on Checkout.\"); v4 never had one."},{"id":"c15","g":"C","n":"15","title":"A goal nearly done, and a goal just done","goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-45"},{"title":"Guest checkout","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-46"},{"title":"Discount codes","st":"review","who":"Captain","step":null,"why":"","k":"u","key":"AK-47"}]},{"name":"Search","tasks":[{"title":"Search box","st":"build","who":"Fjord","step":[2,3],"why":"","k":"u","key":"AK-56"},{"title":"Search filters","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-57"},{"title":"Search suggestions","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-58"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-49"},{"title":"Password reset","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-50"}],"finished":"14:20"}],"agents":[{"name":"Captain","state":"reviewing","doing":"reviewing Birch's discount codes","goal":"Checkout","task":"Discount codes","step":null},{"name":"Birch","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Fjord","state":"working","doing":"adding the search box","goal":"Search","task":"Search box","step":[2,3]},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Checkout has one ticket left, which Captain is reviewing. Sign-in finished today: its line is all green, the heading says \"Sign-in is done.\", and its card stays until the end of the day.","first":"The heading, then Checkout's nearly-full line.","quiet":"Sign-in's finished card, last, with \"Finished today at 14:20.\"","added":"Nothing on screen. One rule: a finished goal stays until the end of the day, so whoever looks later still sees it finish (the spec drops it at the next refresh)."},{"id":"c16","g":"C","n":"16","title":"Everyone idle, every goal done","croc":"calm","allDone":3,"goals":[],"agents":[{"name":"Captain","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Birch","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Fjord","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Tern","state":"offline","doing":"","goal":null,"task":null,"step":null,"seen":"yesterday"},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"The morning after: everything Raghav asked for is done and nobody is working. Calm, with the croc resting. Nothing to do; each agent opens in Team.","first":"The heading, \"All 3 goals are done.\"","quiet":"The croc; the agents in grey with no title above them.","added":"Nothing. \"All 3 goals are done.\" is a heading sentence; v4's calm sentence stays as the second line."},{"id":"c17","g":"C","n":"17","title":"Many agents (13) and many goals (7)","goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"build","who":"Fjord","step":[1,4],"why":"","k":"u","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-49"},{"title":"Email sign-in links","st":"build","who":"Kestrel","step":[4,6],"why":"","k":"u","key":"AK-51"},{"title":"Password reset emails","st":"build","who":"Bartholomew-on-jamesblack-laptop","step":[2,3],"why":"","k":"u","key":"AK-59"},{"title":"Two-step sign-in","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-60"}]},{"name":"Search","tasks":[{"title":"Search box","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-56"},{"title":"Search filters","st":"build","who":"Heron","step":[5,5],"why":"","k":"u","key":"AK-57"},{"title":"Search suggestions","st":"review","who":"Captain","step":null,"why":"","k":"u","key":"AK-58"},{"title":"Recent searches","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-61"}]},{"name":"Receipts","tasks":[{"title":"Receipt template","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-53"},{"title":"Order number on receipts","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-62"},{"title":"Tax lines","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-63"},{"title":"Currency format","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-64"},{"title":"Receipt PDF","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-55"},{"title":"Store logo on receipts","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-65"},{"title":"Refund receipts","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-66"},{"title":"Receipt archive","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-67"},{"title":"Resend receipt","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-68"},{"title":"Receipt emails","st":"build","who":"Tern","step":null,"why":"","k":"u","key":"AK-54"},{"title":"Receipt language","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-69"},{"title":"Gift receipts","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-70"},{"title":"Itemised shipping","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-71"},{"title":"Receipt search","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-72"},{"title":"Download all receipts","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-73"},{"title":"Receipt reminders","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-74"},{"title":"VAT number","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-75"},{"title":"Receipt footer text","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-76"}]},{"name":"Admin dashboard","tasks":[{"title":"Dashboard layout","st":"build","who":"Alder","step":[2,6],"why":"","k":"u","key":"AK-77"},{"title":"Orders table","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-78"},{"title":"Refunds","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-79"}]},{"name":"Guest checkout with saved cards and Apple Pay for returning customers on mobile","tasks":[{"title":"Card form on mobile","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-80"},{"title":"Apple Pay","st":"stop","who":"Moss","step":[2,4],"why":"daily limit","k":"x","key":"AK-81"},{"title":"Saved cards on mobile","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-82"},{"title":"Returning customer lookup","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-83"},{"title":"Pay button states","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-84"},{"title":"Mobile receipts","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-85"}]}],"moreGoals":"and 1 more in Work","agents":[{"name":"Captain","state":"reviewing","doing":"reviewing Heron's search suggestions","goal":"Search","task":"Search suggestions","step":null},{"name":"Alder","state":"working","doing":"building the admin dashboard","goal":"Admin dashboard","task":"Dashboard layout","step":[2,6]},{"name":"Bartholomew-on-jamesblack-laptop","state":"working","doing":"rewriting the password reset emails so they match the new sign-in wording","goal":"Sign-in","task":"Password reset emails","step":[2,3]},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"working","doing":"adding guest checkout","goal":"Checkout","task":"Guest checkout","step":[1,4]},{"name":"Heron","state":"working","doing":"adding search filters","goal":"Search","task":"Search filters","step":[5,5]},{"name":"Juniper","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Kestrel","state":"working","doing":"moving sign-in to email links","goal":"Sign-in","task":"Email sign-in links","step":[4,6]},{"name":"Lark","state":"offline","doing":"","goal":null,"task":null,"step":null,"seen":"3 h ago"},{"name":"Moss","state":"limit","doing":"daily limit · back at 09:00","goal":"Guest checkout with saved cards and Apple Pay for returning customers on mobile","task":"Apple Pay","step":[2,4]},{"name":"Oriole","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Tern","state":"working","doing":"sending receipt emails","goal":"Receipts","task":"Receipt emails","step":null},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"v4's 13 agents and 7 goals, unchanged. Every goal with someone on it gets a card; the one nobody is on folds into \"and 1 more in Work\". Receipts has 18 tickets, so its line is continuous. Moss hit its daily limit.","first":"The heading (\"on 5 goals\": Moss's goal has nobody moving on it) and \"Moss has stopped.\" in coral.","quiet":"The four agents with no work, in one list after the cards."},{"id":"c18","g":"C","n":"18","title":"Very long names","names":"long","goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Let returning customers keep more than one saved card and pick a default","st":"build","who":"Bartholomew-on-jamesblack-laptop","step":[3,5],"why":"","k":"u","key":"AK-86"},{"title":"Guest checkout for people who don’t want to make an account","st":"review","who":"Captain","step":null,"why":"","k":"u","key":"AK-87"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Sign in with Google, including accounts that already signed up with email","st":"build","who":"Fjord","step":[1,4],"why":"","k":"u","key":"AK-88"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]}],"agents":[{"name":"Captain","state":"reviewing","doing":"reviewing guest checkout for people who don’t want to make an account","goal":"Checkout","task":"Guest checkout for people who don’t want to make an account","step":null},{"name":"Bartholomew-on-jamesblack-laptop","state":"working","doing":"letting returning customers keep more than one saved card and choose which one is the default","goal":"Checkout","task":"Let returning customers keep more than one saved card and pick a default","step":[3,5]},{"name":"Fjord","state":"working","doing":"adding Google sign-in, including accounts that already signed up with email","goal":"Sign-in","task":"Sign in with Google, including accounts that already signed up with email","step":[1,4]},{"name":"Oriole","state":"offline","doing":"","goal":null,"task":null,"step":null,"seen":"3 h ago"},{"name":"Wren-on-the-old-office-mac-mini","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Long project, goal, agent and ticket names. Two goal names over 32 characters together are counted in the heading (\"on 2 goals\"); cards wrap names to two lines; agent names and doing words are cut with \"…\" on desktop and show in full on hover.","first":"The heading, which stays short because it counts the goals.","quiet":"Cut names; the full name is one hover (desktop) or one tap into Work away.","added":"Nothing. Same rules as v4's \"Names: Long\", with long agent and ticket names added."},{"id":"d19","g":"D","n":"19","title":"An agent stopped: an error, and a daily limit","goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"review","who":"Captain","step":null,"why":"","k":"u","key":"AK-46"},{"title":"Discount codes","st":"stop","who":"Moss","step":[2,4],"why":"daily limit, back at 09:00","k":"x","key":"AK-47"}]},{"name":"Receipts","tasks":[{"title":"Receipt template","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-53"},{"title":"Receipt emails","st":"stop","who":"Tern","step":[4,5],"why":"its run failed: GitHub couldn’t be reached","k":"x","key":"AK-54"},{"title":"Receipt PDF","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-55"}]}],"agents":[{"name":"Captain","state":"reviewing","doing":"reviewing Birch's guest checkout","goal":"Checkout","task":"Guest checkout","step":null},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Moss","state":"limit","doing":"was adding discount codes · daily limit, back at 09:00","goal":"Checkout","task":"Discount codes","step":[2,4]},{"name":"Tern","state":"stopped","doing":"was sending receipt emails · GitHub couldn’t be reached","goal":"Receipts","task":"Receipt emails","step":[4,5]},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Two agents stopped for different reasons: Tern's run failed, and Moss hit its daily limit. The heading says \"Tern and Moss have stopped.\", each row says why, and each opens its ticket in Work.","first":"The heading's coral sentence.","quiet":"Each reason, in the row's grey words; the broken coral segments.","added":"Nothing. \"Limit reached\" and \"Stopped\" are both coral: either way the work isn't moving."},{"id":"d20","g":"D","n":"20","title":"An agent offline with work waiting","goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"review","who":"Captain","step":null,"why":"","k":"u","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Search","tasks":[{"title":"Search box","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-56"},{"title":"Search filters","st":"todo","who":"Oriole","step":null,"why":"waiting for Oriole, offline","k":"t","key":"AK-57","short":"To go · Oriole, offline"},{"title":"Search suggestions","st":"todo","who":"Oriole","step":null,"why":"waiting for Oriole, offline","k":"t","key":"AK-58","short":"To go · Oriole, offline"},{"title":"Recent searches","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-61"}]}],"agents":[{"name":"Captain","state":"reviewing","doing":"reviewing Birch's guest checkout","goal":"Checkout","task":"Guest checkout","step":null},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Oriole","state":"offline","doing":"2 tickets waiting for it","goal":"Search","task":null,"step":null,"seen":"3 h ago","waiting":2},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Oriole has been offline for 3 hours with two Search tickets waiting for it. The heading says so in grey, because offline isn't an error. Oriole's row opens Team, where its machine is.","first":"The heading.","quiet":"Oriole's grey line in the heading, its row in Search's card, and \"To go · Oriole, offline\" on its tickets.","added":"Nothing. One heading sentence, grey, like the stopped one but without the alarm."},{"id":"d21","g":"D","n":"21","title":"Captain offline","goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"review","who":"Captain","step":null,"why":"waiting for Captain to review it","k":"u","key":"AK-46","short":"Waiting for review"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"build","who":"Fjord","step":[1,4],"why":"","k":"u","key":"AK-49"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]}],"agents":[{"name":"Captain","state":"offline","doing":"","goal":null,"task":null,"step":null,"seen":"40 min ago"},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"working","doing":"adding Google sign-in","goal":"Sign-in","task":"Google sign-in","step":[1,4]},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Captain is offline. Building goes on, but nothing gets reviewed or merged. The heading says so in grey, and whose machine to wake. Captain's row opens Team.","first":"The heading.","quiet":"Captain's grey sentence; Captain's row in grey; \"Waiting for review\" on Guest checkout.","added":"Nothing. One heading sentence."},{"id":"d22","g":"D","n":"22","title":"Everyone paused by the owner","paused":"Raghav","goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45","paused":true},{"title":"Guest checkout","st":"review","who":"Captain","step":null,"why":"paused, Captain was reviewing it","k":"u","key":"AK-46","short":"Captain · paused"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"build","who":"Fjord","step":[1,4],"why":"","k":"u","key":"AK-49","paused":true},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]}],"agents":[{"name":"Captain","state":"paused","doing":"was reviewing Birch's guest checkout","goal":"Checkout","task":"Guest checkout","step":null},{"name":"Birch","state":"paused","doing":"was adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"paused","doing":"was adding Google sign-in","goal":"Sign-in","task":"Google sign-in","step":[1,4]},{"name":"Wren","state":"paused","doing":"","goal":null,"task":null,"step":null}],"caption":"Raghav paused everyone. Rings are grey and nothing breathes; each agent says what it was doing. The heading's link opens Settings on \"Pause everyone\". Lines keep their state, so nothing looks lost.","first":"The heading, \"You paused everyone.\"","quiet":"Every agent, in grey with \"Paused\".","added":"Nothing. \"Paused\" is a state word (it is in the data contract)."},{"id":"d23","g":"D","n":"23","title":"Tests failing on a task","goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[4,5],"why":"Birch is fixing 2 failing tests, step 4 of 5","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"build","who":"Fjord","step":[1,4],"why":"","k":"u","key":"AK-49"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]},{"name":"Receipts","tasks":[{"title":"Receipt template","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-53"},{"title":"Receipt emails","st":"stop","who":"Tern","step":[4,5],"why":"tests still failing after 3 tries","k":"x","key":"AK-54"},{"title":"Receipt PDF","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-55"}]}],"agents":[{"name":"Captain","state":"idle","doing":"","goal":null,"task":null,"step":null},{"name":"Birch","state":"working","doing":"fixing 2 failing tests in saved cards","goal":"Checkout","task":"Saved cards","step":[4,5]},{"name":"Fjord","state":"working","doing":"adding Google sign-in","goal":"Sign-in","task":"Google sign-in","step":[1,4]},{"name":"Tern","state":"stopped","doing":"was sending receipt emails · tests still failing after 3 tries","goal":"Receipts","task":"Receipt emails","step":[4,5]},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Two kinds of failing tests. Birch is fixing two: that's work, so it stays blue and says so in words. Tern gave up after three tries: that's stopped, in coral, with the reason. Both rows open their ticket in Work.","first":"The heading's \"Tern has stopped.\"","quiet":"Birch's \"fixing 2 failing tests\": a failure being handled isn't an alarm.","added":"Nothing. No problem block: the failure is in the heading, Tern's row and its segment."},{"id":"d24a","g":"D","n":"24a","title":"Loading","loading":true,"caption":"The first load, if it takes over about 0.4 s. Still shapes sit where the cards will be, so nothing jumps when they arrive. Nothing to do.","first":"The grey \"Loading your project…\"","quiet":"The still shapes. They don't shimmer."},{"id":"d24b","g":"D","n":"24b","title":"First load failed","failed":true,"caption":"The first load failed. One sentence says what went wrong, one what it means (the agents keep working), and one button tries again. No croc: a failure isn't cute.","first":"The heading, \"Couldn't load this project.\"","quiet":"The reassurance line.","added":"Nothing. v4's failed state, unchanged."},{"id":"d24c","g":"D","n":"24c","title":"Refresh failed, last view kept","stale":"9:41","goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"review","who":"Captain","step":null,"why":"","k":"u","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"build","who":"Fjord","step":[1,4],"why":"","k":"u","key":"AK-49"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]}],"agents":[{"name":"Captain","state":"reviewing","doing":"reviewing Birch's guest checkout","goal":"Checkout","task":"Guest checkout","step":null},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"working","doing":"adding Google sign-in","goal":"Sign-in","task":"Google sign-in","step":[1,4]},{"name":"Oriole","state":"offline","doing":"","goal":null,"task":null,"step":null,"seen":"3 h ago"},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"A refresh failed, so the last view stays, with one line on top saying how old it is. The rings stop breathing, because nothing on screen is live now. It tries again on its own; links still work.","first":"The line on top: \"Couldn't refresh. This is how things were at 9:41.\"","quiet":"The old view, unchanged, with still rings.","added":"\u003cb>One line above the page\u003c/b>, worded as in the spec. It is v4's failure line, reused. It answers the one thing nothing else can: how old this view is."},{"id":"e25a","g":"E","n":"25a","title":"Owner view","needs":[{"type":"risky","q":"OK to merge “Sign-up emails”? It can’t be undone.","on":"Raghav","who":"Captain","age":"25 min","ticket":"Sign-up emails","why":"it changes the database","only":"Only Raghav, the owner, can OK a risky change"},{"type":"question","q":"Should search show sold-out items?","on":"James","who":"Heron","age":"40 min","ticket":"Search filters","only":"James asked for Search, so James answers"},{"type":"captain","q":"Which comes first after Checkout: Search or Receipts?","on":"Raghav","who":"Captain","age":"1 h"}],"goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"build","who":"Fjord","step":[2,4],"why":"","k":"u","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-49"},{"title":"Email sign-in links","st":"build","who":"Kestrel","step":[4,6],"why":"","k":"u","key":"AK-51"},{"title":"Sign-up emails","st":"wait","who":"Captain","step":null,"why":"Captain asks to merge it","k":"w","key":"AK-52","on":"Raghav"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]},{"name":"Search","tasks":[{"title":"Search box","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-56"},{"title":"Search filters","st":"wait","who":"Heron","step":[2,4],"why":"Heron asked about sold-out items","k":"w","key":"AK-57","on":"James"},{"title":"Search suggestions","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-58"}]}],"agents":[{"name":"Captain","state":"waiting","doing":"asking to merge Kestrel's sign-up emails","goal":"Sign-in","task":"Sign-up emails","step":null,"on":"Raghav"},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"working","doing":"adding guest checkout","goal":"Checkout","task":"Guest checkout","step":[2,4]},{"name":"Heron","state":"waiting","doing":"adding search filters","goal":"Search","task":"Search filters","step":[2,4],"on":"James"},{"name":"Kestrel","state":"working","doing":"moving sign-in to email links","goal":"Sign-in","task":"Email sign-in links","step":[4,6]},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Raghav, the owner, sees the two things only the owner can answer (a risky merge and what to build next), and James's question quietly, as \"Waiting on James\".","first":"Raghav's two rows.","quiet":"\"Waiting on James\", and \"1 waiting on James\" in Search's line.","added":"The same quiet row as A5."},{"id":"e25b","g":"E","n":"25b","title":"Member view, the same moment","viewer":{"name":"James","role":"member","label":"Seen by James, a member"},"needs":[{"type":"risky","q":"OK to merge “Sign-up emails”? It can’t be undone.","on":"Raghav","who":"Captain","age":"25 min","ticket":"Sign-up emails","why":"it changes the database","only":"Only Raghav, the owner, can OK a risky change"},{"type":"question","q":"Should search show sold-out items?","on":"James","who":"Heron","age":"40 min","ticket":"Search filters","only":"James asked for Search, so James answers"},{"type":"captain","q":"Which comes first after Checkout: Search or Receipts?","on":"Raghav","who":"Captain","age":"1 h"}],"goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"build","who":"Fjord","step":[2,4],"why":"","k":"u","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-49"},{"title":"Email sign-in links","st":"build","who":"Kestrel","step":[4,6],"why":"","k":"u","key":"AK-51"},{"title":"Sign-up emails","st":"wait","who":"Captain","step":null,"why":"Captain asks to merge it","k":"w","key":"AK-52","on":"Raghav"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]},{"name":"Search","tasks":[{"title":"Search box","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-56"},{"title":"Search filters","st":"wait","who":"Heron","step":[2,4],"why":"Heron asked about sold-out items","k":"w","key":"AK-57","on":"James"},{"title":"Search suggestions","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-58"}]}],"agents":[{"name":"Captain","state":"waiting","doing":"asking to merge Kestrel's sign-up emails","goal":"Sign-in","task":"Sign-up emails","step":null,"on":"Raghav"},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"working","doing":"adding guest checkout","goal":"Checkout","task":"Guest checkout","step":[2,4]},{"name":"Heron","state":"waiting","doing":"adding search filters","goal":"Search","task":"Search filters","step":[2,4],"on":"James"},{"name":"Kestrel","state":"working","doing":"moving sign-in to email links","goal":"Sign-in","task":"Email sign-in links","step":[4,6]},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"James sees only James's own question in Needs you, and Raghav's risky merge as \"Waiting on Raghav\". Raghav's question about what to build next has no ticket, so it doesn't show here.","first":"James's one row. The Captain tab shows 1, not 2.","quiet":"\"Waiting on Raghav\"; the amber words name who each segment waits on.","added":"\u003cb>What else differs\u003c/b> between owner and member, in other situations: \"You paused everyone.\" becomes \"Raghav paused everyone.\"; \"until your machine is back\" becomes \"until Raghav's machine is back\"; in a new project only the owner gets the \"Connect your computer\" link. Nothing else changes."},{"id":"e26","g":"E","n":"26","title":"First-time viewer on a phone","viewer":{"name":"Priya","role":"member","fresh":true,"label":"Seen by Priya, a member who joined today"},"open":true,"goals":[{"name":"Checkout","tasks":[{"title":"Cart page","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-41"},{"title":"Shipping address form","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-42"},{"title":"Order summary","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-43"},{"title":"Card payments","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-44"},{"title":"Saved cards","st":"build","who":"Birch","step":[3,5],"why":"","k":"u","key":"AK-45"},{"title":"Guest checkout","st":"review","who":"Captain","step":null,"why":"","k":"u","key":"AK-46"},{"title":"Discount codes","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-47"}]},{"name":"Sign-in","tasks":[{"title":"Email and password","st":"done","who":null,"step":null,"why":"","k":"d","key":"AK-48"},{"title":"Google sign-in","st":"build","who":"Fjord","step":[1,4],"why":"","k":"u","key":"AK-49"},{"title":"Password reset","st":"todo","who":null,"step":null,"why":"","k":"t","key":"AK-50"}]}],"agents":[{"name":"Captain","state":"reviewing","doing":"reviewing Birch's guest checkout","goal":"Checkout","task":"Guest checkout","step":null},{"name":"Birch","state":"working","doing":"adding saved cards to checkout","goal":"Checkout","task":"Saved cards","step":[3,5]},{"name":"Fjord","state":"working","doing":"adding Google sign-in","goal":"Sign-in","task":"Google sign-in","step":[1,4]},{"name":"Oriole","state":"offline","doing":"","goal":null,"task":null,"step":null,"seen":"3 h ago"},{"name":"Wren","state":"idle","doing":"","goal":null,"task":null,"step":null}],"caption":"Priya opens Overview for the first time, on a phone. Every line has its own words underneath, so nothing needs learning. Tapping Checkout's line opens its tickets (shown open); each ticket opens in Work.","first":"The heading.","quiet":"The open ticket list, in grey; the \"Tell Captain\" line.","added":"Nothing. The open list is v4's review path, step 2."}],"groups":{"A":["You have to act","Something waits on a person. Overview never answers it: each row points to the exact message in Captain (DEC-24). The row types: a question, several, a plan, a risky change, one only the owner can answer, and a goal held up by an answer."],"B":["Starting out","From an empty project to the first goal under way. Until there is something to report, the croc and one plain next step."],"C":["Everyday","Normal days: busy, one agent, goals finishing, calm, thirteen agents, and names that are too long."],"D":["Things going wrong","Failures show in the heading, the agent's row and the ticket's segment. No problem blocks."],"E":["Different viewers","The same project seen by the owner, a member, and someone new on a phone."]},"longNames":{"Checkout":"Guest checkout with saved cards","Sign-in":"Sign-in with email links and Google","Search":"Search with filters and suggestions","Admin dashboard":"Admin dashboard for orders and refunds"},"project":{"short":"Northstar Shop","long":"Northstar Outdoor Equipment Shop Europe"},"owner":{"name":"Raghav","role":"owner","label":"Seen by Raghav, the owner"},"keys":{"Cart page":"AK-41","Shipping address form":"AK-42","Order summary":"AK-43","Card payments":"AK-44","Saved cards":"AK-45","Guest checkout":"AK-46","Discount codes":"AK-47","Email and password":"AK-48","Google sign-in":"AK-49","Password reset":"AK-50","Email sign-in links":"AK-51","Sign-up emails":"AK-52","Receipt template":"AK-53","Receipt emails":"AK-54","Receipt PDF":"AK-55","Search box":"AK-56","Search filters":"AK-57","Search suggestions":"AK-58","Password reset emails":"AK-59","Two-step sign-in":"AK-60","Recent searches":"AK-61","Order number on receipts":"AK-62","Tax lines":"AK-63","Currency format":"AK-64","Store logo on receipts":"AK-65","Refund receipts":"AK-66","Receipt archive":"AK-67","Resend receipt":"AK-68","Receipt language":"AK-69","Gift receipts":"AK-70","Itemised shipping":"AK-71","Receipt search":"AK-72","Download all receipts":"AK-73","Receipt reminders":"AK-74","VAT number":"AK-75","Receipt footer text":"AK-76","Dashboard layout":"AK-77","Orders table":"AK-78","Refunds":"AK-79","Card form on mobile":"AK-80","Apple Pay":"AK-81","Saved cards on mobile":"AK-82","Returning customer lookup":"AK-83","Pay button states":"AK-84","Mobile receipts":"AK-85","Let returning customers keep more than one saved card and pick a default":"AK-86","Guest checkout for people who don’t want to make an account":"AK-87","Sign in with Google, including accounts that already signed up with email":"AK-88"}}</script>
+<style>
+/* Palette: the handoff's dark tokens, and the reference's light/status variants. */
+:root {
+  --bg:#0B0D11; --rail:#0E1116; --panel:#12151B; --panel-hover:#171B22;
+  --hover:#161A21; --active:#1B2028; --raised:#232833;
+  --tile:#232833; --tile-ink:#C9CED6; --line-soft:#1C2029; --line:#1F242D;
+  --line-strong:#2A303B; --panel-edge:#191D25; --track:#2A303B; --outline:#4A515D;
+  --ink:#E9EBEF; --body:#D4D8DE; --secondary:#C9CED6; --muted:#A2A9B5; --dim:#858C98;
+  --amber:#F4C25B; --blue:#7EA6FF; --coral:#FF8A78; --coral-ink:#FFB8A8;
+  --blue-a:#3E7FE0; --blue-b:#7EA6FF; --amber-a:#C99A3E; --amber-b:#F4C25B;
+  --done:#5DC46A; --done-edge:transparent; --focus:#A2A9B5;
+  --tooltip:#E9EBEF; --tooltip-ink:#0B0D11; --tooltip-muted:#3A404B; --skeleton:#171A21;
+  --panel-shadow:inset 0 1px 0 rgba(255,255,255,.025); --device-shadow:0 24px 64px rgba(0,0,0,.45);
+  --sans:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'Geist Mono',ui-monospace,'SF Mono',Menlo,monospace;
+  --r-small:7px; --r-medium:10px; --r-large:12px; --r-frame:16px; --r-card:18px;
+  --ease:cubic-bezier(.2,.8,.2,1); --speed:160ms;
+  --desktop-width:1440px; --desktop-height:900px; --scale:1;
+  color-scheme:dark;
+}
+:root[data-theme="light"] {
+  --bg:#F6F6F2; --rail:#EFEFE9; --panel:#FFFFFF; --panel-hover:#F8F8F4;
+  --hover:#EBEBE5; --active:#E3E3DC; --raised:#E3E3DC;
+  --tile:#EBEBE4; --tile-ink:#3A404B; --line-soft:#E6E6E0; --line:#E2E2DB;
+  --line-strong:#CFCFC7; --panel-edge:#E4E3DB; --track:#DADBD3; --outline:#A9AAA1;
+  --ink:#111318; --body:#262A32; --secondary:#3A404B; --muted:#535A66; --dim:#5F6672;
+  --amber:#B7791F; --blue:#2F6BD8; --coral:#D1453B; --coral-ink:#B4372E;
+  --blue-a:#2F6BD8; --blue-b:#7FA3E6; --amber-a:#B7791F; --amber-b:#DDB574;
+  --done-edge:#14231A; --focus:#5B6370;
+  --tooltip:#111318; --tooltip-ink:#F6F6F2; --tooltip-muted:#C9CED6; --skeleton:#EAEAE3;
+  --panel-shadow:0 1px 2px rgba(40,36,20,.04),0 8px 24px -12px rgba(40,36,20,.10);
+  --device-shadow:0 24px 64px rgba(17,19,24,.12); color-scheme:light;
+}
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--ink); font:400 14px/1.5 var(--sans); -webkit-font-smoothing:antialiased; font-feature-settings:"ss01" }
+a { color:inherit; text-decoration:none }
+button { font:inherit; color:inherit; cursor:pointer }
+:focus-visible { outline:2px solid var(--focus); outline-offset:2px; border-radius:var(--r-small) }
+.visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0 }
+/* The gallery is separate from the reusable Overview components. */
+.gallery-intro { padding:28px 32px 20px }
+.eyebrow { color:var(--dim); font:500 12px/1.4 var(--mono) }
+.gallery-intro h1 { margin:6px 0 4px; font-size:21px; font-weight:600; letter-spacing:-.02em }
+.gallery-intro p { margin:0; max-width:860px; color:var(--muted) }
+.controls { display:flex; flex-wrap:wrap; align-items:center; gap:12px 24px; margin-top:18px }
+.control-group { display:inline-flex; align-items:center; gap:8px }
+.control-label { color:var(--dim); font-size:12px; font-weight:600 }
+.switches { display:inline-flex; flex-wrap:wrap; gap:4px; padding:4px; background:var(--rail); border:1px solid var(--line); border-radius:var(--r-medium) }
+.switches button { min-height:34px; padding:0 12px; background:transparent; border:0; border-radius:var(--r-small); color:var(--muted); font-size:13px; font-weight:500; transition:background var(--speed) var(--ease),color var(--speed) var(--ease) }
+.switches button:hover { color:var(--ink); background:var(--hover) }
+.switches button[aria-pressed="true"] { background:var(--raised); color:var(--ink) }
+.recommended { color:var(--dim); font-weight:400 }
+.jump-menu { position:sticky; top:0; z-index:6; display:flex; align-items:center; flex-wrap:wrap; gap:6px 4px; padding:8px 32px; background:var(--bg); border-bottom:1px solid var(--line) }
+.jump-menu > a { display:inline-flex; align-items:center; min-height:36px; padding:0 12px; color:var(--secondary); border-radius:var(--r-small); font-size:13px; font-weight:500 }
+.jump-menu a:hover { background:var(--hover); color:var(--ink) }
+.jump-menu b { margin-right:6px; color:var(--dim); font:600 12px/1 var(--mono) }
+.jump-menu .spacer { flex:1 }
+.jump-menu button { min-height:30px; font-size:12px }
+.contents { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:20px 32px; padding:24px 32px 8px }
+.contents h2 { margin:0 0 6px; font-size:14px; font-weight:600 }
+.contents ol { padding:0; margin:0; list-style:none; display:grid; gap:2px }
+.contents li a { display:grid; grid-template-columns:34px 1fr; min-height:26px; align-items:center; color:var(--muted); font-size:13px }
+.contents li span { color:var(--dim); font:500 12px/1 var(--mono) }
+.contents a:hover { color:var(--ink); text-decoration:underline; text-underline-offset:3px }
+.situation-group { padding:48px 32px 0; scroll-margin-top:56px }
+.situation-group > h2,.notes > h2 { margin:0; font-size:26px; font-weight:600; letter-spacing:-.02em }
+.situation-group > h2 b { color:var(--dim); margin-right:8px }
+.situation-group > p { max-width:860px; margin:6px 0 0; color:var(--muted); font-size:15px }
+.situation { margin-top:36px; padding-top:28px; border-top:1px solid var(--line); scroll-margin-top:56px }
+.situation-label { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 12px; margin-bottom:16px }
+.situation-number { display:inline-grid; place-items:center; min-width:40px; height:24px; padding:0 8px; border:1px solid var(--line-strong); border-radius:var(--r-small); color:var(--secondary); font:600 12px/1 var(--mono) }
+.situation-label h3 { margin:0; font-size:20px; font-weight:600; letter-spacing:-.015em }
+.viewer { color:var(--dim); font-size:13px }
+.frame-stage { min-width:0; overflow-x:auto; padding-bottom:4px }
+.frame-pair { display:flex; align-items:flex-start; gap:40px; width:max-content; zoom:var(--scale) }
+.frame-pair figure { margin:0 }
+.frame-pair figcaption { margin-bottom:12px; color:var(--dim); font:500 12px/1.4 var(--mono) }
+.caption { margin:14px 0 0; max-width:1180px; color:var(--body); font-size:15px; line-height:1.55 }
+.facts { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px 32px; margin:16px 0 0; max-width:1500px }
+.facts > div { min-width:0 }
+.facts .wide { grid-column:1/-1 }
+.facts dt { color:var(--dim); font:500 12px/1.4 var(--mono) }
+.facts dd { margin:3px 0 0; color:var(--muted); font-size:13px; line-height:1.5 }
+.facts dd strong,.facts dd b { color:var(--secondary); font-weight:600 }
+.facts .heading-copy { color:var(--ink); font-size:14px; font-weight:500 }
+.notes { padding:56px 32px 0; max-width:1240px; scroll-margin-top:56px }
+.notes > h2 { margin-bottom:6px }
+.notes > p { margin:0 0 16px; max-width:860px; color:var(--muted); font-size:15px }
+.notes h3 { margin:24px 0 8px; font-size:16px; font-weight:600 }
+.notes ul { margin:0; padding-left:20px; color:var(--body); font-size:14px }
+.notes li { margin-bottom:6px }
+.heading-table { width:100%; border-collapse:collapse; font-size:14px }
+.heading-table td,.heading-table th { padding:9px 12px 9px 0; text-align:left; vertical-align:top; border-bottom:1px solid var(--line) }
+.heading-table th { color:var(--dim); font:500 12px/1.4 var(--mono) }
+.heading-table td:first-child { width:56px; color:var(--dim); font:500 12px/1.6 var(--mono) }
+.heading-table td:nth-child(2) { width:300px; color:var(--muted) }
+.heading-table a { text-decoration:underline; text-decoration-color:var(--line-strong); text-underline-offset:3px }
+.key-example { display:grid; grid-template-columns:40px 1fr; gap:12px; align-items:center; margin:6px 0; color:var(--body); font-size:14px }
+.key-example .segment { width:32px; height:10px; flex:none }
+.key-example .initial { width:24px; height:24px; margin-left:4px; border-radius:8px; font-size:11px }
+.contrast-table { max-width:560px; border-collapse:collapse; color:var(--muted); font:12px/1.4 var(--mono) }
+.contrast-table td,.contrast-table th { padding:4px 16px 4px 0; text-align:left; border-bottom:1px solid var(--line-soft) }
+.contrast-table th { color:var(--dim); font-weight:500 }
+.gallery-end { padding:48px 32px 64px; color:var(--dim); font-size:13px }
+.destination { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); max-width:calc(100% - 32px); padding:12px 16px; border:1px solid var(--line-strong); border-radius:var(--r-medium); background:var(--raised); font-size:13px; z-index:5; opacity:0; pointer-events:none; transition:opacity var(--speed) var(--ease) }
+.destination.visible { opacity:1 }
+/* Shell: fixed size frames, with a shared container-responsive content region. */
+.device { position:relative; overflow:hidden; background:var(--bg); border:1px solid var(--line-strong); border-radius:var(--r-frame); box-shadow:var(--device-shadow) }
+.device-desktop { display:grid; grid-template-columns:232px minmax(0,1fr); width:var(--desktop-width); height:var(--desktop-height) }
+.rail { display:flex; flex-direction:column; min-width:0; padding:24px 12px; background:var(--rail); border-right:1px solid var(--line-soft) }
+.brand { display:block; width:111px; height:32px; margin:0 12px }
+.project-name { margin:16px 12px 0; color:var(--muted); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.rail-links { display:grid; gap:2px; margin:32px 0 0; padding:0; list-style:none }
+.rail-links .nav-gap { margin-top:16px }
+.rail-links a { display:flex; align-items:center; gap:8px; min-height:36px; padding:0 12px; border-radius:var(--r-small); color:var(--secondary); font-size:14px }
+.rail-links a:hover { background:var(--hover); color:var(--ink) }
+.rail-links a[aria-current] { background:var(--active); color:var(--ink); font-weight:500 }
+.need-count { display:inline-flex; align-items:center; gap:6px; margin-left:auto; color:var(--secondary); font:500 12px/1 var(--mono) }
+.status-dot { display:inline-block; flex:none; width:7px; height:7px; border-radius:50% }
+.status-dot.amber { background:var(--amber) }
+.status-dot.coral { background:var(--coral) }
+.screen { position:relative; min-width:0; overflow-y:auto; container-type:inline-size; scrollbar-width:thin }
+.device-phone { display:flex; flex-direction:column; width:390px; height:844px; border-radius:36px }
+.phone-header { display:flex; align-items:center; justify-content:space-between; gap:16px; flex:none; height:56px; padding:0 20px; background:var(--rail); border-bottom:1px solid var(--line-soft) }
+.phone-header .brand { width:83px; height:24px; margin:0; flex:none }
+.phone-header .project-name { min-width:0; margin:0 }
+.device-phone .screen { flex:1 }
+.phone-tabs { position:relative; flex:none; background:var(--rail); border-top:1px solid var(--line-soft); padding-bottom:18px }
+.phone-tabs ul { display:flex; margin:0; padding:0 8px; list-style:none; overflow-x:auto; scrollbar-width:none }
+.phone-tabs ul::-webkit-scrollbar { display:none }
+.phone-tabs a { position:relative; display:flex; align-items:center; justify-content:center; gap:6px; min-width:64px; min-height:48px; padding:0 12px; color:var(--muted); font-size:13px; white-space:nowrap }
+.phone-tabs a[aria-current] { color:var(--ink); font-weight:600 }
+.phone-tabs a[aria-current]::before { content:""; position:absolute; top:0; left:12px; right:12px; height:2px; background:var(--ink); border-radius:0 0 2px 2px }
+.phone-tabs::after { content:""; position:absolute; top:0; right:0; bottom:18px; width:40px; background:linear-gradient(to right,transparent,var(--rail)); pointer-events:none }
+/* Overview pieces: request rows, heading, agents, progress and goals. */
+.overview { width:100%; max-width:1120px; padding:56px 56px 80px }
+.section-title { display:flex; align-items:center; gap:12px; margin:0 0 12px; color:var(--muted); font-size:14px; font-weight:600; line-height:20px }
+.section-title::after { content:""; flex:1; height:1px; background:var(--line) }
+.part + .part { margin-top:40px }
+.item-list { display:grid; gap:2px; margin:0; padding:0; list-style:none }
+.item-link { display:grid; align-items:center; margin:0 -12px; padding:10px 12px; border-radius:var(--r-medium); transition:background var(--speed) var(--ease) }
+.item-link:hover,.item-link.preview-hover { background:var(--hover) }
+.goal-card .item-link:hover,.goal-card .item-link.preview-hover { background:var(--panel-hover) }
+.item-link:active { background:var(--active) }
+.item-link:focus-visible { outline-offset:-2px }
+.requests { margin-bottom:44px; padding-bottom:28px; border-bottom:1px solid var(--line) }
+.requests .section-title { color:var(--secondary) }
+.request-row { grid-template-columns:10px minmax(0,1fr) auto; column-gap:18px; align-items:start; padding-top:12px; padding-bottom:12px }
+.request-mark { width:10px; height:10px; margin-top:10px; border-radius:50%; background:var(--amber) }
+.request-question { color:var(--ink); font-size:21px; font-weight:500; line-height:1.38; letter-spacing:-.012em; text-wrap:pretty; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+.request-meta { display:block; margin-top:4px; color:var(--muted); font-size:14px }
+.request-action { align-self:center; color:var(--secondary); font-size:14px; font-weight:500; white-space:nowrap }
+.request-row:hover .request-action { color:var(--ink); text-decoration:underline; text-underline-offset:3px }
+.more-link { display:inline-flex; align-items:center; min-height:36px; margin-top:4px; color:var(--secondary); font-size:14px; font-weight:500; border-radius:var(--r-small) }
+.more-link:hover { color:var(--ink); text-decoration:underline; text-underline-offset:3px }
+.requests .more-link { margin-left:28px }
+.requests .other-title { margin-top:20px }
+.requests.only-others .other-title { margin-top:0; color:var(--muted) }
+.request-other .request-mark { margin-top:7px; background:transparent; box-shadow:inset 0 0 0 2px var(--amber) }
+.request-other .request-question { color:var(--secondary); font-size:17px }
+.request-other .request-action { color:var(--muted); font-weight:400 }
+.briefing { display:flex; align-items:flex-end; gap:20px }
+.headline { margin:0; min-width:0; font-size:44px; font-weight:600; line-height:1.1; letter-spacing:-.035em }
+.sentence { display:block; text-wrap:balance }
+.sentence + .sentence { margin-top:2px }
+.keep,.goal-phrase { white-space:nowrap }
+.headline a { text-decoration:underline; text-decoration-thickness:2px; text-underline-offset:7px; text-decoration-color:var(--line-strong) }
+.headline a:hover { text-decoration-color:var(--ink) }
+.soft { color:var(--muted) }
+.stopped { color:var(--coral-ink) }
+.briefing + .part { margin-top:48px }
+.croc { display:block; flex:none; width:76px; height:77px; margin-bottom:2px }
+.croc.new { width:120px; height:121px; margin-bottom:-4px }
+.croc.calm { transform:rotate(-8deg); transform-origin:50% 100% }
+.initial { position:relative; flex:none; display:grid; place-items:center; width:32px; height:32px; border-radius:var(--r-medium); background:var(--tile); color:var(--tile-ink); font-size:13px; font-weight:600; letter-spacing:0; --ring-gap:var(--panel) }
+.initial.live { box-shadow:0 0 0 2px var(--ring-gap),0 0 0 3.5px var(--blue) }
+.initial.wait { box-shadow:0 0 0 2px var(--ring-gap),0 0 0 3.5px var(--amber) }
+.initial.stop { box-shadow:0 0 0 2px var(--ring-gap),0 0 0 3.5px var(--coral) }
+.initial.live::after { content:""; position:absolute; inset:-3.5px; border:1.5px solid var(--blue); border-radius:13.5px; opacity:0; animation:presence 3.2s var(--ease) infinite; animation-delay:var(--phase,0s) }
+@keyframes presence { 0% { opacity:.5; transform:scale(1) } 75%,100% { opacity:0; transform:scale(1.32) } }
+.quiet .initial,.initial.quiet { color:var(--dim); background:transparent; box-shadow:inset 0 0 0 1px var(--line-strong) }
+.step-progress { display:inline-flex; align-items:center; gap:8px; color:var(--dim); font:500 12px/1 var(--mono); white-space:nowrap }
+.step-ticks { display:inline-flex; gap:3px }
+.step-tick { width:10px; height:4px; border-radius:2px; background:var(--track) }
+.step-tick.finished { background:var(--dim) }
+.step-tick.current { background:var(--blue) }
+.wait-row .step-tick.current { background:var(--amber) }
+.stop-row .step-tick.current { background:var(--coral) }
+.quiet .step-tick.current { background:var(--dim) }
+.agent-row .initial { grid-area:avatar; align-self:start; margin-top:2px }
+.agent-name { grid-area:name; color:var(--ink); font-size:15px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.agent-doing { grid-area:doing; color:var(--secondary); font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.agent-doing:empty { display:none }
+.agent-state { grid-area:state; justify-self:end; color:var(--muted); font-size:13px; font-weight:500; white-space:nowrap }
+.agent-row .step-progress { grid-area:steps; margin-top:5px }
+.quiet .agent-name { color:var(--muted); font-weight:500 }
+.quiet .agent-state,.quiet .agent-doing { color:var(--dim) }
+.progress { position:relative }
+.progress-button { display:block; width:calc(100% + 16px); margin:0 -8px; padding:8px; text-align:left; background:none; border:0; border-radius:var(--r-large); transition:background var(--speed) var(--ease) }
+.progress-button:hover { background:var(--panel-hover) }
+.rows .progress-button:hover { background:var(--hover) }
+.progress-button:focus-visible { outline-offset:0 }
+.progress-top { display:flex; align-items:center; gap:14px }
+.progress-line { position:relative; display:flex; flex:1; min-width:0; gap:3px; height:10px }
+.segment { flex:1; min-width:4px; border-radius:5px; background:transparent; box-shadow:inset 0 0 0 1.5px var(--outline); outline:2px solid transparent; outline-offset:2px }
+.segment.d { background:var(--done); box-shadow:inset 0 0 0 1.5px var(--done-edge) }
+.segment.u { background:repeating-linear-gradient(-45deg,var(--blue-a) 0 3px,var(--blue-b) 3px 6px); box-shadow:none }
+.segment.w { background:repeating-linear-gradient(-45deg,var(--amber-a) 0 3px,var(--amber-b) 3px 6px); box-shadow:none }
+.segment.x { background:var(--coral); box-shadow:none; mask:linear-gradient(90deg,#000 calc(50% - 1.5px),transparent 0 calc(50% + 1.5px),#000 0) }
+.segment.highlight { outline-color:var(--ink) }
+.progress-line.continuous { gap:0; border-radius:5px; overflow:hidden; box-shadow:inset 0 0 0 1.5px var(--outline) }
+.continuous .segment { border-radius:0 }
+.continuous .segment.t { box-shadow:none }
+.continuous .segment.highlight { outline:0; filter:brightness(1.25) }
+.ticket-count { flex:none; display:inline-flex; align-items:center; gap:6px; color:var(--muted); font:500 12px/1 var(--mono); white-space:nowrap }
+.chevron { width:10px; height:10px; transition:transform var(--speed) var(--ease) }
+.progress-button[aria-expanded="true"] .chevron { transform:rotate(180deg) }
+.progress-button:hover .ticket-count { color:var(--ink) }
+.progress-words { display:flex; flex-wrap:wrap; align-items:center; gap:4px 16px; margin-top:10px; color:var(--muted); font-size:13px; line-height:18px }
+.progress-word { display:inline-flex; align-items:center; gap:7px; white-space:nowrap }
+.progress-word b { color:var(--ink); font:600 13px/1 var(--mono) }
+.progress-word .segment { flex:none; width:16px; height:8px; border-radius:4px }
+.ticket-list { margin:4px 0 6px; padding:6px 0 0; border-top:1px dashed var(--line-strong) }
+.ticket-list[hidden] { display:none }
+.ticket-list ul { display:grid; gap:0; margin:0; padding:0; list-style:none }
+.ticket-row { display:grid; grid-template-columns:16px 52px minmax(0,1fr) auto 12px; grid-template-areas:"sample key title meta arrow"; align-items:center; column-gap:12px; min-height:36px; margin:0 -8px; padding:4px 8px; border-radius:var(--r-small); color:var(--secondary) }
+.ticket-row:hover,.ticket-row.highlight { background:var(--panel-hover); color:var(--ink) }
+.rows .ticket-row:hover,.rows .ticket-row.highlight { background:var(--hover) }
+.ticket-row .segment { grid-area:sample; width:16px; height:8px; border-radius:4px }
+.ticket-key { grid-area:key; color:var(--dim); font:500 12px/1 var(--mono) }
+.ticket-title { grid-area:title; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.ticket-meta { grid-area:meta; color:var(--muted); font-size:13px; white-space:nowrap }
+.ticket-arrow { grid-area:arrow; color:var(--dim); font-size:13px }
+.ticket-row:hover .ticket-arrow { color:var(--ink) }
+.ticket-tip { position:absolute; z-index:3; left:0; top:0; width:max-content; max-width:280px; padding:8px 12px 9px; background:var(--tooltip); color:var(--tooltip-ink); border-radius:var(--r-medium); font-size:13px; line-height:1.4; opacity:0; pointer-events:none; box-shadow:0 8px 24px rgba(0,0,0,.25) }
+.ticket-tip.visible { opacity:1 }
+.ticket-tip strong { display:block; font-weight:600 }
+.ticket-tip code { margin-right:6px; opacity:.7; font:500 12px/1 var(--mono) }
+.ticket-tip small { display:block; color:var(--tooltip-muted); font-size:13px }
+.ticket-tip::after { content:""; position:absolute; left:var(--pointer,20px); bottom:-5px; width:10px; height:10px; transform:translateX(-50%) rotate(45deg); border-radius:2px; background:var(--tooltip) }
+.goal-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; align-items:start }
+.goal-card { position:relative; padding:22px 24px 12px; background:var(--panel); border:1px solid var(--panel-edge); border-radius:var(--r-card); box-shadow:var(--panel-shadow) }
+.goal-title { margin:0 0 10px; font-size:20px; font-weight:600; letter-spacing:-.02em; line-height:1.25 }
+.goal-title a { display:inline-flex; align-items:baseline; gap:8px; max-width:100%; border-radius:var(--r-small) }
+.goal-title a span { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden }
+.goal-title a::after { content:"→"; flex:none; color:var(--dim); font-size:16px; font-weight:500; opacity:0; transform:translateX(-4px); transition:opacity var(--speed) var(--ease),transform var(--speed) var(--ease) }
+.goal-title a:hover::after,.goal-title a:focus-visible::after { opacity:1; transform:none }
+.goal-title a:hover span { text-decoration:underline; text-decoration-thickness:1.5px; text-underline-offset:4px; text-decoration-color:var(--line-strong) }
+.goal-crew { margin-top:8px; padding-top:6px; border-top:1px solid var(--line) }
+.goal-crew .agent-row { grid-template-columns:32px minmax(0,1fr) auto; grid-template-areas:"avatar name state" "avatar doing doing" "avatar steps steps"; column-gap:14px; row-gap:2px; min-height:60px }
+.goal-empty { margin:8px 0 0; padding:14px 0 10px; border-top:1px solid var(--line); color:var(--dim); font-size:14px }
+.unassigned { padding:22px 0 0 }
+.unassigned .section-title { margin-bottom:8px }
+.unassigned .item-list { grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); column-gap:24px }
+.unassigned .agent-row { grid-template-columns:32px minmax(0,1fr); grid-template-areas:"avatar name" "avatar state"; column-gap:14px; row-gap:0; min-height:56px }
+.unassigned .agent-state { justify-self:start }
+.unassigned.wide { grid-column:1/-1 }
+.unassigned.alone .section-title { display:none }
+.unassigned .initial,.rows .initial { --ring-gap:var(--bg) }
+.more-goals { margin-top:12px }
+.rows .agent-row { grid-template-columns:32px 168px minmax(0,1fr) 176px 132px; grid-template-areas:"avatar name doing steps state"; column-gap:16px; min-height:56px }
+.rows .agent-row .initial { align-self:center; margin-top:0 }
+.rows .agent-row .step-progress { margin-top:0 }
+.rows .agent-state { justify-self:start }
+.goal-row { display:grid; grid-template-columns:200px minmax(0,1fr); column-gap:24px; align-items:start; padding:6px 0 }
+.goal-row + .goal-row { border-top:1px solid var(--line-soft) }
+.goal-row h3 { margin:0; min-width:0; display:grid }
+.goal-row-name { align-self:start; margin-top:6px; font-size:17px; font-weight:600; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-radius:var(--r-small) }
+.goal-row-name:hover { text-decoration:underline; text-decoration-color:var(--line-strong); text-underline-offset:4px }
+.skeleton { display:block; background:var(--skeleton); border-radius:var(--r-small) }
+.skeleton-card { display:grid; gap:14px; align-content:start; height:208px; padding:24px; background:var(--panel); border:1px solid var(--panel-edge); border-radius:var(--r-card) }
+.skeleton-agent { display:flex; gap:14px; margin-top:10px }
+.skeleton-agent > .skeleton { width:32px; height:32px; border-radius:var(--r-medium); flex:none }
+.skeleton-agent > span:last-child { display:grid; gap:8px; flex:1 }
+.skeleton-row { display:grid; grid-template-columns:32px 168px 1fr; align-items:center; gap:16px; min-height:56px }
+.problem { display:flex; align-items:baseline; gap:12px; margin:20px 0 0; max-width:56ch; color:var(--secondary); font-size:17px }
+.problem .status-dot { transform:translateY(-2px) }
+.retry { display:inline-flex; align-items:center; justify-content:center; min-height:40px; margin-top:28px; padding:0 18px; background:var(--raised); border:1px solid var(--line-strong); border-radius:var(--r-medium); font-size:14px; font-weight:500 }
+.retry:hover { background:var(--active) }
+.stale-message { margin:0 0 28px }
+.stale .initial::after { animation:none; opacity:0 }
+.review-pin { position:absolute; z-index:4; display:grid; place-items:center; width:22px; height:22px; background:var(--ink); color:var(--bg); border-radius:50%; box-shadow:0 0 0 3px var(--bg); font:600 12px/1 var(--mono); pointer-events:none }
+@container (max-width:600px) {
+  .overview { padding:28px 20px 40px }
+  .headline { font-size:30px; line-height:1.14; letter-spacing:-.03em }
+  .sentence { text-wrap:pretty }
+  .sentence + .sentence { margin-top:4px }
+  .goal-phrase { white-space:normal }
+  .headline a { padding:7px 0; text-underline-offset:5px }
+  .briefing { flex-direction:column; gap:14px; align-items:flex-start }
+  .croc { width:60px; height:61px }
+  .croc.new { width:88px; height:89px }
+  .briefing + .part,.part + .part { margin-top:32px }
+  .requests { margin-bottom:28px; padding-bottom:20px }
+  .request-row { grid-template-columns:10px minmax(0,1fr); column-gap:14px; min-height:44px }
+  .request-mark { margin-top:8px; grid-row:1/span 2 }
+  .request-question { font-size:17px; line-height:1.45 }
+  .request-action { grid-column:2; margin-top:8px }
+  .requests .more-link { margin-left:24px }
+  .more-link { min-height:44px }
+  .request-other .request-question { font-size:15px }
+  .goal-grid { grid-template-columns:minmax(0,1fr); gap:14px }
+  .goal-card { padding:14px 16px 6px; border-radius:var(--r-frame) }
+  .goal-title { margin-bottom:4px; font-size:19px }
+  .goal-title a { display:flex; align-items:center; min-height:44px }
+  .goal-title a::after { opacity:1; transform:none; margin-left:auto }
+  .progress-button { min-height:64px; padding:10px 8px }
+  .ticket-list { margin-bottom:4px }
+  .ticket-row { grid-template-columns:16px minmax(0,1fr) 12px; grid-template-areas:"sample title arrow" "sample meta arrow"; row-gap:2px; min-height:52px; padding:7px 8px }
+  .ticket-key { display:none }
+  .ticket-row .segment { align-self:start; margin-top:7px }
+  .goal-crew .agent-row { column-gap:12px; margin:0 -8px; padding:10px 8px }
+  .agent-doing { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical }
+  .unassigned { padding-top:14px }
+  .unassigned .item-list { grid-template-columns:minmax(0,1fr) }
+  .unassigned .agent-row { min-height:52px }
+  .rows .agent-row { grid-template-columns:32px minmax(0,1fr) auto; grid-template-areas:"avatar name state" "avatar doing doing" "avatar steps steps"; column-gap:12px; row-gap:2px; min-height:60px }
+  .rows .agent-row .initial { align-self:start; margin-top:2px }
+  .rows .agent-row .step-progress { margin-top:5px }
+  .rows .agent-state { justify-self:end }
+  .goal-row { grid-template-columns:minmax(0,1fr); padding:4px 0 }
+  .goal-row-name { display:flex; align-items:center; min-height:44px; margin-top:0; font-size:16px }
+  .skeleton-row { grid-template-columns:32px 1fr }
+  .skeleton-row > :last-child { display:none }
+  .skeleton-card { height:176px; padding:18px 16px }
+  .retry { min-height:44px }
+  .stale-message { margin-bottom:20px; font-size:15px }
+}
+body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after { animation:none!important; transition-duration:0ms!important }
+@media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition-duration:0ms!important } }
+body.whole-page .device { height:auto }
+body.whole-page .screen { overflow:visible }
+body.single-frame .gallery-intro,body.single-frame .jump-menu,body.single-frame .contents,body.single-frame .situation-group > h2,body.single-frame .situation-group > p,body.single-frame .situation-label,body.single-frame .caption,body.single-frame .facts,body.single-frame figcaption,body.single-frame .notes,body.single-frame .gallery-end,body.single-frame .destination { display:none }
+body.single-frame .situation-group { padding:0 }
+body.single-frame .situation { margin:0; padding:0; border:0 }
+body.single-frame .frame-stage { overflow:visible; padding:0 }
+body.single-frame .frame-pair { zoom:1; gap:0 }
+body.single-frame .device { border:0; border-radius:0; box-shadow:none }
+body.desktop-only .phone-figure,body.phone-only .desktop-figure { display:none }
+@media (max-width:700px) {
+  .gallery-intro,.jump-menu,.contents,.situation-group,.notes,.gallery-end { padding-left:20px; padding-right:20px }
+  .switches button,.jump-menu > a { min-height:44px }
+  .heading-table td:nth-child(2) { width:auto }
+}
+</style>
+</head>
+<body>
+<header class="gallery-intro">
+  <div class="eyebrow">AK-178 · Overview wireframe v5 · sample project</div>
+  <h1>Overview in every situation a project goes through</h1>
+  <p>The approved v4 design, unchanged, drawn in 26 situations on one page. Each shows the desktop (1440) and the phone (390) side by side, a one-line caption, the exact heading code would build, what stands out and what stays quiet, what is hidden, and where every link goes. The page tells one story: Northstar Shop, its owner Raghav, a member James, and the same agents and goals throughout. Links in the frames say where they'd go.</p>
+  <div class="controls" id="controls"></div>
+</header>
+<nav class="jump-menu" id="jump-menu" aria-label="Jump to"></nav>
+<div class="contents" id="contents"></div>
+<main id="gallery"></main>
+<section class="notes" id="headings" aria-labelledby="headings-title">
+  <h2 id="headings-title">Every heading sentence</h2>
+  <p>Built by the same code that draws the frames above, so this table can't drift from them. One sentence per line on the page. Coral is "has stopped"; grey is a soft second line; underlined words are the heading's one link.</p>
+  <table class="heading-table"><thead><tr><th>#</th><th>Situation</th><th>Heading, as code builds it</th></tr></thead><tbody id="heading-rows"></tbody></table>
+  <h3>How code picks the sentence</h3>
+  <ul>
+    <li><b>Setting up</b> comes first: nothing connected, then only Captain, then agents but no goal. Each is two sentences: what is true, then the one next step as a link.</li>
+    <li><b>Paused</b> replaces everything else: "You paused everyone." (or "Raghav paused everyone." for a member).</li>
+    <li><b>Working</b>: Captain counts while it reviews. One agent is named ("Birch is working on Checkout."); more are counted ("3 agents are working on…"). One goal is named, two if their names fit in 32 characters together, otherwise counted ("on 2 goals").</li>
+    <li><b>Nobody working</b>: "No agents are working right now.", after "All 3 goals are done." when every goal is done.</li>
+    <li><b>Then, one line each, in this order</b>: who has stopped (coral), who is offline with work waiting, Captain offline, goals finished today, and "Tell Captain what you want to make." for someone who has never written to Captain.</li>
+    <li><b>Never in the heading</b>: what waits on you. Needs you, right above, already says it.</li>
+  </ul>
+</section>
+<section class="notes" id="rules" aria-labelledby="rules-title">
+  <h2 id="rules-title">Rules this page follows</h2>
+  <p>The same rules in every situation. If a frame above breaks one, that's a bug.</p>
+  <h3>What stands out</h3>
+  <ul>
+    <li><b>One thing first.</b> If something waits on you, Needs you is first: top of the page, the only filled amber. Otherwise the heading is first: 44 px, the largest thing on the page.</li>
+    <li><b>Then the lines</b>, then the rings. Everything else is grey text.</li>
+    <li><b>Empty parts are not drawn.</b> No Needs you when nothing waits on you, no cards when nothing is being built, no "Not working right now" when everyone has work, no Captain count when it's zero. Nothing leaves a gap or an empty box.</li>
+    <li><b>No problem blocks.</b> A failure shows in three places that already exist: one line in the heading, the agent's row (word and reason) and its ticket's segment.</li>
+    <li><b>Nothing is answered here</b> (DEC-24). Every Needs you row is a link to the exact message in Captain. Someone who can't answer sees it quietly, with a link to the ticket in Work.</li>
+  </ul>
+  <h3>Colours and what they mean</h3>
+  <p style="margin:0 0 6px;color:var(--muted);font-size:14px">Colour only means status, and every colour has a word next to it. Avatars are neutral.</p>
+  <div class="key-example"><span class="segment d"></span><span><b>Green</b>, solid: done.</span></div>
+  <div class="key-example"><span class="segment u"></span><span><b>Blue</b>, striped: in progress (an agent is building it or Captain is reviewing it). A blue ring: that agent is working.</span></div>
+  <div class="key-example"><span class="segment w"></span><span><b>Amber</b>, striped: waiting on a person (you, or the person named). A filled amber mark: it needs you. A hollow one: it needs someone else.</span></div>
+  <div class="key-example"><span class="segment x"></span><span><b>Coral</b>, broken: stopped (an error, failing tests it gave up on, or a daily limit).</span></div>
+  <div class="key-example"><span class="segment t"></span><span><b>Outline</b>: to go. Nobody has started it.</span></div>
+  <div class="key-example"><span class="initial quiet" aria-hidden="true">W</span><span><b>Grey</b>, no ring: idle, offline or paused. The word says which.</span></div>
+  <h3>Motion</h3>
+  <ul>
+    <li><b>Only working agents move</b>: their ring breathes slowly (3.2 s). Nothing else animates.</li>
+    <li><b>When nothing on screen is live, nothing breathes</b>: paused, and after a failed refresh (the view is old).</li>
+    <li><b>Nothing jumps</b>: loading shows the cards' real shapes, which don't shimmer. A new question adds a row at the top; that's the news.</li>
+    <li><b>Reduce motion</b> (system setting, or the switch at the top) stops the breathing. The rings stay.</li>
+  </ul>
+  <h3>Contrast (worked out from the colours in use)</h3>
+  <table class="contrast-table"><thead><tr><th>Against its background</th><th>Dark</th><th>Light</th></tr></thead><tbody id="contrast-rows"></tbody></table>
+  <p style="margin-top:8px;color:var(--muted);font-size:13px">Text needs 4.5:1, lines and rings 3:1. *In light, the done segment passes through its ink outline. Same as v4.</p>
+  <h3>Where this goes against the handoff or the spec</h3>
+  <ul>
+    <li>Same as v4: the done green is the logo's #5DC46A; light theme is a proposal; the focus ring uses <code>--text-muted</code>; progress lines replace the spec's "4 of 7 done".</li>
+    <li><b>Needs you shows 3 rows</b>, as the spec says, then "and N more in Captain". v4 showed 2.</li>
+    <li><b>A finished goal stays for the rest of the day.</b> The spec drops it at the next refresh, so whoever looks later would never see it finish.</li>
+    <li><b>One agent is named</b> in the heading ("Birch is working on Checkout."), as the spec says. v4 never drew one agent.</li>
+  </ul>
+</section>
+<footer class="gallery-end">AK-178 · built from data in this file; every frame runs the same Overview code. Made-up data.</footer>
+<div class="destination" id="destination" role="status" aria-live="polite"></div>
+<script>
+'use strict';
+const story = JSON.parse(document.getElementById('story').textContent);
+const situations = story.situations;
+const tabs = ['Captain','Overview','Work','Team','Room','Decisions','Results','Settings'];
+const stateOrder = ['d','u','w','x','t'];
+const stateNames = {working:'Working',reviewing:'Reviewing',stopped:'Stopped',limit:'Limit reached',idle:'Idle',offline:'Offline',paused:'Paused'};
+const ringNames = {working:'live',reviewing:'live',waiting:'wait',stopped:'stop',limit:'stop'};
+const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[character]));
+const joinNames = values => values.length < 2 ? values.join('') : `${values.slice(0,-1).join(', ')} and ${values.at(-1)}`;
+const viewing = scene => scene.viewer || story.owner;
+const person = (scene, name) => name === viewing(scene).name ? 'you' : name;
+const goalName = (scene, name) => scene.names === 'long' ? story.longNames[name] || name : name;
+const quietAgent = agent => ['idle','offline','paused'].includes(agent.state);
+const agentOrder = (left,right) => left.name === 'Captain' ? -1 : right.name === 'Captain' ? 1 : left.name.localeCompare(right.name);
+const orderedGoals = scene => [...(scene.goals || [])].sort((left,right) => Number(!!left.finished)-Number(!!right.finished));
+const orderedTickets = goal => [...goal.tasks].sort((left,right) => stateOrder.indexOf(left.k)-stateOrder.indexOf(right.k));
+const assignedTicket = (scene,agent) => scene.goals?.find(goal => goal.name === agent.goal)?.tasks.find(ticket => ticket.title === agent.task);
+const personalRequests = scene => (scene.needs || []).filter(request => request.on === viewing(scene).name);
+const otherRequests = scene => (scene.needs || []).filter(request => request.on !== viewing(scene).name && request.ticket);
+const linkTo = (label,destination,classes='',attributes='') => `<a href="#" class="${classes}" data-destination="${escapeHTML(destination)}" ${attributes}>${label}</a>`;
+const sectionTitle = text => `<h2 class="section-title">${escapeHTML(text)}</h2>`;
+const noHyphenBreak = text => escapeHTML(text).replace(/(\S+-\S+)/g,'<span class="keep">$1</span>');
+
+// Heading: returns sentence records so the page, captions and table share one source.
+function headingSentences(scene) {
+  const sentence = (text,tone='',destination=null,label=null) => ({text,tone,destination,label});
+  const tellCaptain = () => sentence('Tell Captain what you want to make.','soft','Captain, ready for your first message','Tell Captain');
+  if (scene.loading) return [sentence('Loading your project…')];
+  if (scene.failed) return [sentence('Couldn’t load this project.')];
+  if (scene.setup === 'none') return [sentence('Nothing is connected yet.','soft'), viewing(scene).role === 'owner'
+    ? sentence('Connect your computer to bring in Captain.','','Team, on “Connect a computer”','Connect your computer')
+    : sentence('Raghav is setting it up.')];
+  if (scene.setup === 'captain') return [sentence('Captain is here, but nobody builds yet.','soft'),sentence('Add an agent to start building.','','Team, on “Add an agent”','Add an agent')];
+  if (scene.setup === 'agents') return [sentence('Nothing has started yet.','soft'), {...tellCaptain(),tone:''}];
+  if (scene.paused) return person(scene,scene.paused) === 'you'
+    ? [sentence('You paused everyone.'),sentence('Resume everyone when you’re ready.','','Settings, on “Pause everyone”','Resume everyone')]
+    : [sentence(`${scene.paused} paused everyone.`),sentence(`Nothing new starts until ${scene.paused} resumes.`,'soft')];
+  const output = [];
+  const working = scene.agents.filter(agent => agent.goal && ['working','reviewing'].includes(agent.state));
+  const goals = scene.goals.filter(goal => working.some(agent => agent.goal === goal.name)).map(goal => goalName(scene,goal.name));
+  if (!working.length) {
+    if (scene.allDone) output.push(sentence(`All ${scene.allDone} goals are done.`));
+    output.push(sentence('No agents are working right now.',scene.allDone ? 'soft' : ''));
+  } else {
+    const named = goals.length === 1 || (goals.length === 2 && goals.join('').length <= 32);
+    const subject = working.length === 1 ? `${working[0].name} is ${working[0].state === 'reviewing' ? 'reviewing' : 'working on'}` : `${working.length} agents are working on`;
+    output.push({...sentence(`${subject} ${named ? joinNames(goals) : `${goals.length} goals`}.`),subject,goals,named});
+  }
+  const stopped = scene.agents.filter(agent => agent.goal && ['stopped','limit'].includes(agent.state)).map(agent => agent.name);
+  if (stopped.length) output.push(sentence(`${joinNames(stopped)} ${stopped.length === 1 ? 'has' : 'have'} stopped.`,'stopped'));
+  scene.agents.filter(agent => agent.state === 'offline' && agent.waiting).forEach(agent => output.push(sentence(`${agent.name} is offline with ${agent.waiting} ticket${agent.waiting === 1 ? '' : 's'} waiting.`,'soft')));
+  if (scene.agents.some(agent => agent.name === 'Captain' && agent.state === 'offline')) output.push(sentence(`Captain is offline, so reviews wait until ${viewing(scene).name === 'Raghav' ? 'your' : 'Raghav’s'} machine is back.`,'soft'));
+  const finished = scene.goals.filter(goal => goal.finished).map(goal => goalName(scene,goal.name));
+  if (finished.length) output.push(sentence(`${joinNames(finished)} ${finished.length === 1 ? 'is' : 'are'} done.`));
+  if (viewing(scene).fresh) output.push(tellCaptain());
+  return output;
+}
+function sentenceMarkup(line,table=false) {
+  let content = noHyphenBreak(line.text);
+  if (line.destination) content = linkTo(escapeHTML(line.label),line.destination) + escapeHTML(line.text.slice(line.label.length));
+  if (line.subject) {
+    const goalText = line.named ? line.goals.map(name => !table && line.goals.length === 1 && name.length <= 36 ? `<span class="goal-phrase">${noHyphenBreak(name)}</span>` : noHyphenBreak(name)).join(' and ') : `${line.goals.length}&nbsp;goals`;
+    content = `${escapeHTML(line.subject)}&nbsp;${goalText}.`;
+  }
+  return line.tone ? `<span class="${line.tone}">${content}</span>` : content;
+}
+function Heading(scene) {
+  const mascot = scene.croc ? `<img src="autokolab-croc.svg" class="croc ${scene.croc}" alt="" aria-hidden="true">` : '';
+  return `<div class="briefing">${mascot}<p class="headline">${headingSentences(scene).map(line => `<span class="sentence">${sentenceMarkup(line)}</span>`).join(' ')}</p></div>`;
+}
+
+// Needs you: one link per request, with owner/member wording resolved here.
+function requestDetails(request) {
+  switch (request.type) {
+    case 'plan': return {meta:`Captain’s plan · ${request.size} · ${request.age}`,action:'Review the plan in Captain',target:`the plan for ${request.goal}`};
+    case 'risky': return {meta:`Captain is asking · ${request.age} · ${request.why}`,action:'Review in Captain',target:`the merge request for “${request.ticket}”`};
+    case 'captain': return {meta:`Captain is asking · ${request.age}`,action:'Answer in Captain',target:'Captain’s question'};
+    default: return {meta:`${request.who} is waiting · ${request.age}${request.cost ? ` · ${request.cost}` : ''}`,action:'Answer in Captain',target:`${request.who}’s question`};
+  }
+}
+function NeedsYouRow(request,other=false) {
+  const details = requestDetails(request);
+  const key = story.keys[request.ticket];
+  const meta = other ? `${request.only || `Only ${request.on} can answer`} · ${request.who} is waiting · ${request.age}` : details.meta;
+  const destination = other ? `Work, opened on ${key} ${request.ticket}, read only` : `Captain, opened on ${details.target}`;
+  const content = `<span class="request-mark" aria-hidden="true"></span><span><span class="request-question" title="${escapeHTML(request.q)}">${escapeHTML(request.q)}</span><span class="request-meta">${escapeHTML(meta)}</span></span><span class="request-action">${escapeHTML(other ? `See it on ${key}` : details.action)} →</span>`;
+  return `<li>${linkTo(content,destination,`item-link request-row${other ? ' request-other' : ''}`)}</li>`;
+}
+function NeedsYou(scene) {
+  const mine = personalRequests(scene), others = otherRequests(scene);
+  if (!mine.length && !others.length) return '';
+  let content = '';
+  if (mine.length) {
+    content += sectionTitle('Needs you') + `<ul class="item-list">${mine.slice(0,3).map(request => NeedsYouRow(request)).join('')}</ul>`;
+    if (mine.length > 3) content += linkTo(`and ${mine.length-3} more in Captain →`,'Captain, at the oldest open question','more-link');
+    content += `<p class="visually-hidden" role="status">${mine.length} ${mine.length === 1 ? 'thing needs' : 'things need'} you</p>`;
+  }
+  if (others.length) {
+    const people = [...new Set(others.map(request => request.on))];
+    content += `<h2 class="section-title other-title">${people.length === 1 ? `Waiting on ${escapeHTML(people[0])}` : 'Waiting on others'}</h2><ul class="item-list">${others.slice(0,2).map(request => NeedsYouRow(request,true)).join('')}</ul>`;
+  }
+  return `<section class="requests${mine.length ? '' : ' only-others'}" aria-label="${mine.length ? 'Needs you' : 'Waiting on someone else'}">${content}</section>`;
+}
+
+// Agent row and step ticks: no viewer or animation state is stored globally.
+function StepTicks(step) {
+  if (!step) return '';
+  const [current,total] = step;
+  return `<span class="step-progress" aria-hidden="true"><span class="step-ticks">${Array.from({length:total},(_,index) => `<span class="step-tick${index+1 < current ? ' finished' : index+1 === current ? ' current' : ''}"></span>`).join('')}</span>step ${current} of ${total}</span>`;
+}
+function agentState(scene,agent) {
+  if (agent.state === 'waiting') return `Waiting on ${person(scene,agent.on)}`;
+  if (agent.state === 'offline' && agent.seen) return `Offline · ${agent.seen}`;
+  return stateNames[agent.state];
+}
+function AgentRow(scene,agent,context) {
+  const ring = ringNames[agent.state] || '';
+  const task = assignedTicket(scene,agent);
+  const destination = task ? `Work, opened on ${task.key} ${agent.task}` : `Team, ${agent.name}`;
+  const accessible = [agent.name,agentState(scene,agent),agent.doing,agent.step && `step ${agent.step[0]} of ${agent.step[1]}`].filter(Boolean).join(', ');
+  const phase = ring === 'live' ? ` style="--phase:${(-.9*context.liveIndex++).toFixed(1)}s"` : '';
+  const attributes = `aria-label="${escapeHTML(accessible)}" data-agent="${escapeHTML(agent.name)}"${task ? ` data-ticket="${task.key}"` : ''}`;
+  const content = `<span class="initial ${ring}"${phase} aria-hidden="true">${escapeHTML(agent.name[0])}</span><span class="agent-name" title="${escapeHTML(agent.name)}">${escapeHTML(agent.name)}</span><span class="agent-doing" title="${escapeHTML(agent.doing)}">${escapeHTML(agent.doing)}</span>${StepTicks(agent.step)}<span class="agent-state">${escapeHTML(agentState(scene,agent))}</span>`;
+  return `<li>${linkTo(content,destination,`item-link agent-row${quietAgent(agent) ? ' quiet' : ''}${ring ? ` ${ring}-row` : ''}`,attributes)}</li>`;
+}
+
+// Progress and review list: same ticket order and same state words everywhere.
+function ticketState(scene,ticket,expanded=false) {
+  const step = ticket.step ? `step ${ticket.step[0]} of ${ticket.step[1]}` : '';
+  switch (ticket.st) {
+    case 'done': return 'Done';
+    case 'todo': return expanded ? `To go · ${ticket.why || 'nobody has started it'}` : ticket.short || 'To go';
+    case 'wait': return `Waiting on ${person(scene,ticket.on)}${expanded ? ` · ${ticket.why}` : ''}`;
+    case 'stop': return `Stopped · ${ticket.who}${expanded ? `, ${ticket.why}` : ''}`;
+    case 'review': return expanded ? `In progress · ${ticket.why || `${ticket.who} is reviewing it`}` : ticket.short || `${ticket.who} reviewing`;
+    case 'build':
+      if (ticket.paused) return expanded ? `In progress · paused, ${ticket.who} was on${step ? ` ${step}` : ''}` : `${ticket.who} · paused`;
+      return expanded ? `In progress · ${ticket.why || `${ticket.who} is building it${step ? `, ${step}` : ''}`}` : ticket.short || `${ticket.who}${step ? ` · ${step}` : ''}`;
+  }
+}
+function progressCounts(scene,goal) {
+  const counts = new Map();
+  orderedTickets(goal).forEach(ticket => {
+    const word = ticket.k === 'w' ? `waiting on ${person(scene,ticket.on)}` : ({d:'done',u:'in progress',x:'stopped',t:'to go'})[ticket.k];
+    if (!counts.has(word)) counts.set(word,{kind:ticket.k,word,count:0});
+    counts.get(word).count++;
+  });
+  return [...counts.values()];
+}
+function ProgressLine(goal) {
+  const continuous = goal.tasks.length > 16;
+  return `<span class="progress-line${continuous ? ' continuous' : ''}" aria-hidden="true">${orderedTickets(goal).map(ticket => `<span class="segment ${ticket.k}" data-ticket="${ticket.key}"${continuous ? ` style="flex:none;width:${(100/goal.tasks.length).toFixed(3)}%"` : ''}></span>`).join('')}</span>`;
+}
+function ReviewList(scene,goal,id,open) {
+  return `<div class="ticket-list" id="${id}"${open ? '' : ' hidden'}><ul>${orderedTickets(goal).map(ticket => {
+    const content = `<span class="segment ${ticket.k}" aria-hidden="true"></span><span class="ticket-key">${ticket.key}</span><span class="ticket-title">${escapeHTML(ticket.title)}</span><span class="ticket-meta">${escapeHTML(ticketState(scene,ticket))}</span><span class="ticket-arrow" aria-hidden="true">→</span><span class="visually-hidden">, ${escapeHTML(ticketState(scene,ticket,true))}</span>`;
+    return `<li>${linkTo(content,`Work, opened on ${ticket.key} ${ticket.title}`,'ticket-row',`data-ticket="${ticket.key}"`)}</li>`;
+  }).join('')}</ul></div>`;
+}
+function Progress(scene,goal,context) {
+  const id = `${context.prefix}-tickets-${context.progressIndex++}`;
+  const open = !!((context.review || scene.open) && scene.goals[0] === goal);
+  const counts = progressCounts(scene,goal);
+  const label = `${goalName(scene,goal.name)}: ${counts.map(entry => `${entry.count} ${entry.word}`).join(', ')}. ${open ? 'Hide' : 'Show'} its ${goal.tasks.length} tickets.`;
+  const words = counts.map(entry => `<span class="progress-word"><span class="segment ${entry.kind}"></span><span><b>${entry.count}</b> ${escapeHTML(entry.word)}</span></span>`).join('');
+  const arrow = '<svg class="chevron" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  return `<div class="progress"><button type="button" class="progress-button" aria-expanded="${open}" aria-controls="${id}" aria-label="${escapeHTML(label)}"><span class="progress-top">${ProgressLine(goal)}<span class="ticket-count">${goal.tasks.length} tickets ${arrow}</span></span><span class="progress-words" aria-hidden="true">${words}</span></button>${ReviewList(scene,goal,id,open)}<div class="ticket-tip" aria-hidden="true"></div></div>`;
+}
+function GoalCard(scene,goal,context) {
+  const crew = scene.agents.filter(agent => agent.goal === goal.name).sort(agentOrder);
+  const name = goalName(scene,goal.name);
+  const heading = linkTo(`<span>${escapeHTML(name)}</span>`,`Work, grouped by ${name}`,'',`title="${escapeHTML(name)}"`);
+  const agents = crew.length ? `<ul class="item-list goal-crew">${crew.map(agent => AgentRow(scene,agent,context)).join('')}</ul>` : `<p class="goal-empty">${goal.finished ? `Finished today at ${goal.finished}.` : 'Nobody on this right now.'}</p>`;
+  return `<section class="goal-card" aria-label="${escapeHTML(name)}"><h3 class="goal-title">${heading}</h3>${Progress(scene,goal,context)}${agents}</section>`;
+}
+function UnassignedAgents(scene,context) {
+  const free = scene.agents.filter(agent => !agent.goal).sort(agentOrder);
+  if (!free.length) return '';
+  const style = !scene.goals.length ? 'alone' : scene.goals.length % 2 === 0 ? 'wide' : '';
+  return `<section class="unassigned ${style}">${sectionTitle('Not working right now')}<ul class="item-list">${free.map(agent => AgentRow(scene,agent,context)).join('')}</ul></section>`;
+}
+function GoalCards(scene,context) {
+  const cards = orderedGoals(scene).map(goal => GoalCard(scene,goal,context)).join('');
+  const free = UnassignedAgents(scene,context);
+  if (!cards) return free ? `<div class="part">${free}</div>` : '';
+  return `<div class="part" aria-label="Being built"><h2 class="visually-hidden">Being built</h2><div class="goal-grid">${cards}${free}</div>${scene.moreGoals ? linkTo(`${escapeHTML(scene.moreGoals)} →`,'Work, all goals','more-link more-goals') : ''}</div>`;
+}
+function Rows(scene,context) {
+  const agents = scene.agents.length ? `<section class="part">${sectionTitle('Agents')}<ul class="item-list">${[...scene.agents].sort(agentOrder).map(agent => AgentRow(scene,agent,context)).join('')}</ul></section>` : '';
+  const goals = orderedGoals(scene).map(goal => `<li class="goal-row"><h3>${linkTo(escapeHTML(goalName(scene,goal.name)),`Work, grouped by ${goalName(scene,goal.name)}`,'goal-row-name',`title="${escapeHTML(goalName(scene,goal.name))}"`)}</h3>${Progress(scene,goal,context)}</li>`).join('');
+  return agents + (goals ? `<section class="part">${sectionTitle('Being built')}<ul class="item-list">${goals}</ul>${scene.moreGoals ? linkTo(`${escapeHTML(scene.moreGoals)} →`,'Work, all goals','more-link') : ''}</section>` : '');
+}
+function Loading(layout) {
+  const shape = (height,width='100%',extra='') => `<span class="skeleton" style="height:${height}px;width:${width};${extra}"></span>`;
+  const card = `<span class="skeleton-card">${shape(16,'38%')}${shape(10,'100%','border-radius:5px')}${shape(10,'52%')}<span class="skeleton-agent">${shape(32,'32px')}<span>${shape(12,'40%')}${shape(12,'70%')}</span></span></span>`;
+  const rows = [.5,.42,.62,.36].map(width => `<div class="skeleton-row">${shape(32,'32px','border-radius:10px')}${shape(12,`${Math.round(width*200)}px`)}${shape(12,`${Math.round(width*100)}%`)}</div>`).join('');
+  return `<div class="overview" aria-busy="true"><h1 class="visually-hidden">Overview</h1><div class="briefing"><p class="headline soft" role="status"><span class="sentence">Loading your project…</span></p></div><div class="part" aria-hidden="true">${layout === 'cards' ? `<div class="goal-grid">${card}${card}</div>` : rows}</div></div>`;
+}
+function Overview(scene,options,kind) {
+  const context = {prefix:`${scene.id}-${kind}`,liveIndex:0,progressIndex:0,review:options.review};
+  if (scene.loading) return Loading(options.layout);
+  if (scene.failed) return `<div class="overview"><h1 class="visually-hidden">Overview</h1><div role="alert">${Heading(scene)}<p class="problem"><span class="status-dot coral" aria-hidden="true"></span><span>AutoKolab can’t be reached right now. Your agents keep working on their own machines.</span></p></div><button type="button" class="retry" data-destination="Loads the page again">Try again</button></div>`;
+  const stale = scene.stale ? `<p class="problem stale-message" role="alert"><span class="status-dot coral" aria-hidden="true"></span><span>Couldn’t refresh. This is how things were at ${escapeHTML(scene.stale)}.</span></p>` : '';
+  return `<div class="overview ${options.layout}${scene.stale ? ' stale' : ''}"><h1 class="visually-hidden">Overview</h1>${stale}${NeedsYou(scene)}${Heading(scene)}${options.layout === 'cards' ? GoalCards(scene,context) : Rows(scene,context)}</div>`;
+}
+
+// Shell and gallery: neither changes the data passed to Overview.
+function Navigation(scene,phone) {
+  const count = personalRequests(scene).length;
+  return tabs.map(tab => {
+    const badge = tab === 'Captain' && count ? `<span class="need-count"><span class="status-dot amber" aria-hidden="true"></span><span aria-hidden="true">${count}</span><span class="visually-hidden">, ${count} need you</span></span>` : '';
+    return `<li${tab === 'Decisions' && !phone ? ' class="nav-gap"' : ''}>${linkTo(tab+badge,`the ${tab} tab`,'',tab === 'Overview' ? 'aria-current="page"' : '')}</li>`;
+  }).join('');
+}
+function Frame(scene,options,kind) {
+  const phone = kind === 'phone';
+  const project = story.project[scene.names === 'long' ? 'long' : 'short'];
+  const brand = '<img class="brand" src="autokolab-logo.svg" alt="AutoKolab">';
+  const projectLabel = `<div class="project-name" title="${escapeHTML(project)}">${escapeHTML(project)}</div>`;
+  const screen = `<div class="screen" data-scene="${scene.id}" data-device="${kind}">${Overview(scene,options,kind)}</div>`;
+  const shell = phone ? `<div class="phone-header">${brand}${projectLabel}</div>${screen}<nav class="phone-tabs" aria-label="Project"><ul>${Navigation(scene,true)}</ul></nav>` : `<aside class="rail">${brand}${projectLabel}<nav aria-label="Project"><ul class="rail-links">${Navigation(scene,false)}</ul></nav></aside>${screen}`;
+  return `<figure class="${kind}-figure"><figcaption>${phone ? 'Phone · 390 × 844' : `Desktop · ${options.width} × ${options.width === 1280 ? 800 : 900}`}</figcaption><div class="device device-${kind}">${shell}</div></figure>`;
+}
+function hiddenParts(scene) {
+  if (scene.loading) return "Needs you, agents and goals, until the data arrives. Still shapes hold the cards' places.";
+  if (scene.failed) return 'Needs you, agents and goals: there is nothing true to show yet.';
+  const hidden = [], mine = personalRequests(scene).length;
+  if (!mine) hidden.push(`Needs you and the Captain tab's count (nothing waits on you${otherRequests(scene).length ? '; what waits on others shows quietly instead' : ''})`);
+  if (mine > 3) hidden.push(`Rows past 3 (folded into "and ${mine-3} more in Captain")`);
+  if (!scene.agents.length) hidden.push('the agent list (nobody connected)');
+  if (!scene.goals.length) hidden.push('goal cards (nothing is being built)');
+  if (!scene.goals.length && scene.agents.length) hidden.push('the "Not working right now" title (the heading already says so)');
+  if (scene.goals.length && scene.agents.every(agent => agent.goal)) hidden.push('"Not working right now" (every agent has work)');
+  const text = hidden.join('; ');
+  return text ? text[0].toUpperCase()+text.slice(1)+'.' : 'Nothing: every part has something to say.';
+}
+function linkDestinations(scene) {
+  if (scene.loading) return 'None yet. The tabs still work.';
+  if (scene.failed) return '&quot;Try again&quot; loads the page again. The tabs still work.';
+  const paths = {Captain:[],Work:[],Team:[],Settings:[]};
+  headingSentences(scene).filter(line => line.destination).forEach(line => {
+    const comma = line.destination.indexOf(', ');
+    paths[line.destination.slice(0,comma)].push(`the heading's link, ${line.destination.slice(comma+2)}`);
+  });
+  personalRequests(scene).slice(0,3).forEach(request => paths.Captain.push(`each row, opened on ${requestDetails(request).target}`));
+  if (personalRequests(scene).length > 3) paths.Captain.push('"and more", at the oldest open question');
+  otherRequests(scene).slice(0,2).forEach(request => paths.Work.push(`the "Waiting on ${request.on}" row, ${story.keys[request.ticket]} read only`));
+  if (scene.goals.length) paths.Work.push('each goal name, grouped by that goal','each line opens its tickets here; each ticket opens in Work');
+  const working = scene.agents.filter(agent => assignedTicket(scene,agent));
+  if (working.length) paths.Work.push(working.length === 1 ? `${working[0].name}, on its ticket` : `${working.length} agents with work, each on its ticket`);
+  if (scene.moreGoals) paths.Work.push(`"${scene.moreGoals}", all goals`);
+  const free = scene.agents.filter(agent => !assignedTicket(scene,agent));
+  if (free.length) paths.Team.push(`${joinNames(free.map(agent => agent.name.length > 20 ? agent.name.slice(0,18)+'…' : agent.name))}${free.length > 1 ? ', each' : ''} on its page`);
+  return Object.entries(paths).filter(([,details]) => details.length).map(([tab,details]) => `<strong>${tab}:</strong> ${escapeHTML(details.join('; '))}`).join('<br>');
+}
+function Situation(scene,options) {
+  const facts = [
+    ['Heading',escapeHTML(headingSentences(scene).map(line => `“${line.text}”`).join(' ')),'wide','heading-copy'],
+    ['Seen first',escapeHTML(scene.first)],['Quiet',escapeHTML(scene.quiet)],
+    ['Hidden because empty (no gap left)',escapeHTML(hiddenParts(scene))],
+    ['Links from here',linkDestinations(scene)],['Not in the four settled parts',scene.added || 'Nothing.']
+  ];
+  return `<section class="situation" id="sit-${scene.id}" aria-labelledby="title-${scene.id}"><header class="situation-label"><span class="situation-number">${scene.g}${scene.n}</span><h3 id="title-${scene.id}">${escapeHTML(scene.title)}</h3><span class="viewer">${escapeHTML(viewing(scene).label)}</span></header><div class="frame-stage"><div class="frame-pair">${Frame(scene,options,'desktop')}${Frame(scene,options,'phone')}</div></div><p class="caption">${escapeHTML(scene.caption)}</p><dl class="facts">${facts.map(([name,value,classes='',valueClass='']) => `<div class="${classes}"><dt>${name}</dt><dd class="${valueClass}">${value}</dd></div>`).join('')}</dl></section>`;
+}
+function Gallery(options) {
+  return Object.entries(story.groups).map(([group,[title,introduction]]) => {
+    const scenes = situations.filter(scene => scene.g === group && (!options.only || scene.id === options.only));
+    return scenes.length ? `<section class="situation-group" id="g-${group}" aria-labelledby="group-${group}"><h2 id="group-${group}"><b>${group}</b>${escapeHTML(title)}</h2><p>${escapeHTML(introduction)}</p>${scenes.map(scene => Situation(scene,options)).join('')}</section>` : '';
+  }).join('');
+}
+function Contents() {
+  return Object.entries(story.groups).map(([group,[name]]) => `<div><h2><a href="#g-${group}">${group} · ${escapeHTML(name)}</a></h2><ol>${situations.filter(scene => scene.g === group).map(scene => `<li><a href="#sit-${scene.id}"><span>${scene.g}${scene.n}</span>${escapeHTML(scene.title)}</a></li>`).join('')}</ol></div>`).join('');
+}
+function HeadingTable() {
+  return situations.map(scene => `<tr><td>${scene.g}${scene.n}</td><td>${escapeHTML(scene.title)}</td><td>${headingSentences(scene).map(line => sentenceMarkup(line,true)).join(' ')}</td></tr>`).join('');
+}
+function controlButtons(name,entries) {
+  return `<div class="switches" role="group" aria-label="${name}">${entries.map(([value,label]) => `<button type="button" data-control="${name}" data-value="${value}">${label}</button>`).join('')}</div>`;
+}
+function Controls() {
+  const settings = [
+    ['Structure',[['cards','Cards <span class="recommended">· recommended</span>'],['rows','Rows']]],
+    ['Theme',[['dark','Dark'],['light','Light']]], ['Desktop',[['1440','1440'],['1280','1280']]],
+    ['Frames',[['screen','First screen'],['full','Whole page']]],
+    ['View',[['review','Review path'],['still','Reduce motion'],['fit','Fit to window']]]
+  ];
+  return settings.map(([label,entries]) => `<div class="control-group"><span class="control-label" aria-hidden="true">${label}</span>${controlButtons(label,entries)}</div>`).join('');
+}
+function JumpMenu() {
+  return Object.entries(story.groups).map(([group,[name]]) => `<a href="#g-${group}"><b>${group}</b>${escapeHTML(name)}</a>`).join('') + '<a href="#headings">Heading sentences</a><a href="#rules">Rules</a><span class="spacer"></span>' + controlButtons('Structure',[['cards','Cards'],['rows','Rows']]) + controlButtons('Theme',[['dark','Dark'],['light','Light']]);
+}
+
+// Contrast figures use the live CSS tokens, including the reference's outlined green.
+function luminance(hex) {
+  const channels = hex.trim().slice(1).match(/../g).map(pair => parseInt(pair,16)/255).map(value => value <= .03928 ? value/12.92 : ((value+.055)/1.055)**2.4);
+  return channels.reduce((sum,value,index) => sum+value*[.2126,.7152,.0722][index],0);
+}
+function contrastRatio(first,second) {
+  const left = luminance(first), right = luminance(second);
+  return (Math.max(left,right)+.05)/(Math.min(left,right)+.05);
+}
+function ContrastTable() {
+  const root = document.documentElement, previous = root.dataset.theme;
+  const values = {};
+  for (const theme of ['dark','light']) {
+    root.dataset.theme = theme;
+    const style = getComputedStyle(root);
+    const token = name => style.getPropertyValue('--'+name).trim();
+    const againstSurfaces = name => Math.min(contrastRatio(token(name),token('bg')),contrastRatio(token(name),token('panel')));
+    const rings = ['blue','amber','coral'].map(againstSurfaces);
+    values[theme] = [againstSurfaces('ink').toFixed(1),againstSurfaces('secondary').toFixed(1),againstSurfaces('dim').toFixed(1),contrastRatio(token(theme === 'dark' ? 'done' : 'done-edge'),token('panel')).toFixed(1)+(theme === 'light' ? '*' : ''),Math.max(againstSurfaces('blue-a'),againstSurfaces('blue-b')).toFixed(1),`${Math.min(...rings).toFixed(1)}–${Math.max(...rings).toFixed(1)}`];
+  }
+  root.dataset.theme = previous;
+  return ['Heading, names','Doing, details','Quiet words, steps','Done segment','In progress (stronger stripe)','Rings (blue, amber, coral)'].map((label,index) => `<tr><td>${label}</td><td>${values.dark[index]}</td><td>${values.light[index]}</td></tr>`).join('');
+}
+
+// Browser wiring. The pure components above can be checked without a browser.
+const parameters = new URLSearchParams(location.search);
+const options = {
+  layout:parameters.get('layout') === 'rows' ? 'rows' : 'cards',
+  theme:parameters.get('theme') === 'light' ? 'light' : 'dark',
+  width:parameters.get('w') === '1280' ? 1280 : 1440,
+  review:parameters.get('review') === '1', still:parameters.get('still') === '1',
+  full:parameters.get('full') === '1', fit:true,
+  shot:['desktop','phone'].includes(parameters.get('shot')) ? parameters.get('shot') : null,
+  only:situations.some(scene => scene.id === parameters.get('sit')) ? parameters.get('sit') : null
+};
+const findAll = (selector,scope=document) => [...scope.querySelectorAll(selector)];
+function syncControls() {
+  document.documentElement.dataset.theme = options.theme;
+  document.documentElement.style.setProperty('--desktop-width',options.width+'px');
+  document.documentElement.style.setProperty('--desktop-height',(options.width === 1280 ? 800 : 900)+'px');
+  document.body.classList.toggle('whole-page',options.full);
+  document.body.classList.toggle('reduce-motion',options.still);
+  document.body.classList.toggle('single-frame',!!options.shot);
+  document.body.classList.toggle('desktop-only',options.shot === 'desktop');
+  document.body.classList.toggle('phone-only',options.shot === 'phone');
+  const selected = {Structure:options.layout,Theme:options.theme,Desktop:String(options.width),Frames:options.full ? 'full' : 'screen'};
+  findAll('[data-control]').forEach(button => button.setAttribute('aria-pressed',String(button.dataset.control === 'View' ? options[button.dataset.value] : selected[button.dataset.control] === button.dataset.value)));
+}
+function fitFrames() {
+  const group = document.querySelector('.situation-group');
+  const room = group ? group.clientWidth-64 : innerWidth;
+  const scale = options.fit && !options.shot ? Math.min(1,room/(options.width+430)) : 1;
+  document.documentElement.style.setProperty('--scale',scale.toFixed(3));
+}
+function screenTicket(screen,key) {
+  return situations.find(scene => scene.id === screen.dataset.scene)?.goals?.flatMap(goal => goal.tasks).find(ticket => ticket.key === key);
+}
+function highlightTicket(screen,key) {
+  findAll('.highlight',screen).forEach(node => node.classList.remove('highlight'));
+  findAll('.segment[data-ticket],.ticket-row[data-ticket]',screen).filter(node => node.dataset.ticket === key).forEach(node => node.classList.add('highlight'));
+}
+function showTicketTip(segment) {
+  const screen = segment.closest('.screen'), progress = segment.closest('.progress');
+  const scene = situations.find(item => item.id === screen.dataset.scene);
+  const ticket = screenTicket(screen,segment.dataset.ticket);
+  if (!ticket) return;
+  const tip = progress.querySelector('.ticket-tip');
+  tip.innerHTML = `<strong><code>${ticket.key}</code>${escapeHTML(ticket.title)}</strong><small>${escapeHTML(ticketState(scene,ticket,true))}</small>`;
+  const relative = offsetWithin(segment,progress);
+  const center = relative.x+segment.offsetWidth/2;
+  const left = Math.max(-8,Math.min(progress.offsetWidth-tip.offsetWidth+8,center-tip.offsetWidth/2));
+  tip.style.left = left+'px';
+  tip.style.top = relative.y-tip.offsetHeight-10+'px';
+  tip.style.setProperty('--pointer',center-left+'px');
+  tip.classList.add('visible');
+}
+function offsetWithin(element,ancestor) {
+  let x = 0, y = 0;
+  for (let current=element; current && current !== ancestor; current=current.offsetParent) {
+    x += current.offsetLeft; y += current.offsetTop;
+  }
+  return {x,y};
+}
+function ReviewAnnotations() {
+  findAll('.review-pin').forEach(pin => pin.remove());
+  if (!options.review) return;
+  findAll('.screen').forEach(screen => {
+    const button = screen.querySelector('.progress-button[aria-expanded="true"]');
+    if (!button) return;
+    const progress = button.closest('.progress');
+    const agent = findAll('.agent-row[data-ticket]',screen).find(row => row.dataset.agent !== 'Captain');
+    const idle = screen.querySelector('.agent-row:not([data-ticket])');
+    const phone = screen.dataset.device === 'phone';
+    if (!phone) {
+      const segments = findAll('.progress-line .segment.u',progress);
+      const segment = segments.find(item => item.dataset.ticket !== agent?.dataset.ticket) || segments[0];
+      if (segment) showTicketTip(segment);
+      if (agent) { agent.classList.add('preview-hover'); highlightTicket(screen,agent.dataset.ticket); }
+    }
+    const tickets = findAll('.ticket-row',progress);
+    const targets = [phone ? null : progress.querySelector('.ticket-tip.visible'),button,tickets.find(row => row.dataset.ticket !== agent?.dataset.ticket) || tickets[0],screen.querySelector('.goal-title a,.goal-row-name'),agent,idle];
+    targets.forEach((target,index) => {
+      if (!target) return;
+      const point = offsetWithin(target,screen), pin = document.createElement('span');
+      pin.className = 'review-pin'; pin.textContent = index+1;
+      pin.style.left = (index === 0 ? point.x-11 : Math.max(2,point.x-(phone ? 26 : 32)))+'px';
+      pin.style.top = (index === 0 ? point.y-11 : point.y+Math.min(target.offsetHeight,44)/2-11)+'px';
+      screen.append(pin);
+    });
+  });
+}
+function renderGallery() {
+  syncControls();
+  document.getElementById('gallery').innerHTML = Gallery(options);
+  fitFrames();
+  ReviewAnnotations();
+}
+let destinationTimer;
+document.addEventListener('click',event => {
+  const control = event.target.closest('[data-control]');
+  if (control) {
+    const {control:group,value} = control.dataset;
+    if (group === 'Structure') options.layout = value;
+    if (group === 'Theme') options.theme = value;
+    if (group === 'Desktop') options.width = Number(value);
+    if (group === 'Frames') options.full = value === 'full';
+    if (group === 'View') options[value] = !options[value];
+    if (group === 'Theme' || (group === 'View' && value !== 'review')) { syncControls(); fitFrames(); }
+    else renderGallery();
+    return;
+  }
+  const progress = event.target.closest('.progress-button');
+  if (progress) {
+    const open = progress.getAttribute('aria-expanded') !== 'true';
+    progress.setAttribute('aria-expanded',String(open));
+    progress.setAttribute('aria-label',progress.getAttribute('aria-label').replace(open ? 'Show' : 'Hide',open ? 'Hide' : 'Show'));
+    document.getElementById(progress.getAttribute('aria-controls')).hidden = !open;
+    progress.closest('.progress').querySelector('.ticket-tip').classList.remove('visible');
+    ReviewAnnotations();
+    return;
+  }
+  const link = event.target.closest('[data-destination]');
+  if (link) {
+    event.preventDefault();
+    const message = document.getElementById('destination');
+    message.textContent = 'In the app this opens: '+link.dataset.destination;
+    message.classList.add('visible');
+    clearTimeout(destinationTimer);
+    destinationTimer = setTimeout(() => { message.classList.remove('visible'); },2200);
+  }
+});
+function highlightFromEvent(event) {
+  findAll('.highlight').forEach(node => node.classList.remove('highlight'));
+  const item = event.target.closest('.agent-row[data-ticket],.ticket-row[data-ticket],.progress-line .segment[data-ticket]');
+  if (item) highlightTicket(item.closest('.screen'),item.dataset.ticket);
+  if (event.type === 'mouseover') {
+    findAll('.ticket-tip.visible').forEach(tip => tip.classList.remove('visible'));
+    if (item?.matches('.progress-line .segment')) showTicketTip(item);
+  }
+}
+document.addEventListener('mouseover',highlightFromEvent);
+document.addEventListener('focusin',highlightFromEvent);
+addEventListener('resize',fitFrames);
+document.getElementById('controls').innerHTML = Controls();
+document.getElementById('jump-menu').innerHTML = JumpMenu();
+document.getElementById('contents').innerHTML = Contents();
+document.getElementById('heading-rows').innerHTML = HeadingTable();
+document.getElementById('contrast-rows').innerHTML = ContrastTable();
+renderGallery();
+document.fonts?.ready.then(ReviewAnnotations);
+</script>
+</body>
+</html>
