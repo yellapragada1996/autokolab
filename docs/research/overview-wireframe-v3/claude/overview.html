@@ -200,6 +200,7 @@
     .gs { flex: 1; min-width: 4px; border-radius: 5px; background: var(--track); }
     .gs.d { background: var(--done); box-shadow: inset 0 0 0 1.5px var(--done-edge); }
     .gs.u { background: var(--blue); }
+    .gs.x { background: var(--coral); }
     .gl.cont { gap: 0; border-radius: 5px; overflow: hidden; background: var(--track); }
     .gl.cont .gs { border-radius: 0; }
     .count { flex: none; color: var(--text-muted); font: 500 13px/1 var(--font-mono); white-space: nowrap; }
@@ -236,7 +237,7 @@
     .agent.quiet .a-state, .agent.quiet .a-doing { color: var(--text-dim); }
 
     /* ---------- Rows (the alternative): two flat lists, no boxes ---------- */
-    .lay-rows .agent { grid-template-columns: 32px 168px minmax(0, 1fr) 150px 132px; grid-template-areas: "av name doing steps state"; column-gap: 16px; min-height: 56px; }
+    .lay-rows .agent { grid-template-columns: 32px 168px minmax(0, 1fr) 176px 132px; grid-template-areas: "av name doing steps state"; column-gap: 16px; min-height: 56px; }
     .lay-rows .agent .av { align-self: center; margin-top: 0; }
     .lay-rows .agent .steps { margin-top: 0; }
     .lay-rows .a-state { justify-self: start; }
@@ -261,7 +262,8 @@
       .headline { font-size: 30px; line-height: 1.15; letter-spacing: -0.03em; }
       /* Inline link: padding grows the tap area to 44px without moving the text. */
       .headline a { padding: 6px 0; text-underline-offset: 5px; }
-      .head { gap: 16px; align-items: flex-start; }
+      /* The croc sits above the heading here, so the sentence keeps the full width. */
+      .head { flex-direction: column; gap: 12px; align-items: flex-start; }
       .croc { width: 56px; height: 57px; }
       .croc.new { width: 80px; height: 81px; }
       .head + .part { margin-top: 32px; }
@@ -433,7 +435,7 @@
 
       <section class="note">
         <h3>Progress, drawn honestly</h3>
-        <p><b>Goals:</b> one segment per ticket, so "4 of 7 done" is literally four of seven pieces. <span class="swatch" style="background:var(--done);box-shadow:inset 0 0 0 1.5px var(--done-edge)"></span>done <span class="swatch" style="background:var(--blue)"></span>being built now <span class="swatch" style="background:var(--track)"></span>not started. The count is always beside the line, in text, so it's never colour alone. Over 16 tickets the segments merge into one continuous line.</p>
+        <p><b>Goals:</b> one segment per ticket, so "4 of 7 done" is literally four of seven pieces. <span class="swatch" style="background:var(--done);box-shadow:inset 0 0 0 1.5px var(--done-edge)"></span>done <span class="swatch" style="background:var(--blue)"></span>being built now <span class="swatch" style="background:var(--coral)"></span>its agent stopped <span class="swatch" style="background:var(--track)"></span>not started. The count is always beside the line, in text, so it's never colour alone. Over 16 tickets the segments merge into one continuous line.</p>
         <p><b>Agents:</b> the record has the agent's planned steps (<code>ticket_steps</code>), not how much of the work is done. So an agent shows "step 3 of 5" as short bars, one per step, and never a percentage. Steps can be re-planned, so the bars show where it is, not how long is left. An agent with no planned steps (Captain while it reviews) shows no bars; its breathing ring alone says it's working.</p>
         <p>The ring breathes only while the agent's runner is reporting; when that stops, the ring goes still and the word changes.</p>
       </section>
@@ -469,11 +471,11 @@
         <h3>Contrast (checked)</h3>
         <table>
           <tr><th>Against its background</th><th>Dark</th><th>Light</th></tr>
-          <tr><td>Heading, names</td><td id="c-text">16.3</td><td id="c-text-l">17.6</td></tr>
-          <tr><td>Doing, details</td><td id="c-sec">12.3</td><td id="c-sec-l">10.0</td></tr>
-          <tr><td>Quiet words, steps</td><td id="c-dim">5.5</td><td id="c-dim-l">5.6</td></tr>
-          <tr><td>Done segment</td><td id="c-done">8.9</td><td id="c-done-l">16.0*</td></tr>
-          <tr><td>Rings (blue, amber, coral)</td><td id="c-ring">7.6–11.1</td><td id="c-ring-l">3.1–5.2</td></tr>
+          <tr><td>Heading, names</td><td id="c-text">15.3</td><td id="c-text-l">17.2</td></tr>
+          <tr><td>Doing, details</td><td id="c-sec">11.6</td><td id="c-sec-l">9.6</td></tr>
+          <tr><td>Quiet words, steps</td><td id="c-dim">5.4</td><td id="c-dim-l">5.3</td></tr>
+          <tr><td>Done segment</td><td id="c-done">8.3</td><td id="c-done-l">16.3*</td></tr>
+          <tr><td>Rings (blue, amber, coral)</td><td id="c-ring">7.6–11.1</td><td id="c-ring-l">3.4–4.6</td></tr>
         </table>
         <p style="margin-top:6px">Text needs 4.5:1, lines and rings 3:1. *In light, the croc green alone is 2.2:1 on white; its ink outline (16:1) is what makes it pass. Values are worked out by the page from the colours in use.</p>
       </section>
@@ -497,8 +499,8 @@
 
     // A(name, state, doing, goal, [step, of])
     const A = (name, state, doing = '', goal = null, step = null) => ({ name, state, doing, goal, step });
-    // G(name, done, underway, total)
-    const G = (name, done, under, total) => ({ name, done, under, total });
+    // G(name, done, underway, total, stopped): stopped tickets are underway but their agent stopped.
+    const G = (name, done, under, total, stuck = 0) => ({ name, done, under, total, stuck });
 
     const STATES = {
       busy: {
@@ -532,9 +534,9 @@
         ],
       },
       stopped: {
-        note: 'Tern stopped while it had work. The heading adds "Tern has stopped." in coral, and Tern\'s row has a coral ring, "Stopped" and the reason. One goal leaves one grid cell empty, so the agents with no work fill it instead of a gap.',
+        note: 'Tern stopped while it had work. The heading adds "Tern has stopped." in coral, and Tern\'s row has a coral ring, "Stopped" and the reason. Tern\'s ticket is the coral segment in Checkout\'s line, so the goal shows where it is stuck. One goal leaves one grid cell empty, so the agents with no work fill it instead of a gap.',
         headlineHtml: '2 agents are working on Checkout. <span class="stopped">Tern has stopped.</span>',
-        goals: [G('Checkout', 4, 3, 7)],
+        goals: [G('Checkout', 4, 2, 7, 1)],
         agents: [
           A('Captain', 'reviewing', "reviewing Birch's saved cards", 'Checkout'),
           A('Birch', 'working', 'adding a "remove card" button', 'Checkout', [1, 3]),
@@ -563,9 +565,9 @@
         agents: [A('Captain', 'idle')],
       },
       many: {
-        note: '13 agents and 7 goals. Every goal with an agent on it gets a card (six here); goals nobody is on fold into "and 1 more in Work". The long goal name wraps to two lines; the long agent name cuts with "…". Receipts has 18 tickets, so its line is continuous instead of segments. Moss hit its daily limit while it had work, so the heading adds "Moss has stopped."',
+        note: '13 agents and 7 goals. Every goal with an agent on it gets a card (six here); goals nobody is on fold into "and 1 more in Work". The long goal name wraps to two lines; the long agent name cuts with "…". Receipts has 18 tickets, so its line is continuous instead of segments. Moss hit its daily limit while it had work, so the heading adds "Moss has stopped." and its ticket is coral in the last card. Tern has no planned steps, so it shows no step bars.',
         headlineHtml: '8 agents are working on Checkout, <span class="nw">Sign-in</span> and 4 more goals. <span class="stopped">Moss has stopped.</span>',
-        goals: [G('Checkout', 4, 2, 7), G('Sign-in', 2, 3, 5), G('Search', 1, 2, 4), G('Receipts', 9, 1, 18), G('Admin dashboard', 0, 1, 3), G('Guest checkout with saved cards and Apple Pay for returning customers on mobile', 0, 1, 6)],
+        goals: [G('Checkout', 4, 2, 7), G('Sign-in', 2, 2, 5), G('Search', 1, 2, 4), G('Receipts', 9, 1, 18), G('Admin dashboard', 0, 1, 3), G('Guest checkout with saved cards and Apple Pay for returning customers on mobile', 1, 0, 6, 1)],
         moreGoals: 'and 1 more in Work',
         agents: [
           A('Captain', 'reviewing', "reviewing Heron's search filters", 'Search'),
@@ -599,15 +601,17 @@
     function goalLine(g) {
       const cont = g.total > 16;
       let segs;
+      const pct = n => (n / g.total * 100).toFixed(2);
       if (cont) {
-        segs = `<span class="gs d" style="flex:none;width:${(g.done / g.total * 100).toFixed(2)}%"></span><span class="gs u" style="flex:none;width:${(g.under / g.total * 100).toFixed(2)}%"></span>`;
+        segs = [['d', g.done], ['u', g.under], ['x', g.stuck]].filter(([, n]) => n).map(([c, n]) => `<span class="gs ${c}" style="flex:none;width:${pct(n)}%"></span>`).join('');
       } else {
-        segs = Array.from({ length: g.total }, (_, i) => `<span class="gs${i < g.done ? ' d' : i < g.done + g.under ? ' u' : ''}"></span>`).join('');
+        const kind = i => i < g.done ? ' d' : i < g.done + g.under ? ' u' : i < g.done + g.under + g.stuck ? ' x' : '';
+        segs = Array.from({ length: g.total }, (_, i) => `<span class="gs${kind(i)}"></span>`).join('');
       }
       return `<span class="gl${cont ? ' cont' : ''}" aria-hidden="true">${segs}</span>`;
     }
     const count = g => `<span class="count" aria-hidden="true"><b>${g.done}</b> of ${g.total} done</span>`;
-    const goalLabel = g => `${g.name}, ${g.done} of ${g.total} done${g.under ? `, ${g.under} being built now` : ''}`;
+    const goalLabel = g => `${g.name}, ${g.done} of ${g.total} done${g.under ? `, ${g.under} being built now` : ''}${g.stuck ? `, ${g.stuck} stopped` : ''}`;
 
     function steps(a) {
       if (!a.step) return '';
