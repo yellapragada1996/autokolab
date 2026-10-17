@@ -1,93 +1,50 @@
-import { useMemo, useRef, useState } from "react";
-import { eventsAfter, eventsBetween, type TicketEvent } from "../lib/data";
-import { go, href, onNav, openShow, type Route } from "../lib/router";
-import { EVENTS_WINDOW_MS, useHistoryWindow } from "./useHistory";
+import { useMemo, useRef } from "react";
 import { overviewGlance, type OverviewGlance } from "./glance";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
+import { Goals } from "./overview-parts/Goals";
+import { Heading } from "./overview-parts/Heading";
+import { NeedsYou } from "./overview-parts/NeedsYou";
+import "./overview-parts/overview.css";
 
-/** The approved Overview: one answer, then the person, team, goals and delivery. */
-export function visibleOverview(view: OverviewGlance) {
-  return { ...view, requests: view.requests.slice(0, 2), team: view.team.slice(0, 3), goals: view.goals.slice(0, 2), delivered: view.delivered.slice(0, 2) };
+export interface OverviewSnapshot { view: OverviewGlance; at: Date }
+
+/** Failed or incomplete refreshes keep the last complete view, only within the same project. */
+export function keepOverviewSnapshot(previous: OverviewSnapshot | null, next: OverviewSnapshot | null, projectId?: string): OverviewSnapshot | null {
+  if (next) return next;
+  return previous && (!projectId || previous.view.projectId === projectId) ? previous : null;
+}
+
+export function OverviewContent({ snapshot, failed = false }: { snapshot: OverviewSnapshot | null; failed?: boolean }) {
+  const view = snapshot?.view;
+  return <div className="ak-overview-scope"><div className={`ov${view && failed ? " stale" : ""}`} aria-busy={!view && !failed ? true : undefined}>
+    <h1 className="sr-only">Overview</h1>
+    {!view ? failed ? <>
+      <div role="alert"><div className="head"><p className="headline"><span className="sent">Couldn’t load this project.</span></p></div>
+        <p className="problem-line"><span className="dot coral" aria-hidden="true" /><span>AutoKolab can’t be reached right now. Your agents keep working on their own machines.</span></p>
+      </div><button className="btn" type="button" onClick={() => window.location.reload()}>Try again</button>
+    </> : <>
+      <div className="head"><p className="headline muted-head" role="status"><span className="sent">Loading your project…</span></p></div>
+      <div className="part" aria-hidden="true"><div className="cards">{[0, 1].map(i => <span className="sk-card" key={i}>
+        <span className="sk" style={{ height: 16, width: "38%" }} /><span className="sk" style={{ height: 10, borderRadius: 5 }} /><span className="sk" style={{ height: 10, width: "52%" }} />
+        <span className="sk-agent"><span className="sk" style={{ width: 32, height: 32, borderRadius: 10 }} /><span><span className="sk" style={{ height: 12, width: "40%" }} /><span className="sk" style={{ height: 12, width: "70%" }} /></span></span>
+      </span>)}</div></div>
+    </> : <>
+      {failed && <p className="problem-line stale-line" role="alert"><span className="dot coral" aria-hidden="true" /><span>Couldn’t refresh. This is how things were at {snapshot.at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.</span></p>}
+      <NeedsYou view={view} /><Heading view={view} /><Goals view={view} />
+    </>}
+  </div></div>;
 }
 
 export function Overview({ ws, cr, error }: { ws: Workspace | null; me: string; cr: CaptainRoom; error?: string }) {
-  const [now] = useState(() => new Date());
-  const projectId = ws?.project.id;
-  const demoEvents = ws?.demoEvents;
-  const { rows: liveEvents, ready: historyReady } = useHistoryWindow(demoEvents ? undefined : projectId, EVENTS_WINDOW_MS, {
-    read: (from, to) => projectId ? eventsBetween(projectId, from, to) : Promise.resolve([] as TicketEvent[]),
-    readAfter: (afterId, from) => projectId ? eventsAfter(projectId, afterId, from) : Promise.resolve([] as TicketEvent[]),
-  });
-  const events = demoEvents ?? liveEvents;
-  const roomReady = cr.room !== undefined;
-  const calculated = useMemo(() => ws && (demoEvents || historyReady) && roomReady ? overviewGlance(ws, cr.needs, cr.plans, events, now) : null, [ws, cr.needs, cr.plans, events, now, demoEvents, historyReady, roomReady]);
-  const held = useRef<OverviewGlance | null>(null);
-  if (calculated) held.current = calculated;
-  const fullView = calculated ?? held.current;
-  const view = useMemo(() => fullView && visibleOverview(fullView), [fullView]);
-  if (!ws || !view || !fullView) return <div className="ak-overview"><h1>Overview</h1><p role={error || cr.loadError ? "alert" : undefined}>{error || cr.loadError || "Loading your project…"}</p></div>;
-  const slug = ws.project.slug;
-  const captain: Route = { view: "captain", project: slug };
-  const work: Route = { view: "board", project: slug };
-  const connect: Route = { view: "connect", project: slug };
-  const answer = (key: string) => go(`${href(captain)}#need-${key}`, false, false);
-  return (
-    <div className="ak-overview">
-      <h1>Overview</h1>
-      {(error || cr.loadError) && <p className="ak-overview-error" role="alert">{error || cr.loadError}</p>}
-      <p className="ak-overview-state">{view.sentence}</p>
-      {view.next && <p className="ak-overview-next"><strong>Next from Captain:</strong> {view.next}</p>}
-
-      {view.state === "new" ? (
-        <section className="ak-overview-section" aria-label="First steps">
-          <h2>Start here</h2>
-          <div className="ak-overview-list">
-            {!ws.project.lead_agent_id && <div className="ak-overview-row ak-overview-setup"><span className="ak-overview-step">1</span><div><strong>Connect Captain</strong><div className="ak-overview-quiet">Give Captain a way to answer you and manage the work.</div></div></div>}
-            <div className="ak-overview-row ak-overview-setup"><span className="ak-overview-step">{ws.project.lead_agent_id ? "1" : "2"}</span><div><strong>Tell Captain your first goal</strong><div className="ak-overview-quiet">A sentence is enough. Captain will take it from there.</div></div></div>
-          </div>
-          <a className="ak-overview-foot-link" href={href(ws.project.lead_agent_id ? captain : connect)} onClick={onNav(ws.project.lead_agent_id ? captain : connect)}>{ws.project.lead_agent_id ? "Tell Captain →" : "Connect Captain →"}</a>
-        </section>
-      ) : <>
-        {view.requests.length > 0 && <section className="ak-overview-section" aria-label="Needs you">
-          <h2>You are needed</h2>
-          <div className="ak-overview-list">{view.requests.map((r) => <div className="ak-overview-row ak-overview-request" key={r.key}>
-            <span className="ak-overview-dot amber" aria-hidden="true"/><div className="ak-overview-row-main">{r.text}</div>
-            <button type="button" className="ak-overview-link ak-overview-row-end" onClick={() => answer(r.key)}>Open in Captain →</button>
-          </div>)}</div>
-          {fullView.requests.length > view.requests.length && <a className="ak-overview-foot-link" href={href(captain)} onClick={onNav(captain)}>Open in Captain →</a>}
-        </section>}
-        {view.state === "problem" && view.problem && <section className="ak-overview-section" aria-label="Problem">
-          <h2>What happened</h2><div className="ak-overview-list"><div className="ak-overview-row ak-overview-request">
-            <span className="ak-overview-dot coral" aria-hidden="true"/><div className="ak-overview-row-main">{view.problem.text}</div>
-            {view.problem.key ? <button type="button" className="ak-overview-link ak-overview-row-end" onClick={() => openShow(view.problem!.key!)}>Show the record →</button> : view.problem.people && <a className="ak-overview-link ak-overview-row-end" href={href({ view: "people", project: slug })} onClick={onNav({ view: "people", project: slug })}>Show the team →</a>}
-          </div></div>
-        </section>}
-        {view.team.length > 0 && <section className="ak-overview-section" aria-label="Team at work">
-          <h2>Who is doing what</h2><div className="ak-overview-list">{view.team.map((r) => <div className="ak-overview-row ak-overview-team" key={r.id}>
-            <span className="ak-overview-avatar" aria-hidden="true">{r.name[0]}</span>
-            <div className="ak-overview-row-main"><strong>{r.name}</strong> <span className="ak-overview-quiet">· {r.task}</span></div>
-            {r.tone !== "quiet" && <span className={`ak-overview-dot ${r.tone === "problem" ? "coral" : ""}`} aria-label={r.state}/>}
-            <span className="ak-overview-row-end">{r.state}</span>
-          </div>)}</div>
-          {fullView.team.length > view.team.length && <a className="ak-overview-foot-link" href={href({ view: "people", project: slug })} onClick={onNav({ view: "people", project: slug })}>See the team →</a>}
-        </section>}
-        {view.goals.length > 0 && <section className="ak-overview-section" aria-label="Goals">
-          <h2>Goals</h2><div className="ak-overview-list">{view.goals.map((g) => <div className="ak-overview-row ak-overview-goal" key={g.id}>
-            <div className="ak-overview-row-main"><strong>{g.name}</strong><span className="ak-overview-quiet">{g.next}</span></div>
-            <span className="ak-overview-progress">{g.total > 0 ? `${g.done} of ${g.total} tasks done` : "Not started"}</span>
-          </div>)}</div>
-          <a className="ak-overview-foot-link" href={href(work)} onClick={onNav(work)}>See all work →</a>
-        </section>}
-        {view.delivered.length > 0 && <section className="ak-overview-section" aria-label="Delivered today">
-          <h2>Delivered today</h2><div className="ak-overview-list">{view.delivered.map((d) => <div className="ak-overview-row" key={d.key}>
-            <span className="ak-overview-dot green" aria-hidden="true"/><div className="ak-overview-row-main">{d.text}</div>
-            <button type="button" className="ak-overview-link ak-overview-row-end" onClick={() => openShow(d.key)}>Show the record →</button>
-          </div>)}</div>
-          {fullView.delivered.length > view.delivered.length && <a className="ak-overview-foot-link" href={href(work)} onClick={onNav(work)}>See all work →</a>}
-        </section>}
-        {view.state === "calm" && fullView.goals.length > 0 && fullView.goals.every((g) => g.total > 0 && g.done === g.total) && <p className="ak-overview-note">Have another goal? Tell Captain when you’re ready.</p>}
-      </>}
-    </div>
-  );
+  const failed = !!(error || cr.loadError);
+  // No history query is needed for this view. Recompute only when source data changes, never on a timer.
+  const calculated = useMemo<OverviewSnapshot | null>(() => {
+    if (!ws || cr.room === undefined || failed) return null;
+    const at = new Date();
+    return { view: overviewGlance(ws, cr.needs, cr.plans, at), at };
+  }, [ws, cr.room, cr.needs, cr.plans, failed]);
+  const held = useRef<OverviewSnapshot | null>(null);
+  held.current = keepOverviewSnapshot(held.current, calculated, ws?.project.id);
+  return <OverviewContent snapshot={held.current} failed={failed} />;
 }

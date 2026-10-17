@@ -1,137 +1,146 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { BIRCH, at, ticket, workspace } from "./fixtures";
+import { BIRCH, CAPTAIN, FJORD, at, ticket, workspace } from "./fixtures";
 import { Sidebar } from "./Workspace";
 import { overviewGlance } from "./glance";
-import { Overview, visibleOverview } from "./Overview";
+import { keepOverviewSnapshot, Overview, OverviewContent, type OverviewSnapshot } from "./Overview";
 import type { CaptainRoom } from "./useCaptainRoom";
 import { keepUnchangedWorkspace } from "./useWorkspace";
+import type { Need } from "./captain";
 
 const now = new Date(at("12:00"));
-const glance = (ws: ReturnType<typeof workspace>) => overviewGlance(ws, [], [], [], now);
 const goal = () => ticket({ key: "SH-1", type: "epic", title: "Checkout: cards", status: "in_progress" });
+const room = { room: null, needs: [], plans: [], loadError: "" } as unknown as CaptainRoom;
+function scene() {
+  const g = goal();
+  const t = ticket({ key: "SH-2", title: "Saved cards", parent_id: g.id, status: "in_progress", assignee_id: BIRCH, assignee_type: "agent", summary: "adding saved cards to checkout" });
+  const ws = workspace([g, t], { steps: { "SH-2": ["done", "done", "now", "todo", "todo"] } });
+  for (const a of ws.people.agents.values()) a.last_seen_at = at("11:59");
+  Object.assign(ws.agentOf(BIRCH)!, { status: "building", current_ticket_id: t.id });
+  return ws;
+}
+const snapshot = (ws = scene(), needs: Need[] = []): OverviewSnapshot => ({ view: overviewGlance(ws, needs, [], now), at: now });
+const plain = (html: string) => html.replace(/<[^>]*>/g, "").replace(/\u00a0/g, " ");
+const render = (value: OverviewSnapshot | null, failed = false) => renderToStaticMarkup(createElement(OverviewContent, { snapshot: value, failed }));
 
-describe("approved Overview situations", () => {
-  it("shows the two setup steps on a brand-new project", () => {
+describe("Overview v5 composition", () => {
+  it("shows a heading, goal, real agent steps and all idle agents without old summaries", () => {
+    const html = render(snapshot());
+    expect(plain(html)).toContain("Birch is working on Checkout.");
+    expect(html).toContain("adding saved cards to checkout");
+    expect(html).toContain("step 3 of 5");
+    expect(html).toContain("Not working right now");
+    expect(html).toContain(">Captain</span>");
+    expect(html).toContain(">Fjord</span>");
+    for (const old of ["Next from Captain", "Delivered today", "Updated just now", "See the team", "Needs you</h2>"]) expect(html).not.toContain(old);
+    expect(html).toContain('href="/p/shop/work/SH-2"');
+    expect(html).toContain('href="/p/shop/work?group=goal"');
+    expect(html).toContain('href="/p/shop/people"');
+  });
+
+  it("puts three newest requests before the headline and links overflow to the oldest", () => {
+    const needs: Need[] = Array.from({ length: 5 }, (_, i) => ({ key: `ask:${i}`, kind: "captain_question", action: "Answer", question: `Question ${i}?`, ticket: null, turnId: i, since: at(`11:0${i}`) }));
+    const html = render(snapshot(scene(), needs));
+    expect(html.indexOf("Needs you</h2>")).toBeLessThan(html.indexOf('class="headline"'));
+    expect(html.indexOf("Question 4?")).toBeLessThan(html.indexOf("Question 3?"));
+    expect(html).toContain("Question 2?");
+    expect(html).not.toContain("Question 1?");
+    expect(html).toContain('href="/p/shop#need-ask%3A0">and 2 more in Captain →');
+    expect(html).toContain("Answer in Captain →");
+    expect(html).toContain("Captain is asking · 56 min");
+    expect((html.match(/class="row need"/g) ?? [])).toHaveLength(3);
+    expect(html).not.toContain("<button class=\"row need\"");
+  });
+
+  it("hides empty sections and shows the new-project croc and connection link", () => {
     const ws = workspace([]);
-    ws.project.lead_agent_id = null;
-    const view = glance(ws);
-    expect(view.state).toBe("new");
-    expect(view.sentence).toBe("Nothing has started yet. Connect Captain, then tell it what you want to make.");
-    expect(view.goals).toHaveLength(0);
+    ws.people.agents.clear(); ws.project.lead_agent_id = null;
+    const html = render(snapshot(ws));
+    expect(html).toContain("Nothing is connected yet.");
+    expect(html).toContain('href="/p/shop/people">Connect your computer</a> to bring in Captain.');
+    expect(html).toContain('class="croc new"');
+    for (const empty of ['class="needs"', 'class="cards"', 'class="free', 'class="part"']) expect(html).not.toContain(empty);
   });
 
-  it("skips the connection step when Captain is already connected", () => {
-    const view = glance(workspace([]));
-    expect(view.state).toBe("new");
-    expect(view.sentence).toBe("Nothing has started yet. Tell Captain what you want to make.");
+  it("shows the calm croc without cards for goals finished before today", () => {
+    const ws = scene();
+    ws.tickets[1].status = "done"; ws.tickets[1].completed_at = "2026-10-09T12:00:00Z";
+    Object.assign(ws.agentOf(BIRCH)!, { status: "idle", current_ticket_id: null });
+    const html = render(snapshot(ws));
+    expect(html).toContain("All 1 goal is done.");
+    expect(html).toContain("No agents are working right now.");
+    expect(html).toContain('class="croc calm"');
+    expect(html).not.toContain('class="cards"');
   });
 
-  it("says which goal is moving while an agent works", () => {
-    const g = goal();
-    const task = ticket({ key: "SH-2", title: "Receipt emails", parent_id: g.id, status: "in_progress", assignee_id: BIRCH, assignee_type: "agent" });
-    const ws = workspace([g, task]);
-    Object.assign(ws.agentOf(BIRCH)!, { status: "building", current_ticket_id: task.id, last_seen_at: at("11:59") });
-    const view = glance(ws);
-    expect(view.state).toBe("busy");
-    expect(view.sentence).toContain("Checkout is moving.");
-    expect(view.sentence).toContain("nothing needs you");
-    expect(view.team[0].name).toBe("Birch");
+  it("uses one native disclosure per goal with matching ids and ticket links", () => {
+    const html = render(snapshot());
+    const id = /aria-controls="([^"]+)"/.exec(html)?.[1];
+    expect(id).toBeTruthy();
+    expect(html).toContain(`id="${id}" hidden=""`);
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain("Checkout: 1 in progress. Show its 1 ticket.");
+    expect(html).toContain('class="gs u"');
+    expect(html).toContain('class="t-meta">Birch · step 3 of 5');
+    expect(html).toContain('aria-hidden="true"');
   });
 
-  it("puts a real request ahead of the work", () => {
-    const g = goal();
-    const task = ticket({ key: "SH-2", title: "Saved cards", parent_id: g.id, status: "in_progress", assignee_id: BIRCH });
-    const ws = workspace([g, task]);
-    const view = overviewGlance(ws, [{ key: task.key, kind: "ticket_question", action: "Answer a question", question: "Should guests use saved cards?", ticket: task, turnId: null, since: at("11:00") }], [], [], now);
-    expect(view.state).toBe("needed");
-    expect(view.sentence).toContain("Checkout is waiting on your answer.");
-    expect(view.requests).toHaveLength(1);
-    expect(view.next).toContain("as soon as you answer");
-    expect(view.requests[0].text).toBe("Should guests use saved cards? Birch is waiting for your answer.");
-  });
-
-  it("shows a request even when no goal has been created yet", () => {
-    const ws = workspace([]);
-    const view = overviewGlance(ws, [{ key: "ask:1", kind: "captain_question", action: "Answer a question", question: "Which goal comes first?", ticket: null, turnId: 1, since: at("11:00") }], [], [], now);
-    expect(view.state).toBe("needed");
-    expect(view.requests).toHaveLength(1);
-  });
-
-  it("says Captain owns a failing check", () => {
-    const g = goal();
-    const task = ticket({ key: "SH-2", title: "Payment retries", parent_id: g.id, status: "review", checks: { passed: 2, total: 3, state: "failure" } });
-    const view = glance(workspace([g, task]));
-    expect(view.state).toBe("problem");
-    expect(view.sentence).toContain("Captain is handling it; you do not need to act.");
-    expect(view.problem?.key).toBe(task.key);
-  });
-
-  it("shows a runner problem without an amber request", () => {
-    const g = goal();
-    const task = ticket({ key: "SH-2", title: "Payment retries", parent_id: g.id, status: "in_progress" });
-    const view = overviewGlance(workspace([g, task]), [{ key: task.key, kind: "problem", action: "Look at a problem", question: "I stopped: tests failed.", ticket: task, turnId: null, since: at("11:00") }], [], [], now);
-    expect(view.state).toBe("problem");
-    expect(view.requests).toHaveLength(0);
-    expect(view.sentence).toContain("Captain is handling it");
-  });
-
-  it("says when current work is done and shows today's delivery", () => {
-    const g = goal();
-    const task = ticket({ key: "SH-2", title: "Saved cards", parent_id: g.id, status: "done", completed_at: at("10:00"), summary: "Saved cards now appear at checkout." });
-    const view = glance(workspace([g, task]));
-    expect(view.state).toBe("calm");
-    expect(view.sentence).toBe("The current work is done. Nothing is in progress, and nothing needs you.");
-    expect(view.delivered[0].text).toBe("Saved cards now appear at checkout.");
-    expect(view.goals[0]).toMatchObject({ done: 1, total: 1 });
+  it("retains long user names and titles in accessible text and title attributes", () => {
+    const ws = scene();
+    const name = "Birch-with-an-extremely-long-agent-name-that-should-not-widen-the-card";
+    ws.agentOf(BIRCH)!.display_name = name;
+    ws.tickets[0].title = "Guest checkout with saved cards and international billing";
+    ws.tickets[1].title = "A very long ticket title for saved cards, including fallback payment methods";
+    const html = render(snapshot(ws));
+    expect(html).toContain(`title="${name}"`);
+    expect(html).toContain(`title="${ws.tickets[1].title}"`);
+    expect(html).toContain(`title="${ws.tickets[0].title}"`);
   });
 });
 
-describe("Overview stability and length", () => {
-  it("keeps the existing snapshot when polling returns the same records", () => {
-    const g = goal();
-    const first = workspace([g]);
+describe("Overview loading and refresh stability", () => {
+  it("shows static skeletons while loading and a retry on first-load failure", () => {
+    const loading = render(null);
+    expect(loading).toContain('aria-busy="true"');
+    expect(loading).toContain("Loading your project…");
+    expect((loading.match(/class="sk-card"/g) ?? [])).toHaveLength(2);
+    const failed = render(null, true);
+    expect(failed).toContain("Couldn’t load this project.");
+    expect(failed).toContain("Try again");
+    expect(failed).not.toContain('class="sk-card"');
+    expect(failed).toContain('role="alert"');
+  });
+
+  it("keeps last known content and timestamp on incomplete and failed refreshes", () => {
+    const first = snapshot();
+    expect(keepOverviewSnapshot(first, null, "p1")).toBe(first);
+    const html = render(keepOverviewSnapshot(first, null, "p1"), true);
+    expect(html).toContain("Couldn’t refresh. This is how things were at ");
+    expect(html).toContain('class="ov stale"');
+    expect(plain(html)).toContain("Birch is working on Checkout.");
+    expect(html).not.toContain("Loading your project");
+    expect(keepOverviewSnapshot(first, null, "another-project")).toBeNull();
+  });
+
+  it("keeps the existing workspace when polling returns identical records", () => {
+    const first = scene();
     const refresh = { ...first, tickets: [...first.tickets], steps: new Map(first.steps), people: { ...first.people, agents: new Map(first.people.agents) } };
     expect(keepUnchangedWorkspace(first, refresh)).toBe(first);
-    expect(keepUnchangedWorkspace(first, { ...refresh, tickets: [g, ticket({ key: "SH-9" })] })).not.toBe(first);
   });
 
-  it("renders the same content from the same snapshot after a refresh", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(now);
+  it("renders identical data identically, without waiting for or fetching history", () => {
+    vi.useFakeTimers(); vi.setSystemTime(now);
     try {
-      const g = goal();
-      const task = ticket({ key: "SH-2", title: "Receipt emails", parent_id: g.id, status: "in_progress", assignee_id: BIRCH, assignee_type: "agent" });
-      const ws = workspace([g, task]);
-      ws.demoEvents = [];
-      Object.assign(ws.agentOf(BIRCH)!, { status: "building", current_ticket_id: task.id, last_seen_at: at("11:59") });
-      const cr = { room: null, needs: [], plans: [], loadError: "" } as unknown as CaptainRoom;
-      const render = (snapshot: typeof ws) => renderToStaticMarkup(createElement(Overview, { ws: snapshot, me: "person-raghav", cr }));
-      const first = render(ws);
-      expect(first).toContain("Who is doing what");
-      expect(first).not.toContain("Loading your project");
-      expect(render({ ...ws, tickets: [...ws.tickets] })).toBe(first);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("shows at most two requests, three agents, two goals and two deliveries", () => {
-    const original = glance(workspace([goal()]));
-    const many = {
-      ...original,
-      requests: Array.from({ length: 5 }, (_, i) => ({ key: `Q-${i}`, text: `Question ${i}` })),
-      team: Array.from({ length: 7 }, (_, i) => ({ id: `A-${i}`, name: `Agent ${i}`, task: "working", state: "Working", tone: "live" as const, key: null })),
-      goals: Array.from({ length: 8 }, (_, i) => ({ id: `G-${i}`, name: `Goal ${i}`, next: "Next step", done: 0, total: 2 })),
-      delivered: Array.from({ length: 6 }, (_, i) => ({ key: `D-${i}`, text: `Delivered ${i}` })),
-    };
-    const shown = visibleOverview(many);
-    expect([shown.requests.length, shown.team.length, shown.goals.length, shown.delivered.length]).toEqual([2, 3, 2, 2]);
-    expect([many.requests.length, many.team.length, many.goals.length, many.delivered.length]).toEqual([5, 7, 8, 6]);
+      const ws = scene();
+      const html = () => renderToStaticMarkup(createElement(Overview, { ws, me: "person-raghav", cr: room }));
+      expect(plain(html())).toContain("Birch is working on Checkout.");
+      expect(html()).not.toContain("Loading your project");
+      expect(html()).toBe(html());
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
   });
 });
-
 describe("project navigation", () => {
   it("shows Captain, Overview, Team and Project in that order, with the old destinations in the menu", () => {
     const ws = workspace([]);
