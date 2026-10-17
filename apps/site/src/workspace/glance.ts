@@ -834,14 +834,15 @@ export function crew(t: Team, rows: AgentRow[]): CrewRow[] {
 }
 
 // Overview v5. This projection has no timers, fetching, or changes to the board's older helpers.
-export type OverviewAgentState = "working" | "reviewing" | "waiting" | "stopped" | "limit" | "paused" | "idle" | "offline";
-export type OverviewSegment = "d" | "u" | "w" | "x" | "t";
-export const SEGMENT_ORDER: OverviewSegment[] = ["d", "u", "w", "x", "t"];
-export const SEGMENT_WORD: Record<OverviewSegment, string> = { d: "done", u: "in progress", w: "waiting on you", x: "stopped", t: "to go" };
+export type OverviewAgentState = "working" | "reviewing" | "waiting" | "failed" | "blocked" | "limit" | "paused" | "idle" | "offline";
+export type OverviewSegment = "d" | "u" | "r" | "w" | "x" | "t";
+export const SEGMENT_ORDER: OverviewSegment[] = ["d", "u", "r", "w", "x", "t"];
+export const SEGMENT_WORD: Record<OverviewSegment, string> = { d: "done", u: "in progress", r: "in review", w: "waiting on you", x: "blocked", t: "to go" };
 export interface OverviewAgent {
   id: string;
   name: string;
   state: OverviewAgentState;
+  elsewhere?: boolean;
   word: string;
   doing: string;
   key: string | null;
@@ -854,6 +855,8 @@ export interface OverviewTicket {
   key: string;
   title: string;
   segment: OverviewSegment;
+  /** Specific problem, when known; the segment stays solid red. */
+  problem?: "Run failed" | "Checks failed" | "Limit reached" | "Blocked";
   detail: string;
   description: string;
 }
@@ -865,7 +868,7 @@ export interface OverviewGoal {
 }
 export interface OverviewSentence {
   text: string;
-  tone?: "soft" | "stopped";
+  tone?: "soft" | "problem";
   link?: { text: string; to: "people" | "captain" };
 }
 export interface OverviewGlance {
@@ -883,6 +886,15 @@ const overviewAge = (since: string, now: Date) => {
   return !Number.isFinite(minutes) ? "" : minutes < 1 ? "just now" : minutes < 60 ? `${minutes} min` : minutes < 1440 ? `${Math.floor(minutes / 60)} h` : plural(Math.floor(minutes / 1440), "day");
 };
 
+// These are reports emitted by the runner, not guesses from arbitrary error words.
+const overviewRunFailed = (t: Ticket | null | undefined) => /^I stopped: /i.test(t?.needs_human ?? "");
+const overviewProblem = (t: Ticket | null | undefined) => !!t?.needs_human && RUNNER_PROBLEM.test(t.needs_human);
+function overviewLimit(a: Agent, now: Date): boolean {
+  // A supplied expiry wins over a lingering note, including after the limit expires.
+  if (a.waiting_until) return Date.parse(a.waiting_until) > now.getTime();
+  return /^Waiting for my usage limit to reset\b/i.test(a.status_note ?? "") || /^I've spent today's \$[\d.]+ limit on /i.test(a.status_note ?? "");
+}
+
 /** All agents, in a fixed order. A ticket assignment alone never claims an agent is running. */
 export function overviewAgents(ws: Workspace, now: Date): OverviewAgent[] {
   return [...ws.people.agents.values()].sort((a, b) =>
@@ -891,20 +903,27 @@ export function overviewAgents(ws: Workspace, now: Date): OverviewAgent[] {
     const a = statusHere(raw, ws.project.id, ws.byId, now);
     const assigned = ws.tickets.filter(t => isWork(t) && isOpen(t) && t.assignee_id === a.id).sort(overviewTicketOrder);
     const current = a.current_ticket_id ? ws.byId.get(a.current_ticket_id) : null;
-    const t = a.elsewhere ? null : current && isWork(current) && isOpen(current) ? current : assigned.find(t => t.status === "in_progress") ?? null;
-    const limit = (!!a.waiting_until && Date.parse(a.waiting_until) > now.getTime()) || /usage limit|daily limit/i.test(a.status_note ?? "");
-    const live = !a.elsewhere && agentDot(a, now) === "working";
-    const state: OverviewAgentState = raw.status === "paused" ? "paused" : limit ? "limit" : a.status === "offline" ? "offline"
-      : live ? t?.status === "review" ? "reviewing" : "working"
+    const foreign = (!!raw.status_project_id && raw.status_project_id !== ws.project.id) ||
+      (!!raw.current_ticket_id && !ws.byId.has(raw.current_ticket_id));
+    const t = foreign ? null : current && isWork(current) && isOpen(current) ? current : assigned.find(t => t.status === "in_progress") ?? null;
+    const limit = overviewLimit(raw, now);
+    const live = agentOnline(raw, now) && (raw.status === "planning" || raw.status === "building");
+    const state: OverviewAgentState = raw.status === "paused" ? "paused" : !agentOnline(raw, now) ? "offline" : limit ? "limit"
+      : live ? t?.status === "review" && t.assignee_id !== a.id ? "reviewing" : "working"
       : a.status === "waiting_human" || (t && asksPerson(t)) ? "waiting"
-      : a.status === "blocked" || (t?.needs_human && RUNNER_PROBLEM.test(t.needs_human)) ? "stopped" : "idle";
-    const words: Record<OverviewAgentState, string> = { working: "Working", reviewing: "Reviewing", waiting: "Waiting on you", stopped: "Stopped", limit: "Limit reached", paused: "Paused", idle: "Idle", offline: "Offline" };
+      : t?.assignee_id === a.id && overviewRunFailed(t) ? "failed" : a.status === "blocked" || overviewProblem(t) ? "blocked" : "idle";
+    const words: Record<OverviewAgentState, string> = { working: "Working", reviewing: "Reviewing", waiting: "Waiting on you", failed: "Failed", blocked: "Blocked", limit: "Limit reached", paused: "Paused", idle: "Idle", offline: "Offline" };
     const steps = t ? [...(ws.steps.get(t.id) ?? [])].sort((a, b) => a.idx - b.idx) : [];
     const at = steps.findIndex(s => s.status === "now");
     const reason = t?.needs_human && RUNNER_PROBLEM.test(t.needs_human) ? withoutKeys(ws, stopReason(t.needs_human)) : null;
-    const doing = ["idle", "offline"].includes(state) && !a.elsewhere ? "" : reason && state === "stopped" ? `${t!.title} · ${reason}` : t ? `${state === "reviewing" ? "Reviewing " : ""}${isPhrase(t.summary) ? t.summary : t.title}`
-      : a.elsewhere ? "Working in another project" : !["idle", "offline", "paused"].includes(state) ? withoutKeys(ws, a.status_note ?? "") : "";
-    return { id: a.id, name: whoName(ws, a.id), state, word: state === "offline" && a.last_seen_at ? `Offline · ${overviewAge(a.last_seen_at, now)}` : words[state], doing,
+    let doing = ["idle", "offline"].includes(state) ? "" : reason && ["failed", "blocked"].includes(state) ? `${t!.title} · ${reason}` : t ? `${state === "reviewing" ? "Reviewing " : ""}${isPhrase(t.summary) ? t.summary : t.title}`
+      : foreign && live ? "Working in another project" : !["idle", "offline", "paused"].includes(state) ? withoutKeys(ws, a.status_note ?? "") : "";
+    if (state === "limit") doing = [t?.title, withoutKeys(ws, a.status_note ?? "")].filter(Boolean).join(" · ");
+    if (state === "limit" && a.waiting_until) {
+      const resume = new Date(a.waiting_until).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+      doing = [t?.title, `Expected to resume ${resume}`].filter(Boolean).join(" · ");
+    }
+    return { id: a.id, name: whoName(ws, a.id), state, elsewhere: foreign, word: state === "offline" && a.last_seen_at ? `Offline · ${overviewAge(a.last_seen_at, now)}` : words[state], doing,
       key: t?.key ?? null, goalId: t && !["idle", "offline"].includes(state) ? epicOf(ws, t)?.id ?? "fixes" : null,
       steps, step: at < 0 ? null : at + 1, waiting: assigned.filter(t => t.status === "ready" || t.status === "in_progress").length };
   });
@@ -918,15 +937,22 @@ function overviewTicket(ws: Workspace, t: Ticket, team: OverviewAgent[], needs: 
   const who = t.assignee_id ? whoName(ws, t.assignee_id) : null;
   const need = needs.find(n => n.ticket?.id === t.id && n.kind !== "problem");
   const checks = t.checks ?? t.pr_facts?.checks;
-  const stopped = t.needs_human && RUNNER_PROBLEM.test(t.needs_human) || (t.status === "in_progress" && builder && ["stopped", "limit"].includes(builder.state));
-  const segment: OverviewSegment = t.status === "done" ? "d" : need || asksPerson(t) ? "w" : stopped || checks?.state === "failure" ? "x" : ["in_progress", "review"].includes(t.status) ? "u" : "t";
+  // A builder's problem belongs only to its current ticket, not every assignment.
+  const held = builder?.key === t.key && t.status === "in_progress" ? builder : null;
+  const problem: OverviewTicket["problem"] = checks?.state === "failure" ? "Checks failed"
+    : overviewRunFailed(t) ? "Run failed"
+    : held?.state === "limit" ? "Limit reached"
+    : overviewProblem(t) || held?.state === "blocked" || held?.state === "failed" ? "Blocked" : undefined;
+  const segment: OverviewSegment = t.status === "done" ? "d" : need || asksPerson(t) ? "w" : problem ? "x"
+    : t.status === "review" ? "r" : t.status === "in_progress" ? "u" : "t";
   const step = builder?.key === t.key && builder.step ? ` · step ${builder.step} of ${builder.steps.length}` : "";
-  const detail = segment === "d" ? "Done" : segment === "w" ? "Waiting on you" : segment === "x" ? `Stopped${who ? ` · ${who}` : ""}`
+  const detail = segment === "d" ? "Done" : segment === "w" ? "Waiting on you" : segment === "x" ? `${problem}${who ? ` · ${who}` : ""}`
     : segment === "t" ? `To go${builder?.state === "offline" ? ` · ${builder.name}, offline` : ""}`
-    : reviewer ? `${reviewer.name} reviewing` : t.status === "review" ? "In review"
-    : who ? `${who}${builder?.state === "paused" ? " · paused" : builder?.state === "offline" ? " · offline" : step}` : "In progress";
-  const reason = segment !== "x" ? null : checks?.state === "failure" ? "Checks failed" : t.needs_human && RUNNER_PROBLEM.test(t.needs_human) ? stopReason(t.needs_human) : null;
-  return { key: t.key, title: t.title, segment, detail, description: [SEGMENT_WORD[segment], detail, reason].filter(Boolean).join(" · ") };
+    : reviewer ? `In review · ${reviewer.name}` : t.status === "review" ? "In review"
+    : `In progress${who ? ` · ${who}` : ""}${builder?.state === "paused" ? " · paused" : builder?.state === "offline" ? " · offline" : step}`;
+  const reason = overviewProblem(t) ? stopReason(t.needs_human!) : null;
+  return { key: t.key, title: t.title, segment, ...(segment === "x" ? { problem } : {}), detail,
+    description: segment === "d" ? detail : [detail, reason, segment !== "x" ? problem : null].filter(Boolean).join(" · ") };
 }
 
 /** Reference heading table, using only situations supported by the real records. */
@@ -935,7 +961,7 @@ export function overviewHeadings(team: OverviewAgent[], goals: OverviewGoal[], s
   if (setup === "choose") return [{ text: "Captain hasn’t been chosen yet.", tone: "soft" }, { text: "Choose Captain to start building.", link: { text: "Choose Captain", to: "people" } }];
   if (setup === "captain") return [{ text: "Captain is here, but nobody builds yet.", tone: "soft" }, { text: "Add an agent to start building.", link: { text: "Add an agent", to: "people" } }];
   if (setup === "agents") return [{ text: "Nothing has started yet.", tone: "soft" }, { text: "Tell Captain what you want to make.", link: { text: "Tell Captain", to: "captain" } }];
-  const working = team.filter(a => a.state === "working" || a.state === "reviewing");
+  const working = team.filter(a => !a.elsewhere && (a.state === "working" || a.state === "reviewing"));
   const active = goals.filter(g => working.some(a => a.goalId === g.id));
   const names = active.map(g => g.name);
   const target = names.length === 1 ? names[0] : names.length === 2 && names.join("").length <= 32 ? listed(names) : plural(names.length, "goal");
@@ -949,8 +975,16 @@ export function overviewHeadings(team: OverviewAgent[], goals: OverviewGoal[], s
   } else {
     out.push({ text: `${working.length} agents are working${active.length && working.every(a => a.goalId) ? ` on ${target}` : ""}.` });
   }
-  const stopped = team.filter(a => a.state === "stopped" || a.state === "limit").map(a => a.name);
-  if (stopped.length) out.push({ text: `${listed(stopped)} ${stopped.length > 1 ? "have" : "has"} stopped.`, tone: "stopped" });
+  for (const a of team) {
+    if (a.state === "failed") out.push({ text: `${a.name}'s run failed.`, tone: "problem" });
+    if (a.state === "blocked") out.push({ text: `${a.name} is blocked.`, tone: "problem" });
+    if (a.state === "limit") out.push({ text: `${a.name} reached a usage limit.`, tone: "problem" });
+  }
+  const paused = team.filter(a => a.state === "paused").map(a => a.name);
+  if (paused.length) out.push({ text: `${listed(paused)} ${paused.length > 1 ? "are" : "is"} paused.`, tone: "soft" });
+  for (const g of goals.filter(g => g.tickets.some(t => t.problem === "Checks failed"))) {
+    out.push({ text: `${g.name}: checks failed.`, tone: "problem" });
+  }
   for (const a of team.filter(a => a.state === "offline" && a.waiting)) out.push({ text: `${a.name} is offline with ${plural(a.waiting, "ticket")} waiting.`, tone: "soft" });
   if (team.some(a => a.name === "Captain" && a.state === "offline" && !a.waiting)) out.push({ text: "Captain is offline.", tone: "soft" });
   const done = goals.filter(g => g.finished && g.id !== "fixes").map(g => g.name);

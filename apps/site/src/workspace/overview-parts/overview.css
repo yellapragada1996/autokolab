@@ -12,6 +12,8 @@
   --card-shadow: inset 0 1px 0 rgba(255, 255, 255, .025);
   --todo-edge: var(--border-focus);
   --done: #5DC46A;
+  --problem-red: #FF3535;
+  --problem-text: #FF8585;
   --done-edge: transparent;
   --stripe-blue-a: var(--blue-switch);
   --stripe-blue-b: var(--blue);
@@ -29,7 +31,7 @@
 .ak-overview-scope :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-sm); }
 .ak-overview-scope .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .ak-overview-scope .dot { flex: none; display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
-.ak-overview-scope .dot.coral { background: var(--coral); }
+.ak-overview-scope .dot.coral { background: var(--problem-red); }
 .ak-overview-scope .ov { width: 100%; max-width: 1120px; padding: 56px 56px 80px; }
 
 /* Section titles: sentence case with a hairline running to the edge. */
@@ -67,7 +69,7 @@
 .ak-overview-scope .headline .nw, .ak-overview-scope .headline .goal { white-space: nowrap; }
 .ak-overview-scope .headline a { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 7px; text-decoration-color: var(--border-strong); transition: text-decoration-color var(--dur-hover) var(--ease-out); }
 .ak-overview-scope .headline a:hover { text-decoration-color: var(--text); }
-.ak-overview-scope .headline .stopped { color: var(--coral-text); }
+.ak-overview-scope .headline .problem { color: var(--problem-text); }
 .ak-overview-scope .headline .soft { color: var(--text-muted); }
 .ak-overview-scope .head + .part { margin-top: 48px; }
 /* The croc only turns up when there is nothing to report: resting in calm, eager when new.
@@ -81,7 +83,7 @@
 .ak-overview-scope .av { position: relative; flex: none; display: grid; place-items: center; width: 32px; height: 32px; color: var(--avatar-fg); background: var(--avatar-bg); border-radius: 10px; font-size: 13px; font-weight: 600; letter-spacing: 0; --gap: var(--card); }
 .ak-overview-scope .av.s-live { box-shadow: 0 0 0 2px var(--gap), 0 0 0 3.5px var(--blue); }
 .ak-overview-scope .av.s-wait { box-shadow: 0 0 0 2px var(--gap), 0 0 0 3.5px var(--amber); }
-.ak-overview-scope .av.s-stop { box-shadow: 0 0 0 2px var(--gap), 0 0 0 3.5px var(--coral); }
+.ak-overview-scope .av.s-stop { box-shadow: 0 0 0 2px var(--gap), 0 0 0 3.5px var(--problem-red); }
 .ak-overview-scope .av.s-live::after { content: ""; position: absolute; inset: -3.5px; border: 1.5px solid var(--blue); border-radius: 13.5px; opacity: 0; animation: overview-breathe 3.2s var(--ease-out) infinite; animation-delay: var(--delay, 0s); }
 @keyframes overview-breathe { 0% { opacity: .5; transform: scale(1); } 75%, 100% { opacity: 0; transform: scale(1.32); } }
 .ak-overview-scope .quiet .av { color: var(--text-dim); background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); }
@@ -93,25 +95,25 @@
 .ak-overview-scope .tick.d { background: var(--text-dim); }
 .ak-overview-scope .tick.n { background: var(--blue); }
 .ak-overview-scope .s-wait-row .tick.n { background: var(--amber); }
-.ak-overview-scope .s-stop-row .tick.n { background: var(--coral); }
+.ak-overview-scope .s-stop-row .tick.n { background: var(--problem-red); }
 
 /* ---------------------------------------------------------------------------
    Goal progress: one rounded segment per ticket, like the bumps on the croc's back.
-   Always in this order: done, in progress, waiting on you, stopped, to go.
-   Each state has a colour AND a shape:
+   Order: done, in progress, in review, waiting on you, problems, to go.
+   Each state has a colour and a visible word:
      done          solid croc green (inked in light)
      in progress   blue stripes: work under way
      waiting       amber stripes: under way, held by a question to you
-     stopped       solid coral, broken in the middle
+     problems      solid bright red; the word gives the specific cause
      to go         an empty outline
    Over 16 tickets the segments merge into one continuous line.
    --------------------------------------------------------------------------- */
 .ak-overview-scope .gl { position: relative; display: flex; gap: 3px; height: 10px; flex: 1; min-width: 0; }
 .ak-overview-scope .gs { flex: 1; min-width: 4px; border-radius: 5px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--todo-edge); transition: outline-color var(--dur-hover) var(--ease-out); outline: 2px solid transparent; outline-offset: 2px; }
 .ak-overview-scope .gs.d { background: var(--done); box-shadow: inset 0 0 0 1.5px var(--done-edge); }
-.ak-overview-scope .gs.u { background: repeating-linear-gradient(-45deg, var(--stripe-blue-a) 0 3px, var(--stripe-blue-b) 3px 6px); box-shadow: none; }
+.ak-overview-scope .gs.u, .ak-overview-scope .gs.r { background: repeating-linear-gradient(-45deg, var(--stripe-blue-a) 0 3px, var(--stripe-blue-b) 3px 6px); box-shadow: none; }
 .ak-overview-scope .gs.w { background: repeating-linear-gradient(-45deg, var(--stripe-amber-a) 0 3px, var(--stripe-amber-b) 3px 6px); box-shadow: none; }
-.ak-overview-scope .gs.x { background: var(--coral); box-shadow: none; -webkit-mask: linear-gradient(90deg, var(--text) calc(50% - 1.5px), transparent 0 calc(50% + 1.5px), var(--text) 0); mask: linear-gradient(90deg, var(--text) calc(50% - 1.5px), transparent 0 calc(50% + 1.5px), var(--text) 0); }
+.ak-overview-scope .gs.x { background: var(--problem-red); box-shadow: none; }
 .ak-overview-scope .gs.hl { outline-color: var(--text); }
 .ak-overview-scope .gl.cont { gap: 0; border-radius: 5px; overflow: hidden; box-shadow: inset 0 0 0 1.5px var(--todo-edge); }
 .ak-overview-scope .gl.cont .gs { border-radius: 0; }
@@ -273,3 +275,6 @@
 @container (max-width: 600px) {
   .ak-overview-scope .t-meta { max-width: 100%; }
 }
+
+/* Problem words are the second cue; the red bar and ring remain solid. */
+.ak-overview-scope .s-stop-row .a-state, .ak-overview-scope .lg.x, .ak-overview-scope .t-meta.x { color: var(--problem-text); }

@@ -82,7 +82,7 @@ describe("Overview v5 composition", () => {
     expect(html).toContain('aria-expanded="false"');
     expect(html).toContain("Checkout: 1 in progress. Show its 1 ticket.");
     expect(html).toContain('class="gs u"');
-    expect(html).toContain('class="t-meta">Birch · step 3 of 5');
+    expect(html).toContain('class="t-meta u">In progress · Birch · step 3 of 5');
     expect(html).toContain('aria-hidden="true"');
   });
 
