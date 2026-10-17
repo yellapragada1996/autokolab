@@ -1,6 +1,8 @@
 # Comparing the two tabs proposals
 
-17 October 2026 · AK-161 · jamesblack-codex · Recommendation, not a product decision
+17 October 2026 · AK-161 · Research by jamesblack-codex · Recommendation, not a product decision
+
+The original research commit (`21a1d9b`, 17 October 2026) records `yvssaratchandra-claude` as its Git author.
 
 ## Short summary
 
@@ -130,11 +132,3 @@ Only two choices need raghavendra's decision:
 2. **Keep Guide and Decisions separately named inside More, rather than merge them into Rules?** I recommend yes. It preserves the distinction between project context, standing choices and the period history without changing anyone's rights.
 
 Neither choice authorizes new remote controls, narrower permissions, removal of diagnostics or deletion of records. Those need separate scoped work. No app or original proposal is changed by this review.
-
-## Checks and delivery
-
-- `npm run typecheck`: passed across the workspaces.
-- `npm test`: failed. Site: 377 passed. Helper: 520 passed, 28 failed, 18 skipped; 10 test files failed and one unhandled error occurred. Failures include blocked Git subprocesses (`EPERM`), a blocked localhost listener and read-only helper paths. Some assertions also failed; this is not a green run.
-- Access-rule tests, attempted separately after the workspace failure: could not start because `createdb` is unavailable. No live database was used.
-- Local document links and line targets were checked; no missing targets. Only this file is added. Website build and screenshots do not apply to this documentation-only change.
-- Staging failed because the shared Git directory is read-only (`index.lock` could not be created). Nothing was committed or pushed, and no PR or GitHub checks could be produced here. The ticket's explicit fallback leaves this file for the runner to commit, push on the assigned branch and open against `main`; the runner/reviewer still needs passing checks before approval.
