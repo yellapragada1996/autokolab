@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>AutoKolab · Overview study</title>
+  <style>
+    @font-face {
+      font-family: Geist; font-style: normal; font-weight: 100 900;
+      font-display: swap; src: url('./geist-latin.ttf') format('truetype');
+    }
+    /* Dark values are copied from the handoff. Light is a semantic-token proposal,
+       confined to this study: the handoff does not yet define a light palette. */
+    :root {
+      color-scheme: dark;
+      --bg: #0B0D11; --sidebar: #0E1116; --surface: #12151B;
+      --surface-hover: #161A21; --surface-active: #181C23; --surface-raised: #232833;
+      --avatar-bg: #232833; --avatar-fg: #C9CED6;
+      --border-subtle: #1C2029; --border: #1F242D; --border-strong: #2A303B;
+      --text: #E9EBEF; --text-body: #D4D8DE; --text-secondary: #C9CED6;
+      --text-muted: #A2A9B5; --text-dim: #858C98;
+      --amber: #F4C25B; --blue: #7EA6FF; --coral: #FF8A78;
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --text-12: 12px; --text-13: 13px; --text-14: 14px; --text-15: 15px;
+      --text-17: 17px; --text-21: 21px; --text-26: 26px; --text-30: 30px;
+      --tracking-tight: -.02em; --tracking-label: .08em;
+      --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+      --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+      --radius-sm: 7px; --radius-md: 10px; --radius-lg: 12px;
+      --dur-hover: 160ms; --ease-out: cubic-bezier(.2,.8,.2,1);
+      /* Neutral high-contrast focus, stronger than the handoff's border-focus. */
+      --focus-ring: var(--text-secondary);
+    }
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #FAFBFC; --sidebar: #F5F6F8; --surface: #FFFFFF;
+      --surface-hover: #F0F2F5; --surface-active: #E8EBEF; --surface-raised: #E1E5EB;
+      --avatar-bg: #E8EBEF; --avatar-fg: #454E5D;
+      --border-subtle: #E6E9EE; --border: #DDE1E7; --border-strong: #C5CBD5;
+      --text: #18202D; --text-body: #303A49; --text-secondary: #454E5D;
+      --text-muted: #586272; --text-dim: #626C7B;
+      --amber: #946000; --blue: #305FC1; --coral: #B63F33;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 400 var(--text-15)/1.6 var(--font-sans); }
+    button, select { font: inherit; }
+    a { color: inherit; text-decoration: none; }
+    button, a, select { -webkit-tap-highlight-color: var(--surface-raised); }
+    button, select { cursor: pointer; }
+    :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 4px; }
+    a, button { transition: background-color var(--dur-hover) var(--ease-out); }
+    a:hover, button:hover { background: var(--surface-hover); }
+    a:active, button:active { background: var(--surface-raised); }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+    .skip { position: absolute; left: 16px; top: -80px; z-index: 5; padding: 12px 16px; background: var(--surface-raised); border-radius: var(--radius-sm); }
+    .skip:focus { top: 12px; }
+
+    /* Review tools are outside the product frames. Each frame is actual size. */
+    .study-head { padding: 32px 32px 24px; border-bottom: 1px solid var(--border); }
+    .study-head h1 { margin: 4px 0 8px; font-size: var(--text-26); font-weight: 550; letter-spacing: var(--tracking-tight); }
+    .eyebrow { color: var(--text-dim); font-size: var(--text-12); font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; }
+    .study-head p { margin: 0; color: var(--text-muted); font-size: var(--text-14); }
+    .controls { display: flex; flex-wrap: wrap; align-items: end; gap: 16px 24px; margin-top: 24px; }
+    .control { display: grid; gap: 4px; color: var(--text-muted); font-size: var(--text-12); }
+    select { min-height: 44px; min-width: 160px; padding: 8px 32px 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: var(--text-14); }
+    .canvas-help { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-left: auto; font-size: var(--text-13); }
+    .canvas-help a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; border-radius: var(--radius-sm); text-decoration: underline; text-underline-offset: 4px; }
+    .canvas { overflow-x: auto; padding: 24px 32px 40px; }
+    .comparison { display: flex; align-items: start; gap: 32px; width: max-content; }
+    .frame-wrap { flex: none; scroll-margin: 24px; }
+    .frame-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; color: var(--text-muted); font-size: var(--text-12); }
+    .frame-label a { text-decoration: underline; text-underline-offset: 4px; padding: 4px; }
+    iframe { display: block; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--bg); }
+    #desktop-frame { width: 1440px; height: 960px; }
+    #phone-frame { width: 390px; height: 844px; }
+    .notes { width: 248px; padding-top: 32px; }
+    .notes h2 { margin: 0 0 24px; font-size: var(--text-15); font-weight: 600; }
+    .notes ol { list-style: none; margin: 0; padding: 0; counter-reset: notes; display: grid; gap: 24px; }
+    .notes li { counter-increment: notes; padding-left: 32px; position: relative; }
+    .notes li::before { content: '0' counter(notes); position: absolute; left: 0; top: 2px; color: var(--text-dim); font-size: var(--text-12); }
+    .notes strong { font-size: var(--text-14); font-weight: 550; }
+    .notes p { margin: 4px 0 0; font-size: var(--text-13); line-height: 1.65; color: var(--text-muted); }
+    .boundary { max-width: 800px; padding: 0 32px 40px; scroll-margin-top: 24px; color: var(--text-muted); font-size: var(--text-13); }
+    .boundary h2 { margin: 0 0 8px; font-size: var(--text-14); color: var(--text-secondary); }
+    .boundary p { margin: 0; }
+    .boundary a { text-decoration: underline; text-underline-offset: 4px; }
+
+    /* Product shell. A single quiet surface; neutral selection, no status colour. */
+    .app { display: grid; grid-template-columns: 224px minmax(0,1fr); min-height: 100vh; }
+    .sidebar { padding: 24px 16px; background: var(--sidebar); border-right: 1px solid var(--border-subtle); }
+    .brand { display: block; width: 160px; height: 48px; object-fit: contain; filter: grayscale(1) brightness(1.8); }
+    [data-theme="light"] .brand { filter: grayscale(1) brightness(.65); }
+    .project { display: block; margin: 24px 12px; font-size: var(--text-14); font-weight: 550; overflow-wrap: anywhere; }
+    .navigation { display: grid; gap: 4px; }
+    .nav-link { min-height: 44px; padding: 8px 12px; display: flex; align-items: center; gap: 12px; color: var(--text-muted); border-radius: var(--radius-sm); font-size: var(--text-14); }
+    .nav-link svg { width: 16px; height: 16px; flex: none; stroke-width: 1.5; }
+    .nav-link[aria-current="page"] { color: var(--text); font-weight: 550; background: var(--surface-active); box-shadow: inset 2px 0 var(--text-muted); }
+    .page-header { height: 64px; border-bottom: 1px solid var(--border-subtle); display: flex; align-items: center; padding: 0 40px; color: var(--text-muted); font-size: var(--text-14); }
+    .mobile-header, .bottom-nav { display: none; }
+    .reading { max-width: 880px; margin: 0 auto; padding: 64px 64px 80px; }
+    .headline { margin: 0; max-width: 672px; color: var(--text); font-size: var(--text-30); font-weight: 500; line-height: 1.35; letter-spacing: var(--tracking-tight); overflow-wrap: anywhere; }
+    .headline .stop-clause { color: var(--text); }
+    .section { margin-top: 40px; }
+    .section-title { margin: 0 0 12px; color: var(--text-dim); font-size: var(--text-12); line-height: 20px; font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; }
+    .rows { list-style: none; margin: 0; padding: 0; }
+    .rows > li + li { border-top: 1px solid var(--border-subtle); }
+    .agent { display: grid; grid-template-columns: 32px 128px minmax(0,1fr) 128px; align-items: center; gap: 16px; min-height: 72px; padding: 16px 8px; margin: 0 -8px; border-radius: var(--radius-sm); }
+    .avatar { display: grid; place-items: center; width: 32px; height: 32px; background: var(--avatar-bg); color: var(--avatar-fg); border-radius: var(--radius-sm); font-size: var(--text-12); font-weight: 550; }
+    .agent-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-15); font-weight: 550; }
+    .activity { color: var(--text-secondary); font-size: var(--text-14); line-height: 24px; overflow-wrap: anywhere; }
+    .status { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: var(--text-12); line-height: 20px; white-space: nowrap; }
+    .dot { width: 6px; height: 6px; flex: none; display: inline-block; border-radius: 50%; background: var(--text-dim); }
+    .dot.live { background: var(--blue); }
+    .dot.waiting { background: var(--amber); }
+    .dot.problem { background: var(--coral); }
+    .muted .activity, .muted .agent-name { color: var(--text-muted); }
+    .goal { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: baseline; gap: 24px; min-height: 56px; padding: 16px 8px; margin: 0 -8px; border-radius: var(--radius-sm); }
+    .goal-name { font-weight: 500; overflow-wrap: anywhere; }
+    .progress { color: var(--text-muted); font-size: var(--text-13); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .needs { margin: 0 0 40px; }
+    .request { display: grid; grid-template-columns: 6px minmax(0,1fr) auto; align-items: baseline; gap: 12px; min-height: 64px; padding: 16px 8px; margin: 0 -8px; border-radius: var(--radius-sm); }
+    .request .dot { align-self: start; margin-top: 9px; }
+    .request-text { font-weight: 500; overflow-wrap: anywhere; }
+    .action { color: var(--text-muted); font-size: var(--text-13); white-space: nowrap; text-decoration: underline; text-underline-offset: 4px; }
+    .overflow-link { display: inline-flex; align-items: center; min-height: 44px; padding: 8px; margin-left: 10px; border-radius: var(--radius-sm); color: var(--text-muted); font-size: var(--text-13); text-decoration: underline; text-underline-offset: 4px; }
+    .empty { margin: 16px 0 0; color: var(--text-muted); }
+    .inline-link { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 12px; margin: 16px 0 0 -12px; border-radius: var(--radius-sm); text-decoration: underline; text-underline-offset: 4px; font-size: var(--text-14); }
+    .error-heading { display: flex; align-items: baseline; gap: 12px; }
+    .error-heading .dot { align-self: start; margin-top: 17px; }
+    .loading-word { color: var(--text-muted); }
+    .skeleton { margin-top: 40px; max-width: 560px; }
+    .skeleton div { height: 16px; background: var(--surface-active); border-radius: 4px; margin-bottom: 24px; }
+    .skeleton div:nth-child(2) { width: 72%; }
+    .skeleton div:nth-child(3) { width: 48%; }
+
+    /* Phone keeps all eight tabs in a two-row bottom bar: no clipped labels or
+       horizontal navigation hunt, and every destination has a 44px target. */
+    [data-frame="phone"] .app { display: block; }
+    [data-frame="phone"] .sidebar, [data-frame="phone"] .page-header { display: none; }
+    [data-frame="phone"] .mobile-header { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--border-subtle); }
+    [data-frame="phone"] .brand { width: 132px; height: 40px; }
+    [data-frame="phone"] .project { margin: 0; font-size: var(--text-13); }
+    [data-frame="phone"] .reading { padding: 24px 20px 144px; }
+    [data-frame="phone"] .page-label { margin: 0 0 20px; color: var(--text-muted); font-size: var(--text-13); }
+    [data-frame="desktop"] .page-label { display: none; }
+    [data-frame="phone"] .headline { font-size: var(--text-21); line-height: 1.4; font-weight: 500; }
+    [data-frame="phone"] .section { margin-top: 24px; }
+    [data-frame="phone"] .section-title { margin-bottom: 8px; }
+    [data-frame="phone"] .agent { grid-template-columns: 32px minmax(0,1fr) 116px; gap: 4px 12px; padding: 12px 8px; min-height: 80px; }
+    [data-frame="phone"] .agent.muted { min-height: 64px; }
+    [data-frame="phone"] .activity:empty { display: none; }
+    [data-frame="phone"] .avatar { grid-row: 1 / 3; align-self: start; margin-top: 4px; }
+    [data-frame="phone"] .agent-name { grid-column: 2; white-space: normal; overflow-wrap: anywhere; }
+    [data-frame="phone"] .status { grid-column: 3; grid-row: 1; justify-self: end; align-self: start; padding-top: 4px; }
+    [data-frame="phone"] .activity { grid-column: 2 / 4; font-size: var(--text-14); }
+    [data-frame="phone"] .goal { gap: 16px; }
+    [data-frame="phone"] .needs { margin-bottom: 32px; }
+    [data-frame="phone"] .request { grid-template-columns: 6px minmax(0,1fr); gap: 4px 12px; }
+    [data-frame="phone"] .request .action { grid-column: 2; }
+    [data-frame="phone"] .error-heading .dot { margin-top: 12px; }
+    [data-frame="phone"] .bottom-nav { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 4px; position: fixed; inset: auto 0 0; z-index: 2; padding: 8px 12px max(8px,env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--border-strong); }
+    [data-frame="phone"] .bottom-nav .nav-link { min-height: 44px; padding: 8px 4px; justify-content: center; font-size: var(--text-12); }
+    [data-frame="phone"] .bottom-nav .nav-link[aria-current="page"] { box-shadow: inset 0 -2px var(--text-muted); }
+    [data-frame="phone"] a { scroll-margin-block: 16px 128px; }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+    @media (max-width: 600px) { .study-head { padding: 24px 20px; } .canvas { padding: 24px 20px; } .canvas-help { margin-left: 0; } }
+  </style>
+</head>
+<body>
+  <script>
+    // Only prototype controls and fixture rendering. No app APIs or external requests.
+    const query = new URLSearchParams(location.search);
+    const theme = query.get('theme') === 'light' ? 'light' : 'dark';
+    const frame = query.get('frame');
+    const agents = [
+      ['Captain', 'Reviewing saved cards', 'Reviewing', 'live'],
+      ['Birch', 'Adding saved cards', 'Working', 'live'],
+      ['Fjord', 'Adding Google sign-in', 'Working', 'live'],
+      ['Wren', '', 'Idle', 'idle']
+    ];
+    const goals = [['Checkout', '4 of 7 done'], ['Sign-in', '1 of 3 done']];
+    const states = {
+      busy: { label: 'Busy', headline: '3 agents are working on Checkout and Sign-in.', agents, goals },
+      questions: {
+        label: 'Questions waiting', headline: '2 agents are working on Checkout.',
+        requests: [
+          ['Should guests be able to save cards?', 'Answer in Captain'],
+          ['Can we use the same sign-in flow for customers who already have an account with another email address?', 'Answer in Captain']
+        ], more: 2,
+        agents: [agents[0], agents[1], ['Fjord', 'Adding Google sign-in', 'Waiting on you', 'waiting'], agents[3]], goals
+      },
+      stopped: {
+        label: 'Agent stopped', headline: '2 agents are working on Checkout. Tern has stopped.',
+        agents: [agents[0], agents[1], ['Fjord', '', 'Idle', 'idle'], ['Tern', 'Adding Google sign-in · Daily limit reached', 'Stopped', 'problem'], agents[3]], goals
+      },
+      calm: {
+        label: 'Calm', headline: 'No agents are working right now.',
+        agents: [['Captain', '', 'Idle', 'idle'], ['Birch', '', 'Idle', 'idle'], ['Fjord', '', 'Offline', 'offline'], agents[3]], goals: []
+      },
+      new: { label: 'Brand-new project', headline: 'Nothing has started yet.', firstGoal: true, agents: [], goals: [] },
+      many: {
+        label: 'Many agents · 13', headline: '8 agents are working on Checkout, Sign-in and 2 other goals.',
+        agents: [agents[0], ['Alder', 'Adding receipt emails', 'Working', 'live'], agents[1], ['Cedar', 'Reviewing payment retries', 'Reviewing', 'live'],
+          ['Dune', 'Building order history', 'Working', 'live'], agents[2], ['Gale', 'Adding delivery preferences', 'Working', 'live'],
+          ['Harbor', 'Building account recovery', 'Working', 'live'], ['Ibis', '', 'Idle', 'idle'],
+          ['Juniper-accessibility-and-localisation', 'Checking keyboard navigation and translated labels in the customer account recovery flow', 'Waiting on you', 'waiting'],
+          ['Kestrel', 'Adding address validation · Tests failed', 'Stopped', 'problem'], ['Larch', '', 'Offline', 'offline'], agents[3]],
+        requests: [['Should recovery emails use the customer’s preferred language?', 'Answer in Captain']],
+        goals: [...goals, ['Customer accounts and recovery across multiple storefronts', '2 of 8 done'], ['Order history', '1 of 5 done']],
+        stoppedClause: 'Kestrel has stopped.'
+      },
+      loading: { label: 'Loading', headline: 'Loading your project…', loading: true },
+      failed: { label: 'Load failed', headline: 'Couldn’t load your project.', failed: true }
+    };
+    let selected = Object.hasOwn(states, query.get('state')) ? query.get('state') : 'busy';
+    document.documentElement.dataset.theme = theme;
+    const escapeHTML = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[ch]));
+    const icon = (path) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">${path}</svg>`;
+    const tabs = [
+      ['Captain', '<path d="M5 4h14v12H9l-4 4V4Z"/><path d="M9 8h6M9 12h4"/>'],
+      ['Overview', '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>'],
+      ['Work', '<rect x="4" y="6" width="16" height="14" rx="2"/><path d="M9 6V4h6v2M4 11h16"/>'],
+      ['Team', '<circle cx="9" cy="8" r="3"/><path d="M3 20v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6M18 14a5 5 0 0 1 3 5"/>'],
+      ['Room', '<path d="M4 4h16v12H9l-5 4V4Z"/><path d="M8 10h.01M12 10h.01M16 10h.01"/>'],
+      ['Decisions', '<path d="m5 12 4 4L19 6M5 21h14"/>'],
+      ['Results', '<path d="M4 20h16M7 16v-5M12 16V4M17 16V8"/>'],
+      ['Settings', '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--sidebar)"/><circle cx="15" cy="17" r="3" fill="var(--sidebar)"/>']
+    ];
+    const destination = `overview.html?state=${selected}&theme=${theme}#destinations`;
+    function link(content, className = '', attributes = '') {
+      return `<a class="${className}" href="${destination}" target="_top" ${attributes}>${content}</a>`;
+    }
+    function navigation(mobile = false) {
+      return tabs.map(([name, path]) => link(`${mobile ? '' : icon(path)}<span>${name}</span>`, 'nav-link', name === 'Overview' ? 'aria-current="page"' : '')).join('');
+    }
+    function renderApp() {
+      const state = states[selected];
+      const requests = state.requests ? `<section class="needs" aria-labelledby="needs-heading">
+        <h2 id="needs-heading" class="section-title">Needs you</h2>
+        <ul class="rows">${state.requests.map(([question, action]) => `<li>${link(`<span class="dot waiting" aria-hidden="true"></span><span class="request-text">${escapeHTML(question)}</span><span class="action">${action} <span aria-hidden="true">↗</span></span>`, 'request')}</li>`).join('')}</ul>
+        ${state.more ? link(`${state.more} more in Captain <span aria-hidden="true">↗</span>`, 'overflow-link') : ''}
+      </section>` : '';
+      const agentList = state.agents?.length ? `<section class="section" aria-labelledby="agents-heading"><h2 id="agents-heading" class="section-title">Agents</h2><ul class="rows">${state.agents.map(([name, activity, status, kind]) => `<li>${link(`
+        <span class="avatar" aria-hidden="true">${name === 'Captain' ? 'C' : name[0]}</span>
+        <span class="agent-name" title="${escapeHTML(name)}">${escapeHTML(name)}</span>
+        <span class="activity">${escapeHTML(activity)}</span>
+        <span class="status"><span class="dot ${kind}" aria-hidden="true"></span>${status}</span>`, `agent ${kind === 'idle' || kind === 'offline' ? 'muted' : ''}`, `aria-label="${escapeHTML(`${name}, ${status}${activity ? ', ' + activity : ''}. Open ${kind === 'idle' || kind === 'offline' ? 'Team' : 'Work'}`)}"`)}</li>`).join('')}</ul></section>` : '';
+      const goalList = state.goals?.length ? `<section class="section" aria-labelledby="goals-heading"><h2 id="goals-heading" class="section-title">Being built</h2><ul class="rows">${state.goals.map(([name, progress]) => `<li>${link(`<span class="goal-name">${escapeHTML(name)}</span><span class="progress">${progress}</span>`, 'goal', `aria-label="${escapeHTML(`${name}, ${progress}. Open Work`)}"`)}</li>`).join('')}</ul></section>` : '';
+      const heading = `${escapeHTML(state.headline)}${state.stoppedClause ? ' ' + escapeHTML(state.stoppedClause) : ''}`;
+      const body = state.failed ? `<div role="alert"><div class="error-heading"><span class="dot problem" aria-hidden="true"></span><h1 class="headline">${heading}</h1></div><p class="empty">Try again to see what’s happening.</p><a class="inline-link" href="overview.html?state=busy&theme=${theme}" target="_top">Try again <span aria-hidden="true">&nbsp;↗</span></a></div>` :
+        `${requests}<h1 class="headline ${state.loading ? 'loading-word' : ''}" ${state.loading ? 'aria-live="polite"' : ''}>${heading}</h1>
+        ${state.loading ? '<div class="skeleton" aria-hidden="true"><div></div><div></div><div></div></div>' : ''}
+        ${state.firstGoal ? `<p class="empty">Connect Captain to start your first goal.</p>${link('Open Team <span aria-hidden="true">&nbsp;↗</span>', 'inline-link')}` : ''}${agentList}${goalList}`;
+      return `<a class="skip" href="#main">Skip to Overview</a><div class="app">
+        <aside class="sidebar"><img class="brand" src="./autokolab-logo.svg" alt="AutoKolab" width="160" height="48"><span class="project">Storefront</span><nav class="navigation" aria-label="Project">${navigation()}</nav></aside>
+        <div class="workspace"><header class="page-header">Overview</header><header class="mobile-header"><img class="brand" src="./autokolab-logo.svg" alt="AutoKolab" width="132" height="40"><span class="project">Storefront</span></header>
+          <main id="main" class="reading" tabindex="-1"><p class="page-label">Overview</p>${body}</main>
+        </div><nav class="bottom-nav" aria-label="Project">${navigation(true)}</nav></div>`;
+    }
+    if (frame === 'desktop' || frame === 'phone') {
+      document.body.dataset.frame = frame;
+      document.body.dataset.state = selected;
+      document.title = `AutoKolab · Overview · ${states[selected].label}`;
+      document.body.insertAdjacentHTML('afterbegin', renderApp());
+    } else {
+      document.body.insertAdjacentHTML('afterbegin', `
+        <header class="study-head"><div class="eyebrow">AK-171 · Independent design study</div><h1>A quieter Overview.</h1><p>One glance: what needs me, what’s happening, who’s on it.</p>
+          <div class="controls"><label class="control">Project state<select id="state">${Object.entries(states).map(([value, state]) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${state.label}</option>`).join('')}</select></label>
+          <label class="control">Theme<select id="theme"><option value="dark" ${theme === 'dark' ? 'selected' : ''}>Dark</option><option value="light" ${theme === 'light' ? 'selected' : ''}>Light</option></select></label>
+          <div class="canvas-help"><span>Actual-size frames. Scroll across to compare.</span><a href="#desktop">Desktop</a><a href="#phone">Phone</a><a href="#design-notes">Design notes</a></div></div>
+          <p id="selection-status" class="sr-only" role="status"></p>
+        </header>
+        <div class="canvas" role="region" aria-label="Desktop and phone comparison, scroll horizontally" tabindex="0"><div class="comparison">
+          <section class="frame-wrap" id="desktop" aria-label="Desktop preview"><div class="frame-label"><span>DESKTOP · 1440 × 960</span><a id="desktop-open" href="#">Open desktop ↗</a></div><iframe id="desktop-frame" title="Desktop Overview, 1440 pixels wide"></iframe></section>
+          <section class="frame-wrap" id="phone" aria-label="Phone preview"><div class="frame-label"><span>PHONE · 390 × 844</span><a id="phone-open" href="#">Open phone ↗</a></div><iframe id="phone-frame" title="Phone Overview, 390 pixels wide"></iframe></section>
+          <aside class="notes" id="design-notes" aria-labelledby="notes-heading"><h2 id="notes-heading">The first five seconds</h2><ol>
+            <li><strong>First: the decision.</strong><p>Needs you comes before everything. An amber dot is the only signal; the question stays ordinary text. Two full questions, then an explicit route to the rest.</p></li>
+            <li><strong>Then: the whole picture.</strong><p>The largest type answers how many agents are working and on what. A stop is named in the same sentence. No competing title or number tiles.</p></li>
+            <li><strong>Then: who is doing what.</strong><p>Read name → work → state. The same columns line up in every row. Captain first, then names: activity never moves an agent.</p></li>
+            <li><strong>Everything else steps back.</strong><p>Small section labels and hairline separators. One surface, no panel stack. Goal counts are plain words, with aligned numerals and no bars.</p></li>
+            <li><strong>A deliberate rhythm.</strong><p>Geist: 30px headline, 15px names, 14px work, 12px labels. Phone headline: 21px. 4/8px spacing; 40px between desktop sections, 24px on phone.</p></li>
+            <li><strong>Long lists stay honest.</strong><p>All thirteen agents remain visible by scrolling. Desktop names truncate with full text in the accessible name and tooltip; phone names and work wrap. Goal counts never wrap.</p></li>
+            <li><strong>Same meaning, both sizes.</strong><p>Words always accompany dots. Neutral avatars and focus rings. Phone rows reflow, keeping state at the right; the eight tabs fit a two-row bottom bar with 44px targets.</p></li>
+            <li><strong>Quiet when empty; honest on failure.</strong><p>No empty Needs you or Being built sections. No idle claim while loading. Failure offers a retry. No pulsing, shimmer or automatic movement; motion preferences are respected.</p></li>
+            <li><strong>Changes preserve your place.</strong><p>In the app, update rows in place, retain known information during refresh and preserve focus and scroll. Announce new questions politely. This study switches complete fixtures; it does not simulate a live connection.</p></li>
+          </ol></aside>
+        </div></div>
+        <section class="boundary" id="destinations" tabindex="-1"><h2>About the prototype links</h2><p>Only Overview is drawn. Navigation, questions, agent rows and goal rows point here to mark the prototype boundary. In the app they open the named destination: Captain for answers, Work for active work and goals, Team for idle or offline agents and connecting Captain. Retry switches to the busy fixture; it makes no network request. <a href="#desktop">Back to the frames ↑</a></p></section>`);
+      function updateFrames() {
+        selected = document.getElementById('state').value;
+        const currentTheme = document.getElementById('theme').value;
+        document.documentElement.dataset.theme = currentTheme;
+        for (const size of ['desktop', 'phone']) {
+          const url = `./overview.html?frame=${size}&state=${selected}&theme=${currentTheme}`;
+          document.getElementById(`${size}-frame`).src = url;
+          document.getElementById(`${size}-open`).href = url;
+        }
+        document.getElementById('selection-status').textContent = `${states[selected].label}, ${currentTheme} theme. Both previews updated.`;
+      }
+      document.getElementById('state').addEventListener('change', updateFrames);
+      document.getElementById('theme').addEventListener('change', updateFrames);
+      updateFrames();
+    }
+  </script>
+  <noscript>This wireframe needs JavaScript to show its eight example states. It makes no external requests.</noscript>
+</body>
+</html>
