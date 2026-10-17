@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AutoKolab · Overview wireframe v2</title>
+  <!-- Same font the site loads. Offline, it falls back to the system font and everything still works. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    /* ---------------------------------------------------------------------------
+       Tokens. Dark values are copied from autokolab-ux-handoff/tokens.css so the
+       file opens offline. The light theme is a proposal for this wireframe only:
+       tokens.css has no light theme yet (06-design-tokens.md, "Light mode").
+       --------------------------------------------------------------------------- */
+    :root, [data-theme="dark"] {
+      --bg: #0B0D11; --sidebar: #0E1116; --surface: #12151B;
+      --surface-hover: #161A21; --surface-active: #181C23; --surface-raised: #232833;
+      --avatar-bg: #232833; --avatar-fg: #C9CED6;
+      --border-subtle: #1C2029; --border: #1F242D; --border-strong: #2A303B;
+      --text: #E9EBEF; --text-body: #D4D8DE; --text-secondary: #C9CED6;
+      --text-muted: #A2A9B5; --text-dim: #858C98;
+      --amber: #F4C25B; --blue: #7EA6FF; --coral: #FF8A78; --coral-text: #FFB8A8;
+      /* Focus ring: tokens' --border-focus (#4A515D) is 2.3:1 on --bg, under the 3:1 a focus
+         indicator needs, so the ring uses --text-muted (8.2:1) instead. */
+      --focus: #A2A9B5;
+      --skeleton: #161A21;
+      --frame-shadow: 0 24px 64px rgba(0, 0, 0, .45);
+      color-scheme: dark;
+    }
+    [data-theme="light"] {
+      --bg: #FBFBFC; --sidebar: #F4F5F7; --surface: #FFFFFF;
+      --surface-hover: #F1F2F5; --surface-active: #E9EBEF; --surface-raised: #E4E7EB;
+      --avatar-bg: #E4E7EB; --avatar-fg: #3A404B;
+      --border-subtle: #EEF0F2; --border: #E4E7EB; --border-strong: #D2D6DC;
+      --text: #111318; --text-body: #262A32; --text-secondary: #3A404B;
+      --text-muted: #535A66; --text-dim: #5F6672;
+      /* Status dots darkened for a light page so each stays above 3:1. */
+      --amber: #B7791F; --blue: #2F6BD8; --coral: #D1453B; --coral-text: #B4372E;
+      --focus: #5B6370;
+      --skeleton: #EEF0F3;
+      --frame-shadow: 0 24px 64px rgba(17, 19, 24, .12);
+      color-scheme: light;
+    }
+    :root {
+      --font-sans: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, monospace;
+      --text-12: 12px; --text-13: 13px; --text-14: 14px; --text-15: 15px;
+      --text-17: 17px; --text-21: 21px; --text-26: 26px;
+      --tracking-tight: -0.02em; --tracking-label: 0.08em;
+      --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px;
+      --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px; --space-16: 64px;
+      --radius-sm: 7px; --radius-md: 10px; --radius-xl: 16px;
+      --ease-out: cubic-bezier(.2, .8, .2, 1);
+      --dur-hover: 120ms;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); }
+    body { font: 400 var(--text-14)/1.5 var(--font-sans); -webkit-font-smoothing: antialiased; }
+    button { font: inherit; color: inherit; }
+    a { color: inherit; text-decoration: none; }
+    .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+    /* ===========================================================================
+       The bench: the page around the two frames (state switcher, theme, notes).
+       It is not part of the design.
+       =========================================================================== */
+    .bench { padding: var(--space-8) var(--space-8) var(--space-6); }
+    .bench-kicker { color: var(--text-dim); font-size: var(--text-12); font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; }
+    .bench h1 { margin: var(--space-2) 0 var(--space-1); font-size: var(--text-21); font-weight: 600; letter-spacing: var(--tracking-tight); }
+    .bench p { margin: 0; max-width: 760px; color: var(--text-muted); }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-6); margin-top: var(--space-6); }
+    .control-label { margin-right: var(--space-2); color: var(--text-dim); font-size: var(--text-12); font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; }
+    .seg { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); padding: var(--space-1); background: var(--sidebar); border: 1px solid var(--border); border-radius: var(--radius-md); }
+    .seg button { min-height: 36px; padding: 0 var(--space-3); color: var(--text-muted); background: none; border: 0; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--text-13); font-weight: 500; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out); }
+    .seg button:hover { color: var(--text); background: var(--surface-hover); }
+    .seg button[aria-pressed="true"] { color: var(--text); background: var(--surface-raised); }
+    .control { display: inline-flex; align-items: center; }
+
+    .stage { padding: 0 var(--space-8) var(--space-8); overflow-x: auto; }
+    .frames { display: flex; align-items: flex-start; gap: var(--space-10); width: max-content; zoom: var(--fit, 1); }
+    .frame-col figcaption { margin: 0 0 var(--space-3); color: var(--text-dim); font-size: var(--text-12); font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; }
+    .device { position: relative; overflow: hidden; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius-xl); box-shadow: var(--frame-shadow); }
+
+    .toast { position: fixed; left: 50%; bottom: var(--space-6); transform: translateX(-50%); max-width: calc(100% - 32px); padding: var(--space-3) var(--space-4); color: var(--text); background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-md); font-size: var(--text-13); opacity: 0; pointer-events: none; transition: opacity 160ms var(--ease-out); }
+    .toast.show { opacity: 1; }
+
+    /* ===========================================================================
+       The shell: desktop sidebar, phone top bar and bottom tabs.
+       =========================================================================== */
+    .desktop { display: grid; grid-template-columns: 232px 1fr; width: 1440px; height: 900px; }
+    .sidebar { display: flex; flex-direction: column; padding: var(--space-6) var(--space-3); background: var(--sidebar); border-right: 1px solid var(--border-subtle); }
+    /* The logo SVG has no width of its own, so both sizes are set (viewBox is 787 × 227). */
+    .logo { display: block; width: 104px; height: 30px; margin: 0 var(--space-3); }
+    .project { margin: var(--space-4) var(--space-3) 0; color: var(--text-muted); font-size: var(--text-13); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nav { display: grid; gap: 2px; margin: var(--space-8) 0 0; padding: 0; list-style: none; }
+    .nav li.gap { margin-top: var(--space-4); }
+    .nav a { display: flex; align-items: center; gap: var(--space-2); min-height: 36px; padding: 0 var(--space-3); color: var(--text-secondary); border-radius: var(--radius-sm); font-size: var(--text-14); transition: background-color var(--dur-hover) var(--ease-out); }
+    .nav a:hover { color: var(--text); background: var(--surface-hover); }
+    .nav a:active { background: var(--surface-active); }
+    .nav a[aria-current="page"] { color: var(--text); background: var(--surface-active); font-weight: 500; }
+    .nav-count { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-secondary); font-size: var(--text-12); font-variant-numeric: tabular-nums; }
+
+    .screen { position: relative; min-width: 0; overflow-y: auto; container-type: inline-size; scrollbar-width: thin; overflow-anchor: auto; }
+
+    .phone { display: flex; flex-direction: column; width: 390px; height: 844px; border-radius: 36px; }
+    .phone-top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); height: 56px; padding: 0 var(--space-5); background: var(--sidebar); border-bottom: 1px solid var(--border-subtle); flex: none; }
+    .phone-top .logo { width: 83px; height: 24px; margin: 0; }
+    .phone-top .project { margin: 0; }
+    .phone .screen { flex: 1; }
+    .tabbar { position: relative; flex: none; background: var(--sidebar); border-top: 1px solid var(--border-subtle); padding-bottom: 18px; }
+    .tabbar ul { display: flex; margin: 0; padding: 0 var(--space-2); list-style: none; overflow-x: auto; scrollbar-width: none; }
+    .tabbar ul::-webkit-scrollbar { display: none; }
+    .tabbar a { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 64px; min-height: 48px; padding: 0 var(--space-3); color: var(--text-muted); font-size: var(--text-13); white-space: nowrap; }
+    .tabbar a:active { background: var(--surface-active); }
+    .tabbar a[aria-current="page"] { color: var(--text); font-weight: 600; }
+    .tabbar a[aria-current="page"]::before { content: ""; position: absolute; top: 0; left: var(--space-3); right: var(--space-3); height: 2px; background: var(--text); border-radius: 0 0 2px 2px; }
+    /* A soft fade at the right edge says "more tabs this way" without an arrow. */
+    .tabbar::after { content: ""; position: absolute; top: 0; right: 0; bottom: 18px; width: 40px; background: linear-gradient(to right, transparent, var(--sidebar)); pointer-events: none; }
+
+    /* ===========================================================================
+       Overview. One component; the frame's width decides desktop or phone
+       (container query), so both frames run the same markup.
+       =========================================================================== */
+    .ov { width: 100%; max-width: 760px; margin: 0 auto; padding: var(--space-16) var(--space-10) var(--space-16); }
+
+    .label { margin: 0 0 var(--space-3); color: var(--text-dim); font-size: var(--text-12); font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; line-height: 16px; }
+    .part + .part { margin-top: var(--space-10); }
+    .dot { flex: none; display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+    .dot.amber { background: var(--amber); }
+    .dot.blue { background: var(--blue); }
+    .dot.coral { background: var(--coral); }
+    .dot.none { background: transparent; }
+
+    /* Shared row behaviour: every row is one link and one Tab stop. The row bleeds 12px
+       into the gutter so its text lines up with the heading, and the hover fill has room. */
+    .row { display: grid; align-items: center; margin: 0 calc(-1 * var(--space-3)); padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); cursor: pointer; transition: background-color var(--dur-hover) var(--ease-out); }
+    .row:hover { background: var(--surface-hover); }
+    .row:active { background: var(--surface-active); }
+    .row:focus-visible { outline-offset: -2px; border-radius: var(--radius-md); }
+    .list { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+
+    /* 1 · Needs you */
+    .needs { padding-bottom: var(--space-8); margin-bottom: var(--space-8); border-bottom: 1px solid var(--border); }
+    .need { grid-template-columns: 7px minmax(0, 1fr) auto; column-gap: var(--space-4); align-items: start; padding-top: var(--space-3); padding-bottom: var(--space-3); }
+    .need .dot { margin-top: 10px; }
+    .need-q { color: var(--text); font-size: var(--text-17); font-weight: 500; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .need-meta { margin-top: 2px; color: var(--text-muted); font-size: var(--text-13); }
+    .need-act { align-self: center; color: var(--text-secondary); font-size: var(--text-14); font-weight: 500; white-space: nowrap; }
+    .need:hover .need-act { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+    .more { display: inline-flex; align-items: center; min-height: 36px; margin-top: var(--space-1); color: var(--text-secondary); font-size: var(--text-14); font-weight: 500; border-radius: var(--radius-sm); }
+    .more:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+    .needs .more { margin-left: calc(7px + var(--space-4)); }
+
+    /* 2 · Heading */
+    .headline { margin: 0; color: var(--text); font-size: var(--text-26); font-weight: 500; line-height: 1.3; letter-spacing: var(--tracking-tight); text-wrap: balance; }
+    .headline .nw { white-space: nowrap; }
+    .headline a { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 5px; text-decoration-color: var(--text-dim); }
+    .headline a:hover { text-decoration-color: var(--text); }
+    .headline + .part { margin-top: var(--space-12); }
+
+    /* 3 · Agents */
+    .agent { grid-template-columns: 28px minmax(0, 148px) minmax(0, 1fr) 136px; column-gap: var(--space-4); min-height: 52px; }
+    .av { display: grid; place-items: center; width: 28px; height: 28px; color: var(--avatar-fg); background: var(--avatar-bg); border-radius: var(--radius-sm); font-size: var(--text-12); font-weight: 600; }
+    .a-name { color: var(--text); font-size: var(--text-15); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .a-doing { color: var(--text-secondary); font-size: var(--text-15); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .a-state { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-secondary); font-size: var(--text-13); font-weight: 500; white-space: nowrap; }
+    /* Idle and offline step back: grey name, dim text, no dot. The space for the dot stays,
+       so every state word starts at the same x. */
+    .agent.quiet .a-name { color: var(--text-muted); font-weight: 500; }
+    .agent.quiet .a-doing, .agent.quiet .a-state { color: var(--text-dim); }
+    .agent.quiet .av { color: var(--text-dim); }
+
+    /* 4 · Being built */
+    .goal { grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-6); min-height: 48px; }
+    .g-name { color: var(--text-body); font-size: var(--text-15); font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .g-count { color: var(--text-muted); font-size: var(--text-13); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .g-count b { color: var(--text-secondary); font-weight: 500; }
+
+    /* Loading and load failed */
+    .sk { display: block; background: var(--skeleton); border-radius: var(--radius-sm); }
+    .sk-row { display: grid; grid-template-columns: 28px 148px 1fr; align-items: center; gap: var(--space-4); min-height: 52px; }
+    .muted-head { color: var(--text-muted); }
+    .problem-line { display: flex; align-items: baseline; gap: var(--space-3); margin: var(--space-4) 0 0; max-width: 56ch; color: var(--text-secondary); font-size: var(--text-15); }
+    .problem-line .dot { transform: translateY(-2px); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; margin-top: var(--space-6); padding: 0 var(--space-4); color: var(--text); background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-md); font-size: var(--text-14); font-weight: 500; cursor: pointer; transition: background-color var(--dur-hover) var(--ease-out); }
+    .btn:hover { background: var(--surface-active); }
+    .btn:active { background: var(--surface-hover); }
+
+    /* Phone: the same component under 600px of width. */
+    @container (max-width: 600px) {
+      .ov { padding: var(--space-6) var(--space-5) var(--space-10); }
+      .headline { font-size: var(--text-21); line-height: 1.35; }
+      .headline + .part { margin-top: var(--space-8); }
+      /* Inline link: padding grows the tap area to 44 px without moving the text. */
+      .headline a { padding: 8px 0; }
+      .part + .part { margin-top: var(--space-8); }
+      .needs { padding-bottom: var(--space-6); margin-bottom: var(--space-6); }
+      .need { grid-template-columns: 7px minmax(0, 1fr); min-height: 44px; }
+      .need .dot { margin-top: 9px; }
+      .need-q { font-size: var(--text-15); font-weight: 500; line-height: 1.5; }
+      .need-act { grid-column: 2; margin-top: var(--space-2); }
+      .need .dot { grid-row: 1 / span 2; }
+      .more { min-height: 44px; }
+      /* An agent row becomes two lines: name and state on top, what it's doing under. */
+      .agent { grid-template-columns: 28px minmax(0, 1fr) 120px; grid-template-areas: "av name state" "av doing doing"; column-gap: var(--space-3); row-gap: 2px; align-items: center; min-height: 64px; padding-top: var(--space-3); padding-bottom: var(--space-3); }
+      .agent .av { grid-area: av; align-self: start; margin-top: 1px; }
+      .agent .a-name { grid-area: name; }
+      .agent .a-state { grid-area: state; }
+      .agent .a-doing { grid-area: doing; font-size: var(--text-14); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .agent .a-doing:empty { display: none; }
+      .goal { min-height: 52px; column-gap: var(--space-4); }
+      .sk-row { grid-template-columns: 28px 1fr; }
+      .sk-row .sk:last-child { display: none; }
+      .btn { min-height: 44px; }
+    }
+
+    /* Eye path: wireframe-only markers that show the order the eye takes. */
+    .eye-mark { display: none; }
+    body.eye .desktop .eye-mark { display: flex; position: absolute; left: -64px; top: 0; align-items: center; gap: var(--space-2); color: var(--bg); }
+    body.eye .desktop [data-eye] { position: relative; }
+    .eye-mark b { display: grid; place-items: center; width: 24px; height: 24px; color: var(--bg); background: var(--text); border-radius: 50%; font: 600 var(--text-12)/1 var(--font-mono); }
+    .eye-mark span { position: absolute; right: calc(100% + 8px); top: 3px; white-space: nowrap; color: var(--text-dim); font: 500 var(--text-12)/1.4 var(--font-mono); }
+
+    /* ===========================================================================
+       Notes
+       =========================================================================== */
+    .notes { padding: var(--space-4) var(--space-8) var(--space-16); max-width: 1440px; }
+    .notes h2 { margin: 0 0 var(--space-1); font-size: var(--text-17); font-weight: 600; }
+    .notes > p { margin: 0 0 var(--space-6); color: var(--text-muted); }
+    .state-note { margin: 0 0 var(--space-8); padding: var(--space-4) 0; max-width: 760px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); color: var(--text-body); }
+    .state-note strong { display: block; margin-bottom: var(--space-1); color: var(--text-dim); font-size: var(--text-12); font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; }
+    .note-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-6) var(--space-10); margin: 0; padding: 0; list-style: none; counter-reset: note; }
+    .note-grid li { counter-increment: note; padding-top: var(--space-4); border-top: 1px solid var(--border); color: var(--text-muted); }
+    .note-grid h3 { display: flex; gap: var(--space-2); margin: 0 0 var(--space-2); color: var(--text); font-size: var(--text-15); font-weight: 600; }
+    .note-grid h3::before { content: counter(note, decimal-leading-zero); color: var(--text-dim); font: 500 var(--text-13)/1.6 var(--font-mono); }
+    .note-grid p { margin: 0 0 var(--space-2); }
+    .note-grid b { color: var(--text-body); font-weight: 500; }
+    .note-grid table { width: 100%; border-collapse: collapse; font-size: var(--text-13); font-variant-numeric: tabular-nums; }
+    .note-grid td, .note-grid th { padding: 3px 0; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    .note-grid th { color: var(--text-dim); font-weight: 500; }
+
+    /* Screenshot mode (?shot=desktop or ?shot=phone): one frame at 1:1, nothing else. */
+    body.shot .bench, body.shot .notes, body.shot figcaption, body.shot .toast { display: none; }
+    body.shot .stage { padding: 0; overflow: visible; }
+    body.shot .frames { zoom: 1; gap: 0; }
+    body.shot .device { border: 0; border-radius: 0; box-shadow: none; }
+    body.shot.shot-desktop .frame-phone, body.shot.shot-phone .frame-desktop { display: none; }
+
+    @media (max-width: 700px) {
+      .bench, .notes { padding-left: var(--space-5); padding-right: var(--space-5); }
+      .stage { padding: 0 var(--space-5) var(--space-8); }
+      .seg button { min-height: 44px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0ms !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <header class="bench">
+    <div class="bench-kicker">AK-172 · Overview wireframe v2 · sample project</div>
+    <h1>Overview: what needs you, then who is doing what</h1>
+    <p>Pick a situation. Both frames show the same page; the phone follows the desktop. Links in the frames say where they'd go. The notes under the frames explain each choice.</p>
+    <div class="controls">
+      <div class="control" role="group" aria-label="Situation">
+        <span class="control-label" aria-hidden="true">Situation</span>
+        <div class="seg" id="states">
+          <button type="button" data-state="busy">Busy</button>
+          <button type="button" data-state="questions">Questions waiting</button>
+          <button type="button" data-state="stopped">Agent stopped</button>
+          <button type="button" data-state="calm">Calm</button>
+          <button type="button" data-state="new">Brand-new</button>
+          <button type="button" data-state="many">10+ agents</button>
+          <button type="button" data-state="loading">Loading</button>
+          <button type="button" data-state="failed">Load failed</button>
+        </div>
+      </div>
+      <div class="control" role="group" aria-label="Theme">
+        <span class="control-label" aria-hidden="true">Theme</span>
+        <div class="seg" id="themes">
+          <button type="button" data-theme-choice="dark">Dark</button>
+          <button type="button" data-theme-choice="light">Light</button>
+        </div>
+      </div>
+      <div class="control" role="group" aria-label="View">
+        <span class="control-label" aria-hidden="true">View</span>
+        <div class="seg">
+          <button type="button" id="eye-toggle" aria-pressed="false">Eye path</button>
+          <button type="button" id="fit-toggle" aria-pressed="true">Fit to window</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="frames" id="frames">
+      <figure class="frame-col frame-desktop" style="margin:0">
+        <figcaption>Desktop · 1440 × 900</figcaption>
+        <div class="device desktop">
+          <aside class="sidebar">
+            <img class="logo" src="autokolab-logo.svg" alt="AutoKolab">
+            <div class="project" title="Northstar Shop">Northstar Shop</div>
+            <nav aria-label="Project">
+              <ul class="nav" id="nav-desktop"></ul>
+            </nav>
+          </aside>
+          <div class="screen" id="screen-desktop"></div>
+        </div>
+      </figure>
+      <figure class="frame-col frame-phone" style="margin:0">
+        <figcaption>Phone · 390 × 844</figcaption>
+        <div class="device phone">
+          <div class="phone-top">
+            <img class="logo" src="autokolab-logo.svg" alt="AutoKolab">
+            <span class="project" title="Northstar Shop">Northstar Shop</span>
+          </div>
+          <div class="screen" id="screen-phone"></div>
+          <nav class="tabbar" aria-label="Project">
+            <ul id="nav-phone"></ul>
+          </nav>
+        </div>
+      </figure>
+    </div>
+  </main>
+
+  <section class="notes" aria-labelledby="notes-h">
+    <h2 id="notes-h">Why it looks like this</h2>
+    <p>Plain-word notes on each choice. Turn on “Eye path” to see the order the eye takes in the first five seconds.</p>
+    <div class="state-note" id="state-note" aria-live="polite"></div>
+    <ol class="note-grid">
+      <li>
+        <h3>The first five seconds</h3>
+        <p><b>0–1 s:</b> the amber dot and the question, if one is waiting. It is the only colour above the heading and the only thing that can block work.</p>
+        <p><b>1–2 s:</b> the heading, the largest text, answers “is anything happening, and on what?”.</p>
+        <p><b>2–4 s:</b> down the column of state words: Working, Reviewing, Idle. They sit at one x position, so the eye runs straight down them.</p>
+        <p><b>4–5 s:</b> the goal counts, quietest of all, for “how far along?”.</p>
+      </li>
+      <li>
+        <h3>Needs you is first, but not loud</h3>
+        <p>It wins by position and by being the <b>only amber</b> on the page, not by a box or a banner. Each request is a 7 px dot, the question in 17 px, who is waiting and for how long, and where to answer. No filled box, no amber text, no icon (DEC-24).</p>
+        <p>At most <b>two</b> requests show, oldest first, so the heading stays on a phone's first screen. The rest fold into “and 1 more in Captain →”. Long questions stop after two lines with “…”.</p>
+      </li>
+      <li>
+        <h3>The heading is the page's answer</h3>
+        <p>26 px (21 px on phone), weight 500, neutral colour. It is the largest text, so it doesn't need colour or an icon. When an agent stops while it has work, one clause is added: “Tern has stopped.”, so a failure is never only a word in a list.</p>
+        <p>There's <b>no visible “Overview” title</b>. The selected tab already says where you are, and a 30 px title would compete with the heading. The title stays for screen readers.</p>
+      </li>
+      <li>
+        <h3>Agents: read down, not across</h3>
+        <p>Four fixed columns: avatar, name, what it is doing, state. Names get 148 px and cut with “…”; the full name is in the tooltip and read out in full. What it's doing is one line on desktop and up to two on a phone.</p>
+        <p><b>Fixed order:</b> Captain, then by name. A row never moves; only its words change. Idle and offline rows turn grey and lose the dot, so working rows stand out without adding colour.</p>
+      </li>
+      <li>
+        <h3>Being built is the quietest part</h3>
+        <p>Goal name and “4 of 7 done”, nothing else. Numbers use tabular figures so counts line up. No bar or percentage: a bar suggests a precision that a count of tickets doesn't have. Up to five goals, then “and 1 more in Work →”.</p>
+      </li>
+      <li>
+        <h3>Colour only means status</h3>
+        <p><b>Blue</b> working or reviewing · <b>amber</b> needs you · <b>coral</b> stopped or failed · <b>no dot</b> idle or offline. Every dot has a word beside it, and dots are hidden from screen readers because the word already says it. Avatars are neutral grey letters.</p>
+      </li>
+      <li>
+        <h3>Type: one family, four sizes</h3>
+        <p>Geist. 26 heading, 17 question, 15 rows, 12–13 labels and details. Three weights: 400 text, 500 emphasis, 600 names and labels. Section labels are small capitals in the dimmest grey: they help you find a part but should never be read first.</p>
+      </li>
+      <li>
+        <h3>Space: one 4/8 scale</h3>
+        <p>64 above the content, 48 between the heading and the first part, 40 between parts, 12 from a label to its list, 4 between rows. Rows are 52 px (64 px on phone). No dividers between rows: the hover fill and even spacing do that job with less ink. One hairline separates Needs you from the rest.</p>
+      </li>
+      <li>
+        <h3>Empty, long and changing</h3>
+        <p><b>Empty:</b> a part with nothing in it is not drawn and leaves no gap. <b>Long:</b> names cut on one line, text cuts after two, counts never wrap. All agents always show; idle ones are grey so long lists still scan. <b>Changing:</b> words change in place. A new request pushes the page down because it is the news; scroll anchoring keeps a reader where they are, and a hidden polite message says “1 question needs you”.</p>
+      </li>
+      <li>
+        <h3>Keyboard and screen readers</h3>
+        <p>Each row is one link and one Tab stop, in reading order, with a 2 px focus ring that passes 3:1. Each part is a section with a heading. A row reads as “Birch, working, adding saved cards”. Hover, pressed and focus look different from each other.</p>
+      </li>
+      <li>
+        <h3>Phone</h3>
+        <p>Same order, 20 px side margins. An agent row becomes two lines: name and state on top, what it's doing under it. <b>The state word never disappears.</b> Every target is at least 44 px. The bottom bar holds all eight tabs; it scrolls sideways, and a fade at the edge says there's more.</p>
+      </li>
+      <li>
+        <h3>Motion</h3>
+        <p>Nothing pulses or slides. Only a 120 ms fade on hover and pressed, and it's switched off for people who ask for reduced motion. Loading shows still grey shapes where rows will be, not a spinner.</p>
+      </li>
+      <li>
+        <h3>Contrast (checked)</h3>
+        <table>
+          <tr><th>Text on page</th><th>Dark</th><th>Light</th></tr>
+          <tr><td>Heading, names</td><td>16.3:1</td><td>18.0:1</td></tr>
+          <tr><td>What it's doing</td><td>12.3:1</td><td>10.1:1</td></tr>
+          <tr><td>Meta, details</td><td>8.2:1</td><td>6.7:1</td></tr>
+          <tr><td>Labels, quiet rows</td><td>5.7:1</td><td>5.6:1</td></tr>
+          <tr><td>Dots (non-text, 3:1)</td><td>8.1–11.8:1</td><td>3.5–4.8:1</td></tr>
+          <tr><td>Focus ring (3:1)</td><td>8.2:1</td><td>5.9:1</td></tr>
+        </table>
+      </li>
+      <li>
+        <h3>Left out on purpose</h3>
+        <p>No page title, no “See all” links (every row opens its detail, and Work and Team are one tab away), no dividers, no counts in labels, no freshness line, no next step from Captain, no delivered list, no tiles. Each would repeat something already on the page.</p>
+      </li>
+    </ol>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    // Only the state switcher, theme, and view toggles. The data is made up.
+    const TABS = ['Captain', 'Overview', 'Work', 'Team', 'Room', 'Decisions', 'Results', 'Settings'];
+
+    const A = (name, state, doing = '', to = 'Work') => ({ name, state, doing, to });
+    const WORD = { working: 'Working', reviewing: 'Reviewing', waiting: 'Waiting on you', stopped: 'Stopped', limit: 'Limit reached', idle: 'Idle', offline: 'Offline' };
+    const DOT = { working: 'blue', reviewing: 'blue', waiting: 'amber', stopped: 'coral', limit: 'coral', idle: 'none', offline: 'none' };
+
+    const STATES = {
+      busy: {
+        note: 'Three agents are working; nothing needs you, so the page starts with the heading. Captain counts as working while it reviews. Wren is idle and Oriole is offline: both grey, both still listed so you can see who could take more work.',
+        headline: '3 agents are working on Checkout and Sign-in.',
+        agents: [
+          A('Captain', 'reviewing', "reviewing Birch's saved cards"),
+          A('Birch', 'working', 'adding saved cards to checkout'),
+          A('Fjord', 'working', 'adding Google sign-in'),
+          A('Oriole', 'offline', 'last seen 3 h ago', 'Team'),
+          A('Wren', 'idle', '', 'Team'),
+        ],
+        goals: [['Checkout', 4, 7], ['Sign-in', 1, 3]],
+      },
+      questions: {
+        note: 'Three things wait on you. Two show, oldest first; the third folds into “and 1 more in Captain →”. The second question is long and stops after two lines. The Captain tab shows the count too. Fjord’s row says “Waiting on you” with the same amber dot, so the request and the agent it holds up connect.',
+        needs: [
+          { q: 'Should guests be able to save cards?', meta: 'Fjord is waiting · 2 h', act: 'Answer in Captain' },
+          { q: 'OK to merge “Sign-up emails”? It changes the database: everyone who signed up before today will be marked as an email sign-in, and that can’t be undone automatically.', meta: 'Captain is asking · 25 min', act: 'Review in Captain' },
+        ],
+        more: 'and 1 more in Captain',
+        count: 3,
+        headline: '3 agents are working on Checkout and Sign-in.',
+        agents: [
+          A('Captain', 'reviewing', "reviewing Kestrel's email sign-in"),
+          A('Birch', 'working', 'adding saved cards to checkout'),
+          A('Fjord', 'waiting', 'adding guest checkout'),
+          A('Kestrel', 'working', 'moving sign-in to email links'),
+          A('Wren', 'idle', '', 'Team'),
+        ],
+        goals: [['Checkout', 4, 7], ['Sign-in', 2, 5]],
+      },
+      stopped: {
+        note: 'Tern stopped while it had work. The heading adds one clause, “Tern has stopped.”, and Tern’s row says Stopped with the reason. There is no separate problem block: the failure lives where the work is, and Captain handles it.',
+        headline: '2 agents are working on Checkout. Tern has stopped.',
+        agents: [
+          A('Captain', 'reviewing', "reviewing Birch's saved cards"),
+          A('Birch', 'working', 'adding saved cards to checkout'),
+          A('Tern', 'stopped', 'was sending receipt emails · tests failing'),
+          A('Wren', 'idle', '', 'Team'),
+        ],
+        goals: [['Checkout', 4, 7]],
+      },
+      calm: {
+        note: 'Nothing is working and nothing needs you. Needs you and Being built hide with no gap left, so the page is just the sentence and a grey list. Calm should look calm, not empty or broken.',
+        headline: 'No agents are working right now.',
+        agents: [
+          A('Captain', 'idle', '', 'Team'),
+          A('Birch', 'idle', '', 'Team'),
+          A('Fjord', 'idle', '', 'Team'),
+          A('Tern', 'offline', 'last seen yesterday', 'Team'),
+          A('Wren', 'idle', '', 'Team'),
+        ],
+        goals: [],
+      },
+      new: {
+        note: 'A brand-new project. The heading says what to do next, and “Tell Captain” in it is the link: no extra button or checklist. Only Captain is listed; there is nothing being built yet, so that part is not drawn.',
+        headlineHtml: 'Nothing has started yet. <a href="#" data-go="Captain, ready for your first message">Tell Captain</a> what you want to make.',
+        agents: [A('Captain', 'idle', '', 'Team')],
+        goals: [],
+      },
+      many: {
+        note: 'Thirteen agents and six goals. Every agent stays listed in the same order: working rows read first, grey idle rows fall back. A long agent name cuts with “…”; a long task cuts on one line (two on a phone). Agents are working on all six goals, so the heading names two, then “4 more goals”. Being built shows five, then “and 1 more in Work →” (the admin dashboard Alder is building). Moss hit its daily limit while it had work, so the heading adds that clause.',
+        headline: '8 agents are working on Checkout, Sign-in and 4 more goals. Moss has stopped.',
+        agents: [
+          A('Captain', 'reviewing', "reviewing Heron's search filters"),
+          A('Alder', 'working', 'building the admin dashboard'),
+          A('Birch', 'working', 'adding saved cards to checkout'),
+          A('Bartholomew-on-jamesblack-laptop', 'working', 'rewriting the password reset emails so they match the new sign-in wording and tone'),
+          A('Fjord', 'working', 'adding guest checkout'),
+          A('Heron', 'working', 'adding search filters'),
+          A('Juniper', 'idle', '', 'Team'),
+          A('Kestrel', 'working', 'moving sign-in to email links'),
+          A('Lark', 'offline', 'last seen 3 h ago', 'Team'),
+          A('Moss', 'limit', 'daily limit · back at 09:00'),
+          A('Oriole', 'idle', '', 'Team'),
+          A('Tern', 'working', 'sending receipt emails'),
+          A('Wren', 'idle', '', 'Team'),
+        ],
+        goals: [['Checkout', 4, 7], ['Sign-in', 2, 5], ['Search', 1, 4], ['Receipts', 2, 3], ['Guest checkout with saved cards and Apple Pay for returning customers on mobile', 0, 6]],
+        moreGoals: 'and 1 more in Work',
+      },
+      loading: {
+        note: 'The first load. Grey shapes sit where the rows will be, so nothing jumps when they arrive; they don’t shimmer. The sentence says what is happening. It appears only if loading takes longer than about 0.4 s, so fast loads never flash. A refresh keeps the last view until the new one is ready.',
+        loading: true,
+      },
+      failed: {
+        note: 'The first load failed. One plain sentence says what went wrong, one says what it means for you (the agents keep working), and one button tries again. If a refresh fails after the page has loaded, the old view stays and one line goes above it instead: “Couldn’t refresh. This is how things were at 9:41. Try again.”',
+        failed: true,
+      },
+    };
+
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const eye = (n, label) => `<span class="eye-mark" aria-hidden="true"><b>${n}</b><span>${label}</span></span>`;
+
+    function overview(s) {
+      if (s.loading) return `
+        <div class="ov" aria-busy="true">
+          <h1 class="sr-only">Overview</h1>
+          <p class="headline muted-head" role="status">Loading your project…</p>
+          <section class="part" aria-hidden="true">
+            <div class="label">Agents</div>
+            ${[0.5, 0.42, 0.62, 0.36].map(w => `<div class="sk-row"><span class="sk" style="width:28px;height:28px"></span><span class="sk" style="height:12px;width:${Math.round(w * 180)}px"></span><span class="sk" style="height:12px;width:${Math.round(w * 100)}%"></span></div>`).join('')}
+          </section>
+        </div>`;
+      if (s.failed) return `
+        <div class="ov">
+          <h1 class="sr-only">Overview</h1>
+          <div role="alert">
+            <p class="headline">Couldn’t load this project.</p>
+            <p class="problem-line"><span class="dot coral" aria-hidden="true"></span><span>AutoKolab can’t be reached right now. Your agents keep working on their own machines.</span></p>
+          </div>
+          <button class="btn" type="button" data-go="Loads the page again">Try again</button>
+        </div>`;
+
+      const needs = s.needs?.length ? `
+        <section class="part needs" aria-labelledby="h-needs" data-eye>
+          ${eye(1, '0–1 s')}
+          <h2 class="label" id="h-needs">Needs you</h2>
+          <ul class="list">
+            ${s.needs.map(n => `<li><a class="row need" href="#" data-go="Captain, scrolled to this message">
+              <span class="dot amber" aria-hidden="true"></span>
+              <span><span class="need-q" title="${esc(n.q)}">${esc(n.q)}</span><span class="need-meta" style="display:block">${esc(n.meta)}</span></span>
+              <span class="need-act">${esc(n.act)} →</span></a></li>`).join('')}
+          </ul>
+          ${s.more ? `<a class="more" href="#" data-go="Captain, at the oldest open question">${esc(s.more)} →</a>` : ''}
+          <p class="sr-only" role="status">${s.count || s.needs.length} questions need you</p>
+        </section>` : '';
+
+      // Hyphenated names such as Sign-in never break at the hyphen.
+      const text = s.headlineHtml || esc(s.headline).replace(/(\S+-\S+)/g, '<span class="nw">$1</span>');
+      const head = `<p class="headline" data-eye>${eye(s.needs?.length ? 2 : 1, s.needs?.length ? '1–2 s' : '0–2 s')}${text}</p>`;
+
+      const agents = s.agents?.length ? `
+        <section class="part" aria-labelledby="h-agents" data-eye>
+          ${eye(s.needs?.length ? 3 : 2, '2–4 s')}
+          <h2 class="label" id="h-agents">Agents</h2>
+          <ul class="list">
+            ${s.agents.map(a => {
+              const quiet = a.state === 'idle' || a.state === 'offline';
+              const said = [a.name, WORD[a.state], a.doing].filter(Boolean).join(', ');
+              return `<li><a class="row agent${quiet ? ' quiet' : ''}" href="#" aria-label="${esc(said)}" data-go="${a.to === 'Team' ? `Team, ${esc(a.name)}` : `Work, ${esc(a.name)}’s ticket`}">
+                <span class="av" aria-hidden="true">${esc(a.name[0])}</span>
+                <span class="a-name" title="${esc(a.name)}">${esc(a.name)}</span>
+                <span class="a-doing" title="${esc(a.doing)}">${esc(a.doing)}</span>
+                <span class="a-state"><span class="dot ${DOT[a.state]}" aria-hidden="true"></span>${WORD[a.state]}</span></a></li>`;
+            }).join('')}
+          </ul>
+        </section>` : '';
+
+      const goals = s.goals?.length ? `
+        <section class="part" aria-labelledby="h-goals" data-eye>
+          ${eye(s.needs?.length ? 4 : 3, '4–5 s')}
+          <h2 class="label" id="h-goals">Being built</h2>
+          <ul class="list">
+            ${s.goals.map(([g, d, t]) => `<li><a class="row goal" href="#" aria-label="${esc(g)}, ${d} of ${t} done" data-go="Work, grouped by ${esc(g)}">
+              <span class="g-name" title="${esc(g)}">${esc(g)}</span>
+              <span class="g-count"><b>${d}</b> of ${t} done</span></a></li>`).join('')}
+          </ul>
+          ${s.moreGoals ? `<a class="more" href="#" data-go="Work, all goals">${esc(s.moreGoals)} →</a>` : ''}
+        </section>` : '';
+
+      return `<div class="ov"><h1 class="sr-only">Overview</h1>${needs}${head}${agents}${goals}</div>`;
+    }
+
+    function nav(s, phone) {
+      return TABS.map((t, i) => {
+        const current = t === 'Overview' ? ' aria-current="page"' : '';
+        const count = t === 'Captain' && (s.count || s.needs?.length)
+          ? `<span class="nav-count"><span class="dot amber" aria-hidden="true"></span><span aria-hidden="true">${s.count || s.needs.length}</span><span class="sr-only">, ${s.count || s.needs.length} need you</span></span>` : '';
+        const gap = !phone && t === 'Decisions' ? ' class="gap"' : '';
+        return `<li${gap}><a href="#"${current} data-go="the ${t} tab">${t}${count}</a></li>`;
+      }).join('');
+    }
+
+    const params = new URLSearchParams(location.search);
+    let current = params.get('state') in STATES ? params.get('state') : 'busy';
+
+    function setState(name) {
+      current = name;
+      const s = STATES[name];
+      document.getElementById('screen-desktop').innerHTML = overview(s);
+      document.getElementById('screen-phone').innerHTML = overview(s);
+      document.getElementById('nav-desktop').innerHTML = nav(s, false);
+      document.getElementById('nav-phone').innerHTML = nav(s, true);
+      document.querySelectorAll('[data-state]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.state === name)));
+      const label = document.querySelector(`[data-state="${name}"]`).textContent;
+      document.getElementById('state-note').innerHTML = `<strong>This state · ${esc(label)}</strong>${esc(s.note)}`;
+      document.querySelectorAll('.screen').forEach(el => { el.scrollTop = 0; });
+    }
+
+    function setTheme(theme) {
+      document.documentElement.dataset.theme = theme;
+      document.querySelectorAll('[data-theme-choice]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === theme)));
+    }
+
+    function fit() {
+      const on = document.getElementById('fit-toggle').getAttribute('aria-pressed') === 'true';
+      const frames = document.getElementById('frames');
+      const room = document.querySelector('.stage').clientWidth - 64;
+      frames.style.setProperty('--fit', on ? Math.min(1, room / (1440 + 390 + 40)).toFixed(3) : 1);
+    }
+
+    let toastTimer;
+    document.addEventListener('click', e => {
+      const st = e.target.closest('[data-state]');
+      if (st) return setState(st.dataset.state);
+      const th = e.target.closest('[data-theme-choice]');
+      if (th) return setTheme(th.dataset.themeChoice);
+      if (e.target.closest('#eye-toggle')) {
+        const b = document.getElementById('eye-toggle');
+        const on = b.getAttribute('aria-pressed') !== 'true';
+        b.setAttribute('aria-pressed', String(on));
+        document.body.classList.toggle('eye', on);
+        return;
+      }
+      if (e.target.closest('#fit-toggle')) {
+        const b = document.getElementById('fit-toggle');
+        b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'));
+        return fit();
+      }
+      const go = e.target.closest('[data-go]');
+      if (go) {
+        e.preventDefault();
+        const t = document.getElementById('toast');
+        t.textContent = `In the app this opens: ${go.dataset.go}`;
+        t.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+      }
+    });
+
+    const shot = params.get('shot');
+    if (shot === 'desktop' || shot === 'phone') document.body.classList.add('shot', `shot-${shot}`);
+    if (params.get('eye') === '1') { document.body.classList.add('eye'); document.getElementById('eye-toggle').setAttribute('aria-pressed', 'true'); }
+    // Dark is the product's default ("night shift", P7); light is a proposal.
+    setTheme(params.get('theme') === 'light' ? 'light' : 'dark');
+    setState(current);
+    fit();
+    addEventListener('resize', fit);
+  </script>
+</body>
+</html>
