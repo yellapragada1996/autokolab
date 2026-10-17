@@ -1,0 +1,1598 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AutoKolab · Overview wireframe v5, every situation</title>
+  <!-- Same font the site loads. Offline, it falls back to the system font and everything still works. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ---------------------------------------------------------------------------
+       Tokens. Dark values are copied from autokolab-ux-handoff/tokens.css so the
+       file opens offline. Light is a proposal (tokens.css has no light theme).
+       Progress lines use status tokens only:
+         --done       the croc green from the logo (#5DC46A), only for "done".
+         --done-edge  the croc's ink outline, round done segments in light.
+         --blue / --blue-switch   the two token blues, striped together for
+                      "in progress". --blue alone is so light (75%) that on a
+                      dark card beside green it reads as violet; striped with
+                      --blue-switch it reads as plainly blue.
+         --todo-edge  the outline of a ticket nobody has started (--border-focus).
+       --------------------------------------------------------------------------- */
+    :root, [data-theme="dark"] {
+      --bg: #0B0D11; --sidebar: #0E1116; --card: #12151B; --card-hover: #171B22;
+      --surface-hover: #161A21; --surface-active: #1B2028; --surface-raised: #232833;
+      --avatar-bg: #232833; --avatar-fg: #C9CED6;
+      --border-subtle: #1C2029; --border: #1F242D; --border-strong: #2A303B;
+      --card-edge: #191D25;
+      --card-shadow: inset 0 1px 0 rgba(255, 255, 255, .025);
+      --track: #2A303B; --todo-edge: #4A515D;
+      --text: #E9EBEF; --text-body: #D4D8DE; --text-secondary: #C9CED6;
+      --text-muted: #A2A9B5; --text-dim: #858C98;
+      --amber: #F4C25B; --blue: #7EA6FF; --coral: #FF8A78; --coral-text: #FFB8A8;
+      --stripe-blue-a: #3E7FE0; --stripe-blue-b: #7EA6FF;
+      --stripe-amber-a: #C99A3E; --stripe-amber-b: #F4C25B;
+      --done: #5DC46A; --done-edge: transparent;
+      --focus: #A2A9B5;
+      --tip-bg: #E9EBEF; --tip-fg: #0B0D11; --tip-muted: #3A404B;
+      --skeleton: #171A21;
+      --frame-shadow: 0 24px 64px rgba(0, 0, 0, .45);
+      color-scheme: dark;
+    }
+    [data-theme="light"] {
+      /* A warm paper white: it sits better next to the croc green than a blue-grey. */
+      --bg: #F6F6F2; --sidebar: #EFEFE9; --card: #FFFFFF; --card-hover: #F8F8F4;
+      --surface-hover: #EBEBE5; --surface-active: #E3E3DC; --surface-raised: #E3E3DC;
+      --avatar-bg: #EBEBE4; --avatar-fg: #3A404B;
+      --border-subtle: #E6E6E0; --border: #E2E2DB; --border-strong: #CFCFC7;
+      --card-edge: #E4E3DB;
+      --card-shadow: 0 1px 2px rgba(40, 36, 20, .04), 0 8px 24px -12px rgba(40, 36, 20, .10);
+      --track: #DADBD3; --todo-edge: #A9AAA1;
+      --text: #111318; --text-body: #262A32; --text-secondary: #3A404B;
+      --text-muted: #535A66; --text-dim: #5F6672;
+      --amber: #B7791F; --blue: #2F6BD8; --coral: #D1453B; --coral-text: #B4372E;
+      --stripe-blue-a: #2F6BD8; --stripe-blue-b: #7FA3E6;
+      --stripe-amber-a: #B7791F; --stripe-amber-b: #DDB574;
+      --done: #5DC46A; --done-edge: #14231A;
+      --focus: #5B6370;
+      --tip-bg: #111318; --tip-fg: #F6F6F2; --tip-muted: #C9CED6;
+      --skeleton: #EAEAE3;
+      --frame-shadow: 0 24px 64px rgba(17, 19, 24, .12);
+      color-scheme: light;
+    }
+    :root {
+      --font-sans: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+      --radius-sm: 7px; --radius-md: 10px; --radius-lg: 12px; --radius-xl: 16px; --radius-2xl: 18px;
+      --ease-out: cubic-bezier(.2, .8, .2, 1);
+      --dur-hover: 160ms;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); }
+    body { font: 400 14px/1.5 var(--font-sans); -webkit-font-smoothing: antialiased; font-feature-settings: "ss01"; }
+    button { font: inherit; color: inherit; }
+    a { color: inherit; text-decoration: none; }
+    .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+    :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+    /* ===========================================================================
+       The bench: the page around the frames (controls and notes). Not the design.
+       =========================================================================== */
+    .bench { padding: 28px 32px 20px; }
+    .kicker { color: var(--text-dim); font: 500 12px/1.4 var(--font-mono); }
+    .bench h1 { margin: 6px 0 4px; font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
+    .bench p { margin: 0; max-width: 860px; color: var(--text-muted); }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; margin-top: 20px; }
+    .control { display: inline-flex; align-items: center; gap: 8px; }
+    .control-label { color: var(--text-dim); font-size: 12px; font-weight: 600; }
+    .seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: var(--sidebar); border: 1px solid var(--border); border-radius: var(--radius-md); }
+    .seg button { min-height: 34px; padding: 0 12px; color: var(--text-muted); background: none; border: 0; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; font-weight: 500; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out); }
+    .seg button:hover { color: var(--text); background: var(--surface-hover); }
+    .seg button[aria-pressed="true"] { color: var(--text); background: var(--surface-raised); }
+    .seg button .rec { color: var(--text-dim); font-weight: 400; }
+
+    .workbench { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 32px; padding: 0 32px 48px; }
+    .stage { min-width: 0; overflow-x: auto; }
+    .frames { display: flex; align-items: flex-start; gap: 40px; width: max-content; zoom: var(--fit, 1); }
+    .frame-col { margin: 0; }
+    .frame-col figcaption { margin: 0 0 12px; color: var(--text-dim); font: 500 12px/1.4 var(--font-mono); }
+    .device { position: relative; overflow: hidden; background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius-xl); box-shadow: var(--frame-shadow); }
+
+    .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100% - 32px); padding: 12px 16px; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-md); font-size: 13px; opacity: 0; pointer-events: none; transition: opacity 160ms var(--ease-out); z-index: 5; }
+    .toast.show { opacity: 1; }
+
+    /* Review-path pins: bench annotations, not part of the design. */
+    .pin { position: absolute; z-index: 4; display: grid; place-items: center; width: 22px; height: 22px; color: var(--bg); background: var(--text); border-radius: 50%; box-shadow: 0 0 0 3px var(--bg); font: 600 12px/1 var(--font-mono); pointer-events: none; }
+
+    /* ===========================================================================
+       Shell: desktop sidebar, phone top bar and bottom tabs (same as v3).
+       =========================================================================== */
+    .desktop { display: grid; grid-template-columns: 232px 1fr; width: var(--dw, 1440px); height: var(--dh, 900px); }
+    .sidebar { display: flex; flex-direction: column; min-width: 0; padding: 24px 12px; background: var(--sidebar); border-right: 1px solid var(--border-subtle); }
+    /* The logo SVG has no size of its own, so both are set (viewBox is 787 × 227). */
+    .logo { display: block; width: 111px; height: 32px; margin: 0 12px; }
+    .project { margin: 16px 12px 0; color: var(--text-muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nav { display: grid; gap: 2px; margin: 32px 0 0; padding: 0; list-style: none; }
+    .nav li.gap { margin-top: 16px; }
+    .nav a { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 12px; color: var(--text-secondary); border-radius: var(--radius-sm); font-size: 14px; transition: background-color var(--dur-hover) var(--ease-out); }
+    .nav a:hover { color: var(--text); background: var(--surface-hover); }
+    .nav a:active { background: var(--surface-active); }
+    .nav a[aria-current="page"] { color: var(--text); background: var(--surface-active); font-weight: 500; }
+    .nav-count { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; color: var(--text-secondary); font: 500 12px/1 var(--font-mono); }
+    .dot { flex: none; display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+    .dot.amber { background: var(--amber); }
+    .dot.coral { background: var(--coral); }
+
+    .screen { position: relative; min-width: 0; overflow-y: auto; container-type: inline-size; scrollbar-width: thin; }
+
+    .phone { display: flex; flex-direction: column; width: 390px; height: 844px; border-radius: 36px; }
+    .phone-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 56px; padding: 0 20px; background: var(--sidebar); border-bottom: 1px solid var(--border-subtle); flex: none; }
+    .phone-top .logo { flex: none; width: 83px; height: 24px; margin: 0; }
+    .phone-top .project { min-width: 0; margin: 0; }
+    .phone .screen { flex: 1; }
+    .tabbar { position: relative; flex: none; background: var(--sidebar); border-top: 1px solid var(--border-subtle); padding-bottom: 18px; }
+    .tabbar ul { display: flex; margin: 0; padding: 0 8px; list-style: none; overflow-x: auto; scrollbar-width: none; }
+    .tabbar ul::-webkit-scrollbar { display: none; }
+    .tabbar a { position: relative; display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 64px; min-height: 48px; padding: 0 12px; color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+    .tabbar a:active { background: var(--surface-active); }
+    .tabbar a[aria-current="page"] { color: var(--text); font-weight: 600; }
+    .tabbar a[aria-current="page"]::before { content: ""; position: absolute; top: 0; left: 12px; right: 12px; height: 2px; background: var(--text); border-radius: 0 0 2px 2px; }
+    .tabbar::after { content: ""; position: absolute; top: 0; right: 0; bottom: 18px; width: 40px; background: linear-gradient(to right, transparent, var(--sidebar)); pointer-events: none; }
+
+    /* ===========================================================================
+       Overview. One component; the frame's width picks desktop or phone
+       (container query), so both frames run the same markup.
+       =========================================================================== */
+    .ov { width: 100%; max-width: 1120px; padding: 56px 56px 80px; }
+
+    /* Section titles: sentence case with a hairline running to the edge. */
+    .part-title { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; color: var(--text-muted); font-size: 14px; font-weight: 600; line-height: 20px; }
+    .part-title::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+    .part + .part { margin-top: 40px; }
+
+    /* Rows share this: one link, one Tab stop, a hover fill that bleeds into the gutter. */
+    .row { display: grid; align-items: center; margin: 0 -12px; padding: 10px 12px; border-radius: var(--radius-md); cursor: pointer; transition: background-color var(--dur-hover) var(--ease-out); }
+    .row:hover, .row.hover { background: var(--surface-hover); }
+    .card .row:hover, .card .row.hover { background: var(--card-hover); }
+    .row:active { background: var(--surface-active); }
+    .row:focus-visible { outline-offset: -2px; border-radius: var(--radius-md); }
+    .list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+
+    /* 1 · Needs you: no box. A small amber mark, a big question, who waits and how long. */
+    .needs { margin-bottom: 44px; padding-bottom: 28px; border-bottom: 1px solid var(--border); }
+    .needs .part-title { color: var(--text-secondary); }
+    .need { grid-template-columns: 10px minmax(0, 1fr) auto; column-gap: 18px; align-items: start; padding-top: 12px; padding-bottom: 12px; }
+    .need-mark { width: 10px; height: 10px; margin-top: 10px; border-radius: 50%; background: var(--amber); }
+    .need-q { color: var(--text); font-size: 21px; font-weight: 500; line-height: 1.38; letter-spacing: -0.012em; text-wrap: pretty; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .need-meta { display: block; margin-top: 4px; color: var(--text-muted); font-size: 14px; }
+    .need-act { align-self: center; color: var(--text-secondary); font-size: 14px; font-weight: 500; white-space: nowrap; }
+    .need:hover .need-act { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+    .more { display: inline-flex; align-items: center; min-height: 36px; margin-top: 4px; color: var(--text-secondary); font-size: 14px; font-weight: 500; border-radius: var(--radius-sm); }
+    .more:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+    .needs .more { margin-left: 28px; }
+
+    /* 2 · Heading: the focal point. One line per sentence, the full column wide.
+       A sentence that is too long wraps balanced inside itself; "on" stays with the goal. */
+    .head { display: flex; align-items: flex-end; gap: 20px; }
+    .headline { margin: 0; min-width: 0; color: var(--text); font-size: 44px; font-weight: 600; line-height: 1.1; letter-spacing: -0.035em; }
+    .headline .sent { display: block; text-wrap: balance; }
+    .headline .sent + .sent { margin-top: 2px; }
+    .headline .nw, .headline .goal { white-space: nowrap; }
+    .headline a { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 7px; text-decoration-color: var(--border-strong); transition: text-decoration-color var(--dur-hover) var(--ease-out); }
+    .headline a:hover { text-decoration-color: var(--text); }
+    .headline .stopped { color: var(--coral-text); }
+    .headline .soft { color: var(--text-muted); }
+    .head + .part { margin-top: 48px; }
+    /* The croc only turns up when there is nothing to report: resting in calm, eager when new.
+       The SVG is the original, unchanged. It sits on the heading's last line. */
+    .croc { flex: none; display: block; width: 76px; height: 77px; margin-bottom: 2px; }
+    .croc.new { width: 120px; height: 121px; margin-bottom: -4px; }
+    .croc.calm { transform: rotate(-8deg); transform-origin: 50% 100%; }
+
+    /* Presence: a neutral initial with a ring in its status colour. Working agents' rings
+       breathe slowly; under reduced motion the ring stays and only the breathing stops. */
+    .av { position: relative; flex: none; display: grid; place-items: center; width: 32px; height: 32px; color: var(--avatar-fg); background: var(--avatar-bg); border-radius: 10px; font-size: 13px; font-weight: 600; letter-spacing: 0; --gap: var(--card); }
+    .av.s-live { box-shadow: 0 0 0 2px var(--gap), 0 0 0 3.5px var(--blue); }
+    .av.s-wait { box-shadow: 0 0 0 2px var(--gap), 0 0 0 3.5px var(--amber); }
+    .av.s-stop { box-shadow: 0 0 0 2px var(--gap), 0 0 0 3.5px var(--coral); }
+    .av.s-live::after { content: ""; position: absolute; inset: -3.5px; border: 1.5px solid var(--blue); border-radius: 13.5px; opacity: 0; animation: breathe 3.2s var(--ease-out) infinite; animation-delay: var(--delay, 0s); }
+    @keyframes breathe { 0% { opacity: .5; transform: scale(1); } 75%, 100% { opacity: 0; transform: scale(1.32); } }
+    .quiet .av { color: var(--text-dim); background: transparent; box-shadow: inset 0 0 0 1px var(--border-strong); }
+
+    /* An agent's step in its ticket: one short bar per planned step (ticket_steps). */
+    .steps { display: inline-flex; align-items: center; gap: 8px; color: var(--text-dim); font: 500 12px/1 var(--font-mono); white-space: nowrap; }
+    .ticks { display: inline-flex; gap: 3px; }
+    .tick { width: 10px; height: 4px; border-radius: 2px; background: var(--track); }
+    .tick.d { background: var(--text-dim); }
+    .tick.n { background: var(--blue); }
+    .s-wait-row .tick.n { background: var(--amber); }
+    .s-stop-row .tick.n { background: var(--coral); }
+
+    /* ---------------------------------------------------------------------------
+       Goal progress: one rounded segment per ticket, like the bumps on the croc's back.
+       Always in this order: done, in progress, waiting on you, stopped, to go.
+       Each state has a colour AND a shape:
+         done          solid croc green (inked in light)
+         in progress   blue stripes: work under way
+         waiting       amber stripes: under way, held by a question to you
+         stopped       solid coral, broken in the middle
+         to go         an empty outline
+       Over 16 tickets the segments merge into one continuous line.
+       --------------------------------------------------------------------------- */
+    .gl { position: relative; display: flex; gap: 3px; height: 10px; flex: 1; min-width: 0; }
+    .gs { flex: 1; min-width: 4px; border-radius: 5px; background: transparent; box-shadow: inset 0 0 0 1.5px var(--todo-edge); transition: outline-color var(--dur-hover) var(--ease-out); outline: 2px solid transparent; outline-offset: 2px; }
+    .gs.d { background: var(--done); box-shadow: inset 0 0 0 1.5px var(--done-edge); }
+    .gs.u { background: repeating-linear-gradient(-45deg, var(--stripe-blue-a) 0 3px, var(--stripe-blue-b) 3px 6px); box-shadow: none; }
+    .gs.w { background: repeating-linear-gradient(-45deg, var(--stripe-amber-a) 0 3px, var(--stripe-amber-b) 3px 6px); box-shadow: none; }
+    .gs.x { background: var(--coral); box-shadow: none; -webkit-mask: linear-gradient(90deg, #000 calc(50% - 1.5px), transparent 0 calc(50% + 1.5px), #000 0); mask: linear-gradient(90deg, #000 calc(50% - 1.5px), transparent 0 calc(50% + 1.5px), #000 0); }
+    .gs.hl { outline-color: var(--text); }
+    .gl.cont { gap: 0; border-radius: 5px; overflow: hidden; box-shadow: inset 0 0 0 1.5px var(--todo-edge); }
+    .gl.cont .gs { border-radius: 0; }
+    .gl.cont .gs.t { box-shadow: none; }
+    .gl.cont .gs.hl { outline: 0; filter: brightness(1.25); }
+
+    /* The line, its words and its tasks are one button: hover, focus, click or tap. */
+    .prog { position: relative; }
+    .line-btn { display: block; width: calc(100% + 16px); margin: 0 -8px; padding: 8px; text-align: left; background: none; border: 0; border-radius: var(--radius-lg); cursor: pointer; transition: background-color var(--dur-hover) var(--ease-out); }
+    .line-btn:hover { background: var(--card-hover); }
+    .lay-rows .line-btn:hover { background: var(--surface-hover); }
+    .line-btn:focus-visible { outline-offset: 0; border-radius: var(--radius-lg); }
+    .bar-row { display: flex; align-items: center; gap: 14px; }
+    .n-tasks { flex: none; display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font: 500 12px/1 var(--font-mono); white-space: nowrap; }
+    .chev { width: 10px; height: 10px; transition: transform var(--dur-hover) var(--ease-out); }
+    .open > .line-btn .chev { transform: rotate(180deg); }
+    .line-btn:hover .n-tasks { color: var(--text); }
+    /* The words under the line double as its legend: a sample of each segment, then the count. */
+    .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-top: 10px; color: var(--text-muted); font-size: 13px; line-height: 18px; }
+    .lg { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+    .lg b { color: var(--text); font: 600 13px/1 var(--font-mono); }
+    .lg .gs { flex: none; width: 16px; height: 8px; border-radius: 4px; }
+
+    /* Hover a segment: a label names the ticket. Pointer only; the task list covers keyboard and touch. */
+    .tip { position: absolute; z-index: 3; left: 0; top: 0; width: max-content; max-width: 280px; padding: 8px 12px 9px; color: var(--tip-fg); background: var(--tip-bg); border-radius: var(--radius-md); font-size: 13px; line-height: 1.4; opacity: 0; pointer-events: none; transition: opacity 120ms var(--ease-out); box-shadow: 0 8px 24px rgba(0, 0, 0, .25); }
+    .tip.show { opacity: 1; }
+    .tip b { display: block; font-weight: 600; }
+    .tip .k { font: 500 12px/1 var(--font-mono); opacity: .7; margin-right: 6px; }
+    .tip span.m { display: block; color: var(--tip-muted); }
+    .tip::after { content: ""; position: absolute; left: var(--arrow, 20px); bottom: -5px; width: 10px; height: 10px; background: var(--tip-bg); transform: translateX(-50%) rotate(45deg); border-radius: 2px; }
+
+    /* Click or tap the line: the goal's tickets, in the line's order, each a link into Work. */
+    .tray { margin: 4px 0 6px; padding: 6px 0 0; border-top: 1px dashed var(--border-strong); }
+    .tray[hidden] { display: none; }
+    .tray ul { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+    .trow { display: grid; grid-template-columns: 16px 52px minmax(0, 1fr) auto 12px; grid-template-areas: "sw key title meta go"; align-items: center; column-gap: 12px; min-height: 36px; margin: 0 -8px; padding: 4px 8px; border-radius: var(--radius-sm); color: var(--text-secondary); transition: background-color var(--dur-hover) var(--ease-out); }
+    .trow:hover, .trow.hl { background: var(--card-hover); color: var(--text); }
+    .lay-rows .trow:hover, .lay-rows .trow.hl { background: var(--surface-hover); }
+    .trow .gs { grid-area: sw; width: 16px; height: 8px; border-radius: 4px; }
+    .t-key { grid-area: key; color: var(--text-dim); font: 500 12px/1 var(--font-mono); }
+    .t-title { grid-area: title; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .t-meta { grid-area: meta; color: var(--text-muted); font-size: 13px; white-space: nowrap; }
+    .t-go { grid-area: go; color: var(--text-dim); font-size: 13px; }
+    .trow:hover .t-go { color: var(--text); }
+
+    /* ---------- Cards (recommended): one card per goal, its line and its crew ---------- */
+    .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+    .card { position: relative; padding: 22px 24px 12px; background: var(--card); border: 1px solid var(--card-edge); border-radius: var(--radius-2xl); box-shadow: var(--card-shadow); }
+    .card-name { margin: 0 0 10px; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; }
+    .card-name a { display: inline-flex; align-items: baseline; gap: 8px; max-width: 100%; border-radius: var(--radius-sm); }
+    .card-name a span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .card-name a::after { content: "→"; flex: none; color: var(--text-dim); font-size: 16px; font-weight: 500; opacity: 0; transform: translateX(-4px); transition: opacity var(--dur-hover) var(--ease-out), transform var(--dur-hover) var(--ease-out); }
+    .card-name a:hover::after, .card-name a:focus-visible::after, .card-name a.hover::after { opacity: 1; transform: none; }
+    .card-name a:hover span, .card-name a.hover span { text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 4px; text-decoration-color: var(--border-strong); }
+    .crew { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); }
+    .crew .agent { grid-template-columns: 32px minmax(0, 1fr) auto; grid-template-areas: "av name state" "av doing doing" "av steps steps"; column-gap: 14px; row-gap: 2px; min-height: 60px; }
+    .card-empty { margin: 8px 0 0; padding: 14px 0 10px; color: var(--text-dim); font-size: 14px; border-top: 1px solid var(--border); }
+    /* Agents without work sit outside the boxes: they aren't part of a goal. */
+    .free { padding: 22px 0 0; }
+    .free .part-title { margin-bottom: 8px; }
+    .free .list { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); column-gap: 24px; }
+    .free .agent { grid-template-columns: 32px minmax(0, 1fr); grid-template-areas: "av name" "av state"; column-gap: 14px; row-gap: 0; min-height: 56px; }
+    .free.span { grid-column: 1 / -1; }
+    .free.solo .part-title { display: none; }
+    .after { margin-top: 12px; }
+
+    /* Agent row parts (both structures) */
+    .agent .av { grid-area: av; align-self: start; margin-top: 2px; }
+    .a-name { grid-area: name; color: var(--text); font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .a-doing { grid-area: doing; color: var(--text-secondary); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .a-doing:empty { display: none; }
+    .a-state { grid-area: state; justify-self: end; color: var(--text-muted); font-size: 13px; font-weight: 500; white-space: nowrap; }
+    .free .a-state { justify-self: start; }
+    .agent .steps { grid-area: steps; margin-top: 5px; }
+    .agent.quiet .a-name { color: var(--text-muted); font-weight: 500; }
+    .agent.quiet .a-state, .agent.quiet .a-doing { color: var(--text-dim); }
+
+    /* ---------- Rows (the alternative): two flat lists, no boxes ---------- */
+    .lay-rows .agent { grid-template-columns: 32px 168px minmax(0, 1fr) 176px 132px; grid-template-areas: "av name doing steps state"; column-gap: 16px; min-height: 56px; }
+    .lay-rows .agent .av { align-self: center; margin-top: 0; }
+    .lay-rows .agent .steps { margin-top: 0; }
+    .lay-rows .a-state { justify-self: start; }
+    /* The ring's gap matches what is behind it: the card inside a card, the page elsewhere. */
+    .free .av, .lay-rows .av { --gap: var(--bg); }
+    .goal-row { display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: 24px; align-items: start; padding: 6px 0; }
+    .goal-row + .goal-row { border-top: 1px solid var(--border-subtle); }
+    .g-name { align-self: start; margin-top: 6px; color: var(--text); font-size: 17px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-radius: var(--radius-sm); }
+    .g-name:hover { text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 4px; }
+
+    /* Loading and load failed */
+    .sk { display: block; background: var(--skeleton); border-radius: var(--radius-sm); }
+    .sk-card { display: grid; gap: 14px; align-content: start; padding: 24px; height: 208px; background: var(--card); border: 1px solid var(--card-edge); border-radius: var(--radius-2xl); }
+    .sk-row { display: grid; grid-template-columns: 32px 168px 1fr; align-items: center; gap: 16px; min-height: 56px; }
+    .muted-head { color: var(--text-muted); }
+    .problem-line { display: flex; align-items: baseline; gap: 12px; margin: 20px 0 0; max-width: 56ch; color: var(--text-secondary); font-size: 17px; }
+    .problem-line .dot { transform: translateY(-2px); }
+    .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; margin-top: 28px; padding: 0 18px; color: var(--text); background: var(--surface-raised); border: 1px solid var(--border-strong); border-radius: var(--radius-md); font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color var(--dur-hover) var(--ease-out); }
+    .btn:hover { background: var(--surface-active); }
+
+    /* Phone: the same component under 600px of width. */
+    @container (max-width: 600px) {
+      .ov { padding: 28px 20px 40px; }
+      .headline { font-size: 30px; line-height: 1.14; letter-spacing: -0.03em; }
+      .headline .sent + .sent { margin-top: 4px; }
+      /* On a narrow column, balance can push "working" down ("2 agents are / working on…");
+         pretty fills the first line and only fixes a lonely last word. */
+      .headline .sent { text-wrap: pretty; }
+      .headline .goal { white-space: normal; }
+      /* Inline link: padding grows the tap area to 44px without moving the text. */
+      .headline a { padding: 7px 0; text-underline-offset: 5px; }
+      /* The croc sits above the heading here, so the sentence keeps the full width. */
+      .head { flex-direction: column; gap: 14px; align-items: flex-start; }
+      .croc { width: 60px; height: 61px; }
+      .croc.new { width: 88px; height: 89px; }
+      .head + .part { margin-top: 32px; }
+      .part + .part { margin-top: 32px; }
+      .needs { margin-bottom: 28px; padding-bottom: 20px; }
+      .need { grid-template-columns: 10px minmax(0, 1fr); column-gap: 14px; min-height: 44px; }
+      .need-mark { margin-top: 8px; grid-row: 1 / span 2; }
+      .need-q { font-size: 17px; line-height: 1.45; }
+      .need-act { grid-column: 2; margin-top: 8px; }
+      .needs .more { margin-left: 24px; }
+      .more { min-height: 44px; }
+      .cards { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+      .card { padding: 14px 16px 6px; border-radius: var(--radius-xl); }
+      .card-name { margin-bottom: 4px; font-size: 19px; }
+      .card-name a { display: flex; align-items: center; min-height: 44px; }
+      .card-name a::after { opacity: 1; transform: none; margin-left: auto; }
+      .line-btn { min-height: 64px; padding: 10px 8px; }
+      .tray { margin-bottom: 4px; }
+      .trow { grid-template-columns: 16px minmax(0, 1fr) 12px; grid-template-areas: "sw title go" "sw meta go"; row-gap: 2px; min-height: 52px; padding: 7px 8px; }
+      .trow .t-key { display: none; }
+      .trow .gs { align-self: start; margin-top: 7px; }
+      .t-meta { font-size: 13px; }
+      .crew .agent { column-gap: 12px; margin: 0 -8px; padding: 10px 8px; }
+      .a-doing { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .free { padding-top: 14px; }
+      .free .list { grid-template-columns: minmax(0, 1fr); }
+      .free .agent { min-height: 52px; }
+      .lay-rows .agent { grid-template-columns: 32px minmax(0, 1fr) auto; grid-template-areas: "av name state" "av doing doing" "av steps steps"; column-gap: 12px; row-gap: 2px; min-height: 60px; }
+      .lay-rows .agent .av { align-self: start; margin-top: 2px; }
+      .lay-rows .agent .steps { margin-top: 5px; }
+      .lay-rows .a-state { justify-self: end; }
+      .goal-row { grid-template-columns: minmax(0, 1fr); padding: 4px 0; }
+      .g-name { display: flex; align-items: center; min-height: 44px; margin-top: 0; font-size: 16px; }
+      .sk-row { grid-template-columns: 32px 1fr; }
+      .sk-row .sk:last-child { display: none; }
+      .sk-card { height: 176px; padding: 18px 16px; }
+      .btn { min-height: 44px; }
+    }
+
+    /* "Reduce motion" on the bench previews what people with that setting see. */
+    body.still *, body.still *::before, body.still *::after { animation: none !important; transition-duration: 0ms !important; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0ms !important; animation: none !important; }
+    }
+    /* ===========================================================================
+       v5 additions to the design. Everything above this line is v4, unchanged.
+       =========================================================================== */
+    /* Waiting on someone else (a member seeing an owner-only question, or the other way round).
+       The same row, quieter: smaller words, grey, a hollow amber mark. No answer control. */
+    .needs .others-title { margin-top: 20px; }
+    .needs.others-only .others-title { margin-top: 0; color: var(--text-muted); }
+    .need.other .need-mark { background: transparent; box-shadow: inset 0 0 0 2px var(--amber); }
+    .need.other .need-q { color: var(--text-secondary); font-size: 17px; }
+    .need.other .need-mark { margin-top: 7px; }
+    .need.other .need-act { color: var(--text-muted); font-weight: 400; }
+    /* Paused and stale: nothing on screen is moving, so nothing breathes. */
+    .quiet .tick.n { background: var(--text-dim); }
+    .ov.stale .av::after { animation: none; opacity: 0; }
+    .stale-line { margin: 0 0 28px; }
+    @container (max-width: 600px) {
+      .need.other .need-q { font-size: 15px; }
+      .stale-line { margin-bottom: 20px; font-size: 15px; }
+    }
+
+    /* ===========================================================================
+       The gallery around the frames. Not the design.
+       =========================================================================== */
+    .bench .controls { margin-top: 18px; }
+    .jump { position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 4px; padding: 8px 32px; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .jump a { display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; color: var(--text-secondary); border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; }
+    .jump a:hover { color: var(--text); background: var(--surface-hover); }
+    .jump a b { margin-right: 6px; color: var(--text-dim); font: 600 12px/1 var(--font-mono); }
+    .jump .spacer { flex: 1; }
+    .jump .seg button { min-height: 30px; font-size: 12px; }
+    .contents { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px 32px; padding: 24px 32px 8px; }
+    .contents h2 { margin: 0 0 6px; font-size: 14px; font-weight: 600; }
+    .contents h2 a:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .contents ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+    .contents li a { display: grid; grid-template-columns: 34px 1fr; min-height: 26px; align-items: center; color: var(--text-muted); font-size: 13px; }
+    .contents li a:hover { color: var(--text); }
+    .contents li a span { color: var(--text-dim); font: 500 12px/1 var(--font-mono); }
+    .group { padding: 48px 32px 0; scroll-margin-top: 56px; }
+    .group > h2 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+    .group > h2 b { color: var(--text-dim); font-weight: 600; margin-right: 8px; }
+    .group > p { margin: 6px 0 0; max-width: 860px; color: var(--text-muted); font-size: 15px; }
+    .sit { margin-top: 36px; padding-top: 28px; border-top: 1px solid var(--border); scroll-margin-top: 56px; }
+    .sit-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin-bottom: 16px; }
+    .sit-n { display: inline-grid; place-items: center; min-width: 40px; height: 24px; padding: 0 8px; color: var(--text-secondary); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font: 600 12px/1 var(--font-mono); }
+    .sit-head h3 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; }
+    .sit-who { color: var(--text-dim); font-size: 13px; }
+    .stage { min-width: 0; overflow-x: auto; padding-bottom: 4px; }
+    .frames { zoom: var(--fit, 1); }
+    .sit-cap { margin: 14px 0 0; max-width: 1180px; color: var(--text-body); font-size: 15px; line-height: 1.55; }
+    .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px 32px; margin: 16px 0 0; max-width: 1500px; }
+    .facts div { min-width: 0; }
+    .facts dt { color: var(--text-dim); font: 500 12px/1.4 var(--font-mono); }
+    .facts dd { margin: 3px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+    .facts dd b { color: var(--text-secondary); font-weight: 600; }
+    .facts dd.hs { color: var(--text); font-size: 14px; font-weight: 500; }
+    .facts .wide { grid-column: 1 / -1; }
+    .endnote { padding: 56px 32px 0; max-width: 1240px; scroll-margin-top: 56px; }
+    .endnote h2 { margin: 0 0 6px; font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+    .endnote > p { margin: 0 0 16px; color: var(--text-muted); font-size: 15px; max-width: 860px; }
+    .endnote h3 { margin: 24px 0 8px; font-size: 16px; font-weight: 600; }
+    .endnote ul { margin: 0; padding-left: 20px; color: var(--text-body); font-size: 14px; }
+    .endnote li { margin-bottom: 6px; }
+    .endnote li b { color: var(--text); }
+    .tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .tbl th, .tbl td { padding: 9px 12px 9px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+    .tbl th { color: var(--text-dim); font: 500 12px/1.4 var(--font-mono); }
+    .tbl td:first-child { width: 56px; color: var(--text-dim); font: 500 12px/1.6 var(--font-mono); }
+    .tbl td:nth-child(2) { width: 300px; color: var(--text-muted); }
+    .tbl td.hs { color: var(--text); }
+    .tbl td.hs a { text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+    .tbl .stp { color: var(--coral-text); }
+    .tbl .sft { color: var(--text-muted); }
+    .key-row { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: center; margin: 6px 0; color: var(--text-body); font-size: 14px; }
+    .key-row .gs { width: 32px; height: 10px; flex: none; }
+    .key-row .av { width: 24px; height: 24px; border-radius: 8px; font-size: 11px; --gap: var(--bg); margin-left: 4px; }
+    .key-row .av::after { display: none; }
+    .ctr { max-width: 560px; border-collapse: collapse; font: 12px/1.4 var(--font-mono); color: var(--text-muted); }
+    .ctr td, .ctr th { padding: 4px 16px 4px 0; text-align: left; border-bottom: 1px solid var(--border-subtle); }
+    .ctr th { color: var(--text-dim); font-weight: 500; }
+    footer.end { padding: 48px 32px 64px; color: var(--text-dim); font-size: 13px; }
+
+    /* "Whole page": frames grow to their content instead of scrolling inside. */
+    body.full .phone, body.full .desktop { height: auto; }
+    body.full .screen { overflow: visible; }
+    /* Screenshot mode (?sit=a1&shot=desktop or shot=phone): one frame at 1:1, nothing else. */
+    body.shot .bench, body.shot .jump, body.shot .contents, body.shot .group > h2, body.shot .group > p,
+    body.shot .sit-head, body.shot .sit-cap, body.shot .facts, body.shot figcaption, body.shot .endnote, body.shot footer.end, body.shot .toast { display: none; }
+    body.shot .group { padding: 0; }
+    body.shot .sit { margin: 0; padding: 0; border: 0; }
+    body.shot .stage { overflow: visible; padding: 0; }
+    body.shot .frames { zoom: 1; gap: 0; }
+    body.shot .device { border: 0; border-radius: 0; box-shadow: none; }
+    body.shot.shot-desktop .frame-phone, body.shot.shot-phone .frame-desktop { display: none; }
+
+    @media (max-width: 700px) {
+      .bench, .jump, .contents, .group, .endnote, footer.end { padding-left: 20px; padding-right: 20px; }
+      .seg button { min-height: 44px; }
+      .jump a { min-height: 44px; }
+      .tbl td:nth-child(2) { width: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="bench">
+    <div class="kicker">AK-176 · Overview wireframe v5 · sample project</div>
+    <h1>Overview in every situation a project goes through</h1>
+    <p>The approved v4 design, unchanged, drawn in 26 situations on one page. Each shows the desktop (1440) and the phone (390) side by side, a one-line caption, the exact heading code would build, what stands out and what stays quiet, what is hidden, and where every link goes. The page tells one story: Northstar Shop, its owner Raghav, a member James, and the same agents and goals throughout. Links in the frames say where they'd go.</p>
+    <div class="controls">
+      <div class="control" role="group" aria-label="Structure">
+        <span class="control-label" aria-hidden="true">Structure</span>
+        <div class="seg">
+          <button type="button" data-layout="cards">Cards <span class="rec">· recommended</span></button>
+          <button type="button" data-layout="rows">Rows</button>
+        </div>
+      </div>
+      <div class="control" role="group" aria-label="Theme">
+        <span class="control-label" aria-hidden="true">Theme</span>
+        <div class="seg">
+          <button type="button" data-theme-choice="dark">Dark</button>
+          <button type="button" data-theme-choice="light">Light</button>
+        </div>
+      </div>
+      <div class="control" role="group" aria-label="Desktop width">
+        <span class="control-label" aria-hidden="true">Desktop</span>
+        <div class="seg">
+          <button type="button" data-width="1440">1440</button>
+          <button type="button" data-width="1280">1280</button>
+        </div>
+      </div>
+      <div class="control" role="group" aria-label="Frames">
+        <span class="control-label" aria-hidden="true">Frames</span>
+        <div class="seg">
+          <button type="button" data-frames="screen">First screen</button>
+          <button type="button" data-frames="full">Whole page</button>
+        </div>
+      </div>
+      <div class="control" role="group" aria-label="View">
+        <span class="control-label" aria-hidden="true">View</span>
+        <div class="seg">
+          <button type="button" id="review-toggle" aria-pressed="false">Review path</button>
+          <button type="button" id="still-toggle" aria-pressed="false">Reduce motion</button>
+          <button type="button" id="fit-toggle" aria-pressed="true">Fit to window</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="jump" aria-label="Jump to">
+    <a href="#g-A"><b>A</b>You have to act</a>
+    <a href="#g-B"><b>B</b>Starting out</a>
+    <a href="#g-C"><b>C</b>Everyday</a>
+    <a href="#g-D"><b>D</b>Things going wrong</a>
+    <a href="#g-E"><b>E</b>Different viewers</a>
+    <a href="#headings">Heading sentences</a>
+    <a href="#rules">Rules</a>
+    <span class="spacer"></span>
+    <div class="seg" role="group" aria-label="Structure">
+      <button type="button" data-layout="cards">Cards</button>
+      <button type="button" data-layout="rows">Rows</button>
+    </div>
+    <div class="seg" role="group" aria-label="Theme">
+      <button type="button" data-theme-choice="dark">Dark</button>
+      <button type="button" data-theme-choice="light">Light</button>
+    </div>
+  </nav>
+
+  <div class="contents" id="contents"></div>
+  <main id="gallery"></main>
+
+  <section class="endnote" id="headings" aria-labelledby="headings-h">
+    <h2 id="headings-h">Every heading sentence</h2>
+    <p>Built by the same code that draws the frames above, so this table can't drift from them. One sentence per line on the page. Coral is "has stopped"; grey is a soft second line; underlined words are the heading's one link.</p>
+    <table class="tbl" id="heading-table">
+      <thead><tr><th>#</th><th>Situation</th><th>Heading, as code builds it</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <h3>How code picks the sentence</h3>
+    <ul>
+      <li><b>Setting up</b> comes first: nothing connected, then only Captain, then agents but no goal. Each is two sentences: what is true, then the one next step as a link.</li>
+      <li><b>Paused</b> replaces everything else: "You paused everyone." (or "Raghav paused everyone." for a member).</li>
+      <li><b>Working</b>: Captain counts while it reviews. One agent is named ("Birch is working on Checkout."); more are counted ("3 agents are working on…"). One goal is named, two if their names fit in 32 characters together, otherwise counted ("on 2 goals").</li>
+      <li><b>Nobody working</b>: "No agents are working right now.", after "All 3 goals are done." when every goal is done.</li>
+      <li><b>Then, one line each, in this order</b>: who has stopped (coral), who is offline with work waiting, Captain offline, goals finished today, and "Tell Captain what you want to make." for someone who has never written to Captain.</li>
+      <li><b>Never in the heading</b>: what waits on you. Needs you, right above, already says it.</li>
+    </ul>
+  </section>
+
+  <section class="endnote" id="rules" aria-labelledby="rules-h">
+    <h2 id="rules-h">Rules this page follows</h2>
+    <p>The same rules in every situation. If a frame above breaks one, that's a bug.</p>
+    <h3>What stands out</h3>
+    <ul>
+      <li><b>One thing first.</b> If something waits on you, Needs you is first: top of the page, the only filled amber. Otherwise the heading is first: 44 px, the largest thing on the page.</li>
+      <li><b>Then the lines</b>, then the rings. Everything else is grey text.</li>
+      <li><b>Empty parts are not drawn.</b> No Needs you when nothing waits on you, no cards when nothing is being built, no "Not working right now" when everyone has work, no Captain count when it's zero. Nothing leaves a gap or an empty box.</li>
+      <li><b>No problem blocks.</b> A failure shows in three places that already exist: one line in the heading, the agent's row (word and reason) and its ticket's segment.</li>
+      <li><b>Nothing is answered here</b> (DEC-24). Every Needs you row is a link to the exact message in Captain. Someone who can't answer sees it quietly, with a link to the ticket in Work.</li>
+    </ul>
+    <h3>Colours and what they mean</h3>
+    <p style="margin:0 0 6px;color:var(--text-muted);font-size:14px">Colour only means status, and every colour has a word next to it. Avatars are neutral.</p>
+    <div class="key-row"><span class="gs d"></span><span><b>Green</b>, solid: done.</span></div>
+    <div class="key-row"><span class="gs u"></span><span><b>Blue</b>, striped: in progress (an agent is building it or Captain is reviewing it). A blue ring: that agent is working.</span></div>
+    <div class="key-row"><span class="gs w"></span><span><b>Amber</b>, striped: waiting on a person (you, or the person named). A filled amber mark: it needs you. A hollow one: it needs someone else.</span></div>
+    <div class="key-row"><span class="gs x"></span><span><b>Coral</b>, broken: stopped (an error, failing tests it gave up on, or a daily limit).</span></div>
+    <div class="key-row"><span class="gs"></span><span><b>Outline</b>: to go. Nobody has started it.</span></div>
+    <div class="key-row"><span class="av" aria-hidden="true" style="color:var(--text-dim);background:transparent;box-shadow:inset 0 0 0 1px var(--border-strong)">W</span><span><b>Grey</b>, no ring: idle, offline or paused. The word says which.</span></div>
+    <h3>Motion</h3>
+    <ul>
+      <li><b>Only working agents move</b>: their ring breathes slowly (3.2 s). Nothing else animates.</li>
+      <li><b>When nothing on screen is live, nothing breathes</b>: paused, and after a failed refresh (the view is old).</li>
+      <li><b>Nothing jumps</b>: loading shows the cards' real shapes, which don't shimmer. A new question adds a row at the top; that's the news.</li>
+      <li><b>Reduce motion</b> (system setting, or the switch at the top) stops the breathing. The rings stay.</li>
+    </ul>
+    <h3>Contrast (worked out from the colours in use)</h3>
+    <table class="ctr">
+      <tr><th>Against its background</th><th>Dark</th><th>Light</th></tr>
+      <tr><td>Heading, names</td><td id="c-text">–</td><td id="c-text-l">–</td></tr>
+      <tr><td>Doing, details</td><td id="c-sec">–</td><td id="c-sec-l">–</td></tr>
+      <tr><td>Quiet words, steps</td><td id="c-dim">–</td><td id="c-dim-l">–</td></tr>
+      <tr><td>Done segment</td><td id="c-done">–</td><td id="c-done-l">–</td></tr>
+      <tr><td>In progress (stronger stripe)</td><td id="c-prog">–</td><td id="c-prog-l">–</td></tr>
+      <tr><td>Rings (blue, amber, coral)</td><td id="c-ring">–</td><td id="c-ring-l">–</td></tr>
+    </table>
+    <p style="margin-top:8px;color:var(--text-muted);font-size:13px">Text needs 4.5:1, lines and rings 3:1. *In light, the done segment passes through its ink outline. Same as v4.</p>
+    <h3>Where this goes against the handoff or the spec</h3>
+    <ul>
+      <li>Same as v4: the done green is the logo's #5DC46A; light theme is a proposal; the focus ring uses <code>--text-muted</code>; progress lines replace the spec's "4 of 7 done".</li>
+      <li><b>Needs you shows 3 rows</b>, as the spec says, then "and N more in Captain". v4 showed 2.</li>
+      <li><b>A finished goal stays for the rest of the day.</b> The spec drops it at the next refresh, so whoever looks later would never see it finish.</li>
+      <li><b>One agent is named</b> in the heading ("Birch is working on Checkout."), as the spec says. v4 never drew one agent.</li>
+    </ul>
+  </section>
+  <footer class="end">AK-176 · built from data in this file; every frame runs the same Overview code. Made-up data.</footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    // The design code is v4's, with the viewer, more states and more heading lines added.
+    // The data is made up, and tells one story across all situations.
+    const TABS = ['Captain', 'Overview', 'Work', 'Team', 'Room', 'Decisions', 'Results', 'Settings'];
+    const WORD = { working: 'Working', reviewing: 'Reviewing', stopped: 'Stopped', limit: 'Limit reached', idle: 'Idle', offline: 'Offline', paused: 'Paused' };
+    const RING = { working: 'live', reviewing: 'live', waiting: 'wait', stopped: 'stop', limit: 'stop', idle: '', offline: '', paused: '' };
+    const KIND = { done: 'd', build: 'u', review: 'u', wait: 'w', stop: 'x', todo: 't' };
+    const ORDER = { d: 0, u: 1, w: 2, x: 3, t: 4 };
+    const SEG_WORD = { d: 'done', u: 'in progress', x: 'stopped', t: 'to go' };
+
+    // Who is looking. The owner runs Captain on their machine.
+    const OWNER = { name: 'Raghav', role: 'owner', label: 'Seen by Raghav, the owner' };
+    const MEMBER = { name: 'James', role: 'member', label: 'Seen by James, a member' };
+    const NEWCOMER = { name: 'Priya', role: 'member', fresh: true, label: 'Seen by Priya, a member who joined today' };
+    const CAPTAIN_HOST = OWNER.name;
+    let viewer = OWNER;
+    const isYou = who => who === viewer.name;
+    const onWord = who => (isYou(who) ? 'you' : who);
+
+    // Ticket keys stay the same across situations, so "Saved cards" is always the same ticket.
+    const KEYS = new Map();
+    let nextKey = 41;
+    const keyOf = title => { if (!KEYS.has(title)) KEYS.set(title, `AK-${nextKey++}`); return KEYS.get(title); };
+
+    // A(name, state, doing, goal, ticket title, [step, of], {on, seen, waiting})
+    const A = (name, state, doing = '', goal = null, task = null, step = null, o = {}) =>
+      ({ name, state, doing, goal, task, step, ...(state === 'waiting' ? { on: OWNER.name } : {}), ...o });
+    // T(title, state, who, [step, of], why, {on, short, paused}): one ticket. D(...) and L(...) make done and to-go tickets.
+    const T = (title, st, who = null, step = null, why = '', o = {}) =>
+      ({ title, st, who, step, why, k: KIND[st], key: keyOf(title), ...(st === 'wait' ? { on: OWNER.name } : {}), ...o });
+    const D = (...ts) => ts.map(t => T(t, 'done'));
+    const L = (...ts) => ts.map(t => T(t, 'todo'));
+    const G = (name, tasks, o = {}) => ({ name, tasks: tasks.flat(), ...o });
+    // N(type, the question, {who, age, on, ticket, goal, size, cost, only}): something that waits on a person.
+    const N = (type, q, o) => ({ type, q, on: OWNER.name, ...o });
+
+    const LONG = {
+      'Checkout': 'Guest checkout with saved cards',
+      'Sign-in': 'Sign-in with email links and Google',
+      'Search': 'Search with filters and suggestions',
+      'Admin dashboard': 'Admin dashboard for orders and refunds',
+    };
+    const PROJECT = { short: 'Northstar Shop', long: 'Northstar Outdoor Equipment Shop Europe' };
+
+    // ---------- The story's pieces ----------
+    const CO_DONE = D('Cart page', 'Shipping address form', 'Order summary', 'Card payments');
+    const Q_SAVE = o => N('question', 'Should guests be able to save cards?', { who: 'Fjord', age: '2 h', ticket: 'Guest checkout', ...o });
+    const Q_RISKY = o => N('risky', 'OK to merge “Sign-up emails”? It can’t be undone.', { who: 'Captain', age: '25 min', ticket: 'Sign-up emails', why: 'it changes the database', only: 'Only Raghav, the owner, can OK a risky change', ...o });
+    const Q_PLAN = o => N('plan', 'OK Captain’s plan for Search?', { who: 'Captain', age: '10 min', goal: 'Search', size: '4 tickets, about a day', ...o });
+    const Q_ORDER = o => N('captain', 'Which comes first after Checkout: Search or Receipts?', { who: 'Captain', age: '1 h', ...o });
+    const Q_TAX = o => N('question', 'Should receipts show prices with tax, or without?', { who: 'Tern', age: '3 h', ticket: 'Receipt emails', ...o });
+
+    const busyGoals = () => [
+      G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [3, 5]), T('Guest checkout', 'review', 'Captain'), L('Discount codes')]),
+      G('Sign-in', [D('Email and password'), T('Google sign-in', 'build', 'Fjord', [1, 4]), L('Password reset')]),
+    ];
+    const busyAgents = () => [
+      A('Captain', 'reviewing', "reviewing Birch's guest checkout", 'Checkout', 'Guest checkout'),
+      A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', 'Saved cards', [3, 5]),
+      A('Fjord', 'working', 'adding Google sign-in', 'Sign-in', 'Google sign-in', [1, 4]),
+      A('Oriole', 'offline', '', null, null, null, { seen: '3 h ago' }),
+      A('Wren', 'idle'),
+    ];
+    // The risky merge moment (A4, A5).
+    const riskyGoals = () => [
+      G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [3, 5]), T('Guest checkout', 'build', 'Fjord', [2, 4]), L('Discount codes')]),
+      G('Sign-in', [D('Email and password', 'Google sign-in'), T('Email sign-in links', 'build', 'Kestrel', [4, 6]), T('Sign-up emails', 'wait', 'Captain', null, 'Captain asks to merge it'), L('Password reset')]),
+    ];
+    const riskyAgents = () => [
+      A('Captain', 'waiting', "asking to merge Kestrel's sign-up emails", 'Sign-in', 'Sign-up emails'),
+      A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', 'Saved cards', [3, 5]),
+      A('Fjord', 'working', 'adding guest checkout', 'Checkout', 'Guest checkout', [2, 4]),
+      A('Kestrel', 'working', 'moving sign-in to email links', 'Sign-in', 'Email sign-in links', [4, 6]),
+      A('Wren', 'idle'),
+    ];
+    // Owner and member at the same moment (E25).
+    const bothGoals = () => [
+      G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [3, 5]), T('Guest checkout', 'build', 'Fjord', [2, 4]), L('Discount codes')]),
+      G('Sign-in', [D('Email and password', 'Google sign-in'), T('Email sign-in links', 'build', 'Kestrel', [4, 6]), T('Sign-up emails', 'wait', 'Captain', null, 'Captain asks to merge it'), L('Password reset')]),
+      G('Search', [D('Search box'), T('Search filters', 'wait', 'Heron', [2, 4], 'Heron asked about sold-out items', { on: 'James' }), L('Search suggestions')]),
+    ];
+    const bothAgents = () => [
+      A('Captain', 'waiting', "asking to merge Kestrel's sign-up emails", 'Sign-in', 'Sign-up emails'),
+      A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', 'Saved cards', [3, 5]),
+      A('Fjord', 'working', 'adding guest checkout', 'Checkout', 'Guest checkout', [2, 4]),
+      A('Heron', 'waiting', 'adding search filters', 'Search', 'Search filters', [2, 4], { on: 'James' }),
+      A('Kestrel', 'working', 'moving sign-in to email links', 'Sign-in', 'Email sign-in links', [4, 6]),
+      A('Wren', 'idle'),
+    ];
+    const bothNeeds = () => [
+      Q_RISKY(),
+      N('question', 'Should search show sold-out items?', { who: 'Heron', age: '40 min', on: 'James', ticket: 'Search filters', only: 'James asked for Search, so James answers' }),
+      Q_ORDER(),
+    ];
+
+    // ---------- Every situation ----------
+    const GROUPS = {
+      A: ['You have to act', 'Something waits on a person. Overview never answers it: each row points to the exact message in Captain (DEC-24). The row types: a question, several, a plan, a risky change, one only the owner can answer, and a goal held up by an answer.'],
+      B: ['Starting out', 'From an empty project to the first goal under way. Until there is something to report, the croc and one plain next step.'],
+      C: ['Everyday', 'Normal days: busy, one agent, goals finishing, calm, thirteen agents, and names that are too long.'],
+      D: ['Things going wrong', 'Failures show in the heading, the agent\'s row and the ticket\'s segment. No problem blocks.'],
+      E: ['Different viewers', 'The same project seen by the owner, a member, and someone new on a phone.'],
+    };
+
+    const SITS = [
+      // ---------------- A · You have to act ----------------
+      { id: 'a1', g: 'A', n: '1', title: 'One question waiting',
+        needs: [Q_SAVE()],
+        goals: [
+          G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [3, 5]), T('Guest checkout', 'wait', 'Fjord', [2, 4], 'Fjord asked about saved cards'), L('Discount codes')]),
+          G('Sign-in', [D('Email and password'), T('Google sign-in', 'build', 'Kestrel', [1, 4]), L('Password reset')]),
+        ],
+        agents: [A('Captain', 'idle'), A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', 'Saved cards', [3, 5]), A('Fjord', 'waiting', 'adding guest checkout', 'Checkout', 'Guest checkout', [2, 4]), A('Kestrel', 'working', 'adding Google sign-in', 'Sign-in', 'Google sign-in', [1, 4]), A('Wren', 'idle')],
+        caption: 'Raghav sees one plain question from Fjord at the top of the page. Raghav should answer it: the row opens Captain on that exact message, where the answer goes.',
+        first: 'The question: top of the page, the only filled amber, 21 px. The Captain tab shows 1.',
+        quiet: 'The heading and cards. Fjord\'s amber ring and the amber segment in Checkout ("1 waiting on you") repeat the question quietly.',
+      },
+      { id: 'a2', g: 'A', n: '2', title: 'Several things waiting',
+        needs: [Q_PLAN(), Q_RISKY(), Q_ORDER(), Q_SAVE(), Q_TAX()],
+        goals: [
+          G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [3, 5]), T('Guest checkout', 'wait', 'Fjord', [2, 4], 'Fjord asked about saved cards'), L('Discount codes')]),
+          G('Sign-in', [D('Email and password', 'Google sign-in'), T('Email sign-in links', 'build', 'Kestrel', [4, 6]), T('Sign-up emails', 'wait', 'Captain', null, 'Captain asks to merge it'), L('Password reset')]),
+          G('Receipts', [D('Receipt template'), T('Receipt emails', 'wait', 'Tern', [3, 5], 'Tern asked about tax on receipts'), L('Receipt PDF')]),
+        ],
+        agents: [A('Captain', 'waiting', "asking to merge Kestrel's sign-up emails", 'Sign-in', 'Sign-up emails'), A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', 'Saved cards', [3, 5]), A('Fjord', 'waiting', 'adding guest checkout', 'Checkout', 'Guest checkout', [2, 4]), A('Kestrel', 'working', 'moving sign-in to email links', 'Sign-in', 'Email sign-in links', [4, 6]), A('Tern', 'waiting', 'sending receipt emails', 'Receipts', 'Receipt emails', [3, 5]), A('Wren', 'idle')],
+        caption: 'Five things wait on Raghav. The three newest show, then "and 2 more in Captain". Raghav works through them in Captain: each row opens its own message, and "and 2 more" opens the oldest one still open.',
+        first: 'The three rows, newest first. The Captain tab shows 5.',
+        quiet: 'The heading. Three amber segments and three amber rings show which work each answer frees.',
+        added: 'Nothing. The limit is 3 rows, as the spec says (v4 showed 2).',
+      },
+      { id: 'a3', g: 'A', n: '3', title: 'A plan waiting for approval',
+        needs: [Q_PLAN()], goals: busyGoals(), agents: busyAgents(),
+        caption: 'Captain has a plan for a new goal, Search. Raghav reads it in Captain and says OK or asks for changes: the row opens the plan message. Search gets a card only once it has tickets.',
+        first: 'The plan row. Its grey line says how big the plan is.',
+        quiet: 'Everything else: the work already going on doesn\'t change while a plan waits.',
+        added: 'Nothing. No card for Search yet: a plan has no tickets, so it has no line.',
+      },
+      { id: 'a4', g: 'A', n: '4', title: 'A risky change waiting for your OK',
+        needs: [Q_RISKY()], goals: riskyGoals(), agents: riskyAgents(),
+        caption: 'Captain wants Raghav\'s OK to merge a change that can\'t be undone automatically. Raghav reviews it in Captain: the row opens the merge request, where the OK is.',
+        first: 'The merge question: "It can\'t be undone." Its grey line says why (it changes the database).',
+        quiet: 'Captain\'s amber ring and the amber "Sign-up emails" segment in Sign-in. The other agents keep working.',
+        added: 'Nothing. No red, no warning box: the risk is said in words, as DEC-24 asks.',
+      },
+      { id: 'a5', g: 'A', n: '5', title: 'Only the owner can answer, seen by a member',
+        viewer: MEMBER, needs: [Q_RISKY()], goals: riskyGoals(), agents: riskyAgents(),
+        caption: 'The same moment as A4, seen by James. Only Raghav can OK a risky change, so nothing needs James: the row says who must answer and opens the ticket in Work, read only. There is nothing to answer here.',
+        first: 'The heading. The "Waiting on Raghav" row is quieter than Needs you: smaller, grey, a hollow amber mark, and no count on the Captain tab.',
+        quiet: 'The row; the segment reads "1 waiting on Raghav", and Captain\'s word reads "Waiting on Raghav".',
+        added: '<b>A quiet version of the Needs you row</b>, titled with who must answer. It answers what nothing else does for a member: why Sign-in is held, and who can free it. It has no answer control and links to the ticket, not Captain.',
+      },
+      { id: 'a6', g: 'A', n: '6', title: 'A goal held up by your answer',
+        needs: [Q_SAVE({ age: '1 day', cost: 'Checkout is on hold' })],
+        goals: [
+          G('Checkout', [CO_DONE, T('Guest checkout', 'wait', 'Fjord', [2, 4], 'Fjord asked about saved cards'), T('Saved cards', 'todo', null, null, 'on hold until you answer Fjord', { short: 'To go · on hold' }), T('Discount codes', 'todo', null, null, 'on hold until you answer Fjord', { short: 'To go · on hold' })]),
+          G('Sign-in', [D('Email and password'), T('Google sign-in', 'build', 'Birch', [2, 4]), L('Password reset')]),
+        ],
+        agents: [A('Captain', 'idle'), A('Birch', 'working', 'adding Google sign-in', 'Sign-in', 'Google sign-in', [2, 4]), A('Fjord', 'waiting', 'held on guest checkout until you answer', 'Checkout', 'Guest checkout', [2, 4]), A('Oriole', 'offline', '', null, null, null, { seen: '3 h ago' }), A('Wren', 'idle')],
+        caption: 'Checkout can\'t move until Raghav answers Fjord. The row says what waiting costs ("Checkout is on hold"), Fjord\'s ring is amber, and Checkout\'s line has no blue at all. The row opens Captain on Fjord\'s question.',
+        first: 'The question, with what waiting costs, in its grey line.',
+        quiet: 'Checkout\'s card: one amber segment, two to go "on hold" (point at them, or open the line). The heading names only Sign-in, the goal that is moving.',
+        added: 'Nothing. "Checkout is on hold" is part of the row\'s grey line.',
+      },
+      { id: 'a7', g: 'A', n: '7', title: 'Something needs you and an agent has stopped',
+        needs: [Q_SAVE()],
+        goals: [
+          G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [3, 5]), T('Guest checkout', 'wait', 'Fjord', [2, 4], 'Fjord asked about saved cards'), L('Discount codes')]),
+          G('Sign-in', [D('Email and password'), T('Google sign-in', 'build', 'Kestrel', [1, 4]), L('Password reset')]),
+          G('Receipts', [D('Receipt template'), T('Receipt emails', 'stop', 'Tern', [4, 5], 'its run failed'), L('Receipt PDF')]),
+        ],
+        agents: [A('Captain', 'idle'), A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', 'Saved cards', [3, 5]), A('Fjord', 'waiting', 'adding guest checkout', 'Checkout', 'Guest checkout', [2, 4]), A('Kestrel', 'working', 'adding Google sign-in', 'Sign-in', 'Google sign-in', [1, 4]), A('Tern', 'stopped', 'was sending receipt emails · its run failed', 'Receipts', 'Receipt emails', [4, 5]), A('Wren', 'idle')],
+        caption: 'Fjord waits on a question while Tern has stopped. The question comes first; then the heading says "Tern has stopped." in coral. Raghav answers in Captain; Tern\'s row opens its ticket in Work, which says what went wrong.',
+        first: 'The question; then the coral sentence in the heading.',
+        quiet: 'Tern\'s coral ring and the broken coral segment in Receipts. Fjord\'s amber ring.',
+      },
+
+      // ---------------- B · Starting out ----------------
+      { id: 'b8', g: 'B', n: '8', title: 'Brand-new project, nothing connected',
+        setup: 'none', croc: 'new', goals: [], agents: [],
+        caption: 'A new project with nothing connected yet. Raghav connects a computer: the link opens Team on "Connect a computer". The croc waits beside the heading.',
+        first: 'The heading\'s link, "Connect your computer".',
+        quiet: 'The croc; "Nothing is connected yet." in grey.',
+      },
+      { id: 'b9', g: 'B', n: '9', title: 'Captain connected, no agents yet',
+        setup: 'captain', croc: 'new', goals: [], agents: [A('Captain', 'idle')],
+        caption: 'Captain is connected and nobody else. Raghav adds an agent: the link opens Team on "Add an agent". Captain\'s row is the only row.',
+        first: 'The heading\'s link, "Add an agent".',
+        quiet: 'Captain\'s row, "Idle". The croc.',
+      },
+      { id: 'b10', g: 'B', n: '10', title: 'Agents connected, no goal yet',
+        setup: 'agents', croc: 'new', goals: [], agents: [A('Captain', 'idle'), A('Birch', 'idle'), A('Fjord', 'idle')],
+        caption: 'Agents are ready, but nobody has said what to make. Raghav tells Captain: the link opens Captain, ready for a first message. The same as v4\'s brand-new.',
+        first: 'The heading\'s link, "Tell Captain".',
+        quiet: 'The three idle agents. The croc.',
+      },
+      { id: 'b11', g: 'B', n: '11', title: 'First goal just started',
+        goals: [G('Checkout', [T('Cart page', 'build', 'Birch', [1, 4]), L('Shipping address form', 'Order summary', 'Card payments', 'Saved cards')])],
+        agents: [A('Captain', 'idle'), A('Birch', 'working', 'building the cart page', 'Checkout', 'Cart page', [1, 4]), A('Fjord', 'idle')],
+        caption: 'Captain turned the first goal into five tickets and Birch started the first. The croc leaves, because now there is something to report. Nothing to do: the goal\'s name opens Work, Birch\'s row opens the cart page ticket.',
+        first: 'The heading, "Birch is working on Checkout."',
+        quiet: 'Captain and Fjord, idle, beside the card.',
+        added: 'Nothing. A goal with nothing done yet has no green, and the words say "1 in progress · 4 to go", not "0 done".',
+      },
+      { id: 'b12', g: 'B', n: '12', title: 'A member who just joined, with nothing to do',
+        viewer: NEWCOMER, goals: busyGoals(), agents: busyAgents(),
+        caption: 'Priya joined today and nothing waits on Priya. It\'s the same page everyone sees, plus one grey line that says where to start. The link opens Captain. The line goes once Priya has written to Captain.',
+        first: 'The heading.',
+        quiet: 'The grey "Tell Captain what you want to make." line.',
+        added: '<b>One heading sentence</b> for someone who has never written to Captain. It\'s a sentence, not a box or a tour.',
+      },
+
+      // ---------------- C · Everyday ----------------
+      { id: 'c13', g: 'C', n: '13', title: 'Busy (the v4 hero)',
+        goals: busyGoals(), agents: busyAgents(),
+        caption: 'v4\'s busy page, unchanged. Nothing needs Raghav, so it opens on the heading. Goal names open Work; lines open their tickets; agents open their ticket, or Team if they have none.',
+        first: 'The heading, then the two lines.',
+        quiet: 'Oriole (offline) and Wren (idle), outside the cards.',
+      },
+      { id: 'c14', g: 'C', n: '14', title: 'Only one agent working',
+        goals: [G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [3, 5]), L('Guest checkout', 'Discount codes')])],
+        agents: [A('Captain', 'idle'), A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', 'Saved cards', [3, 5]), A('Fjord', 'idle'), A('Wren', 'offline', '', null, null, null, { seen: 'yesterday' })],
+        caption: 'Only Birch is working. The heading names Birch instead of counting. One card; the idle agents fill the space beside it.',
+        first: 'The heading, "Birch is working on Checkout."',
+        quiet: 'Captain, Fjord and Wren, beside the card.',
+        added: 'Nothing. Naming one agent follows the spec ("Birch is working on Checkout."); v4 never had one.',
+      },
+      { id: 'c15', g: 'C', n: '15', title: 'A goal nearly done, and a goal just done',
+        goals: [
+          G('Checkout', [CO_DONE, D('Saved cards', 'Guest checkout'), T('Discount codes', 'review', 'Captain')]),
+          G('Search', [T('Search box', 'build', 'Fjord', [2, 3]), L('Search filters', 'Search suggestions')]),
+          G('Sign-in', [D('Email and password', 'Google sign-in', 'Password reset')], { finished: '14:20' }),
+        ],
+        agents: [A('Captain', 'reviewing', "reviewing Birch's discount codes", 'Checkout', 'Discount codes'), A('Birch', 'idle'), A('Fjord', 'working', 'adding the search box', 'Search', 'Search box', [2, 3]), A('Wren', 'idle')],
+        caption: 'Checkout has one ticket left, which Captain is reviewing. Sign-in finished today: its line is all green, the heading says "Sign-in is done.", and its card stays until the end of the day.',
+        first: 'The heading, then Checkout\'s nearly-full line.',
+        quiet: 'Sign-in\'s finished card, last, with "Finished today at 14:20."',
+        added: 'Nothing on screen. One rule: a finished goal stays until the end of the day, so whoever looks later still sees it finish (the spec drops it at the next refresh).',
+      },
+      { id: 'c16', g: 'C', n: '16', title: 'Everyone idle, every goal done',
+        croc: 'calm', allDone: 3, goals: [],
+        agents: [A('Captain', 'idle'), A('Birch', 'idle'), A('Fjord', 'idle'), A('Tern', 'offline', '', null, null, null, { seen: 'yesterday' }), A('Wren', 'idle')],
+        caption: 'The morning after: everything Raghav asked for is done and nobody is working. Calm, with the croc resting. Nothing to do; each agent opens in Team.',
+        first: 'The heading, "All 3 goals are done."',
+        quiet: 'The croc; the agents in grey with no title above them.',
+        added: 'Nothing. "All 3 goals are done." is a heading sentence; v4\'s calm sentence stays as the second line.',
+      },
+      { id: 'c17', g: 'C', n: '17', title: 'Many agents (13) and many goals (7)',
+        goals: [
+          G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [3, 5]), T('Guest checkout', 'build', 'Fjord', [1, 4]), L('Discount codes')]),
+          G('Sign-in', [D('Email and password', 'Google sign-in'), T('Email sign-in links', 'build', 'Kestrel', [4, 6]), T('Password reset emails', 'build', 'Bartholomew-on-jamesblack-laptop', [2, 3]), L('Two-step sign-in')]),
+          G('Search', [D('Search box'), T('Search filters', 'build', 'Heron', [5, 5]), T('Search suggestions', 'review', 'Captain'), L('Recent searches')]),
+          G('Receipts', [D('Receipt template', 'Order number on receipts', 'Tax lines', 'Currency format', 'Receipt PDF', 'Store logo on receipts', 'Refund receipts', 'Receipt archive', 'Resend receipt'), T('Receipt emails', 'build', 'Tern'), L('Receipt language', 'Gift receipts', 'Itemised shipping', 'Receipt search', 'Download all receipts', 'Receipt reminders', 'VAT number', 'Receipt footer text')]),
+          G('Admin dashboard', [T('Dashboard layout', 'build', 'Alder', [2, 6]), L('Orders table', 'Refunds')]),
+          G('Guest checkout with saved cards and Apple Pay for returning customers on mobile', [D('Card form on mobile'), T('Apple Pay', 'stop', 'Moss', [2, 4], 'daily limit'), L('Saved cards on mobile', 'Returning customer lookup', 'Pay button states', 'Mobile receipts')]),
+        ],
+        moreGoals: 'and 1 more in Work',
+        agents: [
+          A('Captain', 'reviewing', "reviewing Heron's search suggestions", 'Search', 'Search suggestions'),
+          A('Alder', 'working', 'building the admin dashboard', 'Admin dashboard', 'Dashboard layout', [2, 6]),
+          A('Bartholomew-on-jamesblack-laptop', 'working', 'rewriting the password reset emails so they match the new sign-in wording', 'Sign-in', 'Password reset emails', [2, 3]),
+          A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', 'Saved cards', [3, 5]),
+          A('Fjord', 'working', 'adding guest checkout', 'Checkout', 'Guest checkout', [1, 4]),
+          A('Heron', 'working', 'adding search filters', 'Search', 'Search filters', [5, 5]),
+          A('Juniper', 'idle'),
+          A('Kestrel', 'working', 'moving sign-in to email links', 'Sign-in', 'Email sign-in links', [4, 6]),
+          A('Lark', 'offline', '', null, null, null, { seen: '3 h ago' }),
+          A('Moss', 'limit', 'daily limit · back at 09:00', 'Guest checkout with saved cards and Apple Pay for returning customers on mobile', 'Apple Pay', [2, 4]),
+          A('Oriole', 'idle'),
+          A('Tern', 'working', 'sending receipt emails', 'Receipts', 'Receipt emails'),
+          A('Wren', 'idle'),
+        ],
+        caption: 'v4\'s 13 agents and 7 goals, unchanged. Every goal with someone on it gets a card; the one nobody is on folds into "and 1 more in Work". Receipts has 18 tickets, so its line is continuous. Moss hit its daily limit.',
+        first: 'The heading ("on 5 goals": Moss\'s goal has nobody moving on it) and "Moss has stopped." in coral.',
+        quiet: 'The four agents with no work, in one list after the cards.',
+      },
+      { id: 'c18', g: 'C', n: '18', title: 'Very long names',
+        names: 'long',
+        goals: [
+          G('Checkout', [CO_DONE, T('Let returning customers keep more than one saved card and pick a default', 'build', 'Bartholomew-on-jamesblack-laptop', [3, 5]), T('Guest checkout for people who don’t want to make an account', 'review', 'Captain'), L('Discount codes')]),
+          G('Sign-in', [D('Email and password'), T('Sign in with Google, including accounts that already signed up with email', 'build', 'Fjord', [1, 4]), L('Password reset')]),
+        ],
+        agents: [
+          A('Captain', 'reviewing', 'reviewing guest checkout for people who don’t want to make an account', 'Checkout', 'Guest checkout for people who don’t want to make an account'),
+          A('Bartholomew-on-jamesblack-laptop', 'working', 'letting returning customers keep more than one saved card and choose which one is the default', 'Checkout', 'Let returning customers keep more than one saved card and pick a default', [3, 5]),
+          A('Fjord', 'working', 'adding Google sign-in, including accounts that already signed up with email', 'Sign-in', 'Sign in with Google, including accounts that already signed up with email', [1, 4]),
+          A('Oriole', 'offline', '', null, null, null, { seen: '3 h ago' }),
+          A('Wren-on-the-old-office-mac-mini', 'idle'),
+        ],
+        caption: 'Long project, goal, agent and ticket names. Two goal names over 32 characters together are counted in the heading ("on 2 goals"); cards wrap names to two lines; agent names and doing words are cut with "…" on desktop and show in full on hover.',
+        first: 'The heading, which stays short because it counts the goals.',
+        quiet: 'Cut names; the full name is one hover (desktop) or one tap into Work away.',
+        added: 'Nothing. Same rules as v4\'s "Names: Long", with long agent and ticket names added.',
+      },
+
+      // ---------------- D · Things going wrong ----------------
+      { id: 'd19', g: 'D', n: '19', title: 'An agent stopped: an error, and a daily limit',
+        goals: [
+          G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [3, 5]), T('Guest checkout', 'review', 'Captain'), T('Discount codes', 'stop', 'Moss', [2, 4], 'daily limit, back at 09:00')]),
+          G('Receipts', [D('Receipt template'), T('Receipt emails', 'stop', 'Tern', [4, 5], 'its run failed: GitHub couldn’t be reached'), L('Receipt PDF')]),
+        ],
+        agents: [A('Captain', 'reviewing', "reviewing Birch's guest checkout", 'Checkout', 'Guest checkout'), A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', 'Saved cards', [3, 5]), A('Moss', 'limit', 'was adding discount codes · daily limit, back at 09:00', 'Checkout', 'Discount codes', [2, 4]), A('Tern', 'stopped', 'was sending receipt emails · GitHub couldn’t be reached', 'Receipts', 'Receipt emails', [4, 5]), A('Wren', 'idle')],
+        caption: 'Two agents stopped for different reasons: Tern\'s run failed, and Moss hit its daily limit. The heading says "Tern and Moss have stopped.", each row says why, and each opens its ticket in Work.',
+        first: 'The heading\'s coral sentence.',
+        quiet: 'Each reason, in the row\'s grey words; the broken coral segments.',
+        added: 'Nothing. "Limit reached" and "Stopped" are both coral: either way the work isn\'t moving.',
+      },
+      { id: 'd20', g: 'D', n: '20', title: 'An agent offline with work waiting',
+        goals: [
+          G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [3, 5]), T('Guest checkout', 'review', 'Captain'), L('Discount codes')]),
+          G('Search', [D('Search box'), T('Search filters', 'todo', 'Oriole', null, 'waiting for Oriole, offline', { short: 'To go · Oriole, offline' }), T('Search suggestions', 'todo', 'Oriole', null, 'waiting for Oriole, offline', { short: 'To go · Oriole, offline' }), L('Recent searches')]),
+        ],
+        agents: [A('Captain', 'reviewing', "reviewing Birch's guest checkout", 'Checkout', 'Guest checkout'), A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', 'Saved cards', [3, 5]), A('Oriole', 'offline', '2 tickets waiting for it', 'Search', null, null, { seen: '3 h ago', waiting: 2 }), A('Wren', 'idle')],
+        caption: 'Oriole has been offline for 3 hours with two Search tickets waiting for it. The heading says so in grey, because offline isn\'t an error. Oriole\'s row opens Team, where its machine is.',
+        first: 'The heading.',
+        quiet: 'Oriole\'s grey line in the heading, its row in Search\'s card, and "To go · Oriole, offline" on its tickets.',
+        added: 'Nothing. One heading sentence, grey, like the stopped one but without the alarm.',
+      },
+      { id: 'd21', g: 'D', n: '21', title: 'Captain offline',
+        goals: [
+          G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [3, 5]), T('Guest checkout', 'review', 'Captain', null, 'waiting for Captain to review it', { short: 'Waiting for review' }), L('Discount codes')]),
+          G('Sign-in', [D('Email and password'), T('Google sign-in', 'build', 'Fjord', [1, 4]), L('Password reset')]),
+        ],
+        agents: [A('Captain', 'offline', '', null, null, null, { seen: '40 min ago' }), A('Birch', 'working', 'adding saved cards to checkout', 'Checkout', 'Saved cards', [3, 5]), A('Fjord', 'working', 'adding Google sign-in', 'Sign-in', 'Google sign-in', [1, 4]), A('Wren', 'idle')],
+        caption: 'Captain is offline. Building goes on, but nothing gets reviewed or merged. The heading says so in grey, and whose machine to wake. Captain\'s row opens Team.',
+        first: 'The heading.',
+        quiet: 'Captain\'s grey sentence; Captain\'s row in grey; "Waiting for review" on Guest checkout.',
+        added: 'Nothing. One heading sentence.',
+      },
+      { id: 'd22', g: 'D', n: '22', title: 'Everyone paused by the owner',
+        paused: 'Raghav',
+        goals: [
+          G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [3, 5], '', { paused: true }), T('Guest checkout', 'review', 'Captain', null, 'paused, Captain was reviewing it', { short: 'Captain · paused' }), L('Discount codes')]),
+          G('Sign-in', [D('Email and password'), T('Google sign-in', 'build', 'Fjord', [1, 4], '', { paused: true }), L('Password reset')]),
+        ],
+        agents: [A('Captain', 'paused', "was reviewing Birch's guest checkout", 'Checkout', 'Guest checkout'), A('Birch', 'paused', 'was adding saved cards to checkout', 'Checkout', 'Saved cards', [3, 5]), A('Fjord', 'paused', 'was adding Google sign-in', 'Sign-in', 'Google sign-in', [1, 4]), A('Wren', 'paused')],
+        caption: 'Raghav paused everyone. Rings are grey and nothing breathes; each agent says what it was doing. The heading\'s link opens Settings on "Pause everyone". Lines keep their state, so nothing looks lost.',
+        first: 'The heading, "You paused everyone."',
+        quiet: 'Every agent, in grey with "Paused".',
+        added: 'Nothing. "Paused" is a state word (it is in the data contract).',
+      },
+      { id: 'd23', g: 'D', n: '23', title: 'Tests failing on a task',
+        goals: [
+          G('Checkout', [CO_DONE, T('Saved cards', 'build', 'Birch', [4, 5], 'Birch is fixing 2 failing tests, step 4 of 5'), L('Guest checkout', 'Discount codes')]),
+          G('Sign-in', [D('Email and password'), T('Google sign-in', 'build', 'Fjord', [1, 4]), L('Password reset')]),
+          G('Receipts', [D('Receipt template'), T('Receipt emails', 'stop', 'Tern', [4, 5], 'tests still failing after 3 tries'), L('Receipt PDF')]),
+        ],
+        agents: [A('Captain', 'idle'), A('Birch', 'working', 'fixing 2 failing tests in saved cards', 'Checkout', 'Saved cards', [4, 5]), A('Fjord', 'working', 'adding Google sign-in', 'Sign-in', 'Google sign-in', [1, 4]), A('Tern', 'stopped', 'was sending receipt emails · tests still failing after 3 tries', 'Receipts', 'Receipt emails', [4, 5]), A('Wren', 'idle')],
+        caption: 'Two kinds of failing tests. Birch is fixing two: that\'s work, so it stays blue and says so in words. Tern gave up after three tries: that\'s stopped, in coral, with the reason. Both rows open their ticket in Work.',
+        first: 'The heading\'s "Tern has stopped."',
+        quiet: 'Birch\'s "fixing 2 failing tests": a failure being handled isn\'t an alarm.',
+        added: 'Nothing. No problem block: the failure is in the heading, Tern\'s row and its segment.',
+      },
+      { id: 'd24a', g: 'D', n: '24a', title: 'Loading',
+        loading: true,
+        caption: 'The first load, if it takes over about 0.4 s. Still shapes sit where the cards will be, so nothing jumps when they arrive. Nothing to do.',
+        first: 'The grey "Loading your project…"',
+        quiet: 'The still shapes. They don\'t shimmer.',
+      },
+      { id: 'd24b', g: 'D', n: '24b', title: 'First load failed',
+        failed: true,
+        caption: 'The first load failed. One sentence says what went wrong, one what it means (the agents keep working), and one button tries again. No croc: a failure isn\'t cute.',
+        first: 'The heading, "Couldn\'t load this project."',
+        quiet: 'The reassurance line.',
+        added: 'Nothing. v4\'s failed state, unchanged.',
+      },
+      { id: 'd24c', g: 'D', n: '24c', title: 'Refresh failed, last view kept',
+        stale: '9:41', goals: busyGoals(), agents: busyAgents(),
+        caption: 'A refresh failed, so the last view stays, with one line on top saying how old it is. The rings stop breathing, because nothing on screen is live now. It tries again on its own; links still work.',
+        first: 'The line on top: "Couldn\'t refresh. This is how things were at 9:41."',
+        quiet: 'The old view, unchanged, with still rings.',
+        added: '<b>One line above the page</b>, worded as in the spec. It is v4\'s failure line, reused. It answers the one thing nothing else can: how old this view is.',
+      },
+
+      // ---------------- E · Different viewers ----------------
+      { id: 'e25a', g: 'E', n: '25a', title: 'Owner view',
+        needs: bothNeeds(), goals: bothGoals(), agents: bothAgents(),
+        caption: 'Raghav, the owner, sees the two things only the owner can answer (a risky merge and what to build next), and James\'s question quietly, as "Waiting on James".',
+        first: 'Raghav\'s two rows.',
+        quiet: '"Waiting on James", and "1 waiting on James" in Search\'s line.',
+        added: 'The same quiet row as A5.',
+      },
+      { id: 'e25b', g: 'E', n: '25b', title: 'Member view, the same moment',
+        viewer: MEMBER, needs: bothNeeds(), goals: bothGoals(), agents: bothAgents(),
+        caption: 'James sees only James\'s own question in Needs you, and Raghav\'s risky merge as "Waiting on Raghav". Raghav\'s question about what to build next has no ticket, so it doesn\'t show here.',
+        first: 'James\'s one row. The Captain tab shows 1, not 2.',
+        quiet: '"Waiting on Raghav"; the amber words name who each segment waits on.',
+        added: '<b>What else differs</b> between owner and member, in other situations: "You paused everyone." becomes "Raghav paused everyone."; "until your machine is back" becomes "until Raghav\'s machine is back"; in a new project only the owner gets the "Connect your computer" link. Nothing else changes.',
+      },
+      { id: 'e26', g: 'E', n: '26', title: 'First-time viewer on a phone',
+        viewer: NEWCOMER, open: true, goals: busyGoals(), agents: busyAgents(),
+        caption: 'Priya opens Overview for the first time, on a phone. Every line has its own words underneath, so nothing needs learning. Tapping Checkout\'s line opens its tickets (shown open); each ticket opens in Work.',
+        first: 'The heading.',
+        quiet: 'The open ticket list, in grey; the "Tell Captain" line.',
+        added: 'Nothing. The open list is v4\'s review path, step 2.',
+      },
+    ];
+    const SIT = Object.fromEntries(SITS.map(s => [s.id, s]));
+
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const isQuiet = a => a.state === 'idle' || a.state === 'offline' || a.state === 'paused';
+    let names = 'short';
+    const nm = n => (names === 'long' && LONG[n]) || n;
+    const andList = xs => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+    // Hyphenated names such as Sign-in never break at the hyphen.
+    const nobreak = s => esc(s).replace(/(\S+-\S+)/g, '<span class="nw">$1</span>');
+    const begin = s => { viewer = s.viewer || OWNER; names = s.names || 'short'; };
+
+    // ---------- The heading, worked out from the data ----------
+    let headLinks = [];
+    const link = (text, dest, what) => { headLinks.push([dest, what]); return `<a href="#" data-go="${esc(dest)}, ${esc(what)}">${esc(text)}</a>`; };
+    const soft = t => `<span class="soft">${t}</span>`;
+    function headline(s) {
+      headLinks = [];
+      if (s.loading) return ['Loading your project…'];
+      if (s.failed) return ['Couldn’t load this project.'];
+      if (s.setup === 'none') return viewer.role === 'owner'
+        ? [soft('Nothing is connected yet.'), `${link('Connect your computer', 'Team', 'on “Connect a computer”')} to bring in Captain.`]
+        : [soft('Nothing is connected yet.'), `${esc(OWNER.name)} is setting it up.`];
+      if (s.setup === 'captain') return [soft('Captain is here, but nobody builds yet.'), `${link('Add an agent', 'Team', 'on “Add an agent”')} to start building.`];
+      if (s.setup === 'agents') return [soft('Nothing has started yet.'), `${link('Tell Captain', 'Captain', 'ready for your first message')} what you want to make.`];
+      if (s.paused) return isYou(s.paused)
+        ? ['You paused everyone.', `${link('Resume everyone', 'Settings', 'on “Pause everyone”')} when you’re ready.`]
+        : [`${esc(s.paused)} paused everyone.`, soft(`Nothing new starts until ${esc(s.paused)} resumes.`)];
+
+      const out = [];
+      const working = s.agents.filter(a => a.goal && (a.state === 'working' || a.state === 'reviewing'));
+      const goals = s.goals.map(g => g.name).filter(n => working.some(a => a.goal === n));
+      const n = working.length;
+      if (!n) {
+        if (s.allDone) out.push(`All ${s.allDone} goals are done.`, soft('No agents are working right now.'));
+        else out.push('No agents are working right now.');
+      } else {
+        // One goal: its name. Two short goals (32 characters together): both names.
+        // Anything more is counted ("on 5 goals"); the cards right below name them.
+        const short = goals.length === 2 && goals.reduce((k, g) => k + nm(g).length, 0) <= 32;
+        // A goal name that fits on a desktop line is never split; the break falls before "on".
+        const whole = x => (x.length <= 36 ? `<span class="goal">${nobreak(x)}</span>` : nobreak(x));
+        const list = goals.length === 1 ? whole(nm(goals[0]))
+          : short ? goals.map(g => nobreak(nm(g))).join(' and ')
+          : `${goals.length}&nbsp;goals`;
+        // One agent is named (spec): "Birch is working on Checkout."
+        const who = n === 1
+          ? `${esc(working[0].name)} is ${working[0].state === 'reviewing' ? 'reviewing' : 'working on'}`
+          : `${n} agents are working on`;
+        out.push(`${who}&nbsp;${list}.`);
+      }
+      // Then one line each: stopped, offline with work, Captain offline, finished today, first time.
+      const stopped = s.agents.filter(a => a.goal && (a.state === 'stopped' || a.state === 'limit')).map(a => esc(a.name));
+      if (stopped.length) out.push(`<span class="stopped">${andList(stopped)} ${stopped.length > 1 ? 'have' : 'has'} stopped.</span>`);
+      for (const a of s.agents.filter(x => x.state === 'offline' && x.waiting)) {
+        out.push(soft(`${esc(a.name)} is offline with ${a.waiting} ticket${a.waiting > 1 ? 's' : ''} waiting.`));
+      }
+      if (s.agents.find(a => a.name === 'Captain')?.state === 'offline') {
+        out.push(soft(`Captain is offline, so reviews wait until ${isYou(CAPTAIN_HOST) ? 'your' : `${esc(CAPTAIN_HOST)}’s`} machine is back.`));
+      }
+      const done = s.goals.filter(g => g.finished).map(g => nobreak(nm(g.name)));
+      if (done.length) out.push(`${andList(done)} ${done.length > 1 ? 'are' : 'is'} done.`);
+      if (viewer.fresh) out.push(soft(`${link('Tell Captain', 'Captain', 'ready for your first message')} what you want to make.`));
+      return out;
+    }
+
+    // ---------- Progress lines ----------
+    const sorted = g => [...g.tasks].sort((a, b) => ORDER[a.k] - ORDER[b.k]);
+    const segWord = t => (t.k === 'w' ? `waiting on ${onWord(t.on)}` : SEG_WORD[t.k]);
+    // One entry per word, in the line's order: "4 done", "1 waiting on you", "1 waiting on James".
+    function tally(g) {
+      const m = new Map();
+      for (const t of sorted(g)) { const w = segWord(t); const e = m.get(w) || [t.k, w, 0]; e[2]++; m.set(w, e); }
+      return [...m.values()];
+    }
+    function stateWords(t, long) {
+      const step = t.step ? `, step ${t.step[0]} of ${t.step[1]}` : '';
+      if (t.st === 'done') return 'Done';
+      if (t.st === 'todo') return long ? `To go · ${t.why || 'nobody has started it'}` : (t.short || 'To go');
+      if (t.st === 'build' && t.paused) return long ? `In progress · paused, ${t.who} was on${step.replace(',', '')}` : `${t.who} · paused`;
+      if (t.st === 'build') return long ? `In progress · ${t.why || `${t.who} is building it${step}`}` : (t.short || `${t.who}${step.replace(',', ' ·')}`);
+      if (t.st === 'review') return long ? `In progress · ${t.why || `${t.who} is reviewing it`}` : (t.short || `${t.who} reviewing`);
+      if (t.st === 'wait') return long ? `Waiting on ${onWord(t.on)} · ${t.why}` : `Waiting on ${onWord(t.on)}`;
+      if (t.st === 'stop') return long ? `Stopped · ${t.who}, ${t.why}` : `Stopped · ${t.who}`;
+    }
+    function goalLine(g) {
+      const ts = sorted(g);
+      const cont = ts.length > 16;
+      const segs = ts.map(t => `<span class="gs ${t.k}" data-key="${t.key}"${cont ? ` style="flex:none;width:${(100 / ts.length).toFixed(3)}%"` : ''}></span>`).join('');
+      return `<span class="gl${cont ? ' cont' : ''}" aria-hidden="true">${segs}</span>`;
+    }
+    const legend = g => `<span class="legend" aria-hidden="true">${tally(g).map(([k, w, n]) => `<span class="lg"><span class="gs ${k}"></span><span><b>${n}</b> ${w}</span></span>`).join('')}</span>`;
+    const chev = '<svg class="chev" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    let uid = 0;
+    function progress(g, open) {
+      const id = `tray-${uid++}`;
+      const said = `${nm(g.name)}: ${tally(g).map(([, w, n]) => `${n} ${w}`).join(', ')}.`;
+      const rows = sorted(g).map(t => `<li><a class="trow" href="#" data-key="${t.key}" data-go="Work, opened on ${t.key} ${esc(t.title)}">
+          <span class="gs ${t.k}" aria-hidden="true"></span><span class="t-key">${t.key}</span>
+          <span class="t-title">${esc(t.title)}</span><span class="t-meta">${esc(stateWords(t, false))}</span><span class="t-go" aria-hidden="true">→</span>
+          <span class="sr-only">, ${esc(stateWords(t, true))}</span></a></li>`).join('');
+      return `<div class="prog${open ? ' open' : ''}">
+          <button class="line-btn" type="button" aria-expanded="${open}" aria-controls="${id}" aria-label="${esc(said)} ${open ? 'Hide' : 'Show'} its ${g.tasks.length} tickets.">
+            <span class="bar-row">${goalLine(g)}<span class="n-tasks">${g.tasks.length} tickets ${chev}</span></span>
+            ${legend(g)}
+          </button>
+          <div class="tray" id="${id}"${open ? '' : ' hidden'}><ul>${rows}</ul></div>
+          <div class="tip" aria-hidden="true"></div>
+        </div>`;
+    }
+
+    function steps(a) {
+      if (!a.step) return '';
+      const [at, of] = a.step;
+      const ticks = Array.from({ length: of }, (_, i) => `<span class="tick${i < at - 1 ? ' d' : i === at - 1 ? ' n' : ''}"></span>`).join('');
+      return `<span class="steps" aria-hidden="true"><span class="ticks">${ticks}</span>step ${at} of ${of}</span>`;
+    }
+
+    function stateWord(a) {
+      if (a.state === 'waiting') return `Waiting on ${onWord(a.on)}`;
+      if (a.state === 'offline') return a.seen ? `Offline · ${a.seen}` : 'Offline';
+      return WORD[a.state];
+    }
+    const taskOf = (a, s) => a.goal && a.task && s.goals.find(g => g.name === a.goal)?.tasks.find(x => x.title === a.task);
+
+    let ringIndex = 0;
+    function agentRow(a, s) {
+      const ring = RING[a.state];
+      const said = [a.name, stateWord(a), a.doing, a.step ? `step ${a.step[0]} of ${a.step[1]}` : ''].filter(Boolean).join(', ');
+      const t = taskOf(a, s);
+      // An agent with a ticket opens it in Work; one without opens it in Team.
+      const to = t ? `Work, opened on ${t.key} ${esc(a.task)}` : `Team, ${esc(a.name)}`;
+      const delay = ring === 'live' ? ` style="--delay:${(-0.9 * ringIndex++).toFixed(1)}s"` : '';
+      const doing = esc(a.doing);
+      return `<li><a class="row agent${isQuiet(a) ? ' quiet' : ''}${ring ? ` s-${ring}-row` : ''}" href="#" aria-label="${esc(said)}" data-go="${to}"${t ? ` data-key="${t.key}"` : ''} data-agent="${esc(a.name)}">
+        <span class="av${ring ? ` s-${ring}` : ''}"${delay} aria-hidden="true">${esc(a.name[0])}</span>
+        <span class="a-name" title="${esc(a.name)}">${esc(a.name)}</span>
+        <span class="a-doing" title="${doing}">${doing}</span>
+        ${steps(a)}
+        <span class="a-state">${esc(stateWord(a))}</span></a></li>`;
+    }
+
+    // Fixed order inside any list: Captain first, then by name.
+    const byName = (x, y) => (x.name === 'Captain' ? -1 : y.name === 'Captain' ? 1 : x.name.localeCompare(y.name));
+
+    // ---------- Needs you, and what waits on someone else ----------
+    const NEED = {
+      question: n => ({ meta: `${n.who} is waiting · ${n.age}${n.cost ? ` · ${n.cost}` : ''}`, act: 'Answer in Captain', go: `${n.who}’s question` }),
+      captain: n => ({ meta: `Captain is asking · ${n.age}`, act: 'Answer in Captain', go: 'Captain’s question' }),
+      plan: n => ({ meta: `Captain’s plan · ${n.size} · ${n.age}`, act: 'Review the plan in Captain', go: `the plan for ${n.goal}` }),
+      risky: n => ({ meta: `Captain is asking · ${n.age} · ${n.why}`, act: 'Review in Captain', go: `the merge request for “${n.ticket}”` }),
+    };
+    const MAX_NEEDS = 3, MAX_OTHERS = 2;
+    const myNeeds = s => (s.needs || []).filter(n => isYou(n.on));
+    // Someone else's question shows only when it holds up a ticket you can look at.
+    const otherNeeds = s => (s.needs || []).filter(n => !isYou(n.on) && n.ticket);
+
+    function needsPart(s) {
+      const mine = myNeeds(s), others = otherNeeds(s);
+      if (!mine.length && !others.length) return '';
+      const rest = mine.length - MAX_NEEDS;
+      const ons = [...new Set(others.map(n => n.on))];
+      const mineHtml = mine.length ? `
+          <h2 class="part-title">Needs you</h2>
+          <ul class="list">
+            ${mine.slice(0, MAX_NEEDS).map(n => { const d = NEED[n.type](n); return `<li><a class="row need" href="#" data-go="Captain, opened on ${esc(d.go)}">
+              <span class="need-mark" aria-hidden="true"></span>
+              <span><span class="need-q" title="${esc(n.q)}">${esc(n.q)}</span><span class="need-meta">${esc(d.meta)}</span></span>
+              <span class="need-act">${esc(d.act)} →</span></a></li>`; }).join('')}
+          </ul>
+          ${rest > 0 ? `<a class="more" href="#" data-go="Captain, at the oldest open question">and ${rest} more in Captain →</a>` : ''}
+          <p class="sr-only" role="status">${mine.length} ${mine.length > 1 ? 'things need' : 'thing needs'} you</p>` : '';
+      const othersHtml = others.length ? `
+          <h2 class="part-title others-title">${ons.length === 1 ? `Waiting on ${esc(ons[0])}` : 'Waiting on others'}</h2>
+          <ul class="list">
+            ${others.slice(0, MAX_OTHERS).map(n => { const key = keyOf(n.ticket); return `<li><a class="row need other" href="#" data-go="Work, opened on ${key} ${esc(n.ticket)}, read only">
+              <span class="need-mark" aria-hidden="true"></span>
+              <span><span class="need-q" title="${esc(n.q)}">${esc(n.q)}</span><span class="need-meta">${esc(n.only || `Only ${n.on} can answer`)} · ${esc(n.who)} is waiting · ${esc(n.age)}</span></span>
+              <span class="need-act">See it on ${key} →</span></a></li>`; }).join('')}
+          </ul>` : '';
+      return `<section class="needs${mine.length ? '' : ' others-only'}" aria-label="${mine.length ? 'Needs you' : 'Waiting on someone else'}">${mineHtml}${othersHtml}</section>`;
+    }
+
+    function headPart(s) {
+      const croc = s.croc ? `<img class="croc ${s.croc}" src="autokolab-croc.svg" alt="" aria-hidden="true">` : '';
+      return `<div class="head">${croc}<p class="headline">${headline(s).map(x => `<span class="sent">${x}</span>`).join(' ')}</p></div>`;
+    }
+
+    let review = false;
+    const openGoal = s => ((review || s.open) && s.goals[0]?.name) || null;
+    // Finished goals go last; they stay until the end of the day.
+    const goalOrder = s => [...s.goals].sort((a, b) => !!a.finished - !!b.finished);
+
+    function cardsView(s) {
+      const cards = goalOrder(s).map(g => {
+        const crew = s.agents.filter(a => a.goal === g.name).sort(byName);
+        const empty = g.finished ? `Finished today at ${g.finished}.` : 'Nobody on this right now.';
+        return `<section class="card" aria-label="${esc(nm(g.name))}">
+          <h3 class="card-name"><a href="#" data-go="Work, grouped by ${esc(nm(g.name))}" title="${esc(nm(g.name))}"><span>${esc(nm(g.name))}</span></a></h3>
+          ${progress(g, openGoal(s) === g.name)}
+          ${crew.length ? `<ul class="list crew">${crew.map(a => agentRow(a, s)).join('')}</ul>` : `<p class="card-empty">${empty}</p>`}
+        </section>`;
+      });
+      const free = s.agents.filter(a => !a.goal).sort(byName);
+      // Agents with no goal fill the empty cell when the cards leave one; otherwise a full row.
+      const cls = !s.goals.length ? 'solo' : s.goals.length % 2 ? '' : 'span';
+      const freeHtml = free.length ? `<section class="free ${cls}">
+          <h2 class="part-title">Not working right now</h2>
+          <ul class="list">${free.map(a => agentRow(a, s)).join('')}</ul>
+        </section>` : '';
+      if (!s.goals.length) return freeHtml ? `<div class="part">${freeHtml}</div>` : '';
+      return `<div class="part" aria-label="Being built">
+          <h2 class="sr-only">Being built</h2>
+          <div class="cards">${cards.join('')}${freeHtml}</div>
+          ${s.moreGoals ? `<a class="more after" href="#" data-go="Work, all goals">${esc(s.moreGoals)} →</a>` : ''}
+        </div>`;
+    }
+
+    function rowsView(s) {
+      const agents = s.agents.length ? `<section class="part">
+          <h2 class="part-title">Agents</h2>
+          <ul class="list">${[...s.agents].sort(byName).map(a => agentRow(a, s)).join('')}</ul>
+        </section>` : '';
+      const goals = s.goals.length ? `<section class="part">
+          <h2 class="part-title">Being built</h2>
+          <ul class="list">${goalOrder(s).map(g => `<li class="goal-row">
+            <h3 style="margin:0;min-width:0;display:grid"><a class="g-name" href="#" data-go="Work, grouped by ${esc(nm(g.name))}" title="${esc(nm(g.name))}">${esc(nm(g.name))}</a></h3>
+            ${progress(g, openGoal(s) === g.name)}</li>`).join('')}</ul>
+          ${s.moreGoals ? `<a class="more" href="#" data-go="Work, all goals">${esc(s.moreGoals)} →</a>` : ''}
+        </section>` : '';
+      return agents + goals;
+    }
+
+    function overview(s, layout) {
+      begin(s);
+      ringIndex = 0;
+      if (s.loading) {
+        const card = `<span class="sk-card"><span class="sk" style="height:16px;width:38%"></span><span class="sk" style="height:10px;border-radius:5px"></span><span class="sk" style="height:10px;width:52%"></span><span style="display:flex;gap:14px;margin-top:10px"><span class="sk" style="width:32px;height:32px;border-radius:10px;flex:none"></span><span style="display:grid;gap:8px;flex:1"><span class="sk" style="height:12px;width:40%"></span><span class="sk" style="height:12px;width:70%"></span></span></span></span>`;
+        const body = layout === 'cards'
+          ? `<div class="cards">${card}${card}</div>`
+          : [0.5, 0.42, 0.62, 0.36].map(w => `<div class="sk-row"><span class="sk" style="width:32px;height:32px;border-radius:10px"></span><span class="sk" style="height:12px;width:${Math.round(w * 200)}px"></span><span class="sk" style="height:12px;width:${Math.round(w * 100)}%"></span></div>`).join('');
+        return `<div class="ov" aria-busy="true">
+          <h1 class="sr-only">Overview</h1>
+          <div class="head"><p class="headline muted-head" role="status"><span class="sent">Loading your project…</span></p></div>
+          <div class="part" aria-hidden="true">${body}</div>
+        </div>`;
+      }
+      if (s.failed) return `<div class="ov">
+          <h1 class="sr-only">Overview</h1>
+          <div role="alert">
+            <div class="head"><p class="headline"><span class="sent">Couldn’t load this project.</span></p></div>
+            <p class="problem-line"><span class="dot coral" aria-hidden="true"></span><span>AutoKolab can’t be reached right now. Your agents keep working on their own machines.</span></p>
+          </div>
+          <button class="btn" type="button" data-go="Loads the page again">Try again</button>
+        </div>`;
+      // A failed refresh keeps the last view, with one line saying how old it is.
+      const stale = s.stale ? `<p class="problem-line stale-line" role="alert"><span class="dot coral" aria-hidden="true"></span><span>Couldn’t refresh. This is how things were at ${esc(s.stale)}.</span></p>` : '';
+      return `<div class="ov lay-${layout}${s.stale ? ' stale' : ''}"><h1 class="sr-only">Overview</h1>${stale}${needsPart(s)}${headPart(s)}${layout === 'cards' ? cardsView(s) : rowsView(s)}</div>`;
+    }
+
+    function nav(s, phone) {
+      begin(s);
+      const n = s.loading || s.failed ? 0 : myNeeds(s).length;
+      return TABS.map(t => {
+        const current = t === 'Overview' ? ' aria-current="page"' : '';
+        const badge = t === 'Captain' && n
+          ? `<span class="nav-count"><span class="dot amber" aria-hidden="true"></span><span aria-hidden="true">${n}</span><span class="sr-only">, ${n} need you</span></span>` : '';
+        const gap = !phone && t === 'Decisions' ? ' class="gap"' : '';
+        return `<li${gap}><a href="#"${current} data-go="the ${t} tab">${t}${badge}</a></li>`;
+      }).join('');
+    }
+
+    // ---------- What each situation hides, and where its links go (worked out from the data) ----------
+    function hiddenList(s) {
+      begin(s);
+      if (s.loading) return 'Needs you, agents and goals, until the data arrives. Still shapes hold the cards\' places.';
+      if (s.failed) return 'Needs you, agents and goals: there is nothing true to show yet.';
+      const out = [];
+      const mine = myNeeds(s).length;
+      if (!mine) out.push(otherNeeds(s).length ? 'Needs you and the Captain tab\'s count (nothing waits on you; what waits on others shows quietly instead)' : 'Needs you and the Captain tab\'s count (nothing waits on you)');
+      else if (mine > MAX_NEEDS) out.push(`Rows past ${MAX_NEEDS} (folded into "and ${mine - MAX_NEEDS} more in Captain")`);
+      if (!s.agents.length) out.push('the agent list (nobody connected)');
+      if (!s.goals.length) out.push('goal cards (nothing is being built)');
+      if (!s.goals.length && s.agents.length) out.push('the "Not working right now" title (the heading already says so)');
+      if (s.goals.length && s.agents.every(a => a.goal)) out.push('"Not working right now" (every agent has work)');
+      const shown = out.join('; ');
+      return shown ? shown[0].toUpperCase() + shown.slice(1) + '.' : 'Nothing: every part has something to say.';
+    }
+    function pathSummary(s) {
+      begin(s);
+      if (s.loading) return 'None yet. The tabs still work.';
+      if (s.failed) return '"Try again" loads the page again. The tabs still work.';
+      headline(s);
+      const P = { Captain: [], Work: [], Team: [], Settings: [] };
+      for (const [d, w] of headLinks) P[d].push(`the heading's link, ${w}`);
+      const mine = myNeeds(s);
+      for (const n of mine.slice(0, MAX_NEEDS)) P.Captain.push(`each row, opened on ${NEED[n.type](n).go}`);
+      if (mine.length > MAX_NEEDS) P.Captain.push('"and more", at the oldest open question');
+      for (const n of otherNeeds(s).slice(0, MAX_OTHERS)) P.Work.push(`the "Waiting on ${n.on}" row, ${keyOf(n.ticket)} read only`);
+      if (s.goals.length) P.Work.push('each goal name, grouped by that goal', 'each line opens its tickets here; each ticket opens in Work');
+      const busy = s.agents.filter(a => taskOf(a, s));
+      if (busy.length) P.Work.push(busy.length === 1 ? `${busy[0].name}, on its ticket` : `${busy.length} agents with work, each on its ticket`);
+      if (s.moreGoals) P.Work.push(`"${s.moreGoals}", all goals`);
+      const free = s.agents.filter(a => !taskOf(a, s));
+      if (free.length) P.Team.push(`${andList(free.map(a => a.name.length > 20 ? a.name.slice(0, 18) + '…' : a.name))}${free.length > 1 ? ', each' : ''} on its page`);
+      return Object.entries(P).filter(([, v]) => v.length).map(([k, v]) => `<b>${k}:</b> ${esc(v.join('; '))}`).join('<br>');
+    }
+    // The heading as plain text: the same sentences the frames show.
+    function headingText(s) {
+      begin(s);
+      const tmp = document.createElement('div');
+      tmp.innerHTML = headline(s).map(x => `<span>${x}</span>`).join(' ');
+      return [...tmp.children].map(x => `“${x.textContent.replace(/ /g, ' ')}”`).join(' ');
+    }
+    // The same, keeping its colour cue, for the table at the end.
+    function headingTable(s) {
+      begin(s);
+      return headline(s).map(x => x.replace(/class="stopped"/g, 'class="stp"').replace(/class="soft"/g, 'class="sft"').replace(/<span class="(goal|nw)">(.*?)<\/span>/g, '$2')).join(' ');
+    }
+
+    // ---------- The gallery ----------
+    let layout = 'cards', width = 1440;
+    const frameH = () => (width === 1280 ? 800 : 900);
+    function frames(s) {
+      begin(s);
+      const project = esc(PROJECT[names]);
+      const d = `<figure class="frame-col frame-desktop">
+          <figcaption>Desktop · ${width} × ${frameH()}</figcaption>
+          <div class="device desktop">
+            <aside class="sidebar">
+              <img class="logo" src="autokolab-logo.svg" alt="AutoKolab">
+              <div class="project" title="${project}">${project}</div>
+              <nav aria-label="Project"><ul class="nav">${nav(s, false)}</ul></nav>
+            </aside>
+            <div class="screen" data-sit="${s.id}" data-kind="desktop">${overview(s, layout)}</div>
+          </div>
+        </figure>`;
+      const p = `<figure class="frame-col frame-phone">
+          <figcaption>Phone · 390 × 844</figcaption>
+          <div class="device phone">
+            <div class="phone-top"><img class="logo" src="autokolab-logo.svg" alt="AutoKolab"><span class="project" title="${project}">${project}</span></div>
+            <div class="screen" data-sit="${s.id}" data-kind="phone">${overview(s, layout)}</div>
+            <nav class="tabbar" aria-label="Project"><ul>${nav(s, true)}</ul></nav>
+          </div>
+        </figure>`;
+      return `<div class="stage"><div class="frames">${d}${p}</div></div>`;
+    }
+    function sitHtml(s) {
+      const who = (s.viewer || OWNER).label;
+      return `<section class="sit" id="sit-${s.id}" aria-labelledby="h-${s.id}">
+          <header class="sit-head"><span class="sit-n">${s.g}${s.n}</span><h3 id="h-${s.id}">${esc(s.title)}</h3><span class="sit-who">${who}</span></header>
+          ${frames(s)}
+          <p class="sit-cap">${esc(s.caption)}</p>
+          <dl class="facts">
+            <div class="wide"><dt>Heading</dt><dd class="hs">${esc(headingText(s))}</dd></div>
+            <div><dt>Seen first</dt><dd>${esc(s.first)}</dd></div>
+            <div><dt>Quiet</dt><dd>${esc(s.quiet)}</dd></div>
+            <div><dt>Hidden because empty (no gap left)</dt><dd>${esc(hiddenList(s))}</dd></div>
+            <div><dt>Links from here</dt><dd>${pathSummary(s)}</dd></div>
+            <div><dt>Not in the four settled parts</dt><dd>${s.added || 'Nothing.'}</dd></div>
+          </dl>
+        </section>`;
+    }
+
+    function contents() {
+      document.getElementById('contents').innerHTML = Object.entries(GROUPS).map(([g, [name]]) => `<div>
+          <h2><a href="#g-${g}">${g} · ${esc(name)}</a></h2>
+          <ol>${SITS.filter(s => s.g === g).map(s => `<li><a href="#sit-${s.id}"><span>${s.g}${s.n}</span>${esc(s.title)}</a></li>`).join('')}</ol>
+        </div>`).join('');
+      document.querySelector('#heading-table tbody').innerHTML = SITS.map(s => `<tr><td>${s.g}${s.n}</td><td>${esc(s.title)}</td><td class="hs">${headingTable(s)}</td></tr>`).join('');
+    }
+
+    const params = new URLSearchParams(location.search);
+    const only = params.get('sit') in SIT ? params.get('sit') : null;
+
+    function render() {
+      uid = 0;
+      const list = only ? [SIT[only]] : SITS;
+      document.getElementById('gallery').innerHTML = Object.entries(GROUPS).map(([g, [name, intro]]) => {
+        const sits = list.filter(s => s.g === g);
+        if (!sits.length) return '';
+        return `<section class="group" id="g-${g}" aria-labelledby="g-${g}-h"><h2 id="g-${g}-h"><b>${g}</b>${esc(name)}</h2><p>${esc(intro)}</p>${sits.map(sitHtml).join('')}</section>`;
+      }).join('');
+      document.documentElement.style.setProperty('--dw', `${width}px`);
+      document.documentElement.style.setProperty('--dh', `${frameH()}px`);
+      document.querySelectorAll('[data-layout]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.layout === layout)));
+      document.querySelectorAll('[data-width]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.width === width)));
+      document.querySelectorAll('[data-frames]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.frames === (document.body.classList.contains('full') ? 'full' : 'screen'))));
+      document.getElementById('review-toggle').setAttribute('aria-pressed', String(review));
+      reviewStates();
+      pins();
+      fit();
+    }
+
+    // ---------- Hover a segment: name its ticket. Hover an agent or a ticket: light up its segment. ----------
+    function findTask(scr, key) {
+      const s = SIT[scr.dataset.sit];
+      begin(s);
+      for (const g of s.goals || []) { const t = g.tasks.find(x => x.key === key); if (t) return t; }
+    }
+    function showTip(seg) {
+      const prog = seg.closest('.prog');
+      const tip = prog.querySelector('.tip');
+      const t = findTask(seg.closest('.screen'), seg.dataset.key);
+      if (!t || !seg.offsetParent) return;
+      tip.innerHTML = `<b><span class="k">${t.key}</span>${esc(t.title)}</b><span class="m">${esc(stateWords(t, true))}</span>`;
+      const x = seg.offsetLeft + seg.offsetWidth / 2 + seg.offsetParent.offsetLeft;
+      const segTop = seg.offsetTop + seg.offsetParent.offsetTop;
+      const w = tip.offsetWidth, room = prog.offsetWidth;
+      const left = Math.max(-8, Math.min(room - w + 8, x - w / 2));
+      tip.style.left = `${left}px`;
+      tip.style.top = `${segTop - tip.offsetHeight - 10}px`;
+      tip.style.setProperty('--arrow', `${x - left}px`);
+      tip.classList.add('show');
+    }
+    function light(scope, key, on) {
+      scope.querySelectorAll(`.gs[data-key="${key}"], .trow[data-key="${key}"]`).forEach(el => el.classList.toggle('hl', on));
+    }
+    document.addEventListener('mouseover', e => {
+      const seg = e.target.closest('.line-btn .gs[data-key]');
+      document.querySelectorAll('.tip.show').forEach(t => { if (!seg || !t.parentElement.contains(seg)) t.classList.remove('show'); });
+      document.querySelectorAll('.screen .hl').forEach(el => el.classList.remove('hl'));
+      if (seg) { showTip(seg); light(seg.closest('.screen'), seg.dataset.key, true); return; }
+      const src = e.target.closest('.agent[data-key], .trow[data-key]');
+      if (src) light(src.closest('.screen'), src.dataset.key, true);
+    });
+    document.addEventListener('focusin', e => {
+      document.querySelectorAll('.screen .hl').forEach(el => el.classList.remove('hl'));
+      const src = e.target.closest('.agent[data-key], .trow[data-key]');
+      if (src) light(src.closest('.screen'), src.dataset.key, true);
+    });
+
+    // ---------- Review path: open it, light it, number it (annotation, as in v4) ----------
+    function offsetIn(el, root) {
+      let x = 0, y = 0, n = el;
+      while (n && n !== root) { x += n.offsetLeft; y += n.offsetTop; n = n.offsetParent; }
+      return { x, y };
+    }
+    function pins() {
+      document.querySelectorAll('.pin').forEach(p => p.remove());
+      if (!review) return;
+      for (const scr of document.querySelectorAll('.screen')) {
+        const phone = scr.dataset.kind === 'phone';
+        const prog = scr.querySelector('.prog.open');
+        if (!prog) continue;
+        const firstAgent = scr.querySelector('.agent[data-key]:not([data-agent="Captain"])');
+        const idle = scr.querySelector('.agent:not([data-key])');
+        const targets = [
+          [1, phone ? null : prog.querySelector('.tip.show')],
+          [2, prog.querySelector('.line-btn')],
+          [3, prog.querySelector('.trow[data-key]:not([data-key="' + (firstAgent?.dataset.key) + '"])') || prog.querySelector('.trow')],
+          [4, scr.querySelector('.card-name a, .g-name')],
+          [5, firstAgent],
+          [6, idle],
+        ];
+        for (const [n, el] of targets) {
+          if (!el) continue;
+          const { x, y } = offsetIn(el, scr);
+          const p = document.createElement('span');
+          p.className = 'pin';
+          p.textContent = n;
+          p.style.left = `${n === 1 ? x - 11 : Math.max(2, x - (phone ? 26 : 32))}px`;
+          p.style.top = `${n === 1 ? y - 11 : y + Math.min(el.offsetHeight, 44) / 2 - 11}px`;
+          scr.appendChild(p);
+        }
+      }
+    }
+    function reviewStates() {
+      if (!review) return;
+      for (const scr of document.querySelectorAll('.screen[data-kind="desktop"]')) {
+        const prog = scr.querySelector('.prog.open');
+        if (!prog) continue;
+        // The pointer rests on an in-progress segment; an agent row shows its hover.
+        const agent = scr.querySelector('.agent[data-key]:not([data-agent="Captain"])');
+        const seg = prog.querySelector(`.line-btn .gs.u:not([data-key="${agent?.dataset.key}"])`) || prog.querySelector('.line-btn .gs.u');
+        if (seg) showTip(seg);
+        if (agent) { agent.classList.add('hover'); light(scr, agent.dataset.key, true); }
+      }
+    }
+
+    function setTheme(theme) {
+      document.documentElement.dataset.theme = theme;
+      document.querySelectorAll('[data-theme-choice]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeChoice === theme)));
+    }
+    function fit() {
+      const on = document.getElementById('fit-toggle').getAttribute('aria-pressed') === 'true';
+      const g = document.querySelector('.group');
+      const room = g ? g.clientWidth - 64 : innerWidth;
+      document.documentElement.style.setProperty('--fit', on && !document.body.classList.contains('shot') ? Math.min(1, room / (width + 390 + 40)).toFixed(3) : 1);
+    }
+
+    // Contrast table: worked out from the colours actually in use, per theme.
+    function lum(hex) {
+      const c = hex.replace('#', '').match(/../g).map(h => parseInt(h, 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    }
+    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+    function contrast() {
+      const root = document.documentElement, was = root.dataset.theme, out = {};
+      for (const t of ['dark', 'light']) {
+        root.dataset.theme = t;
+        const v = n => getComputedStyle(root).getPropertyValue(n).trim();
+        const bg = v('--bg'), card = v('--card');
+        const min = fg => Math.min(ratio(fg, bg), ratio(fg, card));
+        const sfx = t === 'dark' ? '' : '-l';
+        out['c-text' + sfx] = min(v('--text')).toFixed(1);
+        out['c-sec' + sfx] = min(v('--text-secondary')).toFixed(1);
+        out['c-dim' + sfx] = min(v('--text-dim')).toFixed(1);
+        out['c-done' + sfx] = (t === 'dark' ? ratio(v('--done'), card) : ratio(v('--done-edge'), card)).toFixed(1) + (t === 'light' ? '*' : '');
+        out['c-prog' + sfx] = Math.max(min(v('--stripe-blue-a')), min(v('--stripe-blue-b'))).toFixed(1);
+        const rings = ['--blue', '--amber', '--coral'].map(c => min(v(c)));
+        out['c-ring' + sfx] = `${Math.min(...rings).toFixed(1)}–${Math.max(...rings).toFixed(1)}`;
+      }
+      root.dataset.theme = was;
+      for (const [id, val] of Object.entries(out)) document.getElementById(id).textContent = val;
+    }
+
+    let toastTimer;
+    document.addEventListener('click', e => {
+      const ly = e.target.closest('[data-layout]');
+      if (ly) { layout = ly.dataset.layout; return render(); }
+      const th = e.target.closest('[data-theme-choice]');
+      if (th) return setTheme(th.dataset.themeChoice);
+      const wd = e.target.closest('[data-width]');
+      if (wd) { width = +wd.dataset.width; return render(); }
+      const fr = e.target.closest('[data-frames]');
+      if (fr) { document.body.classList.toggle('full', fr.dataset.frames === 'full'); return render(); }
+      if (e.target.closest('#review-toggle')) { review = !review; return render(); }
+      if (e.target.closest('#still-toggle')) {
+        const b = document.getElementById('still-toggle');
+        const on = b.getAttribute('aria-pressed') !== 'true';
+        b.setAttribute('aria-pressed', String(on));
+        document.body.classList.toggle('still', on);
+        return;
+      }
+      if (e.target.closest('#fit-toggle')) {
+        const b = document.getElementById('fit-toggle');
+        b.setAttribute('aria-pressed', String(b.getAttribute('aria-pressed') !== 'true'));
+        return fit();
+      }
+      const lb = e.target.closest('.line-btn');
+      if (lb) {
+        const prog = lb.closest('.prog');
+        const open = !prog.classList.contains('open');
+        prog.classList.toggle('open', open);
+        lb.setAttribute('aria-expanded', String(open));
+        lb.setAttribute('aria-label', lb.getAttribute('aria-label').replace(open ? 'Show' : 'Hide', open ? 'Hide' : 'Show'));
+        prog.querySelector('.tray').hidden = !open;
+        prog.querySelector('.tip').classList.remove('show');
+        return pins();
+      }
+      const go = e.target.closest('[data-go]');
+      if (go) {
+        e.preventDefault();
+        const t = document.getElementById('toast');
+        t.textContent = `In the app this opens: ${go.dataset.go}`;
+        t.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+      }
+    });
+
+    const shot = params.get('shot');
+    if (shot === 'desktop' || shot === 'phone') document.body.classList.add('shot', `shot-${shot}`);
+    if (params.get('full') === '1') document.body.classList.add('full');
+    if (params.get('still') === '1') { document.body.classList.add('still'); document.getElementById('still-toggle').setAttribute('aria-pressed', 'true'); }
+    layout = params.get('layout') === 'rows' ? 'rows' : 'cards';
+    width = params.get('w') === '1280' ? 1280 : 1440;
+    review = params.get('review') === '1';
+    contrast();
+    // Dark is the product's default ("night shift"); light is a proposal.
+    setTheme(params.get('theme') === 'light' ? 'light' : 'dark');
+    contents();
+    render();
+    addEventListener('resize', fit);
+    // Web fonts change text widths; place the labels and pins again once they have loaded.
+    document.fonts?.ready.then(() => { reviewStates(); pins(); });
+  </script>
+</body>
+</html>
