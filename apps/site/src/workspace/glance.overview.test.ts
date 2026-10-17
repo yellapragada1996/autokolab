@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { agent, at, BIRCH, CAPTAIN, FJORD, ticket, workspace } from "./fixtures";
 import { overviewAgents, overviewGlance, overviewHeadings } from "./glance";
 import { needsYou, type Need, type Plan } from "./captain";
-import { progressCounts } from "./overview/GoalProgress";
+import { progressCounts } from "./overview-parts/GoalProgress";
 
 const now = new Date(at("12:00"));
 function setup() {

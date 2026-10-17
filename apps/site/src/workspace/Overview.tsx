@@ -2,10 +2,10 @@ import { useMemo, useRef } from "react";
 import { overviewGlance, type OverviewGlance } from "./glance";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
-import { Goals } from "./overview/Goals";
-import { Heading } from "./overview/Heading";
-import { NeedsYou } from "./overview/NeedsYou";
-import "./overview/overview.css";
+import { Goals } from "./overview-parts/Goals";
+import { Heading } from "./overview-parts/Heading";
+import { NeedsYou } from "./overview-parts/NeedsYou";
+import "./overview-parts/overview.css";
 
 export interface OverviewSnapshot { view: OverviewGlance; at: Date }
 

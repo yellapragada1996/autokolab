@@ -43,3 +43,23 @@ AutoKolab ticket tools are unavailable in this session. This file records the wo
 - The shell's “Updated just now” text is still unconditional. `GUIDE.md` also describes the old Overview (including Today and a setup checklist). Updating these is outside the ticket's strict file allowlist.
 
 Final checks after the edge-case review: all 427 site tests, workspace typecheck and site build passed. All 15 changed files are inside the ticket’s Overview allowlist; no shell, other-tab, shared-token or global-style file changed. GitHub checks remain unverified until the runner publishes the branch and PR.
+
+## PR #135 check fix
+
+- [x] Inspect the failed-check report and reproduce the filename conflict.
+- [x] Rename the scoped component directory and update Overview imports.
+- [x] Recheck filename collisions, typecheck, tests, site build and browser availability.
+- [x] Attempt commit and push; leave the patch for the runner after the read-only Git failure.
+
+Captain reported a failed `checks` job at `01b3d39`. GitHub’s API and AutoKolab ticket tools are unavailable here. The first substantive CI step, `npm run check:case`, compares directory names with extensionless filenames: `Overview.tsx` contributes `Overview`, which collides with `overview/`. The same check logic reproduced that single conflict on the tracked manifest.
+
+The component directory is now `overview-parts/`. This naming exception is required by the existing cross-platform filename rule; the Overview entry point, shared shell, shared styles, routes, and product behavior are unchanged.
+
+Fix validation:
+
+- The original tracked manifest reproduced exactly one case clash. The proposed tree (including the renamed files and excluding removed paths) has none across 488 files, using the CI check’s path/stem comparison. Direct `npm run check:case` cannot complete here because its `spawnSync git` call returns EPERM.
+- `npm run typecheck` and `npm run build -w autokolab-site`: passed. Production CSS and JavaScript asset hashes match the build before the rename.
+- `npm test`: all 427 site tests passed; the helper again had 520 passing, 28 failing, 18 skipped tests and one unhandled error, including subprocess/socket EPERM and read-only state. Database tests were not reached.
+- `npm run look -- /p/shop/overview --widths 1440,1280,390 --full` (temporary state directory): exit 2 again; Chromium cannot start. No new screenshots or visual verification.
+- `git diff --check`: passed. Moved implementation, test and style files are byte-for-byte unchanged; only imports and these notes changed.
+- Staging failed on the shared Git directory’s read-only `index.lock`, so no commit or push was possible. Runner: stage both the deleted `overview/` paths and new `overview-parts/` paths, commit, push to PR #135 and confirm its checks turn green.
