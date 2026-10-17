@@ -1,0 +1,19 @@
+{
+  "staticViews": 64,
+  "controlCombinations": 32,
+  "browser": "not run",
+  "palette": {
+    "dark": {
+      "minText": 5.15,
+      "minStatus": 7.3,
+      "progress": 6.04,
+      "focus": 12.3
+    },
+    "light": {
+      "minText": 4.74,
+      "minStatus": 4.76,
+      "progress": 3.2,
+      "focus": 8.1
+    }
+  }
+}
