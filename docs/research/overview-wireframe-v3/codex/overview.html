@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>AutoKolab · Overview study</title>
+  <style>
+    @font-face {
+      font-family: Geist; font-style: normal; font-weight: 100 900;
+      font-display: swap; src: url('./geist-latin.ttf') format('truetype');
+    }
+    /* Dark values are copied from the handoff. Light is a semantic-token proposal,
+       confined to this study: the handoff does not yet define a light palette. */
+    :root {
+      color-scheme: dark;
+      --bg: #0B0D11; --sidebar: #0E1116; --surface: #12151B;
+      --surface-hover: #161A21; --surface-active: #181C23; --surface-raised: #232833;
+      --avatar-bg: #232833; --avatar-fg: #C9CED6;
+      --border-subtle: #1C2029; --border: #1F242D; --border-strong: #2A303B;
+      --text: #E9EBEF; --text-body: #D4D8DE; --text-secondary: #C9CED6;
+      --text-muted: #A2A9B5; --text-dim: #858C98;
+      --amber: #F4C25B; --blue: #7EA6FF; --coral: #FF8A78;
+      --font-sans: 'Geist', system-ui, sans-serif;
+      --text-12: 12px; --text-13: 13px; --text-14: 14px; --text-15: 15px;
+      --text-17: 17px; --text-21: 21px; --text-26: 26px; --text-30: 30px;
+      --tracking-tight: -.02em; --tracking-label: .08em;
+      --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+      --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+      --radius-sm: 7px; --radius-md: 10px; --radius-lg: 12px;
+      --dur-hover: 160ms; --ease-out: cubic-bezier(.2,.8,.2,1);
+      /* Neutral high-contrast focus, stronger than the handoff's border-focus. */
+      --focus-ring: var(--text-secondary);
+    }
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #FAFBFC; --sidebar: #F5F6F8; --surface: #FFFFFF;
+      --surface-hover: #F0F2F5; --surface-active: #E8EBEF; --surface-raised: #E1E5EB;
+      --avatar-bg: #E8EBEF; --avatar-fg: #454E5D;
+      --border-subtle: #E6E9EE; --border: #DDE1E7; --border-strong: #C5CBD5;
+      --text: #18202D; --text-body: #303A49; --text-secondary: #454E5D;
+      --text-muted: #586272; --text-dim: #626C7B;
+      --amber: #946000; --blue: #305FC1; --coral: #B63F33;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 400 var(--text-15)/1.6 var(--font-sans); }
+    button, select { font: inherit; }
+    a { color: inherit; text-decoration: none; }
+    button, a, select { -webkit-tap-highlight-color: var(--surface-raised); }
+    button, select { cursor: pointer; }
+    :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 4px; }
+    a, button { transition: background-color var(--dur-hover) var(--ease-out); }
+    a:hover, button:hover { background: var(--surface-hover); }
+    a:active, button:active { background: var(--surface-raised); }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+    .skip { position: absolute; left: 16px; top: -80px; z-index: 5; padding: 12px 16px; background: var(--surface-raised); border-radius: var(--radius-sm); }
+    .skip:focus { top: 12px; }
+
+    /* Review tools are outside the product frames. Each frame is actual size. */
+    .study-head { padding: 32px 32px 24px; border-bottom: 1px solid var(--border); }
+    .study-head h1 { margin: 4px 0 8px; font-size: var(--text-26); font-weight: 550; letter-spacing: var(--tracking-tight); }
+    .eyebrow { color: var(--text-dim); font-size: var(--text-12); font-weight: 600; letter-spacing: var(--tracking-label); text-transform: uppercase; }
+    .study-head p { margin: 0; color: var(--text-muted); font-size: var(--text-14); }
+    .controls { display: flex; flex-wrap: wrap; align-items: end; gap: 16px 24px; margin-top: 24px; }
+    .control { display: grid; gap: 4px; color: var(--text-muted); font-size: var(--text-12); }
+    select { min-height: 44px; min-width: 160px; padding: 8px 32px 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); font-size: var(--text-14); }
+    .canvas-help { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-left: auto; font-size: var(--text-13); }
+    .canvas-help a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; border-radius: var(--radius-sm); text-decoration: underline; text-underline-offset: 4px; }
+    .canvas { overflow-x: auto; padding: 24px 32px 40px; }
+    .comparison { display: flex; align-items: start; gap: 32px; width: max-content; }
+    .frame-wrap { flex: none; scroll-margin: 24px; }
+    .frame-label { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; color: var(--text-muted); font-size: var(--text-12); }
+    .frame-label a { text-decoration: underline; text-underline-offset: 4px; padding: 4px; }
+    iframe { display: block; border: 1px solid var(--border-strong); border-radius: var(--radius-lg); background: var(--bg); }
+    #desktop-frame { width: 1440px; height: 960px; }
+    #phone-frame { width: 390px; height: 844px; }
+    .notes { width: 248px; padding-top: 32px; }
+    .notes h2 { margin: 0 0 24px; font-size: var(--text-15); font-weight: 600; }
+    .notes ol { list-style: none; margin: 0; padding: 0; counter-reset: notes; display: grid; gap: 24px; }
+    .notes li { counter-increment: notes; padding-left: 32px; position: relative; }
+    .notes li::before { content: '0' counter(notes); position: absolute; left: 0; top: 2px; color: var(--text-dim); font-size: var(--text-12); }
+    .notes strong { font-size: var(--text-14); font-weight: 550; }
+    .notes p { margin: 4px 0 0; font-size: var(--text-13); line-height: 1.65; color: var(--text-muted); }
+    .boundary { max-width: 800px; padding: 0 32px 40px; scroll-margin-top: 24px; color: var(--text-muted); font-size: var(--text-13); }
+    .boundary h2 { margin: 0 0 8px; font-size: var(--text-14); color: var(--text-secondary); }
+    .boundary p { margin: 0; }
+    .boundary a { text-decoration: underline; text-underline-offset: 4px; }
+
+    /* Product layout is in overview.css; review controls stay outside the app. */
+  </style>
+  <link rel="stylesheet" href="./overview.css">
+</head>
+<body>
+  <script>
+    // Only prototype controls and fixture rendering. No app APIs or external requests.
+    const query = new URLSearchParams(location.search);
+    const theme = query.get('theme') === 'light' ? 'light' : 'dark';
+    const frame = query.get('frame');
+    const layout = query.get('layout') === 'rows' ? 'rows' : 'cards';
+    document.body.dataset.layout = layout;
+    const agents = [
+      ['Captain', 'Reviewing saved cards', 'Reviewing', 'live'],
+      ['Birch', 'Adding saved cards', 'Working', 'live'],
+      ['Fjord', 'Adding Google sign-in', 'Working', 'live'],
+      ['Wren', '', 'Idle', 'idle']
+    ];
+    const goals = [['Checkout', 4, 7], ['Sign-in', 1, 3]];
+    const states = {
+      busy: { label: 'Busy', headline: '3 agents are working on Checkout and Sign-in.', agents, goals },
+      questions: {
+        label: 'Questions waiting', headline: '2 agents are working on Checkout.',
+        requests: [
+          ['Should guests be able to save cards?', 'Answer in Captain'],
+          ['Can we use the same sign-in flow for customers who already have an account with another email address?', 'Answer in Captain']
+        ], more: 2,
+        agents: [agents[0], agents[1], ['Fjord', 'Adding Google sign-in', 'Waiting on you', 'waiting'], agents[3]], goals
+      },
+      stopped: {
+        label: 'Agent stopped', headline: '2 agents are working on Checkout. Tern has stopped.',
+        agents: [agents[0], agents[1], ['Fjord', '', 'Idle', 'idle'], ['Tern', 'Adding Google sign-in · Daily limit reached', 'Stopped', 'problem'], agents[3]], goals
+      },
+      calm: {
+        label: 'Calm', headline: 'No agents are working right now.',
+        agents: [['Captain', '', 'Idle', 'idle'], ['Birch', '', 'Idle', 'idle'], ['Fjord', '', 'Offline', 'offline'], agents[3]], goals: []
+      },
+      new: { label: 'Brand-new project', headline: 'Nothing has started yet.', firstGoal: true, agents: [], goals: [] },
+      many: {
+        label: 'Many agents · 13', headline: '8 agents are working on Checkout, Sign-in and 2 other goals.',
+        agents: [agents[0], ['Alder', 'Adding receipt emails', 'Working', 'live'], agents[1], ['Cedar', 'Reviewing payment retries', 'Reviewing', 'live'],
+          ['Dune', 'Building order history', 'Working', 'live'], agents[2], ['Gale', 'Adding delivery preferences', 'Working', 'live'],
+          ['Harbor', 'Building account recovery', 'Working', 'live'], ['Ibis', '', 'Idle', 'idle'],
+          ['Juniper-accessibility-and-localisation', 'Checking keyboard navigation and translated labels in the customer account recovery flow', 'Waiting on you', 'waiting'],
+          ['Kestrel', 'Adding address validation · Tests failed', 'Stopped', 'problem'], ['Larch', '', 'Offline', 'offline'], agents[3]],
+        requests: [['Should recovery emails use the customer’s preferred language?', 'Answer in Captain']],
+        goals: [...goals, ['Customer accounts and recovery across multiple storefronts', 2, 8], ['Order history', 1, 5]],
+        stoppedClause: 'Kestrel has stopped.'
+      },
+      loading: { label: 'Loading', headline: 'Loading your project…', loading: true },
+      failed: { label: 'Load failed', headline: 'Couldn’t load your project.', failed: true }
+    };
+    let selected = Object.hasOwn(states, query.get('state')) ? query.get('state') : 'busy';
+    document.documentElement.dataset.theme = theme;
+    const escapeHTML = value => String(value).replace(/[&<>"']/g, ch => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[ch]));
+    const tabs = ['Captain', 'Overview', 'Work', 'Team', 'Room', 'Decisions', 'Results', 'Settings'];
+    const destination = `overview.html?state=${selected}&theme=${theme}&layout=${layout}#destinations`;
+    function link(content, className = '', attributes = '') {
+      return `<a class="${className}" href="${destination}" target="_top" ${attributes}>${content}</a>`;
+    }
+    function navigation() {
+      return tabs.map(name => link(`<span>${name}</span>`, 'nav-link', name === 'Overview' ? 'aria-current="page"' : '')).join('');
+    }
+    function renderApp() {
+      const state = states[selected];
+      const requests = state.requests ? `<section class="needs" aria-labelledby="needs-heading">
+        <h2 id="needs-heading" class="section-title">Needs you</h2>
+        <ul class="rows">${state.requests.map(([question, action]) => `<li>${link(`<span class="dot waiting" aria-hidden="true"></span><span class="request-text">${escapeHTML(question)}</span><span class="action">${action} <span aria-hidden="true">↗</span></span>`, 'request')}</li>`).join('')}</ul>
+        ${state.more ? link(`${state.more} more in Captain <span aria-hidden="true">↗</span>`, 'overflow-link') : ''}
+      </section>` : '';
+      const agentList = state.agents?.length ? `<section class="section agents-section" aria-labelledby="agents-heading"><h2 id="agents-heading" class="section-title">Agents</h2><ul class="rows">${state.agents.map(([name, activity, status, kind]) => `<li>${link(`
+        <span class="avatar" aria-hidden="true">${name === 'Captain' ? 'C' : name[0]}</span>
+        <span class="agent-name" title="${escapeHTML(name)}">${escapeHTML(name)}</span>
+        <span class="activity">${escapeHTML(activity)}</span>
+        <span class="status"><span class="dot ${kind}" aria-hidden="true"></span>${status}</span>`, `agent ${kind === 'idle' || kind === 'offline' ? 'muted' : ''}`, `aria-label="${escapeHTML(`${name}, ${status}${activity ? ', ' + activity : ''}. Open ${kind === 'idle' || kind === 'offline' ? 'Team' : 'Work'}`)}"`)}</li>`).join('')}</ul></section>` : '';
+      const goalList = state.goals?.length ? `<section class="section goals-section" aria-labelledby="goals-heading"><h2 id="goals-heading" class="section-title">Being built</h2><ul class="rows">${state.goals.map(([name, done, total]) => `<li>${link(`<span class="goal-name">${escapeHTML(name)}</span><span class="goal-progress"><span class="progress-track" role="progressbar" aria-label="${escapeHTML(name)} tasks done" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${done}" aria-valuetext="${done} of ${total} tasks done"><span class="progress-fill" style="width:${100 * done / total}%"></span></span><span class="progress">${done} of ${total} done</span></span>`, 'goal', `aria-label="${escapeHTML(`${name}, ${done} of ${total} done. Open Work`)}"`)}</li>`).join('')}</ul></section>` : '';
+      const heading = `${escapeHTML(state.headline)}${state.stoppedClause ? ' ' + escapeHTML(state.stoppedClause) : ''}`.replace(' on ', ' <span class="headline-context">on ').replace(/(\. )([A-Z][^.]*has stopped\.)$/, '.</span> <span class="stop-clause">$2</span>');
+      const headingHTML = heading.includes('headline-context') && !heading.includes('</span>') ? heading + '</span>' : heading;
+      const quietCroc = selected === 'calm' || selected === 'new' ? '<img class="quiet-croc" src="./autokolab-croc.svg" alt="" width="64" height="64">' : '';
+      const body = state.failed ? `<div role="alert"><div class="error-heading"><span class="dot problem" aria-hidden="true"></span><h1 class="headline">${headingHTML}</h1></div><p class="empty">Try again to see what’s happening.</p><a class="inline-link" href="overview.html?frame=${frame}&state=busy&theme=${theme}&layout=${layout}">Try again <span aria-hidden="true">&nbsp;↗</span></a></div>` :
+        `${requests}${quietCroc}<h1 class="headline ${state.loading ? 'loading-word' : ''}" ${state.loading ? 'aria-live="polite"' : ''}>${headingHTML}</h1>
+        ${state.loading ? '<div class="skeleton" aria-hidden="true"><div></div><div></div><div></div></div>' : ''}
+        ${state.firstGoal ? `<p class="empty">Connect Captain to start your first goal.</p>${link('Open Team <span aria-hidden="true">&nbsp;↗</span>', 'inline-link')}` : ''}<div class="overview-body">${agentList}${goalList}</div>`;
+      return `<a class="skip" href="#main">Skip to Overview</a><div class="app">
+        <aside class="sidebar"><img class="brand" src="./autokolab-logo.svg" alt="AutoKolab" width="160" height="48"><span class="project">Storefront</span><nav class="navigation" aria-label="Project">${navigation()}</nav></aside>
+        <div class="workspace"><header class="page-header">Overview</header><header class="mobile-header"><img class="brand" src="./autokolab-logo.svg" alt="AutoKolab" width="132" height="40"><span class="project">Storefront</span></header>
+          <main id="main" class="reading" tabindex="-1"><p class="page-label">Overview</p>${body}</main>
+        </div><nav class="bottom-nav" aria-label="Project">${navigation()}</nav></div>`;
+    }
+    if (frame === 'desktop' || frame === 'phone') {
+      document.body.dataset.frame = frame;
+      document.body.dataset.state = selected;
+      document.title = `AutoKolab · Overview · ${states[selected].label}`;
+      document.body.insertAdjacentHTML('afterbegin', renderApp());
+    } else {
+      document.body.insertAdjacentHTML('afterbegin', `
+        <header class="study-head"><div class="eyebrow">AK-173 · Independent design study</div><h1>Work taking shape.</h1><p>The same four parts, with a stronger silhouette and honest progress.</p>
+          <div class="controls"><label class="control">Project state<select id="state">${Object.entries(states).map(([value, state]) => `<option value="${value}" ${value === selected ? 'selected' : ''}>${state.label}</option>`).join('')}</select></label>
+          <label class="control">Theme<select id="theme"><option value="dark" ${theme === 'dark' ? 'selected' : ''}>Dark</option><option value="light" ${theme === 'light' ? 'selected' : ''}>Light</option></select></label>
+          <fieldset class="structure"><legend>Goal structure</legend><div class="segments"><button type="button" data-layout="cards" aria-pressed="${layout === 'cards'}">Cards</button><button type="button" data-layout="rows" aria-pressed="${layout === 'rows'}">Rows</button></div></fieldset>
+          <div class="canvas-help"><span>Actual-size frames. Scroll across to compare.</span><a href="#desktop">Desktop</a><a href="#phone">Phone</a><a href="#design-notes">Design notes</a></div></div>
+          <p id="selection-status" class="sr-only" role="status"></p>
+        </header>
+        <div class="canvas" role="region" aria-label="Desktop and phone comparison, scroll horizontally" tabindex="0"><div class="comparison">
+          <section class="frame-wrap" id="desktop" aria-label="Desktop preview"><div class="frame-label"><span>DESKTOP · 1440 × 960</span><a id="desktop-open" href="#">Open desktop ↗</a></div><iframe id="desktop-frame" title="Desktop Overview, 1440 pixels wide"></iframe></section>
+          <section class="frame-wrap" id="phone" aria-label="Phone preview"><div class="frame-label"><span>PHONE · 390 × 844</span><a id="phone-open" href="#">Open phone ↗</a></div><iframe id="phone-frame" title="Phone Overview, 390 pixels wide"></iframe></section>
+          <aside class="notes" id="design-notes" aria-labelledby="notes-heading"><h2 id="notes-heading">Why it looks this way</h2><ol>
+            <li><strong>The headline leads.</strong><p>A confident working sentence, then two different densities: people in a compact roster; outcomes with room to breathe. No oversized count standing alone.</p></li>
+            <li><strong>Cards for goals. Rows for people.</strong><p>Recommended: each shallow card groups a goal, its count and its line. Agents share columns so scanning thirteen names stays easy. No box inside a box. Switch to Rows to compare the identical content.</p></li>
+            <li><strong>Progress means tasks done.</strong><p>A goal’s filled length is done ÷ total. “4 of 7 done” stays beside it. Equal task weights are a count, not time remaining or a delivery forecast. A changing scope changes the denominator.</p></li>
+            <li><strong>Presence, not a percentage.</strong><p>The small double ring beside Working or Reviewing is indeterminate. These fixtures have no step totals. Only a running agent gets a pulse; reduced motion makes the ring still. Never infer progress from elapsed time.</p></li>
+            <li><strong>Recognisably AutoKolab.</strong><p>The original croc and wordmark keep their green. Completed work echoes that green; the croc appears beside the existing calm and new-project heading. Square ends, open rows and strong type replace a grid of soft grey tiles.</p></li>
+            <li><strong>Attention has one job.</strong><p>Needs you stays first: two full questions and counted overflow. Amber is only a small mark, never a filled panel. Stops are named in the headline and explained in their agent row.</p></li>
+            <li><strong>Quiet is still informative.</strong><p>Idle and Offline remain explicit, in stable name order after Captain. Empty goals disappear. Loading and failure cannot look like calm; the retry is only a fixture switch.</p></li>
+            <li><strong>Same content at 390.</strong><p>Columns become one reading order. Names wrap, statuses keep their words, and every phone target is at least 44px. The eight tabs stay visible. Longer states scroll; nobody disappears.</p></li>
+          </ol></aside>
+        </div></div>
+        <section class="boundary" id="destinations" tabindex="-1"><h2>About the prototype links</h2><p>Only Overview is drawn. Navigation, questions, agent rows and goal rows point here to mark the prototype boundary. In the app they open the named destination: Captain for answers, Work for active work and goals, Team for idle or offline agents and connecting Captain. Retry switches to the busy fixture; it makes no network request. <a href="#desktop">Back to the frames ↑</a></p></section>`);
+      function updateFrames() {
+        selected = document.getElementById('state').value;
+        const currentTheme = document.getElementById('theme').value;
+        const currentLayout = document.body.dataset.layout;
+        document.documentElement.dataset.theme = currentTheme;
+        for (const size of ['desktop', 'phone']) {
+          const url = `./overview.html?frame=${size}&state=${selected}&theme=${currentTheme}&layout=${currentLayout}`;
+          document.getElementById(`${size}-frame`).src = url;
+          document.getElementById(`${size}-open`).href = url;
+        }
+        document.getElementById('selection-status').textContent = `${states[selected].label}, ${currentTheme} theme, ${currentLayout}. Both previews updated.`;
+      }
+      document.getElementById('state').addEventListener('change', updateFrames);
+      document.getElementById('theme').addEventListener('change', updateFrames);
+      document.querySelectorAll('button[data-layout]').forEach(button => button.addEventListener('click', () => {
+        document.body.dataset.layout = button.dataset.layout;
+        document.querySelectorAll('button[data-layout]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        updateFrames();
+      }));
+      updateFrames();
+    }
+  </script>
+  <noscript>This wireframe needs JavaScript to show its eight example states. It makes no external requests.</noscript>
+</body>
+</html>
