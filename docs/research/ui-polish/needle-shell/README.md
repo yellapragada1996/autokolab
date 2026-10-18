@@ -2,6 +2,7 @@
 
 Open `index.html` directly. Only two 1440 × 900 windows: dark, then light.
 Keep the bundled original croc SVG and Geist font beside it.
+AK-193 adds a Light / Dark switch beside the account name in each window's footer.
 
 Rail, footer, content and theme rules and markup are copied from option 03 in
 `../shell-options-2/index.html`, including its croc plus live-text wordmark.
