@@ -31,19 +31,6 @@ I would not pick **10 · Workshop** for the everyday app. Its strong rules make 
 - This ticket's nine visible tabs, light theme and left rail override older handoff navigation sketches. Phone frames retain every label in that rail, making the content narrow; this is a visible trade-off, not a settled responsive design.
 - Desktop thumbnails intentionally scale below reading size. Full-size inspection restores at least 12px text; phone navigation uses 44px rows. No loading behaviour, real page layout or interactions are proposed.
 
-## Work steps
+## Verification
 
-- [x] Read the plan, gallery, brand assets and handoff amendments.
-- [x] Make ten desktop and optional phone outlines, plus the comparison and recommendation.
-- [x] Check structure and theme script; attempt browser rendering and run repository checks.
-- [x] Prepare runner handoff after Git staging was blocked. Publication remains pending.
-
-## Checks and publication
-
-- Source audit passed: ten named options, twenty desktop/phone frames, nine navigation labels in order, one active item and Captain count per frame, every requested shell element, exactly two placeholder blocks, unique IDs, embedded original croc and at least 12px unscaled text. Theme script syntax and both toggle directions passed. These are source checks, not visual approval.
-- `npm run typecheck`: passed.
-- `npm test`: exit 1. Site: 436 passed. Helper: 520 passed, 28 failed, 18 skipped, plus one unhandled socket error. Failures include `spawnSync git EPERM`, `listen EPERM`, runner output/assertions and timeouts. Database policy tests were not reached. No app or test files were changed.
-- Browser: Playwright Chromium could not start (`Operation not permitted`, `SIGTRAP`). No screenshots were produced; desktop/phone layout, wrapping, focus and both rendered themes remain unverified. Website build is not required for this docs-only change.
-- Publication: `git add` failed because the shared Git directory is read-only (`index.lock`). No commit, push or PR was possible; GitHub checks are unverified. Only this directory changed.
-
-Runner: commit these two files on `ak-188-10-quick-shell-style-options-outlines`, push it, and open a PR against **main** titled **AK-188: Compare ten shell directions in light and dark**. Include the check results and browser limitation above. Confirm GitHub checks are green before normal review; do not merge. The final Review status is the ticket's permitted runner handoff, not a claim that publication or CI succeeded.
+Source checks passed for the ten options, twenty desktop/phone frames, all nine navigation labels and required shell elements, embedded assets, and theme-toggle script. Neither builder nor reviewer could render the page in a browser, so desktop/phone layout and both rendered themes remain unverified.
