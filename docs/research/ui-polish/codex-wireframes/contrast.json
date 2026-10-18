@@ -1,0 +1,210 @@
+[
+  {
+    "theme": "dark",
+    "label": "Primary / page",
+    "foreground": "#f4f6f7",
+    "background": "#111315",
+    "ratio": 17.18,
+    "minimum": 4.5
+  },
+  {
+    "theme": "dark",
+    "label": "Reading / card",
+    "foreground": "#e0e4e8",
+    "background": "#1d2125",
+    "ratio": 12.67,
+    "minimum": 7
+  },
+  {
+    "theme": "dark",
+    "label": "Supporting / page",
+    "foreground": "#c7cdd3",
+    "background": "#111315",
+    "ratio": 11.62,
+    "minimum": 4.5
+  },
+  {
+    "theme": "dark",
+    "label": "Muted / card",
+    "foreground": "#a5afb8",
+    "background": "#1d2125",
+    "ratio": 7.27,
+    "minimum": 4.5
+  },
+  {
+    "theme": "dark",
+    "label": "Muted / selected",
+    "foreground": "#a5afb8",
+    "background": "#2c333a",
+    "ratio": 5.74,
+    "minimum": 4.5
+  },
+  {
+    "theme": "dark",
+    "label": "Button text / fill",
+    "foreground": "#111315",
+    "background": "#f4f6f7",
+    "ratio": 17.18,
+    "minimum": 4.5
+  },
+  {
+    "theme": "dark",
+    "label": "Needs you / status fill",
+    "foreground": "#f0bd70",
+    "background": "#30261b",
+    "ratio": 8.61,
+    "minimum": 4.5
+  },
+  {
+    "theme": "dark",
+    "label": "Done / safe / status fill",
+    "foreground": "#91d69c",
+    "background": "#1c2d23",
+    "ratio": 8.49,
+    "minimum": 4.5
+  },
+  {
+    "theme": "dark",
+    "label": "Live / moving / status fill",
+    "foreground": "#97c2ff",
+    "background": "#1c293a",
+    "ratio": 8.04,
+    "minimum": 4.5
+  },
+  {
+    "theme": "dark",
+    "label": "Failure / heads-up / status fill",
+    "foreground": "#ffaaa0",
+    "background": "#352323",
+    "ratio": 8.13,
+    "minimum": 4.5
+  },
+  {
+    "theme": "dark",
+    "label": "Field edge / inset",
+    "foreground": "#73808c",
+    "background": "#111315",
+    "ratio": 4.61,
+    "minimum": 3
+  },
+  {
+    "theme": "dark",
+    "label": "Field edge / selected",
+    "foreground": "#73808c",
+    "background": "#2c333a",
+    "ratio": 3.16,
+    "minimum": 3
+  },
+  {
+    "theme": "dark",
+    "label": "Focus / floating",
+    "foreground": "#e0e4e8",
+    "background": "#24292e",
+    "ratio": 11.48,
+    "minimum": 3
+  },
+  {
+    "theme": "light",
+    "label": "Primary / page",
+    "foreground": "#181a1d",
+    "background": "#fafaf8",
+    "ratio": 16.69,
+    "minimum": 4.5
+  },
+  {
+    "theme": "light",
+    "label": "Reading / card",
+    "foreground": "#292d32",
+    "background": "#ffffff",
+    "ratio": 13.86,
+    "minimum": 7
+  },
+  {
+    "theme": "light",
+    "label": "Supporting / page",
+    "foreground": "#45494f",
+    "background": "#fafaf8",
+    "ratio": 8.67,
+    "minimum": 4.5
+  },
+  {
+    "theme": "light",
+    "label": "Muted / card",
+    "foreground": "#5b626a",
+    "background": "#ffffff",
+    "ratio": 6.18,
+    "minimum": 4.5
+  },
+  {
+    "theme": "light",
+    "label": "Muted / selected",
+    "foreground": "#5b626a",
+    "background": "#e2e3df",
+    "ratio": 4.79,
+    "minimum": 4.5
+  },
+  {
+    "theme": "light",
+    "label": "Button text / fill",
+    "foreground": "#ffffff",
+    "background": "#181a1d",
+    "ratio": 17.44,
+    "minimum": 4.5
+  },
+  {
+    "theme": "light",
+    "label": "Needs you / status fill",
+    "foreground": "#815000",
+    "background": "#fff3d9",
+    "ratio": 6.19,
+    "minimum": 4.5
+  },
+  {
+    "theme": "light",
+    "label": "Done / safe / status fill",
+    "foreground": "#216635",
+    "background": "#e8f4e9",
+    "ratio": 6.15,
+    "minimum": 4.5
+  },
+  {
+    "theme": "light",
+    "label": "Live / moving / status fill",
+    "foreground": "#2456a1",
+    "background": "#eaf1ff",
+    "ratio": 6.34,
+    "minimum": 4.5
+  },
+  {
+    "theme": "light",
+    "label": "Failure / heads-up / status fill",
+    "foreground": "#a52c27",
+    "background": "#ffedeb",
+    "ratio": 6.21,
+    "minimum": 4.5
+  },
+  {
+    "theme": "light",
+    "label": "Field edge / inset",
+    "foreground": "#7a8086",
+    "background": "#f4f4f1",
+    "ratio": 3.62,
+    "minimum": 3
+  },
+  {
+    "theme": "light",
+    "label": "Field edge / selected",
+    "foreground": "#7a8086",
+    "background": "#e2e3df",
+    "ratio": 3.1,
+    "minimum": 3
+  },
+  {
+    "theme": "light",
+    "label": "Focus / floating",
+    "foreground": "#45494f",
+    "background": "#ffffff",
+    "ratio": 9.06,
+    "minimum": 3
+  }
+]
