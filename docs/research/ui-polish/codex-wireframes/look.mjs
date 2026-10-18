@@ -3,14 +3,33 @@ import { chromium } from 'playwright';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 const here = new URL('./', import.meta.url);
-const report = { browser: false, inspected: [], screenshots: [], errors: [] };
+const report = { browser: false, attempts: [], inspected: [], screenshots: [], errors: [] };
 let browser;
-try {
-  browser = await chromium.launch({ executablePath: '/usr/sbin/chromium', headless: true });
-} catch (error) {
-  report.errors.push(String(error.message).split('\n')[0]);
-  const reason = String(error.message).split('\n').find(line => line.includes('[err]'));
-  if (reason) report.errors.push(reason);
+const browserEnv = { ...process.env };
+delete browserEnv.CHROME_CRASHPAD_PIPE_NAME;
+const launches = [
+  { name: 'System Chromium, crashpad pipe unset', options: { executablePath: '/usr/sbin/chromium' } },
+  { name: 'System Chromium, no sandbox, crash reporting disabled, new headless', options: {
+    executablePath: '/usr/sbin/chromium',
+    args: ['--no-sandbox', '--disable-crashpad', '--disable-crash-reporter', '--headless=new'],
+  } },
+  { name: 'Playwright bundled headless Chromium', options: {} },
+  { name: 'Playwright bundled full Chromium, new headless', options: { channel: 'chromium' } },
+];
+for (const launch of launches) {
+  try {
+    browser = await chromium.launch({ headless: true, timeout: 10000, env: browserEnv, ...launch.options });
+    report.attempts.push({ name: launch.name, started: true });
+    break;
+  } catch (error) {
+    const lines = String(error.message).split('\n');
+    const reasons = [...new Set(lines.filter(line => line.includes('[err]') || line.includes('signal=')).map(line => line.replace(/\u001b\[[0-9;]*m/g, '').trim()))];
+    report.attempts.push({ name: launch.name, started: false, errors: [lines[0], ...reasons] });
+    console.log(`${launch.name}: could not start.`);
+  }
+}
+if (!browser) {
+  report.errors.push('All four browser launch attempts failed. Layout, wrapping, targets, focus, themes and side-by-side rendering remain unverified.');
   await writeFile(new URL('browser-check.json', here), JSON.stringify(report, null, 2) + '\n');
   console.log('Browser could not start. See browser-check.json; no screenshots or rendered checks were produced.');
   process.exitCode = 2;

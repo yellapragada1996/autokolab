@@ -45,7 +45,7 @@ The style sheet prints **26 measured contrast rows**: primary, reading, supporti
 ## Where the plan was made concrete or could not be matched
 
 - **Geist Sans is bundled** from the repository's v3 reference, with its SIL Open Font License. It covers weights 100–900, so the page uses real 400/500/600 weights offline. Geist Mono was not available locally, and font download failed because the host could not resolve. The mono role therefore uses the plan's system-monospace fallback; no external font request is made.
-- **No browser could run.** Playwright found `/usr/sbin/chromium`, but startup failed at Crashpad `setsockopt: Operation not permitted`, followed by `SIGTRAP`. Consequently **there are no new screenshots**, and perceived spacing, line wrapping, keyboard focus, reflow, target sizes and theme rendering have not been visually verified. The ticket explicitly permits this note when a browser cannot start. `browser-check.json` records the failure. No screenshots of earlier designs are presented as this work.
+- **No browser could run, including the review retry.** Four launches were attempted with `CHROME_CRASHPAD_PIPE_NAME` unset: system Chromium; system Chromium with `--no-sandbox`, `--disable-crashpad`, `--disable-crash-reporter` and `--headless=new`; Playwright’s bundled headless Chromium; and its bundled full Chromium. Three failed at Crashpad `setsockopt`; the bundled headless version failed at `sandbox_host_linux.cc:41` during `shutdown`. All reported `Operation not permitted` and exited with `SIGTRAP`. Consequently **there are no screenshots**, and layout, wrapping, 44px targets, focus rings, dark/light rendering and the side-by-side view remain **unverified in a real browser**. The ticket permits this limitation. `browser-check.json` records each attempt; no earlier screenshots are presented as this work.
 - **Geometry follows the plan:** 232px rail, 208px at 1024; 32/24/16px outer gutters; 44px nav targets and phone controls; 780px reading, 860px record and 1180px data widths. The permanently expanded phone grid is in normal flow and can scroll offscreen while reading. The 320 frame intentionally shows the navigation and account, not another entire tab.
 - **Overview retains its documented exception:** 1120px cap, 56px desktop inset, 20px phone inset, 44/30px headline and original card hierarchy. Its status stripes use small SVG patterns instead of CSS gradients; the informative striped shape is retained. No decorative gradients, glass, glows or hover lift are introduced.
 - The long static frames keep utilities directly below navigation rather than pinning them to the end of a many-thousand-pixel conversation. The eventual app's short-window rail must scroll as one region. Room keeps a bounded conversation scroll area with the composer and participants available below/alongside it. This is a visual framing choice, not removal of messages.
@@ -117,7 +117,7 @@ python docs/research/ui-polish/codex-wireframes/verify.py
 node docs/research/ui-polish/codex-wireframes/look.mjs
 ```
 
-The optional browser script checks all tab frames in both themes and writes the requested **16 screenshots** of shell, Overview, Work and Captain at 1440 and 390 if Chromium starts. It exits 2 for browser startup failure, 1 for a rendered check failure. Individual screenshots can also be opened as `index.html?shot=work&width=390&theme=light` (replace `work` with any frame ID). Do not regenerate source snapshots casually after app changes: this deliverable deliberately records the reviewed checkout and should be re-audited if refreshed.
+The optional browser script first tries four system/bundled Chromium launch configurations with the crashpad pipe variable unset. If one starts, it checks all tab frames in both themes and writes the requested **16 screenshots** of shell, Overview, Work and Captain at 1440 and 390. It exits 2 for browser startup failure, 1 for a rendered check failure. Individual screenshots can also be opened as `index.html?shot=work&width=390&theme=light` (replace `work` with any frame ID). Do not regenerate source snapshots casually after app changes: this deliverable deliberately records the reviewed checkout and should be re-audited if refreshed.
 
 ## Checks and publication
 
@@ -125,14 +125,15 @@ The optional browser script checks all tab frames in both themes and writes the 
 | --- | --- |
 | `python .../build.py` | Passed. Nine current demo views retained; 26 printed contrast pairs and all tested surface combinations pass. |
 | `python .../verify.py` | Passed. 36 frames; nine nav links per frame; exact text, control and table preservation; exact v5 element/class structure; 94 explicit generated CSS contrast pairs; IDs, local assets, link targets, named colours, minimum text sizing and reduced-motion rules. JavaScript syntax checks pass. |
-| `node .../look.mjs` | Exit 2: Chromium cannot start. No rendered checks or screenshots produced. |
-| `npm run typecheck` | Passed across workspaces. |
-| `npm test` | Exit 1. Site: **436 passed**. Helper: **520 passed, 28 failed, 18 skipped**; 10 failed test files and one unhandled socket error. Failures include `spawnSync git EPERM`, `listen EPERM`, read-only helper state and process-output/assertion failures. Database policy tests were not reached. No unrelated test/app changes were made. |
+| `node .../look.mjs` | Review retry: exit 2 after all four launch configurations failed with `Operation not permitted` / `SIGTRAP`. No rendered checks or screenshots produced; layout, wrapping, targets, focus rings, both themes and side-by-side rendering remain unverified. |
+| `npm run typecheck` | Passed across workspaces, including the review revision. |
+| `npm test` | Review revision rerun: exit 1. Site: **436 passed**. Helper: **520 passed, 28 failed, 18 skipped**; 10 failed test files and one unhandled socket error. Failures include `spawnSync git EPERM`, `listen EPERM`, read-only helper state and process-output/assertion failures. Database policy tests were not reached. No unrelated test/app changes were made. |
 | Website build / `npm run look` | Not required for this docs-only scope; no file under `apps/` or `packages/` changed. The dedicated gallery browser attempt is recorded above. |
-| Git scope / whitespace | Only this folder is new; `git diff --check` passes. Generated text is also checked for trailing whitespace. |
-| Commit / push / PR / GitHub checks | Staging failed: the shared worktree Git directory is read-only (`index.lock`). No commit, push, PR or GitHub check result can be claimed from this run. |
+| Git scope / whitespace | Changes remain confined to this folder; `git diff --check` passes. Generated text is also checked for trailing whitespace. |
+| Commit / push / PR | Commit `5c32b71` was pushed on `ak-187-wireframes-of-the-polished-look-whole`; [PR #138](https://github.com/yellapragada1996/autokolab/pull/138) is open against `main`. |
+| GitHub checks | **Green for `5c32b71`**, as confirmed by Captain in the AK-187 review comment. Local sandbox test failures above are a separate result. The GitHub API was unreachable during this revision, so no check result for a later commit is claimed. |
 
-**Runner handoff:** commit this folder on `ak-187-wireframes-of-the-polished-look-whole`, push that branch, and open a PR **against main** titled **AK-187: Show the whole app in dark and light wireframes**. Include the source-preservation method, handoff exceptions, test failures and browser limit above. Confirm the PR touches only `docs/research/ui-polish/codex-wireframes/` and that GitHub checks are green before the normal Review gate. Never merge it here. The ticket expressly permits a Review handoff when Git publication is blocked; that handoff does not claim an open PR or passing CI.
+The review requested corrected publication facts and another browser attempt. Both are recorded here. [PR-description.md](PR-description.md) contains the corresponding PR text, including the explicit unverified-layout limitation. Updating the PR body was attempted, but the GitHub API was unreachable; that file is ready to apply to the existing PR.
 
 ## Work steps
 
@@ -140,7 +141,6 @@ The optional browser script checks all tab frames in both themes and writes the 
 - [x] Build paired tokens, the style sheet and shared states.
 - [x] Draw the shell and every requested tab at desktop and phone widths.
 - [x] Check content, contrast and browser availability; document the frame map and limitations.
-- [x] Run repository checks and prepare the runner handoff.
-- [ ] Runner: commit, push, open the PR against main and verify GitHub checks.
-
-AutoKolab tools were unavailable in this session. The supplied ticket snapshot was the available instruction source; the final `autokolab` block reports status for the runner.
+- [x] Run repository checks.
+- [x] Publish [PR #138](https://github.com/yellapragada1996/autokolab/pull/138); Captain confirmed green checks for `5c32b71`.
+- [x] Correct publication notes and retry all four browser launch configurations after review.
