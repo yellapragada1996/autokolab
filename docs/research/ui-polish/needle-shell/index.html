@@ -101,69 +101,29 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 -->
 <style>
 @font-face{font-family:Geist;src:url("geist-latin.ttf") format('truetype');font-weight:100 900;font-display:swap}
-
+/* Local paired sketch tokens; no application tokens are changed. */
 :root{color-scheme:dark;--bg:#101112;--surface:#17191b;--raised:#202225;--hover:#2c2f32;--block:#292c2f;--line:#41464b;--ink:#f3f4f5;--muted:#b0b5bb;--inverse:#101112;--clear:transparent;--sans:Geist,system-ui,sans-serif;--mono:ui-monospace,monospace}
-
 [data-theme="light"]{color-scheme:light;--bg:#f5f6f7;--surface:#ffffff;--raised:#e9ebed;--hover:#dce0e3;--block:#e4e7ea;--line:#bbc1c7;--ink:#17191c;--muted:#535b64;--inverse:#ffffff}
-
 *{box-sizing:border-box}
-
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 var(--sans)}
-
 button{font:inherit;color:inherit;cursor:pointer}
-
 button:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
-
-figure{width:1440px;margin:24px auto 48px}
-
-figcaption{font-size:12px;color:var(--muted);margin-bottom:8px}
-
-/* Shared shell CSS and Needle overrides copied from option 03. */
-.shell{--rail:224px;--pad:32px;--row:44px;--radius:3px;--title:30px;--weight:550;--nav-surface:var(--surface);display:grid;grid-template-columns:var(--rail) minmax(0,1fr);grid-template-rows:64px 64px 1fr 88px;grid-template-areas:"brand topbar" "project page" "nav page" "account page";width:1440px;height:900px;background:var(--bg);color:var(--ink);font:14px/1.4 var(--sans)}
-.brand{grid-area:brand;display:flex;align-items:center;gap:9px;padding:16px;background:var(--nav-surface)}
-.brand img{width:32px;height:32px}
-.project{grid-area:project;margin:0;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--nav-surface);font-weight:500}
-.project small{font-size:12px;display:block;color:var(--muted);font-weight:400}
-.project .chevron{font-size:16px}
-nav{grid-area:nav;background:var(--nav-surface);padding:10px 12px}
-nav ul{list-style:none;padding:0;margin:0;display:grid;gap:3px}
-.nav-row{position:relative;display:flex;align-items:center;gap:8px;width:100%;min-height:var(--row);padding:8px 12px;background:var(--clear);border:1px solid var(--clear);border-radius:var(--radius);font-size:14px;text-align:left;transition:background-color 100ms ease-out,color 100ms ease-out,border-color 100ms ease-out}
-.nav-row:hover{background:var(--hover)}
-.nav-row[aria-pressed="true"]{background:var(--raised);font-weight:600}
-.nav-row:active{background:var(--ink);color:var(--inverse);transition:none}
-.nav-label{flex:1}
-.count{font-size:12px;font-variant-numeric:tabular-nums;border:1px solid currentColor;min-width:21px;text-align:center;border-radius:3px}
-.account{grid-area:account;display:flex;align-items:center;align-content:center;gap:8px;flex-wrap:wrap;padding:14px 18px;background:var(--nav-surface);font-size:12px}
-.avatar{width:26px;height:26px;border:1px solid var(--line);border-radius:4px;display:grid;place-items:center;font-variant-numeric:tabular-nums}
-.signout{margin-left:auto;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}
-.topbar{grid-area:topbar;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 var(--pad);border-bottom:1px solid var(--line)}
-.context{font-size:12px;color:var(--muted)}
-.page{grid-area:page;padding:var(--pad);min-width:0}
-.page-inner{max-width:900px;margin:0 auto}
-.page-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 28px}
-h3{font-size:var(--title);font-weight:var(--weight);letter-spacing:-.035em;margin:0;line-height:1.15}
-.page-heading small{color:var(--muted);font-size:12px;white-space:nowrap}
-.placeholders{display:grid;gap:16px}
-.block{height:100px;border-radius:var(--radius);background:var(--block)}
-.block+.block{height:172px}
-
-.o3{--rail:168px;--nav-surface:var(--bg);--pad:48px;--row:48px;--radius:0px}
-.o3 .brand{padding:14px 10px;gap:5px}
-.o3 nav{padding:4px 0;border-right:1px solid var(--line)}
-.o3 .nav-row{padding-left:18px;border-right:2px solid var(--clear)}
-.o3 .nav-row[aria-pressed="true"]{background:var(--clear);border-right-color:var(--ink)}
-.o3 .account{padding:12px;gap:6px}
-.o3 .signout{width:100%;margin-left:34px}
-.o3 .topbar{border:0}
-.o3 .page-inner{max-width:none}
-
+figure{width:1440px;margin:0 auto 32px}
+figcaption{height:32px;display:flex;align-items:center;font-size:12px;color:var(--muted)}
+/* Shared shell and Needle rules copied literally from option 03. */
+.shell{--rail:224px;--pad:32px;--row:44px;--radius:3px;--title:30px;--weight:550;--nav-surface:var(--surface);display:grid;grid-template-columns:var(--rail) minmax(0,1fr);grid-template-rows:64px 64px 1fr 88px;grid-template-areas:"brand topbar" "project page" "nav page" "account page";width:1280px;height:800px;background:var(--bg);color:var(--ink);font:14px/1.4 var(--sans)}.brand{grid-area:brand;display:flex;align-items:center;gap:9px;padding:16px;background:var(--nav-surface)}.brand img{width:32px;height:32px}.brand strong{font-size:17px;letter-spacing:-.035em;font-weight:600}.project{grid-area:project;margin:0;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:6px;background:var(--nav-surface);font-weight:500}.project small{font-size:12px;display:block;color:var(--muted);font-weight:400}.project .chevron{font-size:16px}nav{grid-area:nav;background:var(--nav-surface);padding:10px 12px}nav ul{list-style:none;padding:0;margin:0;display:grid;gap:3px}.nav-row{position:relative;display:flex;align-items:center;gap:8px;width:100%;min-height:var(--row);padding:8px 12px;background:var(--clear);border:1px solid var(--clear);border-radius:var(--radius);font-size:14px;text-align:left;transition:background-color 100ms ease-out,color 100ms ease-out,border-color 100ms ease-out}.nav-row:hover{background:var(--hover)}.nav-row[aria-pressed="true"]{background:var(--raised);font-weight:600}.nav-row:active{background:var(--ink);color:var(--inverse);transition:none}.nav-label{flex:1}.count{font-size:12px;font-variant-numeric:tabular-nums;border:1px solid currentColor;min-width:21px;text-align:center;border-radius:3px}.account{grid-area:account;display:flex;align-items:center;align-content:center;gap:8px;flex-wrap:wrap;padding:14px 18px;background:var(--nav-surface);font-size:12px}.avatar{width:26px;height:26px;border:1px solid var(--line);border-radius:4px;display:grid;place-items:center;font-variant-numeric:tabular-nums}.signout{margin-left:auto;text-decoration:underline;text-underline-offset:3px;white-space:nowrap}.topbar{grid-area:topbar;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 var(--pad);border-bottom:1px solid var(--line)}.context{font-size:12px;color:var(--muted)}.page{grid-area:page;padding:var(--pad);min-width:0}.page-inner{max-width:900px;margin:0 auto}.page-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 28px}h3{font-size:var(--title);font-weight:var(--weight);letter-spacing:-.035em;margin:0;line-height:1.15}.page-heading small{color:var(--muted);font-size:12px;white-space:nowrap}.placeholders{display:grid;gap:16px}.block{height:100px;border-radius:var(--radius);background:var(--block)}.block+.block{height:172px}
+.o3{--rail:168px;--nav-surface:var(--bg);--pad:48px;--row:48px;--radius:0px}.o3 .brand{padding:14px 10px;gap:5px}.o3 .brand strong{font-size:15px}.o3 nav{padding:4px 0;border-right:1px solid var(--line)}.o3 .nav-row{padding-left:18px;border-right:2px solid var(--clear)}.o3 .nav-row[aria-pressed="true"]{background:var(--clear);border-right-color:var(--ink)}.o3 .account{padding:12px;gap:6px}.o3 .signout{width:100%;margin-left:34px}.o3 .topbar{border:0}.o3 .page-inner{max-width:none}
+/* AK-191's desktop frame size; AK-192 puts the sole page title in the top bar.
+   Captions belong to the surrounding figures, outside each shell's grid. */
+.shell{width:1440px;height:900px}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
 <figure>
 <figcaption>Dark</figcaption>
 <section class="shell o3" data-theme="dark" aria-label="Needle dark desktop shell">
-<div class="brand"><img src="autokolab-croc.svg" alt="" width="32" height="32"></div>
+<div class="brand"><img src="autokolab-croc.svg" alt="" width="32" height="32"><strong>AutoKolab</strong></div>
 <div class="project"><span><small>Project</small>AutoKolab</span><span class="chevron" aria-label="Switch project">⌄</span></div>
 <nav aria-label="Needle desktop navigation"><ul><li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Captain</span><span class=count aria-label="2 need you">2</span></button></li>
 <li><button type="button" class="nav-row" aria-pressed="true"><span class="nav-label">Overview</span></button></li>
@@ -175,14 +135,14 @@ h3{font-size:var(--title);font-weight:var(--weight);letter-spacing:-.035em;margi
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Settings</span></button></li>
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Guide</span></button></li></ul></nav>
 <div class="account"><span class="avatar" aria-hidden="true">JB</span><span>James</span><span class="signout">Sign out</span></div>
-<div class="topbar"><span class="context">Overview</span></div>
-<div class="page"><div class="page-inner"><div class="page-heading"><h3>Overview</h3><small>Placeholder page</small></div><div class="placeholders" aria-hidden="true"><div class="block"></div><div class="block"></div></div></div></div>
+<div class="topbar"><h3>Overview</h3></div>
+<div class="page"><div class="page-inner"><div class="placeholders" aria-hidden="true"><div class="block"></div><div class="block"></div></div></div></div>
 </section>
 </figure>
 <figure>
 <figcaption>Light</figcaption>
 <section class="shell o3" data-theme="light" aria-label="Needle light desktop shell">
-<div class="brand"><img src="autokolab-croc.svg" alt="" width="32" height="32"></div>
+<div class="brand"><img src="autokolab-croc.svg" alt="" width="32" height="32"><strong>AutoKolab</strong></div>
 <div class="project"><span><small>Project</small>AutoKolab</span><span class="chevron" aria-label="Switch project">⌄</span></div>
 <nav aria-label="Needle desktop navigation"><ul><li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Captain</span><span class=count aria-label="2 need you">2</span></button></li>
 <li><button type="button" class="nav-row" aria-pressed="true"><span class="nav-label">Overview</span></button></li>
@@ -194,8 +154,8 @@ h3{font-size:var(--title);font-weight:var(--weight);letter-spacing:-.035em;margi
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Settings</span></button></li>
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Guide</span></button></li></ul></nav>
 <div class="account"><span class="avatar" aria-hidden="true">JB</span><span>James</span><span class="signout">Sign out</span></div>
-<div class="topbar"><span class="context">Overview</span></div>
-<div class="page"><div class="page-inner"><div class="page-heading"><h3>Overview</h3><small>Placeholder page</small></div><div class="placeholders" aria-hidden="true"><div class="block"></div><div class="block"></div></div></div></div>
+<div class="topbar"><h3>Overview</h3></div>
+<div class="page"><div class="page-inner"><div class="placeholders" aria-hidden="true"><div class="block"></div><div class="block"></div></div></div></div>
 </section>
 </figure>
 </body>
