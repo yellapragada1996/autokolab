@@ -2,7 +2,19 @@
 
 Open `index.html` directly. Only two 1440 × 900 windows: dark, then light.
 Keep the bundled original croc SVG and Geist font beside it.
-AK-193 adds a Light / Dark switch beside the account name in each window's footer.
+AK-194 replaces AK-193's words with a sun/moon switch; the filled side marks
+selection, with screen-reader names and pressed states. Each switch changes only its window.
+Footer order: Team time, sun/moon switch, then the unchanged name and Sign out.
+The new block occupies spare rail space above the account; all existing positions stay fixed.
+
+Team time is alphabetical, one row per city, capped at four cities to fit the rail.
+Toronto and Stockholm come from Team's demo; Bengaluru and Tokyo are illustrative
+additions so all four day parts can be reviewed. Times match Team's `City · h:mm AM/PM`
+format and are frozen at 18 October 2026, 13:30 UTC (no ticking clock):
+Bengaluru 7:00 PM (UTC+05:30), Stockholm 3:30 PM (UTC+02:00),
+Tokyo 10:30 PM (UTC+09:00), Toronto 9:30 AM (UTC−04:00).
+Neutral outline icons and screen-reader labels show morning/sunrise (05:00–11:59),
+afternoon/sun (12:00–16:59), evening/sunset (17:00–20:59), night/moon (21:00–04:59).
 
 Rail, footer, content and theme rules and markup are copied from option 03 in
 `../shell-options-2/index.html`, including its croc plus live-text wordmark.
@@ -40,3 +52,12 @@ allowed controls and theme text contrast verified from source. Browser preview
 and screenshots unavailable: system Chromium failed with `setsockopt: Operation
 not permitted`; Playwright Chromium failed with `shutdown: Operation not
 permitted`. Rendered appearance remains for the reviewer to check.
+
+AK-194 checks: all eight sample timestamps match one instant and real timezone
+offsets; all four day parts, footer ordering, accessible names and both windows'
+independent theme handlers pass source/behavior checks. Existing shell CSS,
+non-footer markup, assets, captions and theme script are unchanged.
+Typecheck, site build and all 436 site tests pass. `npm test` has 28 helper-test
+failures, including Git/process and port permission errors in this sandbox;
+the database test stage is not reached. Both Chromium builds still fail to start
+with the permission errors above, so rendered layout has not been checked.

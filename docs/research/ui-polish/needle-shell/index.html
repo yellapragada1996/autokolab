@@ -116,11 +116,19 @@ figcaption{height:32px;display:flex;align-items:center;font-size:12px;color:var(
 /* AK-191's desktop frame size; AK-192 puts the sole page title in the top bar.
    Captions belong to the surrounding figures, outside each shell's grid. */
 .shell{width:1440px;height:900px}
-/* Fit the theme choices beside the account name without changing the footer layout. */
-.account-name{position:relative}
-.theme-switch{position:absolute;top:0;left:calc(100% + 12px);display:flex;gap:6px;text-decoration:none}
-.theme-switch button{padding:0;border:0;background:var(--clear);font:inherit;white-space:nowrap}
-.theme-switch button[aria-pressed="true"]{text-decoration:underline;text-underline-offset:3px}
+/* Keep the account and shell geometry; use the spare rail space above the account. */
+.account{position:relative}
+.account-tools{position:absolute;left:12px;right:12px;bottom:calc(100% + 12px);display:grid;gap:12px}
+.team-time{color:var(--muted)}
+.team-time-label{font-size:12px;font-weight:400}
+.team-time ul{list-style:none;padding:0;margin:6px 0 0;display:grid;gap:4px}
+.team-time li{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.team-time time{font-variant-numeric:tabular-nums}
+.rail-icon{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.theme-switch{display:flex;width:max-content;gap:2px;padding:2px;border:1px solid var(--line);border-radius:4px}
+.theme-switch button{display:grid;place-items:center;width:36px;height:28px;padding:0;border:0;border-radius:2px;background:var(--clear);color:var(--muted)}
+.theme-switch button[aria-pressed="true"]{background:var(--ink);color:var(--inverse)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -139,7 +147,17 @@ figcaption{height:32px;display:flex;align-items:center;font-size:12px;color:var(
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Results</span></button></li>
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Settings</span></button></li>
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Guide</span></button></li></ul></nav>
-<div class="account"><span class="avatar" aria-hidden="true">JB</span><span class="account-name">James<span class="theme-switch" role="group" aria-label="Colour theme"><button type="button" data-set-theme="light" aria-pressed="false">Light</button><button type="button" data-set-theme="dark" aria-pressed="true">Dark</button></span></span><span class="signout">Sign out</span></div>
+<div class="account">
+<div class="account-tools">
+<div class="team-time" role="group" aria-label="Team time"><span class="team-time-label">Team time</span><ul>
+<li><svg class="rail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18M6 15a6 6 0 0 1 12 0M12 2v8m-3-3 3 3 3-3M3 8l2 2m14 0 2-2M2 14h2m16 0h2"/></svg><span class="sr-only">evening: </span><span>Bengaluru · <time datetime="2026-10-18T19:00:00+05:30">7:00 PM</time></span></li>
+<li><svg class="rail-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg><span class="sr-only">afternoon: </span><span>Stockholm · <time datetime="2026-10-18T15:30:00+02:00">3:30 PM</time></span></li>
+<li><svg class="rail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z"/></svg><span class="sr-only">night: </span><span>Tokyo · <time datetime="2026-10-18T22:30:00+09:00">10:30 PM</time></span></li>
+<li><svg class="rail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18M6 15a6 6 0 0 1 12 0M12 2v8m-3-5 3-3 3 3M3 8l2 2m14 0 2-2M2 14h2m16 0h2"/></svg><span class="sr-only">morning: </span><span>Toronto · <time datetime="2026-10-18T09:30:00-04:00">9:30 AM</time></span></li>
+</ul></div>
+<div class="theme-switch" role="group" aria-label="Colour theme"><button type="button" data-set-theme="light" aria-pressed="false"><svg class="rail-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg><span class="sr-only">Light</span></button><button type="button" data-set-theme="dark" aria-pressed="true"><svg class="rail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z"/></svg><span class="sr-only">Dark</span></button></div>
+</div>
+<span class="avatar" aria-hidden="true">JB</span><span class="account-name">James</span><span class="signout">Sign out</span></div>
 <div class="topbar"><h3>Overview</h3></div>
 <div class="page"><div class="page-inner"><div class="placeholders" aria-hidden="true"><div class="block"></div><div class="block"></div></div></div></div>
 </section>
@@ -158,7 +176,17 @@ figcaption{height:32px;display:flex;align-items:center;font-size:12px;color:var(
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Results</span></button></li>
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Settings</span></button></li>
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Guide</span></button></li></ul></nav>
-<div class="account"><span class="avatar" aria-hidden="true">JB</span><span class="account-name">James<span class="theme-switch" role="group" aria-label="Colour theme"><button type="button" data-set-theme="light" aria-pressed="true">Light</button><button type="button" data-set-theme="dark" aria-pressed="false">Dark</button></span></span><span class="signout">Sign out</span></div>
+<div class="account">
+<div class="account-tools">
+<div class="team-time" role="group" aria-label="Team time"><span class="team-time-label">Team time</span><ul>
+<li><svg class="rail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18M6 15a6 6 0 0 1 12 0M12 2v8m-3-3 3 3 3-3M3 8l2 2m14 0 2-2M2 14h2m16 0h2"/></svg><span class="sr-only">evening: </span><span>Bengaluru · <time datetime="2026-10-18T19:00:00+05:30">7:00 PM</time></span></li>
+<li><svg class="rail-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg><span class="sr-only">afternoon: </span><span>Stockholm · <time datetime="2026-10-18T15:30:00+02:00">3:30 PM</time></span></li>
+<li><svg class="rail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z"/></svg><span class="sr-only">night: </span><span>Tokyo · <time datetime="2026-10-18T22:30:00+09:00">10:30 PM</time></span></li>
+<li><svg class="rail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18h18M6 15a6 6 0 0 1 12 0M12 2v8m-3-5 3-3 3 3M3 8l2 2m14 0 2-2M2 14h2m16 0h2"/></svg><span class="sr-only">morning: </span><span>Toronto · <time datetime="2026-10-18T09:30:00-04:00">9:30 AM</time></span></li>
+</ul></div>
+<div class="theme-switch" role="group" aria-label="Colour theme"><button type="button" data-set-theme="light" aria-pressed="true"><svg class="rail-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg><span class="sr-only">Light</span></button><button type="button" data-set-theme="dark" aria-pressed="false"><svg class="rail-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13A8.5 8.5 0 0 1 11 3.5 8.5 8.5 0 1 0 20.5 13Z"/></svg><span class="sr-only">Dark</span></button></div>
+</div>
+<span class="avatar" aria-hidden="true">JB</span><span class="account-name">James</span><span class="signout">Sign out</span></div>
 <div class="topbar"><h3>Overview</h3></div>
 <div class="page"><div class="page-inner"><div class="placeholders" aria-hidden="true"><div class="block"></div><div class="block"></div></div></div></div>
 </section>
