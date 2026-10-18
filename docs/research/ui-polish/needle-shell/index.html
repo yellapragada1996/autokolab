@@ -116,6 +116,11 @@ figcaption{height:32px;display:flex;align-items:center;font-size:12px;color:var(
 /* AK-191's desktop frame size; AK-192 puts the sole page title in the top bar.
    Captions belong to the surrounding figures, outside each shell's grid. */
 .shell{width:1440px;height:900px}
+/* Fit the theme choices beside the account name without changing the footer layout. */
+.account-name{position:relative}
+.theme-switch{position:absolute;top:0;left:calc(100% + 12px);display:flex;gap:6px;text-decoration:none}
+.theme-switch button{padding:0;border:0;background:var(--clear);font:inherit;white-space:nowrap}
+.theme-switch button[aria-pressed="true"]{text-decoration:underline;text-underline-offset:3px}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -134,7 +139,7 @@ figcaption{height:32px;display:flex;align-items:center;font-size:12px;color:var(
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Results</span></button></li>
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Settings</span></button></li>
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Guide</span></button></li></ul></nav>
-<div class="account"><span class="avatar" aria-hidden="true">JB</span><span>James</span><span class="signout">Sign out</span></div>
+<div class="account"><span class="avatar" aria-hidden="true">JB</span><span class="account-name">James<span class="theme-switch" role="group" aria-label="Colour theme"><button type="button" data-set-theme="light" aria-pressed="false">Light</button><button type="button" data-set-theme="dark" aria-pressed="true">Dark</button></span></span><span class="signout">Sign out</span></div>
 <div class="topbar"><h3>Overview</h3></div>
 <div class="page"><div class="page-inner"><div class="placeholders" aria-hidden="true"><div class="block"></div><div class="block"></div></div></div></div>
 </section>
@@ -153,10 +158,22 @@ figcaption{height:32px;display:flex;align-items:center;font-size:12px;color:var(
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Results</span></button></li>
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Settings</span></button></li>
 <li><button type="button" class="nav-row" aria-pressed="false"><span class="nav-label">Guide</span></button></li></ul></nav>
-<div class="account"><span class="avatar" aria-hidden="true">JB</span><span>James</span><span class="signout">Sign out</span></div>
+<div class="account"><span class="avatar" aria-hidden="true">JB</span><span class="account-name">James<span class="theme-switch" role="group" aria-label="Colour theme"><button type="button" data-set-theme="light" aria-pressed="true">Light</button><button type="button" data-set-theme="dark" aria-pressed="false">Dark</button></span></span><span class="signout">Sign out</span></div>
 <div class="topbar"><h3>Overview</h3></div>
 <div class="page"><div class="page-inner"><div class="placeholders" aria-hidden="true"><div class="block"></div><div class="block"></div></div></div></div>
 </section>
 </figure>
+<script>
+document.querySelectorAll('.theme-switch').forEach(control => {
+  control.addEventListener('click', event => {
+    const button = event.target.closest('button[data-set-theme]');
+    if (!button) return;
+    control.closest('.shell').dataset.theme = button.dataset.setTheme;
+    control.querySelectorAll('button').forEach(option => {
+      option.setAttribute('aria-pressed', String(option === button));
+    });
+  });
+});
+</script>
 </body>
 </html>
