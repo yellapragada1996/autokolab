@@ -1,0 +1,50 @@
+{
+  "browser": false,
+  "attempts": [
+    {
+      "name": "System Chromium, crashpad pipe unset",
+      "started": false,
+      "errors": [
+        "browserType.launch: Target page, context or browser has been closed",
+        "[pid=17][err] [17:17:1018/203017.278789:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:45] setsockopt: Operation not permitted (1)",
+        "- [pid=17][err] [17:17:1018/203017.278789:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:45] setsockopt: Operation not permitted (1)",
+        "- [pid=17] <process did exit: exitCode=null, signal=SIGTRAP>"
+      ]
+    },
+    {
+      "name": "System Chromium, no sandbox, crash reporting disabled, new headless",
+      "started": false,
+      "errors": [
+        "browserType.launch: Target page, context or browser has been closed",
+        "[pid=18][err] [18:18:1018/203017.397454:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:45] setsockopt: Operation not permitted (1)",
+        "- [pid=18][err] [18:18:1018/203017.397454:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:45] setsockopt: Operation not permitted (1)",
+        "- [pid=18] <process did exit: exitCode=null, signal=SIGTRAP>"
+      ]
+    },
+    {
+      "name": "Playwright bundled headless Chromium",
+      "started": false,
+      "errors": [
+        "browserType.launch: Target page, context or browser has been closed",
+        "[pid=19][err] [1018/203017.582934:FATAL:content/browser/sandbox_host_linux.cc:41] Check failed: . shutdown: Operation not permitted (1)",
+        "- [pid=19][err] [1018/203017.582934:FATAL:content/browser/sandbox_host_linux.cc:41] Check failed: . shutdown: Operation not permitted (1)",
+        "- [pid=19] <process did exit: exitCode=null, signal=SIGTRAP>"
+      ]
+    },
+    {
+      "name": "Playwright bundled full Chromium, new headless",
+      "started": false,
+      "errors": [
+        "browserType.launch: Target page, context or browser has been closed",
+        "[pid=20][err] [20:20:1018/203017.743484:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:45] setsockopt: Operation not permitted (1)",
+        "- [pid=20][err] [20:20:1018/203017.743484:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:45] setsockopt: Operation not permitted (1)",
+        "- [pid=20] <process did exit: exitCode=null, signal=SIGTRAP>"
+      ]
+    }
+  ],
+  "inspected": [],
+  "screenshots": [],
+  "errors": [
+    "All four browser launch attempts failed. Layout, wrapping, targets, focus, themes and side-by-side rendering remain unverified."
+  ]
+}
