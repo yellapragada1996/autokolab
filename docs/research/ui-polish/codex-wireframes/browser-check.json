@@ -1,0 +1,9 @@
+{
+  "browser": false,
+  "inspected": [],
+  "screenshots": [],
+  "errors": [
+    "browserType.launch: Target page, context or browser has been closed",
+    "[pid=15][err] [15:15:1018/015909.095209:ERROR:third_party/crashpad/crashpad/util/linux/socket.cc:45] setsockopt: Operation not permitted (1)"
+  ]
+}
