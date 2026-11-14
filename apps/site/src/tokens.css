@@ -1,61 +1,62 @@
-/* AutoKolab design tokens (dark "night shift"). Source of truth for colour, type, space, radius, motion.
+/* AutoKolab design tokens (light, editorial: warm white, ink, serif headlines). Source of truth for colour, type, space, radius, motion.
    These replace the IBM Plex + lime tokens from DEC-9 (DEC-22).
    Copied from autokolab-ux-handoff/tokens.css; the site's additions are marked "Site:" below.
    The only file in apps/site with hard-coded colours. */
 
 :root {
   /* Surfaces */
-  --bg: #0B0D11;              /* page */
-  --sidebar: #0E1116;
-  --surface: #12151B;         /* cards */
-  --surface-sunken: #0F1217;  /* sheets, insets */
-  --surface-hover: #161A21;
-  --surface-active: #181C23;
-  --surface-raised: #232833;  /* person bubbles, selected segments */
-  --avatar-bg: #232833;
-  --avatar-fg: #C9CED6;
+  --bg: #F5F4F0;              /* page */
+  --sidebar: #F5F4F0;
+  --surface: #FFFFFF;         /* cards */
+  --surface-sunken: #F1F0EB;  /* sheets, insets */
+  --surface-hover: #EEEDE8;
+  --surface-active: #E6E4DE;
+  --surface-raised: #E9E7E1;  /* person bubbles, selected segments */
+  --avatar-bg: #E6E4DE;
+  --avatar-fg: #24262B;
 
   /* Lines */
-  --border-subtle: #1C2029;
-  --border: #1F242D;
-  --border-strong: #2A303B;
-  --border-focus: #4A515D;
-  --track: #2A303B;           /* empty progress */
+  --border-subtle: #E2DFD8;
+  --border: #D8D5CD;
+  --border-strong: #8E8A81;
+  --border-focus: #17181C;
+  --track: #DEDBD4;           /* empty progress */
 
   /* Text (all pass 4.5:1 on --bg and --surface) */
-  --text: #E9EBEF;
-  --text-body: #D4D8DE;
-  --text-secondary: #C9CED6;
-  --text-muted: #A2A9B5;
-  --text-dim: #858C98;        /* minimum for small text */
+  --text: #17181C;
+  --text-body: #1F2126;
+  --text-secondary: #2E3138;
+  --text-muted: #4A4F5A;
+  --text-dim: #5A5F6B;        /* minimum for small text */
 
   /* Status: one meaning each, always with a word or icon */
-  --amber: #F4C25B;           /* needs you */
-  --amber-ink: #1A1406;       /* text on amber */
-  --amber-text-soft: #F1D79A;
-  --amber-bg: #17140C;
-  --amber-bg-2: #2A2210;
-  --amber-border: #4A3B17;
+  --amber: #7A4700;           /* needs you */
+  --amber-ink: #FFFFFF;       /* text on amber */
+  --amber-text-soft: #7A4A00;
+  --amber-bg: #FBEFD2;
+  --amber-bg-2: #F9E7BD;
+  --amber-border: #C99A3E;
 
-  --green: #5CCB9A;           /* shipped, done, safe */
-  --green-text: #B8E8CF;
-  --green-ink: #CFEFDF;
-  --green-bg: #101B16;
-  --green-chip: #14231C;
-  --green-border: #23463A;
+  --green: #1B5E3C;           /* shipped, done, safe */
+  --green-text: #1B5E3C;
+  --green-ink: #154D32;
+  --green-bg: #E6F3EC;
+  --green-chip: #DCEEE4;
+  --green-border: #B5D9C5;
 
-  --blue: #7EA6FF;            /* live, moving */
-  --blue-text: #A9C2FF;       /* also links */
-  --blue-bg: #161E2E;
-  --blue-switch: #3E7FE0;
+  --blue: #1B45A8;            /* live, moving */
+  --blue-text: #1B45A8;       /* also links */
+  --blue-bg: #EAF0FE;
+  --blue-switch: #4C74D9;
 
-  --coral: #FF8A78;           /* failure, heads up */
-  --coral-text: #FFB8A8;
-  --coral-bg: #140F0E;
-  --coral-border: #3A2420;
+  --coral: #A62D17;           /* failure, heads up */
+  --coral-text: #84230F;
+  --coral-bg: #FCEBE7;
+  --coral-border: #D99A8C;
 
   /* Type */
-  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Newsreader', Georgia, serif;  /* page titles and headlines */
   --font-mono: 'Geist Mono', ui-monospace, monospace;
   --text-12: 12px;  /* minimum anywhere */
   --text-13: 13px;
@@ -83,8 +84,8 @@
   --radius-3xl: 20px;  /* modals */
 
   /* Shadow */
-  --shadow-md: 0 10px 24px rgba(0, 0, 0, .35);
-  --shadow-lg: 0 30px 80px rgba(0, 0, 0, .55);
+  --shadow-md: 0 10px 24px rgba(23, 24, 28, .10);
+  --shadow-lg: 0 30px 80px rgba(23, 24, 28, .18);
 
   /* Motion */
   --ease-out: cubic-bezier(.2, .8, .2, 1);
@@ -96,15 +97,15 @@
   --dur-switch: 220ms;
 
   /* Site: values the handoff uses inline (05-components.md, source/*.dc.html) */
-  --person-bg: #3A4150;       /* other people's avatars */
-  --blue-hover: #D3E0FF;      /* link hover */
-  --coral-body: #F0D6D1;      /* body text in a failure message */
-  --choice-bg: #141A26;       /* selected choice card */
-  --backdrop: rgba(6, 7, 10, .7);
-  --shadow-sm: 0 1px 1px rgba(0, 0, 0, .35);
+  --person-bg: #DAD8D2;       /* other people's avatars */
+  --blue-hover: #163A8C;      /* link hover */
+  --coral-body: #5C2418;      /* body text in a failure message */
+  --choice-bg: #F1F4FB;       /* selected choice card */
+  --backdrop: rgba(23, 24, 28, .35);
+  --shadow-sm: 0 1px 2px rgba(23, 24, 28, .06);
 }
 
-@keyframes ak-pulse { 0% { box-shadow: 0 0 0 0 rgba(126,166,255,.55) } 70% { box-shadow: 0 0 0 7px rgba(126,166,255,0) } 100% { box-shadow: 0 0 0 0 rgba(126,166,255,0) } }
+@keyframes ak-pulse { 0% { box-shadow: 0 0 0 0 rgba(31,79,191,.45) } 70% { box-shadow: 0 0 0 7px rgba(31,79,191,0) } 100% { box-shadow: 0 0 0 0 rgba(31,79,191,0) } }
 @keyframes ak-fade-up { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
 @keyframes ak-shimmer { from { background-position: 0 0 } to { background-position: 24px 0 } }
 

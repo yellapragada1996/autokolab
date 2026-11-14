@@ -46,8 +46,8 @@ const NAV_MAIN: NavItem[] = [
 ];
 const NAV_RECORDS: NavItem[] = [
   { id: "board", label: "Work", icon: Icon.board, sub: "All work and goals", key: "W", under: ["board", "goals", "backlog", "list", "ticket"] },
-  { id: "room", label: "Room", icon: Icon.chat, sub: "The team conversation", key: "R", under: ["room"] },
-  { id: "decisions", label: "Decisions", icon: Icon.decisions, sub: "Settled choices, and the Project Guide every agent reads first", key: "D", under: ["decisions", "guide"] },
+  { id: "room", label: "Room", icon: Icon.chat, sub: "What the agents say to each other. You only need Captain", key: "R", under: ["room"] },
+  { id: "decisions", label: "Guide", icon: Icon.decisions, sub: "What every agent reads first: the project guide and the decisions in force", key: "D", under: ["decisions", "guide"] },
   { id: "results", label: "Results", icon: Icon.results, sub: "Whether it's working", key: "S", under: ["results"] },
   { id: "settings", label: "Settings", icon: Icon.settings, sub: "How hands-off this project is, and who can join", under: ["settings"] },
 ];
@@ -95,7 +95,7 @@ export function Workspace({
   const error = live.error;
   // The conversation with Captain: shared by the Captain page and the sidebar badge, so they agree.
   const captain = useCaptainRoom(project, ws, profile.id, demoRoom);
-  const notifications = useDecisionNotifications(profile.id, project.id, project.slug, captain.needs, !!ws && captain.room !== undefined);
+  const notifications = useDecisionNotifications(profile.id, project.id, project.slug, captain.actionable, !!ws && captain.room !== undefined);
   const [addAgent, setAddAgent] = useState(false);
   const [newTicket, setNewTicket] = useState<{ status?: Status } | null>(null);
   const [paletteOpen, setPaletteOpen] = useCommandPalette();
@@ -164,18 +164,14 @@ export function Workspace({
 
   return (
     <div className="ak-workspace-shell" style={{ minHeight: "100%", display: "flex", flexWrap: "wrap", alignItems: "stretch" }}>
-      <Sidebar needs={captain.needs.length} project={project} projects={projects} route={route} onSignOut={onSignOut} />
+      <Sidebar needs={captain.actionable.length} project={project} projects={projects} route={route} onSignOut={onSignOut} />
 
       <main className={route.view === "overview" ? "ak-workspace-main ak-workspace-main-overview" : "ak-workspace-main"} style={{ flex: "999 1 560px", minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <header className={route.view === "overview" ? "ak-page ak-overview-topbar" : "ak-page"} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: title ? "18px 28px" : "12px 28px", borderBottom: title ? "1px solid var(--line-soft)" : 0, flexWrap: "wrap" }}>
-          {route.view === "overview" && <><strong className="ak-overview-project-title">{project.name}</strong><span className="ak-overview-updated">Updated just now</span></>}
-          {title && route.view !== "overview" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-              {route.view === "captain" && <AgentAvatar name="Captain" size={32} status={captain.working ? "working" : undefined} ring="var(--bg)" />}
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
-                <h1 style={{ fontSize: 22, fontWeight: 500, letterSpacing: "var(--tracking-tight)" }}>{title.label}</h1>
-                <span style={{ fontSize: 13, color: "var(--faint)" }}>{section?.id === "board" && ws && route.view !== "ticket" ? workHeadline(ws) : title.sub}</span>
-              </div>
+        {route.view !== "overview" && <header className="ak-page ak-page-head" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, padding: title ? "36px 48px 4px" : "16px 48px 0", flexWrap: "wrap" }}>
+          {title && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
+              <h1 style={{ margin: 0, fontSize: 34, lineHeight: 1.15 }}>{title.label}</h1>
+              <span style={{ fontSize: 15, color: "var(--text-muted)" }}>{section?.id === "board" && ws && route.view !== "ticket" ? workHeadline(ws) : title.sub}</span>
             </div>
           )}
           <div className="ak-header-actions" style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
@@ -185,14 +181,9 @@ export function Workspace({
               </Svg>
               Search
             </Button>
-            {title && !["captain", "overview", "board", "goals", "backlog", "list", "room", "connect", "settings", "results"].includes(route.view) && (
-              <Button variant="primary" size="sm" onClick={() => setNewTicket({})} title="Create a ticket (C)">
-                Create
-              </Button>
-            )}
           </div>
-        </header>
-        <div className={route.view === "overview" ? "ak-page ak-overview-page" : "ak-page"} style={{ flex: 1, padding: route.view === "overview" ? 0 : route.view === "ticket" ? "8px 28px 48px" : route.view === "captain" ? "0 28px" : "22px 28px 40px", minWidth: 0, display: "flex", flexDirection: "column", gap: tabs ? 16 : 0 }}>
+        </header>}
+        <div className={route.view === "overview" ? "ak-page ak-overview-page" : "ak-page"} style={{ flex: 1, padding: route.view === "overview" ? 0 : route.view === "ticket" ? "8px 48px 48px" : route.view === "captain" ? "20px 48px 0" : "24px 48px 56px", minWidth: 0, display: "flex", flexDirection: "column", gap: tabs ? 16 : 0 }}>
           {tabs && <Tabs label={`${section!.label} views`} tabs={tabs} current={route.view} project={project.slug} />}
           {error && route.view !== "overview" && <p style={{ color: "var(--danger)", fontSize: 14, marginBottom: 12 }}>{error}</p>}
           {route.view === "overview" ? (
@@ -255,27 +246,38 @@ export function Sidebar({ needs, project, projects, route, onSignOut }: {
   route: Extract<Route, { project: string }>; onSignOut: () => void;
 }) {
   const nav = (n: NavItem) => {
-    const to: Route = { view: n.id, project: project.slug };
+    // "Guide" opens the guide tab; its decisions are the tab beside it.
+    const to: Route = { view: n.id === "decisions" ? "guide" : n.id, project: project.slug };
     const active = n.under.includes(route.view);
     return <a key={n.id} className="ak-shell-nav-item" href={href(to)} onClick={onNav(to)} aria-current={active ? "page" : undefined} title={n.key ? `${n.label} · G then ${n.key}` : n.label}>
-      {n.label}{n.id === "captain" && needs > 0 && <span className="ak-shell-need" aria-label={`${needs} need you`}>{needs}</span>}
+      <Svg size={16} width={1.7}>{n.icon}</Svg>
+      <span>{n.label}</span>{n.id === "captain" && needs > 0 && <span className="ak-shell-need" aria-label={`${needs} need you`}>{needs}</span>}
     </a>;
   };
   const item = (view: ProjectView, label: string) => {
     const to: Route = { view, project: project.slug };
     return <li key={view}><a href={href(to)} onClick={onNav(to)}>{label}</a></li>;
   };
+  const by = (id: string) => NAV.find((n) => n.id === id)!;
+  // One list, every page once. On a phone the first three are the tab bar and the rest sit in Menu.
   return <aside className="ak-nav ak-shell-nav" aria-label="Project navigation">
-    <div className="ak-shell-brand"><FullLogo height={48}/></div>
+    <div className="ak-shell-brand">AutoKolab</div>
     <label className="ak-shell-project">
       <span>{project.name}</span><span aria-hidden="true">⌄</span>
       <select aria-label="Switch project" value={project.slug} onChange={(e) => e.target.value === "__new" ? go({ view: "new-project" }) : go({ view: "captain", project: e.target.value })}>
         {projects.map((p) => <option key={p.id} value={p.slug}>{p.name}</option>)}<option value="__new">+ New project</option>
       </select>
     </label>
-    <nav className="ak-shell-pages" aria-label="Pages">{NAV_MAIN.map(nav)}</nav>
-    <details className="ak-shell-project-menu"><summary>Project</summary><ul>
-      {item("board", "Work and records")}{item("room", "Team conversation")}{item("decisions", "Decisions")}{item("guide", "Guide")}{item("results", "Results")}{item("settings", "Settings")}
+    <nav className="ak-shell-pages" aria-label="Pages">
+      {NAV_MAIN.map(nav)}
+      <span className="ak-shell-wide">{nav(by("board"))}{nav(by("results"))}<span className="ak-shell-sep" aria-hidden="true" />{nav(by("room"))}{nav(by("decisions"))}</span>
+    </nav>
+    <div className="ak-shell-foot">
+      {nav(by("settings"))}
+      <button type="button" className="ak-shell-nav-item" onClick={onSignOut}><Svg size={16} width={1.7}><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" /></Svg><span>Sign out</span></button>
+    </div>
+    <details className="ak-shell-project-menu"><summary>Menu</summary><ul>
+      {item("board", "Work")}{item("results", "Results")}{item("room", "Room")}{item("guide", "Guide")}{item("settings", "Settings")}
       <li><button type="button" onClick={onSignOut}>Sign out</button></li>
     </ul></details>
   </aside>;

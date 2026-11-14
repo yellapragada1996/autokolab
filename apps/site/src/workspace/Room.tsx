@@ -1,4 +1,5 @@
 import { reportError } from "../lib/errors";
+import { AGENT_ONLINE_MS, PERSON_ONLINE_MS, seenWithin } from "../lib/presence";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Profile } from "../lib/session";
 import { isBookkeeping, postToRoom, problemOf, roomFor, roomFeed, mergeRoomMember, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
@@ -19,7 +20,6 @@ const KIND: Partial<Record<RoomMessage["kind"], { label: string; color: string; 
   handoff: { label: "Handoff", color: "var(--text-2)", bg: "var(--surface-2)" },
   decision: { label: "Decision", color: "var(--on-primary)", bg: "var(--primary)" },
 };
-const ONLINE_MS = 5 * 60_000;
 const SHOW_ACTIVITY_KEY = "autokolab.room.showActivity";
 
 function readShowActivity(): boolean {
@@ -34,7 +34,7 @@ function readShowActivity(): boolean {
 type Item = { type: "message"; m: RoomMessage } | { type: "activity"; runs: RoomMessage[] };
 
 function online(m: RoomMember): boolean {
-  return !!m.last_seen_at && Date.now() - Date.parse(m.last_seen_at) < ONLINE_MS;
+  return seenWithin(m.last_seen_at, m.kind === "agent" ? AGENT_ONLINE_MS : PERSON_ONLINE_MS);
 }
 
 function Mark({ m, size = 30, me }: { m?: RoomMember; size?: number; me?: string }) {
@@ -181,7 +181,7 @@ export function Room({ ws, profile, demo }: { ws: Workspace; profile: Profile; d
                     {ws.project.lead_agent_id === m.id && <LeadBadge />}
                   </span>
                   <span style={{ fontSize: 12, color: "var(--faint)" }}>
-                    {m.paused ? "Paused by its owner" : m.runner_state === "working" ? "Working" : online(m) ? "Online" : m.last_seen_at ? `Seen ${ago(m.last_seen_at)}` : "Not connected yet"}
+                    {m.paused ? "Paused by its owner" : !online(m) ? (m.last_seen_at ? `Offline · seen ${ago(m.last_seen_at)}` : "Not connected yet") : m.runner_state === "working" ? "Working" : "Online"}
                   </span>
                 </span>
                 <Presence on={online(m)} />

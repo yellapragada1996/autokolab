@@ -1,3 +1,4 @@
+import { AGENT_ONLINE_MS } from "../lib/presence";
 import { statusHere } from "./agentStatus";
 import { MERGE_OK_PREFIX, waitsForMergeOk, type Agent, type Ticket, type TicketEvent } from "../lib/data";
 import type { Workspace } from "./useWorkspace";
@@ -9,7 +10,7 @@ const isOpen = (t: Ticket) => t.status !== "done" && t.status !== "canceled";
 
 /** An agent counts as online if it checked in within the last five minutes. */
 export function agentOnline(a: Agent, now = new Date()): boolean {
-  return !!a.last_seen_at && now.getTime() - Date.parse(a.last_seen_at) < 5 * 60_000 && a.status !== "offline";
+  return !!a.last_seen_at && now.getTime() - Date.parse(a.last_seen_at) < AGENT_ONLINE_MS && a.status !== "offline";
 }
 
 /** The dot on an agent's avatar: none when it's offline. */

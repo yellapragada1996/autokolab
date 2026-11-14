@@ -91,7 +91,7 @@ describe("inline review disclosure", () => {
 describe("Overview renders across source refreshes", () => {
   it("keeps its snapshot through pending and failed refreshes and replaces it on recovery", () => {
     const ws = workspace([]);
-    const room = { room: null, needs: [], plans: [], loadError: "" } as unknown as CaptainRoom;
+    const room = { room: null, needs: [], actionable: [], plans: [], loadError: "" } as unknown as CaptainRoom;
     const render = (source: typeof ws | null, cr = room, error = "") => {
       hooks.cursor = 0;
       return Overview({ ws: source, cr, error, me: "person" }).props as { snapshot: OverviewSnapshot | null; failed: boolean };
@@ -112,7 +112,7 @@ describe("Overview renders across source refreshes", () => {
     const fetch = vi.spyOn(globalThis, "fetch");
     try {
       const ws = workspace([]);
-      const cr = { room: null, needs: [], plans: [], loadError: "" } as unknown as CaptainRoom;
+      const cr = { room: null, needs: [], actionable: [], plans: [], loadError: "" } as unknown as CaptainRoom;
       for (let i = 0; i < 25; i++) { hooks.cursor = 0; Overview({ ws, cr, me: "person" }); }
       expect(fetch).not.toHaveBeenCalled();
       expect(vi.getTimerCount()).toBe(0);

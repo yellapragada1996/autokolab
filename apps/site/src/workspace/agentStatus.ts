@@ -1,3 +1,4 @@
+import { AGENT_ONLINE_MS } from "../lib/presence";
 import type { Agent, Ticket } from "../lib/data";
 
 /** A project may show availability, but never another project's status note or current ticket. */
@@ -5,7 +6,7 @@ export function statusHere(a: Agent, projectId: string, tickets: ReadonlyMap<str
   const ticket = a.current_ticket_id ? tickets.get(a.current_ticket_id) : undefined;
   const foreign = (!!a.status_project_id && a.status_project_id !== projectId) ||
     (!!a.current_ticket_id && (!ticket || ticket.project_id !== projectId));
-  const offline = a.status === "offline" || !a.last_seen_at || now.getTime() - Date.parse(a.last_seen_at) >= 5 * 60_000;
+  const offline = a.status === "offline" || !a.last_seen_at || now.getTime() - Date.parse(a.last_seen_at) >= AGENT_ONLINE_MS;
   const limit = (!!a.waiting_until && Date.parse(a.waiting_until) > now.getTime()) || /usage limit/i.test(a.status_note ?? "");
   const global = offline || a.status === "paused" || limit;
   const status = offline ? "offline" : a.status === "paused" ? "paused" : limit ? "idle" : foreign ? "planning" : a.status;

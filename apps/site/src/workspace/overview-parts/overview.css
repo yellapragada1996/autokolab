@@ -7,24 +7,24 @@
   font: 400 14px/1.5 var(--font-sans);
   color: var(--text);
   --card: var(--surface);
-  --card-hover: #171B22;
-  --card-edge: #191D25;
-  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, .025);
+  --card-hover: #F7F6F2;
+  --card-edge: #E7E5E0;
+  --card-shadow: 0 1px 1px rgba(23, 24, 28, .04);
   --todo-edge: var(--border-focus);
-  --done: #5DC46A;
-  --problem-red: #FF3535;
-  --problem-text: #FF8585;
+  --done: #2E8B57;
+  --problem-red: #C8321E;
+  --problem-text: #A8281A;
   --done-edge: transparent;
   --stripe-blue-a: var(--blue-switch);
   --stripe-blue-b: var(--blue);
-  --stripe-amber-a: #C99A3E;
-  --stripe-amber-b: var(--amber);
-  --skeleton: #171A21;
+  --stripe-amber-a: #C98A1B;
+  --stripe-amber-b: #E9B95A;
+  --skeleton: #EFEEE9;
   --focus: var(--text-muted);
   --tip-bg: var(--text);
   --tip-fg: var(--bg);
-  --tip-muted: #3A404B;
-  --surface-active: #1B2028;
+  --tip-muted: #C9CED6;
+  --surface-active: #EBEAE5;
 }
 .ak-overview-scope a { color: inherit; text-decoration: none; }
 .ak-overview-scope button { font: inherit; color: inherit; }
@@ -63,7 +63,7 @@
 /* 2 · Heading: the focal point. One line per sentence, the full column wide.
    A sentence that is too long wraps balanced inside itself; "on" stays with the goal. */
 .ak-overview-scope .head { display: flex; align-items: flex-end; gap: 20px; }
-.ak-overview-scope .headline { margin: 0; min-width: 0; color: var(--text); font-size: 44px; font-weight: 600; line-height: 1.1; letter-spacing: -0.035em; }
+.ak-overview-scope .headline { margin: 0; min-width: 0; color: var(--text); font-family: var(--font-display); font-size: 44px; font-weight: 400; line-height: 1.12; letter-spacing: -0.015em; }
 .ak-overview-scope .headline .sent { display: block; text-wrap: balance; }
 .ak-overview-scope .headline .sent + .sent { margin-top: 2px; }
 .ak-overview-scope .headline .nw, .ak-overview-scope .headline .goal { white-space: nowrap; }
@@ -160,7 +160,7 @@
 /* ---------- Cards (recommended): one card per goal, its line and its crew ---------- */
 .ak-overview-scope .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .ak-overview-scope .card { position: relative; padding: 22px 24px 12px; background: var(--card); border: 1px solid var(--card-edge); border-radius: var(--radius-2xl); box-shadow: var(--card-shadow); }
-.ak-overview-scope .card-name { margin: 0 0 10px; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.25; }
+.ak-overview-scope .card-name { margin: 0 0 10px; font-size: 17px; font-weight: 600; letter-spacing: 0; line-height: 1.3; }
 .ak-overview-scope .card-name a { display: inline-flex; align-items: baseline; gap: 8px; max-width: 100%; border-radius: var(--radius-sm); }
 .ak-overview-scope .card-name a span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ak-overview-scope .card-name a::after { content: "→"; flex: none; color: var(--text-dim); font-size: 16px; font-weight: 500; opacity: 0; }
@@ -278,3 +278,27 @@
 
 /* Problem words are the second cue; the red bar and ring remain solid. */
 .ak-overview-scope .s-stop-row .a-state, .ak-overview-scope .lg.x, .ak-overview-scope .t-meta.x { color: var(--problem-text); }
+
+/* Waiting on each other: who or what is held up by something other than the person. */
+.ak-overview-scope .waits { margin-bottom: 36px; }
+.ak-overview-scope .wait { grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(0, 1.4fr); column-gap: 16px; font-size: 14px; line-height: 20px; color: var(--text-secondary); }
+.ak-overview-scope .wait.still { cursor: default; }
+.ak-overview-scope .wait.still:hover { background: none; }
+.ak-overview-scope .wait-who { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ak-overview-scope .wait-on, .ak-overview-scope .wait-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ak-overview-scope .wait-why { color: var(--text-muted); }
+.ak-overview-scope .wait-more { margin: 6px 0 0; color: var(--text-muted); font-size: 14px; }
+@media (max-width: 640px) {
+  .ak-overview-scope .wait { grid-template-columns: minmax(0, 1fr); row-gap: 2px; }
+  .ak-overview-scope .wait-who, .ak-overview-scope .wait-on, .ak-overview-scope .wait-why { white-space: normal; }
+}
+
+/* The wireframe's Overview: a small label, the serif headline, one line to Captain, then the flow cards. */
+.ak-overview-scope .ov { max-width: 1136px; margin: 0; padding: 40px 48px 56px; }
+.ak-overview-scope .ov-label { margin: 0 0 10px; font-size: 13px; color: var(--text-muted); }
+.ak-overview-scope .headline { font-size: 40px; line-height: 1.15; }
+.ak-overview-scope .ov-answer { margin: 10px 0 0; font-size: 15px; color: var(--text-secondary); }
+.ak-overview-scope .ov-answer a { text-decoration: underline; text-underline-offset: 3px; }
+.ak-overview-scope .ov-flow { display: flex; flex-direction: column; gap: 28px; margin: 28px 0 36px; }
+.ak-overview-scope .ov-flow a:hover { text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 640px) { .ak-overview-scope .ov { padding: 28px 20px 40px; } .ak-overview-scope .headline { font-size: 30px; } }

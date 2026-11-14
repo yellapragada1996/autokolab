@@ -36,7 +36,7 @@ export function applyFilter(ws: Workspace, me: string, f: FilterState): Ticket[]
   });
 }
 
-/** Search, the avatar row (click to show one person's or agent's work) and quick filters. */
+/** Search, a "show work for" list of everyone by name, and quick filters. */
 export function Filters({ ws, me, f, setF }: { ws: Workspace; me: string; f: FilterState; setF: (f: FilterState) => void }) {
   const lead = ws.project.lead_agent_id;
   const actors = [...ws.people.members].sort((a, b) => Number(b.actor_id === lead) - Number(a.actor_id === lead) || (a.actor_type === b.actor_type ? 0 : a.actor_type === "agent" ? -1 : 1));
@@ -61,28 +61,20 @@ export function Filters({ ws, me, f, setF }: { ws: Workspace; me: string; f: Fil
         </Svg>
         <input aria-label="Search this board" value={f.query} onChange={(e) => setF({ ...f, query: e.target.value })} placeholder="Search this board" style={{ border: 0, background: "transparent", outline: "none", fontSize: 13, width: "100%", color: "var(--text)" }} />
       </label>
-      <div role="group" aria-label="Show work for" style={{ display: "flex", alignItems: "center", paddingLeft: 6 }}>
-        {actors.map((m) => {
-          const on = f.people.includes(m.actor_id);
-          const agent = ws.agentOf(m.actor_id);
-          const p = ws.people.profiles.get(m.actor_id);
-          return (
-            <button
-              key={m.actor_id}
-              type="button"
-              onClick={() => toggle(m.actor_id)}
-              title={`${ws.nameOf(m.actor_id)}${m.actor_id === lead ? " (Captain)" : ""}`}
-              aria-pressed={on}
-              style={{ marginLeft: -6, padding: 0, border: 0, borderRadius: agent ? 9 : "50%", background: "none", cursor: "pointer", boxShadow: on ? "0 0 0 2px var(--primary)" : "0 0 0 2px var(--bg)", position: "relative", zIndex: on ? 2 : 1, display: "inline-flex" }}
-            >
-              {agent ? <AgentAvatar name={agent.display_name} vendor={agent.vendor} size={30} /> : <PersonAvatar name={p?.name ?? "?"} src={p?.avatar_url} size={30} you={m.actor_id === me} />}
-            </button>
-          );
-        })}
-        <button type="button" onClick={() => toggle("none")} title="Unassigned" aria-pressed={f.people.includes("none")} style={{ marginLeft: -6, width: 30, height: 30, borderRadius: "50%", border: "1px dashed var(--line-strong)", background: "var(--bg)", color: "var(--faint)", fontSize: 12, cursor: "pointer", boxShadow: f.people.includes("none") ? "0 0 0 2px var(--primary)" : "0 0 0 2px var(--bg)" }}>
-          ?
-        </button>
-      </div>
+      <select
+        aria-label="Show work for"
+        value={f.people[0] ?? ""}
+        onChange={(e) => setF({ ...f, people: e.target.value ? [e.target.value] : [] })}
+        style={{ height: 32, padding: "0 10px", borderRadius: 6, border: `1px solid ${f.people.length ? "var(--primary)" : "var(--line)"}`, background: "var(--surface)", color: "var(--text)", fontSize: 13, fontWeight: 500, cursor: "pointer", maxWidth: 200 }}
+      >
+        <option value="">Everyone</option>
+        {actors.map((m) => (
+          <option key={m.actor_id} value={m.actor_id}>
+            {ws.nameOf(m.actor_id)}{m.actor_id === lead ? " (Captain)" : m.actor_id === me ? " (you)" : ""}
+          </option>
+        ))}
+        <option value="none">Unassigned</option>
+      </select>
       <button type="button" style={chip(f.quick.includes("mine"))} onClick={() => quick("mine")} aria-pressed={f.quick.includes("mine")}>
         Only mine
       </button>

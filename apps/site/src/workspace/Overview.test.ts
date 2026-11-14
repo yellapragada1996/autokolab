@@ -11,7 +11,7 @@ import type { Need } from "./captain";
 
 const now = new Date(at("12:00"));
 const goal = () => ticket({ key: "SH-1", type: "epic", title: "Checkout: cards", status: "in_progress" });
-const room = { room: null, needs: [], plans: [], loadError: "" } as unknown as CaptainRoom;
+const room = { room: null, needs: [], actionable: [], plans: [], loadError: "" } as unknown as CaptainRoom;
 function scene() {
   const g = goal();
   const t = ticket({ key: "SH-2", title: "Saved cards", parent_id: g.id, status: "in_progress", assignee_id: BIRCH, assignee_type: "agent", summary: "adding saved cards to checkout" });
@@ -39,18 +39,17 @@ describe("Overview v5 composition", () => {
     expect(html).toContain('href="/p/shop/people"');
   });
 
-  it("puts three newest requests before the headline and links overflow to the oldest", () => {
+  it("puts the headline first, one line to Captain, then who is waiting on whom with the person's items on top", () => {
     const needs: Need[] = Array.from({ length: 5 }, (_, i) => ({ key: `ask:${i}`, kind: "captain_question", action: "Answer", question: `Question ${i}?`, ticket: null, turnId: i, since: at(`11:0${i}`) }));
     const html = render(snapshot(scene(), needs));
-    expect(html.indexOf("Needs you</h2>")).toBeLessThan(html.indexOf('class="headline"'));
-    expect(html.indexOf("Question 4?")).toBeLessThan(html.indexOf("Question 3?"));
-    expect(html).toContain("Question 2?");
-    expect(html).not.toContain("Question 1?");
-    expect(html).toContain('href="/p/shop#need-ask%3A0">and 2 more in Captain →');
-    expect(html).toContain("Answer in Captain →");
-    expect(html).toContain("Captain is asking · 56 min");
-    expect((html.match(/class="row need"/g) ?? [])).toHaveLength(3);
-    expect(html).not.toContain("<button class=\"row need\"");
+    expect(html.indexOf('class="headline"')).toBeLessThan(html.indexOf("Answer them in Captain"));
+    expect(html).toContain("5 things are waiting on you.");
+    expect(html.indexOf("Answer them in Captain")).toBeLessThan(html.indexOf("Who is waiting on whom</h2>"));
+    // Longest-waiting first, each a link to where Captain asked.
+    expect(html.indexOf("Question 0?")).toBeLessThan(html.indexOf("Question 4?"));
+    expect(html).toContain('href="/p/shop#need-ask%3A0"');
+    expect((html.match(/>You<\/span>/g) ?? [])).toHaveLength(5);
+    expect(html).not.toContain("Needs you</h2>");
   });
 
   it("hides empty sections and shows the new-project croc and connection link", () => {
@@ -142,17 +141,21 @@ describe("Overview loading and refresh stability", () => {
   });
 });
 describe("project navigation", () => {
-  it("shows Captain, Overview, Team and Project in that order, with the old destinations in the menu", () => {
+  it("lists every page once, in one flat list", () => {
     const ws = workspace([]);
     const html = renderToStaticMarkup(createElement(Sidebar, {
       needs: 0, project: ws.project, projects: [ws.project],
       route: { view: "overview", project: "shop" },
       onSignOut: () => undefined,
     }));
-    expect(html.indexOf('>Captain</a>')).toBeLessThan(html.indexOf('>Overview</a>'));
-    expect(html.indexOf('>Overview</a>')).toBeLessThan(html.indexOf('>Team</a>'));
-    expect(html.indexOf('>Team</a>')).toBeLessThan(html.indexOf('<summary>Project</summary>'));
-    for (const path of ["/p/shop/work", "/p/shop/room", "/p/shop/decisions", "/p/shop/decisions?tab=guide", "/p/shop/results", "/p/shop/settings", "/p/shop/people"]) {
+    const at = (label: string) => html.indexOf(`<span>${label}</span>`);
+    for (const [first, next] of [["Captain", "Overview"], ["Overview", "Team"], ["Team", "Work"], ["Work", "Results"], ["Results", "Room"], ["Room", "Guide"], ["Guide", "Settings"], ["Settings", "Sign out"]]) {
+      expect(at(first)).toBeGreaterThan(-1);
+      expect(at(first)).toBeLessThan(at(next));
+    }
+    // Every page is in the list once; nothing hides behind "More".
+    expect(html).not.toContain("<summary>More</summary>");
+    for (const path of ["/p/shop/work", "/p/shop/room", "/p/shop/decisions?tab=guide", "/p/shop/results", "/p/shop/settings", "/p/shop/people"]) {
       expect(html).toContain(`href="${path}"`);
     }
   });

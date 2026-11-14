@@ -1,6 +1,8 @@
+import { PERSON_ONLINE_MS } from "../lib/presence";
 import { statusHere } from "./agentStatus";
 export { statusHere } from "./agentStatus";
-import { MERGE_OK_PREFIX, type Agent, type Step, type Ticket, type TicketEvent } from "../lib/data";
+import { areaWaits } from "../lib/areas";
+import { MERGE_OK_PREFIX, type Agent, type RunUsage, type Step, type Ticket, type TicketEvent } from "../lib/data";
 import { localTime } from "../lib/place";
 import { awayText, catchUpItems, clock, goalName, named, RUNNER_PROBLEM, type CatchUp, type Need, type Plan } from "./captain";
 import { agentDot, agentOnline, epicOf, plural } from "./story";
@@ -17,7 +19,7 @@ export type State = "working" | "waiting" | "paused" | "idle";
 export const STATE_WORD: Record<State, string> = { working: "Working", waiting: "Waiting on you", paused: "Paused", idle: "Idle" };
 
 /** A person counts as online if they were seen within the last five minutes, like an agent. */
-const ONLINE_MS = 5 * 60_000;
+const ONLINE_MS = PERSON_ONLINE_MS;
 
 /** The name of the card for work that belongs to no feature. */
 export const FIXES = "Fixes and upkeep";
@@ -877,6 +879,8 @@ export interface OverviewGlance {
   headings: OverviewSentence[];
   croc: "new" | "calm" | null;
   requests: { key: string; text: string; meta: string; action: string }[];
+  /** Work that waits on something other than the person: a blocker, the same files, a review, a limit, a computer. */
+  waits: WaitRow[];
   team: OverviewAgent[];
   goals: OverviewGoal[];
 }
@@ -927,6 +931,95 @@ export function overviewAgents(ws: Workspace, now: Date): OverviewAgent[] {
       key: t?.key ?? null, goalId: t && !["idle", "offline"].includes(state) ? epicOf(ws, t)?.id ?? "fixes" : null,
       steps, step: at < 0 ? null : at + 1, waiting: assigned.filter(t => t.status === "ready" || t.status === "in_progress").length };
   });
+}
+
+/** One line of "Waiting on each other": who or what waits, on whom or what, and why. */
+export interface WaitRow {
+  key: string;
+  who: string;
+  on: string;
+  why: string;
+  /** The ticket to open, when the row is about one. */
+  ticketKey: string | null;
+  /** How long, "28 min"; empty when the records don't say. */
+  age: string;
+  /** It waits on the person: the row links to Captain, where the answer goes. */
+  you?: string;
+}
+export const MAX_WAITS = 8;
+
+/**
+ * What is held up by something other than the person (their own items are "Needs you" above), from
+ * records only: an agent that reported a problem, a ticket behind a blocker or behind the same
+ * files, a change waiting for Captain's review, an agent at its limit, an agent whose computer is
+ * gone with work assigned. Longest list first is not the point; the most fixable come first.
+ */
+export function waitingOn(ws: Workspace, needs: Need[], team: OverviewAgent[], now: Date): WaitRow[] {
+  const out: WaitRow[] = [];
+  const open = ws.tickets.filter(t => isWork(t) && isOpen(t));
+  // The person's own items come first, longest-waiting first: they are what unblocks the most.
+  for (const n of [...needs].filter(x => x.kind !== "problem").sort((a, b) => Date.parse(a.since) - Date.parse(b.since))) {
+    const t = n.ticket;
+    const why = n.kind === "plan" ? "Captain's plan is ready to start" : n.kind === "risky_merge" ? "Risky merge needs your OK" : n.kind === "approval" ? "Needs your approval"
+      : `${t ? `${t.key} asks: ` : ""}${withoutKeys(ws, firstSentence(n.said || n.question, 70))}`;
+    out.push({ key: `you:${n.key}`, who: t ? (n.kind === "ticket_question" && t.assignee_id ? whoName(ws, t.assignee_id) : `${t.key} · ${t.title}`) : "Captain", on: "You", why, ticketKey: t?.key ?? null, age: overviewAge(n.since, now), you: n.key });
+  }
+  const asked = new Set(needs.filter(n => n.kind !== "problem" && n.ticket).map(n => n.ticket!.id));
+  const who = (t: Ticket) => (t.assignee_id ? whoName(ws, t.assignee_id) : "Nobody yet");
+  for (const a of team) {
+    if (a.state === "offline" && a.waiting) out.push({ key: `offline:${a.id}`, who: plural(a.waiting, "ticket"), on: `${a.name}'s computer`, why: "Offline", ticketKey: null, age: a.word.replace(/^Offline · /, "") });
+    if (a.state === "limit") out.push({ key: `limit:${a.id}`, who: a.name, on: "its usage limit", why: a.doing || "Limit reached", ticketKey: a.key, age: "" });
+  }
+  for (const t of open) {
+    if (overviewProblem(t)) out.push({ key: `problem:${t.id}`, who: who(t), on: "someone at its computer", why: `${t.key} · ${withoutKeys(ws, stopReason(t.needs_human!))}`, ticketKey: t.key, age: overviewAge(t.updated_at, now) });
+  }
+  for (const t of open) {
+    if (t.status !== "review" || t.approved_sha || t.needs_human || asked.has(t.id)) continue;
+    const reviewer = ws.project.lead_agent_id === t.assignee_id ? "another agent" : "Captain";
+    out.push({ key: `review:${t.id}`, who: who(t), on: reviewer, why: `${t.key} is next in line for review`, ticketKey: t.key, age: overviewAge(t.updated_at, now) });
+  }
+  for (const t of open) {
+    // One row a ticket: a stopped run already says why it isn't moving.
+    if (t.status !== "ready" || out.some(r => r.ticketKey === t.key)) continue;
+    const blockers = ws.blockersOf(t.id).filter(b => b.id !== t.id && isOpen(b));
+    const files = blockers.length ? [] : areaWaits(t, ws.tickets);
+    if (blockers.length) out.push({ key: `blocked:${t.id}`, who: `${t.key} · ${t.title}`, on: blockers.map(b => b.key).join(", "), why: "Needs it finished first", ticketKey: t.key, age: overviewAge(t.updated_at, now) });
+    else if (files.length) out.push({ key: `files:${t.id}`, who: `${t.key} · ${t.title}`, on: files.map(b => b.key).join(", "), why: "Both change the same files", ticketKey: t.key, age: overviewAge(t.updated_at, now) });
+  }
+  return out;
+}
+
+/** What Captain is doing, for the top of its page, so nobody has to ask "are you there?". */
+export interface CaptainLine {
+  tone: "live" | "quiet" | "problem";
+  /** In bold: "Reviewing SH-10", "Offline for 1 h". */
+  state: string;
+  /** What that means for the person's next message. */
+  text: string;
+  /** "On ana-mbp · 1 h 10 of 3 h used today", when the runner has reported them. */
+  where: string | null;
+}
+export function captainLine(ws: Workspace, now: Date): CaptainLine | null {
+  const id = ws.project.lead_agent_id;
+  const a = id ? overviewAgents(ws, now).find(x => x.id === id) : undefined;
+  if (!a) return null;
+  const raw = ws.people.agents.get(a.id);
+  const usage = raw ? usageOf(ws, raw, now) : null;
+  const where = [raw?.machine ? `On ${raw.machine}` : null, usage ? `${usage.text.replace(/ today$/, "")} used today` : null].filter(Boolean).join(" · ") || null;
+  const line = (tone: CaptainLine["tone"], state: string, text: string): CaptainLine => ({ tone, state, text, where });
+  if (a.state === "offline") return raw?.last_seen_at
+    ? line("problem", `Offline for ${overviewAge(raw.last_seen_at, now)}`, "Your messages wait until its computer is back.")
+    : line("problem", "Not connected yet", "Your messages wait until its computer connects.");
+  if (a.state === "paused") return line("problem", "Paused by its owner", "Your messages wait until it's resumed.");
+  if (a.state === "limit") {
+    const until = raw?.waiting_until ? `It resumes about ${new Date(raw.waiting_until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. ` : "";
+    return line("problem", "Usage limit reached", `${until}Your messages wait until then.`);
+  }
+  if (a.state === "working" || a.state === "reviewing") {
+    if (a.elsewhere) return line("live", "Busy in another project", "It answers here after that.");
+    return line("live", a.doing ? a.doing[0].toUpperCase() + a.doing.slice(1) : "Working", "Your next message is answered after this.");
+  }
+  return line("quiet", "Online and free", "It answers your next message right away.");
 }
 
 /** Per-ticket shape and words, with no inference that failed checks mean failed test cases. */
@@ -1018,6 +1111,123 @@ export function overviewGlance(ws: Workspace, needs: Need[], plans: Plan[], now:
     return { key: n.key, text: n.said || n.question, meta: [...meta, overviewAge(n.since, now)].filter(Boolean).join(" · "),
       action: n.kind === "plan" ? "Review the plan in Captain" : ["risky_merge", "approval"].includes(n.kind) ? "Review in Captain" : "Answer in Captain" };
   });
-  return { projectId: ws.project.id, slug: ws.project.slug, team, goals, requests,
+  return { projectId: ws.project.id, slug: ws.project.slug, team, goals, requests, waits: waitingOn(ws, needs, team, now),
     headings: overviewHeadings(team, goals, setup, allDone), croc: setup ? "new" : allDone && !requests.length && team.every(a => ["idle", "offline", "paused"].includes(a.state)) ? "calm" : null };
+}
+
+// ------------------------------------------------------------------ Overview: stuck, the day, the spend
+
+/** A ticket that has been in its stage at least twice as long as tickets usually are. */
+export interface StuckRow {
+  key: string;
+  title: string;
+  /** "In review 3 h · usual is 25 min" */
+  text: string;
+  tag: string | null;
+  tone: "problem" | "quiet";
+}
+const STAGE_WORD: Record<string, string> = { in_progress: "Building", review: "In review" };
+const span = (ms: number) => overviewAge(new Date(Date.now() - ms).toISOString(), new Date());
+
+/**
+ * From the ticket history only: how long each ticket has been in its current stage, against the
+ * median of the stays that already ended in that stage. Nothing is flagged without at least two
+ * finished stays to compare with.
+ */
+export function stuckRows(ws: Workspace, events: TicketEvent[], team: OverviewAgent[], now: Date): StuckRow[] {
+  const moves = events.filter(e => e.kind === "status").sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+  const entered = new Map<string, { stage: string; at: number }>();
+  const stays: Record<string, number[]> = {};
+  const backs = new Map<string, number>();
+  for (const e of moves) {
+    const at = Date.parse(e.created_at);
+    const was = entered.get(e.ticket_id);
+    if (was && was.stage === e.data.from) (stays[was.stage] ??= []).push(at - was.at);
+    if (e.data.from === "review" && e.data.to === "in_progress") backs.set(e.ticket_id, (backs.get(e.ticket_id) ?? 0) + 1);
+    entered.set(e.ticket_id, { stage: String(e.data.to), at });
+  }
+  const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+  const out: (StuckRow & { ratio: number })[] = [];
+  for (const t of ws.tickets) {
+    if (!isWork(t) || !STAGE_WORD[t.status]) continue;
+    const usual = (stays[t.status] ?? []).length >= 2 ? median(stays[t.status]) : null;
+    const since = entered.get(t.id)?.stage === t.status ? entered.get(t.id)!.at : null;
+    if (!usual || !since) continue;
+    const here = now.getTime() - since;
+    if (here < usual * 2) continue;
+    const n = backs.get(t.id) ?? 0;
+    const offline = team.find(a => a.id === t.assignee_id)?.state === "offline";
+    out.push({ key: t.key, title: t.title, text: `${STAGE_WORD[t.status]} ${span(here)} · usual is ${span(usual)}`,
+      tag: n >= 2 ? `Sent back ${n} times` : offline ? "Agent not responding" : t.needs_human ? "Waiting on a person" : null, tone: n >= 2 ? "problem" : "quiet", ratio: here / usual });
+  }
+  return out.sort((a, b) => b.ratio - a.ratio).slice(0, 4).map(({ ratio: _ratio, ...r }) => r);
+}
+
+export type LaneKind = "build" | "review" | "talk" | "waiting" | "offline";
+export interface LaneBlock { kind: LaneKind; from: number; to: number; label: string }
+export interface Lane { id: string; name: string; blocks: LaneBlock[]; said: string }
+export interface DayLanes { from: number; to: number; hours: string[]; lanes: Lane[] }
+const startOfDay = (now: Date) => new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+/**
+ * Today, one lane an agent. Run blocks come from what each run recorded (it ended at created_at
+ * and took `seconds`). The only gaps drawn are the ones the records hold right now: an agent
+ * waiting on the person since its question, or offline since it was last seen. Earlier gaps are
+ * left empty, because the app keeps no history of an agent's state.
+ */
+export function dayLanes(ws: Workspace, usage: RunUsage[], team: OverviewAgent[], needs: Need[], now: Date): DayLanes | null {
+  const day = startOfDay(now);
+  const end = now.getTime();
+  const rows = usage.filter(u => Date.parse(u.created_at) >= day && Date.parse(u.created_at) <= end);
+  const lanes: Lane[] = [];
+  let first = end;
+  for (const a of team) {
+    const blocks: LaneBlock[] = rows.filter(u => u.agent_id === a.id).map(u => {
+      const to = Date.parse(u.created_at);
+      const kind: LaneKind = u.kind === "build" ? "build" : u.kind === "review" ? "review" : "talk";
+      return { kind, from: Math.max(day, to - u.seconds * 1000), to, label: u.ticket_id ? ws.byId.get(u.ticket_id)?.key ?? "" : "" };
+    });
+    const raw = ws.people.agents.get(a.id);
+    const need = a.state === "waiting" ? needs.find(n => n.ticket?.assignee_id === a.id) : undefined;
+    if (need) blocks.push({ kind: "waiting", from: Math.max(day, Date.parse(need.since)), to: end, label: "waiting on you" });
+    if (a.state === "offline" && raw?.last_seen_at && (blocks.length || a.waiting)) blocks.push({ kind: "offline", from: Math.max(day, Date.parse(raw.last_seen_at)), to: end, label: "offline" });
+    if (!blocks.length) continue;
+    blocks.sort((x, y) => x.from - y.from);
+    first = Math.min(first, blocks[0].from);
+    const words: Record<LaneKind, string> = { build: "building", review: "reviewing", talk: "talking", waiting: "waiting on you", offline: "offline" };
+    lanes.push({ id: a.id, name: a.name, blocks, said: `${a.name}: ${blocks.map(b => `${words[b.kind]}${b.label && b.kind !== "waiting" && b.kind !== "offline" ? ` ${b.label}` : ""}`).join(", ")}` });
+  }
+  if (!lanes.length) return null;
+  const HOUR = 3600_000;
+  const from = Math.min(Math.floor(first / HOUR) * HOUR, end - 6 * HOUR);
+  const to = Math.ceil(end / HOUR) * HOUR;
+  const step = Math.max(1, Math.round((to - from) / HOUR / 6));
+  const hours: string[] = [];
+  for (let t = from; t <= to; t += step * HOUR) hours.push(String(new Date(t).getHours()).padStart(2, "0"));
+  return { from: Math.max(from, day), to, hours, lanes };
+}
+
+export interface SpendRow { id: string; name: string; build: number; review: number; talk: number; cost: number | null }
+export interface Spend { rows: SpendRow[]; sentence: string; max: number; estimated: boolean }
+
+/** Today's usage by agent, split into building, reviewing and talking, in weighted tokens; dollars only where the tool reported them. */
+export function spendToday(ws: Workspace, usage: RunUsage[], team: OverviewAgent[], now: Date): Spend | null {
+  const day = startOfDay(now);
+  const weigh = (u: RunUsage) => (u.input_tokens ?? 0) + (u.cache_write_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_read_tokens ?? 0) * 0.1;
+  const rows: SpendRow[] = [];
+  for (const a of team) {
+    const mine = usage.filter(u => u.agent_id === a.id && Date.parse(u.created_at) >= day);
+    if (!mine.length) continue;
+    const sum = (kinds: string[]) => mine.filter(u => kinds.includes(u.kind)).reduce((n, u) => n + weigh(u), 0);
+    const priced = mine.filter(u => u.cost_usd != null);
+    rows.push({ id: a.id, name: a.name, build: sum(["build"]), review: sum(["review"]), talk: sum(["reply", "question"]), cost: priced.length ? priced.reduce((n, u) => n + Number(u.cost_usd), 0) : null });
+  }
+  if (!rows.length) return null;
+  const build = rows.reduce((n, r) => n + r.build, 0);
+  const all = rows.reduce((n, r) => n + r.build + r.review + r.talk, 0);
+  if (!all) return null;
+  const share = Math.round((build / all) * 100);
+  rows.sort((x, y) => (y.build + y.review + y.talk) - (x.build + x.review + x.talk));
+  return { rows, max: Math.max(...rows.map(r => r.build + r.review + r.talk)), estimated: [...ws.people.agents.values()].some(a => a.vendor !== "opencode"),
+    sentence: `${share}% went into building, ${100 - share}% into coordination.` };
 }

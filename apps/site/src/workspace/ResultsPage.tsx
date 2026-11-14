@@ -146,7 +146,7 @@ export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment 
         ) : !r ? (
           <Skeleton lines={3} />
         ) : (
-          <h2 style={{ fontSize: "clamp(22px, 3.2vw, 36px)", lineHeight: 1.2, fontWeight: 500, letterSpacing: "var(--tracking-tight)", maxWidth: 900 }}>{r.merged.length ? headline(r) : emptyText(r)}</h2>
+          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(22px, 3.2vw, 36px)", lineHeight: 1.2, fontWeight: 500, letterSpacing: "var(--tracking-tight)", maxWidth: 900 }}>{r.merged.length ? headline(r) : emptyText(r)}</h2>
         )}
       </div>
 

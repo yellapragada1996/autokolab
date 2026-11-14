@@ -1,6 +1,8 @@
 import { statusHere } from "./glance";
-import { CAPTAIN_DRAFT_EVENT, captainDraftKey } from "./captainDraft";
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { CAPTAIN_DRAFT_EVENT, captainDraftKey, offerCaptainDraft } from "./captainDraft";
+import { approveState } from "./approve";
+import { workStatus } from "./work";
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { href, onNav, go, openLook, type Route } from "../lib/router";
 import { AgentAvatar, Button } from "../ui";
 import { Markdown } from "./bits";
@@ -17,6 +19,9 @@ import {
   planLine,
   problemText,
   replyPreview,
+  ticketsIn,
+  planTitle,
+  awayText,
   settledLine,
   shortened,
   timeline,
@@ -30,9 +35,11 @@ import {
 import { ApproveChange } from "./ApproveChange";
 import { EvidencePanel } from "./EvidencePanel";
 import { agentDot } from "./People";
+import { captainLine, type CaptainLine } from "./glance";
 import { withTicketLinks } from "./Room";
 import { planKey, replyKey, type Answered, type CaptainRoom, type ReplyTarget } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
+import type { Ticket } from "../lib/data";
 
 // Captain (AK-49, autokolab-ux-handoff/screens/S01-captain-home.md, changed by DEC-24 and AK-69): the
 // person's conversation with Captain, read like a chat with a colleague, and the composer. Everything
@@ -57,9 +64,87 @@ export function CaptainHome({ ws, cr, me }: { ws: Workspace; cr: CaptainRoom; me
   };
 
   return (
-    <div style={{ flex: 1, width: "100%", maxWidth: 780, margin: "0 auto", display: "flex", flexDirection: "column", paddingTop: 16 }}>
+    <div style={{ flex: 1, width: "100%", maxWidth: 860, display: "flex", flexDirection: "column", gap: 28 }}>
+      <CaptainHeader ws={ws} />
+      <NeedsCard ws={ws} cr={cr} me={me} pulse={pulse} />
       <Conversation ws={ws} cr={cr} me={me} pulse={pulse} onTarget={toCard} />
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ what Captain is doing, and what waits on you
+
+const TONE: Record<CaptainLine["tone"], string> = { live: "var(--blue)", quiet: "var(--text-dim)", problem: "var(--coral)" };
+const cardBox: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)" };
+
+/** The page title and one card saying what Captain is doing right now. */
+function CaptainHeader({ ws }: { ws: Workspace }) {
+  const line = captainLine(ws, new Date());
+  return (
+    <header style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      {line && (
+        <div role="status" style={{ ...cardBox, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px 20px", padding: "14px 18px", fontSize: 14 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
+            <span aria-hidden="true" className={line.tone === "live" ? "ak-live" : undefined} style={{ width: 8, height: 8, borderRadius: "50%", background: TONE[line.tone], flex: "none" }} />
+            {line.state}
+          </span>
+          <span style={{ color: "var(--text-secondary)" }}>{line.text}</span>
+          {line.where && <span style={{ marginLeft: "auto", fontSize: 13, color: "var(--text-muted)" }}>{line.where}</span>}
+        </div>
+      )}
+    </header>
+  );
+}
+
+/** Inside the "Needs you" card a message is a row: what it's about in bold, how long it has waited, then the question and its buttons. */
+const NeedRow = createContext<{ title: string; meta: string } | null>(null);
+
+function rowHead(ws: Workspace, cr: CaptainRoom, n: Need): { title: string; meta: string } {
+  const waited = `waiting ${awayText(Date.now() - Date.parse(n.since))}`;
+  const t = n.ticket;
+  if (n.kind === "plan") {
+    const plan = cr.plans.find((p) => p.turnId === n.turnId);
+    return { title: plan ? planTitle(plan) : `Plan · ${n.question}`, meta: waited };
+  }
+  if (!t) return { title: "Captain asks", meta: waited };
+  const held = [t.assignee_id ? ws.nameOf(t.assignee_id) : null, ...ws.unblocks(t.id).filter((x) => x.status !== "done" && x.status !== "canceled").map((x) => x.key)].filter(Boolean);
+  const checks = t.pr_facts?.checks ?? t.checks;
+  const extra = (n.kind === "risky_merge" || n.kind === "approval") && checks?.total ? `tests ${checks.passed} of ${checks.total} passed` : held.length ? `holds up ${held.join(" and ")}` : null;
+  return { title: `${t.key} · ${t.title}`, meta: [waited, extra].filter(Boolean).join(" · ") };
+}
+
+/** Why a need isn't counted: there is nothing this person can press yet. */
+function notYet(n: Need, me: string): string {
+  const s = n.ticket ? approveState(n.ticket, me) : null;
+  const why = s?.kind === "built" ? "someone other than you has to approve" : s?.kind === "not_yet" && /still running/.test(s.why) ? "tests still running" : "can't be approved yet";
+  return `${n.ticket?.key ?? "one item"} (${why})`;
+}
+
+/** Everything the person can act on, in one card, each with its own buttons. Not shown when nothing waits. */
+function NeedsCard({ ws, cr, me, pulse }: { ws: Workspace; cr: CaptainRoom; me: string; pulse: string | null }) {
+  const needs = cr.actionable;
+  const waiting = cr.needs.filter((n) => !needs.includes(n));
+  if (!needs.length && !waiting.length) return null;
+  return (
+    <section aria-label={`Needs you: ${needs.length}`} className="ak-needs-card" style={cardBox}>
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "8px 12px", padding: "18px 22px" }}>
+        <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>Needs you</h2>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--amber)", background: "var(--amber-bg)", borderRadius: 999, padding: "2px 10px" }}>{needs.length}</span>
+      </div>
+      {needs.map((n) => {
+        const plan = n.kind === "plan" ? cr.plans.find((p) => p.turnId === n.turnId) : undefined;
+        return (
+          <NeedRow.Provider key={n.key} value={rowHead(ws, cr, n)}>
+            {plan ? <PlanMessage ws={ws} cr={cr} plan={plan} need={n} pulse={pulse === n.key} /> : <NeedMessage ws={ws} cr={cr} me={me} need={n} answered={undefined} pulse={pulse === n.key} />}
+          </NeedRow.Provider>
+        );
+      })}
+      {waiting.length > 0 && (
+        <p style={{ margin: 0, padding: "14px 22px", borderTop: "1px solid var(--border)", fontSize: 13, color: "var(--text-muted)" }}>
+          Not counted, because you can't act yet: {waiting.map((n) => notYet(n, me)).join(" and ")}.
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -71,8 +156,8 @@ function Conversation({ ws, cr, me, pulse, onTarget }: { ws: Workspace; cr: Capt
   const answeredOf = useMemo(() => new Map(cr.answered.map((a) => [a.need.key, a])), [cr.answered]);
   // Captain's answer that closed its own question shows under the question, so not again on its own.
   const entries = useMemo(
-    () => timeline(folded(cr.turns.filter((t) => !cr.closers.has(t.id))), [...cr.needs, ...cr.answered.map((a) => a.need)], cr.catchUp?.at),
-    [cr.turns, cr.closers, cr.needs, cr.answered, cr.catchUp],
+    () => timeline(folded(cr.turns.filter((t) => !cr.closers.has(t.id))), cr.answered.map((a) => a.need), cr.catchUp?.at),
+    [cr.turns, cr.closers, cr.answered, cr.catchUp],
   );
   const planOf = useMemo(() => new Map(cr.plans.map((p) => [p.turnId, p])), [cr.plans]);
   const noCaptain = !ws.project.lead_agent_id;
@@ -90,7 +175,8 @@ function Conversation({ ws, cr, me, pulse, onTarget }: { ws: Workspace; cr: Capt
     const card = id.startsWith("need-") ? document.getElementById(id) : null;
     if (location.hash) history.replaceState(history.state, "", location.pathname + location.search);
     if (card) onTarget(card, id.slice("need-".length));
-    else window.scrollTo(0, document.documentElement.scrollHeight);
+    // With something to answer, the page opens at the top, on the Needs you card; otherwise at the newest message.
+    else if (!cr.actionable.length) window.scrollTo(0, document.documentElement.scrollHeight);
   }, [complete, entries.length, onTarget]);
 
   // New Captain messages are read out politely; the ones already there when the page opened aren't.
@@ -136,7 +222,7 @@ function Conversation({ ws, cr, me, pulse, onTarget }: { ws: Workspace; cr: Capt
       const divider = day !== lastDay ? <DayDivider label={day} /> : null;
       lastDay = day;
       let item: ReactNode;
-      if (e.kind === "catchup") item = cr.catchUp && <CatchUpMessage ws={ws} c={cr.catchUp.c} at={cr.catchUp.at} needs={cr.needs.length} />;
+      if (e.kind === "catchup") item = cr.catchUp && <CatchUpMessage ws={ws} c={cr.catchUp.c} at={cr.catchUp.at} needs={cr.actionable.length} />;
       else if (e.kind === "card" && e.need.kind === "plan" && planOf.has(e.need.turnId!)) item = <PlanMessage ws={ws} cr={cr} plan={planOf.get(e.need.turnId!)!} need={e.need} pulse={pulse === e.need.key} />;
       else if (e.kind === "card") item = <NeedMessage ws={ws} cr={cr} me={me} need={e.need} answered={answeredOf.get(e.need.key)} pulse={pulse === e.need.key} />;
       else if (e.row.kind !== "fold" && planOf.has(e.row.id)) item = <PlanMessage ws={ws} cr={cr} plan={planOf.get(e.row.id)!} need={null} pulse={false} />;
@@ -187,6 +273,18 @@ const MARK: Record<Mark, { color: string; text: string }> = { needs: { color: "v
  * person adds a small dot and "needs you" to that line (coral and "problem" for a run that went wrong).
  */
 export function CaptainMessage({ at, mark, label, id, pulse, children }: { at: string | null; mark?: Mark; label?: string; id?: string; pulse?: boolean; children: ReactNode }) {
+  const row = useContext(NeedRow);
+  if (row) {
+    return (
+      <article id={id} tabIndex={id ? -1 : undefined} aria-label={label} className={pulse ? "ak-pulse" : undefined} style={{ padding: "20px 22px", borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 12px", alignItems: "baseline" }}>
+          <span style={{ fontWeight: 600, fontSize: 15 }}>{row.title}</span>
+          <span style={{ fontSize: 13, color: mark === "problem" ? "var(--coral-text)" : "var(--text-muted)" }}>{mark === "problem" ? `problem · ${row.meta}` : row.meta}</span>
+        </div>
+        <div style={{ fontSize: 15, lineHeight: 1.5, color: "var(--text)", minWidth: 0, overflowWrap: "anywhere", display: "flex", flexDirection: "column", gap: 10, alignItems: "flex-start" }}>{children}</div>
+      </article>
+    );
+  }
   return (
     <article id={id} tabIndex={id ? -1 : undefined} aria-label={label} className={pulse ? "ak-pulse" : undefined} style={{ display: "flex", gap: 12, minWidth: 0, borderRadius: "var(--radius-md)" }}>
       <AgentAvatar name="Captain" size={28} />
@@ -230,12 +328,51 @@ function RowView({ ws, row, settled }: { ws: Workspace; row: Row; settled?: stri
   if (row.kind === "fold") return <QuietFold turns={row.turns} />;
   if (row.kind === "you") return <YouMessage turn={row} ws={ws} />;
   if (row.kind === "problem") return <ProblemRow row={row} />;
+  const { said, why } = splitWhy(withoutPlan(row.body));
+  const about = ticketsIn(ws, row.body).slice(0, 4);
   return (
     <CaptainMessage at={row.at}>
-      <Said ws={ws} text={withoutPlan(row.body)} />
+      <Said ws={ws} text={said} />
+      {about.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {about.map((t) => <FactChip key={t.id} ws={ws} t={t} />)}
+        </div>
+      )}
+      {why && (
+        <div style={{ width: "100%", fontSize: 13, color: "var(--text-secondary)", padding: "10px 14px", background: "var(--surface-sunken)", borderRadius: 8 }}>
+          <span style={{ fontWeight: 600 }}>Why. </span>{why}
+        </div>
+      )}
+      {about.length > 0 && !settled && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px", fontSize: 13 }}>
+          <button type="button" className="ak-tap" onClick={() => offerCaptainDraft(ws.project.id, `Give ${about[0].key} to someone else: `)} style={linkButton}>Give to someone else</button>
+          <button type="button" className="ak-tap" onClick={() => offerCaptainDraft(ws.project.id, `That's wrong about ${about.map((t) => t.key).join(", ")}: `)} style={linkButton}>That's wrong</button>
+        </div>
+      )}
       {settled && <Quiet>{settledLine(settled)}</Quiet>}
     </CaptainMessage>
   );
+}
+
+/** Captain ends a message with "Why: …" when it assigns, merges or sends work back (LEAD_VOICE); it's shown as its own note. */
+export function splitWhy(body: string): { said: string; why: string | null } {
+  const lines = body.split("\n");
+  const i = lines.findIndex((l) => /^\s*why:\s*\S/i.test(l));
+  if (i < 0) return { said: body, why: null };
+  return { said: lines.slice(0, i).join("\n").trim(), why: lines.slice(i).join(" ").replace(/^\s*why:\s*/i, "").trim() };
+}
+
+/** One ticket as the board has it right now, so Captain's words can be checked at a glance. */
+function FactChip({ ws, t }: { ws: Workspace; t: Ticket }) {
+  const steps = ws.steps.get(t.id) ?? [];
+  const at = steps.findIndex((x) => x.status === "now");
+  const open = t.status !== "done" && t.status !== "canceled";
+  const waits = t.status === "ready" ? ws.blockersOf(t.id).filter((b) => b.status !== "done" && b.status !== "canceled").map((b) => b.key) : [];
+  const needs = open && !!t.needs_human;
+  const tone = needs ? { background: "var(--amber-bg)", color: "var(--amber)" } : t.status === "in_progress" ? { background: "var(--blue-bg)", color: "var(--blue-text)" } : t.status === "done" ? { background: "var(--green-bg)", color: "var(--green-text)" } : { background: "var(--surface-sunken)", color: "var(--text-secondary)" };
+  const parts = [t.key, needs ? "Needs you" : workStatus[t.status], !needs && t.assignee_id ? ws.nameOf(t.assignee_id) : null, !needs && t.status === "in_progress" && at >= 0 ? `step ${at + 1} of ${steps.length}` : null, waits.length ? `waits on ${waits.join(", ")}` : null];
+  const to: Route = { view: "ticket", project: ws.project.slug, key: t.key };
+  return <a href={href(to)} onClick={onNav(to)} style={{ fontSize: 13, padding: "4px 10px", borderRadius: 6, textDecoration: "none", ...tone }}>{parts.filter(Boolean).join(" · ")}</a>;
 }
 
 /** A run that went wrong, said plainly with a coral mark; the runner's own words one click away. */
@@ -260,7 +397,7 @@ export function YouMessage({ turn, ws }: { turn: Turn; ws: Workspace }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
       <span style={{ fontSize: 12, color: "var(--text-dim)" }}>You · {clock(turn.at)}</span>
-      <div style={{ maxWidth: "min(480px, 100%)", padding: "11px 15px", borderRadius: "16px 16px 4px 16px", background: "var(--surface-raised)", fontSize: 15, minWidth: 0, overflowWrap: "anywhere" }}>
+      <div style={{ maxWidth: "min(480px, 100%)", padding: "12px 16px", borderRadius: 12, background: "var(--surface-raised)", fontSize: 15, minWidth: 0, overflowWrap: "anywhere" }}>
         <Markdown text={withTicketLinks(turn.body, ws)} />
       </div>
     </div>
@@ -348,7 +485,7 @@ function CatchUpMessage({ ws, c, at, needs }: { ws: Workspace; c: CatchUp; at: s
 
 /** Small actions under a message: 32px, 44px on phones. */
 function Actions({ children }: { children: ReactNode }) {
-  return <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>{children}</div>;
+  return <div className="ak-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>{children}</div>;
 }
 
 /** The one quiet line that replaces the actions once the person has answered. */
@@ -395,11 +532,11 @@ function NeedMessage({ ws, cr, me, need, answered, pulse }: { ws: Workspace; cr:
         <Button size="sm" className="ak-tap" onClick={() => void cr.okMerge(need)} style={amberSmall}>
           Yes, merge it
         </Button>
-        <Button size="sm" className="ak-tap" onClick={() => t && openLook(slug, t.key)}>
-          Let me look first
-        </Button>
         <Button size="sm" className="ak-tap" aria-pressed={!!replying} onClick={() => replyTo(cr, { kind: "no", need })}>
           No
+        </Button>
+        <Button size="sm" className="ak-tap" onClick={() => t && openLook(slug, t.key)}>
+          Let me look first
         </Button>
         {t && (
           <button type="button" className="ak-tap" aria-expanded={knowing} aria-controls={`evidence-${need.key}`} onClick={() => setKnowing((k) => !k)} style={{ ...textButton, fontSize: 13, minHeight: 32, marginLeft: 4 }}>
@@ -633,14 +770,14 @@ function Composer({ projectId, cr, disabled, noCaptain, autoFocus }: { projectId
         ? "Tell Captain what to change"
         : reply
           ? "Your answer"
-          : "Tell Captain anything — a goal, a question, a change of plan";
+          : "A goal, a question, a change of plan";
 
   return (
-    <div style={{ position: "sticky", bottom: 0, zIndex: 2, background: "var(--bg)", padding: "8px 0 16px" }}>
+    <div className="ak-composer-dock" style={{ position: "sticky", bottom: 0, zIndex: 2, background: "var(--bg)", padding: "8px 0 16px" }}>
       <div aria-live="polite" className="sr-only">
         {reply ? `${chip}. Press Escape to cancel.` : ""}
       </div>
-      <div className="ak-composer" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", borderRadius: "var(--radius-2xl)", border: "1px solid var(--border-strong)", background: "var(--surface)" }}>
+      <div className="ak-composer" style={{ display: "flex", flexDirection: "column", gap: 8, padding: "14px 16px", borderRadius: "var(--radius-lg)", border: "1px solid var(--border-strong)", background: "var(--surface)" }}>
         {reply && (
           <div style={{ display: "flex", alignItems: "center", gap: 6, alignSelf: "flex-start", maxWidth: "100%", minWidth: 0, padding: "2px 4px 2px 10px", borderRadius: 999, background: "var(--surface-raised)", fontSize: 13, color: "var(--text-secondary)" }}>
             <span style={ellipsis}>{chip}</span>
@@ -659,36 +796,39 @@ function Composer({ projectId, cr, disabled, noCaptain, autoFocus }: { projectId
             </button>
           </div>
         )}
-        <textarea
-          id={COMPOSER}
-          ref={box}
-          value={body}
-          disabled={disabled}
-          onChange={(e) => setBody(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void send();
-            } else if (e.key === "Escape" && reply) {
-              e.preventDefault();
-              cr.setReplyTo(null);
-            }
-          }}
-          rows={2}
-          aria-label={reply ? chip : "Message Captain"}
-          placeholder={placeholder}
-          style={{ width: "100%", border: 0, outline: "none", background: "transparent", fontSize: 15, lineHeight: 1.5, resize: "none", padding: 0 }}
-        />
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span role={err ? "alert" : undefined} style={{ flex: 1, minWidth: 0, fontSize: 13, color: err ? "var(--coral-text)" : "var(--text-muted)" }}>
-            {err ? `That didn't go through: ${err}` : reply ? "Enter sends. Esc cancels." : cr.online ? "Big work gets a plan first. Small things I just do." : "I'll pick this up when I'm back."}
-          </span>
-          <Button variant="primary" aria-label="Send" title="Send (Enter)" disabled={disabled || !body.trim()} onClick={() => void send()} style={{ width: 44, height: 44, padding: 0, flex: "none" }}>
-            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M12 19V5M5 12l7-7 7 7" />
-            </svg>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+          <label style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6, fontSize: 13, color: "var(--text-muted)" }}>
+            {reply ? "Your reply" : "Tell Captain anything"}
+            <textarea
+              id={COMPOSER}
+              ref={box}
+              value={body}
+              disabled={disabled}
+              onChange={(e) => setBody(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void send();
+                } else if (e.key === "Escape" && reply) {
+                  e.preventDefault();
+                  cr.setReplyTo(null);
+                }
+              }}
+              rows={1}
+              aria-label={reply ? chip : "Message Captain"}
+              placeholder={placeholder}
+              style={{ width: "100%", border: 0, outline: "none", background: "transparent", color: "var(--text)", fontSize: 15, lineHeight: 1.5, resize: "none", padding: 0 }}
+            />
+          </label>
+          <Button variant="primary" title="Send (Enter)" disabled={disabled || !body.trim()} onClick={() => void send()} style={{ minHeight: 44, padding: "0 18px", borderRadius: 8, fontWeight: 600, flex: "none" }}>
+            Send
           </Button>
         </div>
+        {(err || !cr.online) && (
+          <span role={err ? "alert" : undefined} style={{ fontSize: 13, color: err ? "var(--coral-text)" : "var(--text-muted)" }}>
+            {err ? `That didn't go through: ${err}` : "I'll pick this up when I'm back."}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -697,6 +837,7 @@ function Composer({ projectId, cr, disabled, noCaptain, autoFocus }: { projectId
 // ------------------------------------------------------------------ styles
 
 const ellipsis: CSSProperties = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const linkButton: CSSProperties = { minHeight: 44, padding: 0, border: 0, background: "none", font: "inherit", color: "var(--text)", textDecoration: "underline", cursor: "pointer" };
 const textButton: CSSProperties = { border: 0, padding: 0, background: "none", color: "var(--blue-text)", fontSize: 14, cursor: "pointer" };
 /** The one amber button on a risky merge: small, like the other actions. */
 const amberSmall: CSSProperties = { background: "var(--amber)", color: "var(--amber-ink)", border: 0, fontWeight: 600 };
