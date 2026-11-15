@@ -160,14 +160,27 @@ export function Svg({ children, size = 18, width = 1.8 }: { children: ReactNode;
 }
 
 /**
- * The croc mark (brand/svg/autokolab-croc-square.svg, served unchanged), drawn straight on the
- * page with nothing behind it. `alt` is empty when the name is written next to it.
+ * The ripple mark: three rings from each of two corners, crossing. Ink and one warm grey, drawn
+ * straight on the page. `alt` is empty when the name is written next to it.
  */
 export function Logo({ size = 28, alt = "" }: { size?: number; alt?: string }) {
-  return <img src="/brand/autokolab-croc.svg" alt={alt} width={size} height={size} style={{ display: "block", flex: "none" }} />;
+  return (
+    <svg width={size} height={size} viewBox="4 4 56 56" fill="none" stroke="currentColor" strokeWidth={3.4} strokeLinecap="round" role={alt ? "img" : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true} style={{ display: "block", flex: "none", color: "var(--text)" }}>
+      <defs><clipPath id="ak-logo-clip"><rect x="6" y="6" width="52" height="52" rx="14" /></clipPath></defs>
+      <g clipPath="url(#ak-logo-clip)">
+        <circle cx="6" cy="58" r="14" /><circle cx="6" cy="58" r="28" /><circle cx="6" cy="58" r="42" />
+        <g stroke="var(--border-strong)"><circle cx="58" cy="6" r="14" /><circle cx="58" cy="6" r="28" /><circle cx="58" cy="6" r="42" /></g>
+      </g>
+    </svg>
+  );
 }
 
-/** The full logo, croc and wordmark, straight on the page. */
+/** The full logo, mark and two-tone wordmark, straight on the page. */
 export function FullLogo({ height = 44 }: { height?: number }) {
-  return <img src="/brand/autokolab-logo.svg" alt="AutoKolab" height={height} style={{ display: "block", height, width: "auto", flex: "none", alignSelf: "flex-start" }} />;
+  return (
+    <span role="img" aria-label="AutoKolab" style={{ display: "inline-flex", alignItems: "center", gap: height * 0.2, alignSelf: "flex-start", flex: "none", fontFamily: "'Geist', var(--font-sans)", fontWeight: 600, fontSize: height * 0.62, lineHeight: 1, letterSpacing: "-0.035em", color: "var(--text)" }}>
+      <Logo size={height * 0.75} />
+      <span aria-hidden="true"><span style={{ color: "var(--border-strong)" }}>Auto</span>Kolab</span>
+    </span>
+  );
 }

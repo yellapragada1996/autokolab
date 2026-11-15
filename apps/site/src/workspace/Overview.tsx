@@ -1,13 +1,12 @@
 import { useMemo, useRef, type ReactNode } from "react";
-import { eventsAfter, eventsBetween, usageAfter, usageBetween, type RunUsage, type TicketEvent } from "../lib/data";
-import { EVENTS_WINDOW_MS, USAGE_WINDOW_MS, useHistoryWindow } from "./useHistory";
-import { dayLanes, spendToday, stuckRows } from "./glance";
-import { Lanes, NotResponding, SpendToday, TakingLonger, WaitingTable } from "./overview-parts/Flow";
-import { OverviewLink } from "./overview-parts/Link";
+import { eventsAfter, eventsBetween, type TicketEvent } from "../lib/data";
+import { EVENTS_WINDOW_MS, useHistoryWindow } from "./useHistory";
+import { stuckRows } from "./glance";
+import { NotResponding } from "./overview-parts/Flow";
+import { BeingBuilt, NeedsAttention } from "./overview-parts/Brief";
 import { overviewGlance, type OverviewGlance } from "./glance";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
-import { Goals } from "./overview-parts/Goals";
 import { Heading } from "./overview-parts/Heading";
 import "./overview-parts/overview.css";
 
@@ -35,11 +34,8 @@ export function OverviewContent({ snapshot, failed = false, flow }: { snapshot: 
       </span>)}</div></div>
     </> : <>
       {failed && <p className="problem-line stale-line" role="alert"><span className="dot coral" aria-hidden="true" /><span>Couldn’t refresh. This is how things were at {snapshot.at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.</span></p>}
-      <p className="ov-label">Overview · updated just now</p>
       <Heading view={view} />
-      {view.requests.length > 0 && <p className="ov-answer"><OverviewLink to={{ view: "captain", project: view.slug }}>Answer {view.requests.length === 1 ? "it" : "them"} in Captain</OverviewLink> · {view.requests.length === 1 ? "1 thing is" : `${view.requests.length} things are`} waiting on you.</p>}
-      <div className="ov-flow">{flow ?? <WaitingTable rows={view.waits} slug={view.slug} />}</div>
-      <Goals view={view} />
+      <div className="b-stack"><BeingBuilt view={view} />{flow ?? <NeedsAttention waits={view.waits} stuck={[]} slug={view.slug} />}</div>
     </>}
   </div></div>;
 }
@@ -56,33 +52,22 @@ export function Overview({ ws, cr, error }: { ws: Workspace | null; me: string; 
   held.current = keepOverviewSnapshot(held.current, calculated, ws?.project.id);
 
   const snap = held.current;
-  // The flow cards read history themselves (FlowCards), so this component stays a pure calculation.
-  const flow = ws && snap && !failed ? <FlowCards ws={ws} cr={cr} snapshot={snap} /> : undefined;
+  // "Needs attention" reads the ticket history itself (Attention), so this component stays a pure calculation.
+  const flow = ws && snap && !failed ? <Attention ws={ws} snapshot={snap} /> : undefined;
   return <OverviewContent snapshot={snap} failed={failed} flow={flow} />;
 }
 
-/**
- * "Taking longer than usual" needs the ticket history, and the day's lanes and spend need what each
- * run recorded. Both are read once, then only what changed (useHistoryWindow); preview has its own.
- */
-function FlowCards({ ws, cr, snapshot }: { ws: Workspace; cr: CaptainRoom; snapshot: OverviewSnapshot }) {
+/** "Taking longer than usual" needs the ticket history: read once, then only what changed (useHistoryWindow). Preview has its own. */
+function Attention({ ws, snapshot }: { ws: Workspace; snapshot: OverviewSnapshot }) {
   const projectId = ws.project.id;
   const events = useHistoryWindow<TicketEvent>(ws.demoEvents ? undefined : projectId, EVENTS_WINDOW_MS, {
     read: (from, to) => eventsBetween(projectId, from, to),
     readAfter: (afterId, from) => eventsAfter(projectId, afterId, from),
   });
-  const usage = useHistoryWindow<RunUsage>(ws.demoUsage ? undefined : projectId, USAGE_WINDOW_MS, {
-    read: (from, to) => usageBetween(projectId, from, to),
-    readAfter: (afterId, from) => usageAfter(projectId, afterId, from),
-  });
   const { view, at: now } = snapshot;
-  const runs = ws.demoUsage ?? usage.rows;
   const gone = view.team.find((a) => a.state === "offline" && a.waiting > 0 && a.id !== ws.project.lead_agent_id);
   return <>
     <NotResponding agent={gone} slug={view.slug} projectId={projectId} />
-    <WaitingTable rows={view.waits} slug={view.slug} />
-    <TakingLonger rows={stuckRows(ws, ws.demoEvents ?? events.rows, view.team, now)} slug={view.slug} />
-    <Lanes day={dayLanes(ws, runs, view.team, cr.actionable, now)} />
-    <SpendToday spend={spendToday(ws, runs, view.team, now)} />
+    <NeedsAttention waits={gone ? view.waits.filter((r) => r.key !== `offline:${gone.id}`) : view.waits} stuck={stuckRows(ws, ws.demoEvents ?? events.rows, view.team, now)} slug={view.slug} />
   </>;
 }

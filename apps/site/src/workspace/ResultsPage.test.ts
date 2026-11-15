@@ -25,7 +25,7 @@ describe("the Results page", () => {
       ],
     );
     expect(html).toContain("1 ticket merged this week, reviewed. You were asked once.");
-    for (const text of ["This week", "Last 4 weeks", "Export audit report", "CSV", "JSON", "Time to merge", "30 min", "Sent back", "Merged tickets per day:", "Where you were asked", "Answer a question", "By agent", "Birch", "1 approved", "How these are counted"]) {
+    for (const text of ["This week", "Last 4 weeks", "Delivery", "Usage", "Export the audit report as CSV", "or JSON", "Time to merge", "30 min", "Sent back", "Merged tickets per day:", "Where you were asked", "Answer a question", "By agent", "Birch", "1 approved", "How these are counted"]) {
       expect(html).toContain(text);
     }
     expect(html).not.toMatch(/baseline|solo|per hour|hours worked|yourself/i);
@@ -37,13 +37,13 @@ describe("the Results page", () => {
       id, agent_id: agent, ticket_id: ticketId, kind, model: null, input_tokens: null, cache_read_tokens: null, cache_write_tokens: null, output_tokens: output, turns: null, seconds: 60, cost_usd: output === null ? null : 1.25, created_at: minutesAgo(10),
     });
     const runs = [ran(1, "build", BIRCH, done.id, 80_000), ran(2, "review", CAPTAIN, done.id, 12_000), ran(3, "reply", CAPTAIN, null, 8000)];
-    const html = renderToStaticMarkup(createElement(Results, { ws: { ...workspace([done]), demoEvents: [], demoUsage: runs }, at: NOW }));
-    for (const text of ["Where the usage went", "Building took 80% of the usage; reviewing 12%, agents talking 8%.", "80% · 1 run", "25% on top of building", "Per merged ticket", "100k tokens", "Most usage went on", "Sort search by newest", "92k", "Usage by agent", "Birch", "as the engine reports it", "$3.75", "How usage is counted"]) {
+    const html = renderToStaticMarkup(createElement(Results, { ws: { ...workspace([done]), demoEvents: [], demoUsage: runs }, at: NOW, view: "usage" }));
+    for (const text of ["Where the usage went", "Building took 80% of the usage; reviewing 12%, agents talking 8%.", "80% · 1 run", ">25%<", "on top of building", "Per merged ticket", "100k tokens", "Most usage went on", "Sort search by newest", "92k", "Usage by agent", "Birch", "as the engine reports it", "$3.75", "How usage is counted"]) {
       expect(html).toContain(text);
     }
     expect(html).not.toContain("report usage");
     // A run that reported nothing is said plainly, and the cost goes: not every run gave one.
-    const withSilent = renderToStaticMarkup(createElement(Results, { ws: { ...workspace([done]), demoEvents: [], demoUsage: [...runs, ran(4, "build", BIRCH, done.id, null)] }, at: NOW }));
+    const withSilent = renderToStaticMarkup(createElement(Results, { ws: { ...workspace([done]), demoEvents: [], demoUsage: [...runs, ran(4, "build", BIRCH, done.id, null)] }, at: NOW, view: "usage" }));
     expect(withSilent).toContain("1 of 4 runs didn&#x27;t report usage.");
     expect(withSilent).not.toContain("as the engine reports it");
     // The section's own text never names a ticket by key.
@@ -51,7 +51,7 @@ describe("the Results page", () => {
   });
 
   it("says in one sentence that no usage was reported, also when nothing merged", () => {
-    const html = page([ticket({ key: "SH-1" })], []);
+    const html = renderToStaticMarkup(createElement(Results, { ws: { ...workspace([ticket({ key: "SH-1" })]), demoEvents: [] }, at: NOW, view: "usage" }));
     expect(html).toContain("Where the usage went");
     expect(html).toContain("No runs have reported usage this week yet.");
     expect(html).not.toMatch(/on top of building|Usage by agent|How usage is counted/);

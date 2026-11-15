@@ -30,7 +30,7 @@ body { background: var(--bg); color: var(--text); font: 15px/1.5 var(--sans); -w
 a { color: var(--blue-text); }
 a:hover { color: var(--blue-hover); }
 /* Page titles and headlines are set in the serif; everything else stays in the sans. */
-h1 { font-family: var(--font-display); font-weight: 500 !important; letter-spacing: -0.005em !important; }
+h1 { font-family: var(--font-display); font-weight: 700 !important; letter-spacing: -0.03em !important; }
 h2, h3 { letter-spacing: 0 !important; }
 button, input, textarea, select { font: inherit; color: inherit; }
 input::placeholder, textarea::placeholder { color: var(--faint); }
@@ -273,3 +273,52 @@ h1, h2, h3, p { margin: 0; }
 .ak-needs-card .ak-actions > .ak-btn { min-height: 44px !important; height: auto !important; padding: 0 18px !important; border-radius: 8px !important; font-size: 14px !important; font-weight: 500 !important; background: var(--surface) !important; color: var(--text) !important; border: 1px solid var(--border-strong) !important; }
 .ak-needs-card .ak-actions > .ak-btn:first-child { background: var(--text) !important; color: var(--bg) !important; border-color: var(--text) !important; font-weight: 600 !important; }
 .ak-needs-card .ak-said p { margin: 0; }
+
+/* The Captain page scrolls under its composer. Fade the page out above it, so a card is never cut off flush against the box. */
+.ak-composer-dock::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 40px; background: linear-gradient(to bottom, transparent, var(--bg)); pointer-events: none; }
+
+/* Ink sidebar. The navigation is light text on ink at every width; the pages stay dark text on paper. */
+.ak-shell-nav { background: var(--nav-bg); border-right-color: var(--nav-bg); }
+.ak-shell-nav :focus-visible { outline-color: var(--nav-strong); }
+.ak-shell-brand { display: flex; align-items: center; gap: 8px; font-family: 'Geist', var(--font-sans); font-size: 20px; font-weight: 600; letter-spacing: -0.035em; color: var(--nav-strong); }
+.ak-shell-brand-auto { color: var(--nav-dim); }
+.ak-shell-mark { flex: none; width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 3.4; stroke-linecap: round; }
+.ak-shell-mark-2 { stroke: var(--nav-dim); }
+.ak-shell-project { color: var(--nav-text); }
+.ak-shell-nav-item { color: var(--nav-text); }
+.ak-shell-nav-item svg { color: var(--nav-dim); }
+.ak-shell-nav-item:hover, .ak-shell-project-menu summary:hover { background: var(--nav-hover); color: var(--nav-strong); }
+.ak-shell-nav-item[aria-current="page"] { background: var(--nav-active); box-shadow: none; color: var(--nav-strong); }
+.ak-shell-nav-item[aria-current="page"] svg { color: var(--nav-strong); }
+.ak-shell-need { color: #7A4700; }
+.ak-shell-sep { background: var(--nav-line); }
+.ak-shell-foot { border-top-color: var(--nav-line); }
+@media (max-width: 1099px) {
+  .ak-shell-nav { border-bottom-color: var(--nav-bg); }
+  .ak-shell-brand { font-size: 18px; }
+  .ak-shell-pages, .ak-shell-project-menu { background: var(--nav-bg); border-top-color: var(--nav-line); }
+  .ak-shell-project-menu summary { color: var(--nav-text); }
+  .ak-shell-nav-item[aria-current="page"] { background: none; border-top-color: var(--nav-strong); }
+}
+
+/* Dropdowns: one look everywhere, with our own arrow in place of the browser's. Hidden selects that sit over a custom control are left alone. */
+select:not([style*="opacity: 0"]) { appearance: none; -webkit-appearance: none; padding-left: 12px !important; padding-right: 30px !important; font-family: inherit; font-weight: 500; color: var(--text); cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%234A4F5A' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E") !important; background-repeat: no-repeat !important; background-position: right 10px center !important; background-size: 12px !important; }
+select:not([style*="opacity: 0"]):hover { border-color: var(--border-strong) !important; }
+.ak-shell-project select { appearance: auto; padding: 0 !important; background-image: none !important; }
+@media (max-width: 1099px) { .ak-shell-nav-item[aria-current="page"] { border-radius: 0; } }
+
+/* Collapsing the sidebar: a narrow rail of icons on wide screens. Phones keep their top bar and tab bar. */
+.ak-shell-nav { transition: flex-basis var(--dur-hover) var(--ease-out), max-width var(--dur-hover) var(--ease-out); }
+.ak-shell-toggle { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin-left: auto; padding: 0; border: 0; border-radius: 7px; background: none; color: var(--nav-dim); cursor: pointer; }
+.ak-shell-toggle:hover { background: var(--nav-hover); color: var(--nav-strong); }
+@media (min-width: 1100px) {
+  .ak-shell-nav.is-collapsed { flex: 0 0 64px !important; max-width: 64px !important; padding-left: 10px; padding-right: 10px; }
+  .is-collapsed .ak-shell-brand { flex-direction: column; gap: 14px; margin-left: 0; }
+  .is-collapsed .ak-shell-word, .is-collapsed .ak-shell-project, .is-collapsed .ak-shell-nav-item > span:not(.ak-shell-need) { display: none; }
+  .is-collapsed .ak-shell-toggle { margin-left: 0; }
+  .is-collapsed .ak-shell-nav-item { position: relative; justify-content: center; padding: 0; }
+  .is-collapsed .ak-shell-need { position: absolute; top: 2px; right: 0; padding: 0 5px; font-size: 10px; line-height: 16px; }
+  .is-collapsed .ak-shell-sep { margin: 10px 8px; }
+}
+@media (max-width: 1099px) { .ak-shell-toggle { display: none; } }
+@media (prefers-reduced-motion: reduce) { .ak-shell-nav { transition: none; } }

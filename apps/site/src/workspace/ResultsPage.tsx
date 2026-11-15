@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties,
 import * as data from "../lib/data";
 import type { AgentEfficiencyDay, RunUsage, TicketEvent } from "../lib/data";
 import { subscribeTabTraffic, tabTrafficBytes } from "../lib/tabTraffic";
-import { Button, Skeleton } from "../ui";
+import { Skeleton } from "../ui";
 import { Who } from "./bits";
 import { auditCsv, auditFileName, auditJson, auditRows, barsText, checkedText, dollars, duration, emptyText, headline, missingText, onTopText, pathText, periodLine, periodOf, rangeOf, results, runsText, sentBackCaption, sharesText, tokens, usage, usageEmptyText, usageHeadline, type Period, type Results as Numbers, type Usage } from "./results";
 import type { Workspace } from "./useWorkspace";
@@ -12,6 +12,12 @@ import { efficiencyLine, lastSevenDays, mb } from "./efficiency";
 // Results (S15): what the team got done in the period and how often it needed a person, counted from
 // the record, and the audit export. No baseline and no comparison (00-AMENDMENTS.md).
 
+type View = "delivery" | "usage";
+// Two reports, one at a time: what was delivered, and where the usage went.
+const VIEWS: { id: View; label: string }[] = [
+  { id: "delivery", label: "Delivery" },
+  { id: "usage", label: "Usage" },
+];
 const PERIODS: { id: Period; label: string }[] = [
   { id: "week", label: "This week" },
   { id: "4weeks", label: "Last 4 weeks" },
@@ -32,6 +38,10 @@ const HOW = {
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-xl)", padding: 20, minWidth: 0 };
 const heading: CSSProperties = { fontSize: 16, fontWeight: 600 };
+const headline2: CSSProperties = { fontFamily: "var(--font-display)", fontSize: "clamp(22px, 2.6vw, 30px)", lineHeight: 1.2, fontWeight: 700, letterSpacing: "-0.03em", maxWidth: 900 };
+const tiles: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 };
+const note: CSSProperties = { fontSize: 15, color: "var(--text-muted)" };
+const textLink: CSSProperties = { padding: 0, border: 0, background: "none", font: "inherit", fontSize: 15, color: "var(--text)", textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" };
 
 function download(name: string, type: string, text: string) {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -44,7 +54,8 @@ function download(name: string, type: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
-export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment the page was opened. */ at?: Date }) {
+export function Results({ ws, at, view: firstView }: { ws: Workspace; /** Tests only: the moment the page was opened. */ at?: Date; /** Tests only: the view to open on. */ view?: View }) {
+  const [view, setView] = useState<View>(() => firstView ?? (new URLSearchParams(location.search).get("view") === "usage" ? "usage" : "delivery"));
   const [period, setPeriod] = useState<Period>(() => periodOf(location.search));
   // The period ends when the page was opened, so the numbers don't shift while someone reads them.
   const [now] = useState(() => at ?? new Date());
@@ -97,14 +108,16 @@ export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment 
     };
   }, [ws.project.id, ws.demoUsage, ws.demoEvents, now]);
 
-  const choose = (p: Period) => {
-    setPeriod(p);
+  // The view and the period live in the address, so a link opens the same page.
+  const remember = (key: string, value: string, standard: string) => {
     const q = new URLSearchParams(location.search);
-    if (p === "week") q.delete("period");
-    else q.set("period", p);
+    if (value === standard) q.delete(key);
+    else q.set(key, value);
     const search = q.toString();
     history.replaceState(history.state, "", `${location.pathname}${search ? `?${search}` : ""}${location.hash}`);
   };
+  const choose = (p: Period) => (setPeriod(p), remember("period", p, "week"));
+  const show = (v: View) => (setView(v), remember("view", v, "delivery"));
 
   const r = useMemo(() => (events ? results(ws, events, period, now) : null), [ws, events, period, now]);
   const range = rangeOf(period, now);
@@ -116,55 +129,69 @@ export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment 
     else download(auditFileName(ws.project.slug, range, "json"), "application/json", auditJson(ws, rows, range));
   };
 
+  const group: CSSProperties = { display: "inline-flex", padding: 3, borderRadius: 10, background: "var(--surface)", border: "1px solid var(--line)" };
+  const seg = (on: boolean): CSSProperties => ({ height: 32, padding: "0 14px", border: 0, borderRadius: 7, fontSize: 14, cursor: "pointer", background: on ? "var(--surface-active)" : "transparent", color: "var(--text)", fontWeight: on ? 600 : 400 });
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24, maxWidth: 1180, minWidth: 0 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", justifyContent: "space-between" }}>
-        <div role="group" aria-label="Period" style={{ display: "inline-flex", padding: 3, borderRadius: 10, background: "var(--bg)", border: "1px solid var(--line)" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 16px", alignItems: "center" }}>
+        <div role="group" aria-label="View" style={group}>
+          {VIEWS.map((v) => (
+            <button key={v.id} type="button" className="ak-tap" aria-pressed={view === v.id} onClick={() => show(v.id)} style={seg(view === v.id)}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+        <div role="group" aria-label="Period" style={group}>
           {PERIODS.map((p) => (
-            <button key={p.id} type="button" className="ak-tap" aria-pressed={period === p.id} onClick={() => choose(p.id)} style={{ height: 30, padding: "0 12px", border: 0, borderRadius: 7, fontSize: 13, cursor: "pointer", background: period === p.id ? "var(--surface-raised)" : "transparent", color: period === p.id ? "var(--text)" : "var(--muted)" }}>
+            <button key={p.id} type="button" className="ak-tap" aria-pressed={period === p.id} onClick={() => choose(p.id)} style={seg(period === p.id)}>
               {p.label}
             </button>
           ))}
         </div>
-        <div role="group" aria-label="Export audit report" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 13, color: "var(--muted)" }}>Export audit report</span>
-          <Button size="sm" className="ak-tap" disabled={!events} onClick={() => exportAs("csv")} title="Every ticket event and decision in this period, as a spreadsheet">
-            CSV
-          </Button>
-          <Button size="sm" className="ak-tap" disabled={!events} onClick={() => exportAs("json")} title="Every ticket event and decision in this period, as JSON">
-            JSON
-          </Button>
-        </div>
+        <span style={note}>{periodLine(range)}</span>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <p style={{ fontSize: 14, color: "var(--muted)" }}>{periodLine(range)}</p>
-        {error ? (
-          <p role="alert" style={{ fontSize: 14, color: "var(--danger)" }}>
-            {error}
+      {view === "delivery" ? (
+        <>
+          {error ? (
+            <p role="alert" style={{ fontSize: 15, color: "var(--danger)" }}>
+              {error}
+            </p>
+          ) : !r ? (
+            <Skeleton lines={3} />
+          ) : (
+            <h2 style={headline2}>{r.merged.length ? headline(r) : emptyText(r)}</h2>
+          )}
+          {r && r.merged.length > 0 && <Body ws={ws} r={r} />}
+          <p style={{ display: "flex", flexWrap: "wrap", gap: "4px 8px", fontSize: 15 }}>
+            <button type="button" style={textLink} disabled={!events} onClick={() => exportAs("csv")} title="Every ticket event and decision in this period, as a spreadsheet">
+              Export the audit report as CSV
+            </button>
+            <button type="button" style={textLink} disabled={!events} onClick={() => exportAs("json")} title="Every ticket event and decision in this period, as JSON">
+              or JSON
+            </button>
           </p>
-        ) : !r ? (
-          <Skeleton lines={3} />
-        ) : (
-          <h2 style={{ fontFamily: "var(--font-display)", fontSize: "clamp(22px, 3.2vw, 36px)", lineHeight: 1.2, fontWeight: 500, letterSpacing: "var(--tracking-tight)", maxWidth: 900 }}>{r.merged.length ? headline(r) : emptyText(r)}</h2>
-        )}
-      </div>
-
-      {r && r.merged.length > 0 && <Body ws={ws} r={r} />}
-      <section aria-label="AutoKolab traffic" style={card}>
-        <h3 style={heading}>AutoKolab traffic</h3>
-        {efficiencyError ? <p role="alert" style={{ color: "var(--danger)", fontSize: 14 }}>{efficiencyError}</p>
-          : efficiencyDays === null ? <Skeleton lines={1} />
-            : <p style={{ fontSize: 14, lineHeight: 1.5, marginTop: 8 }}>{efficiencyLine(efficiencyDays, now)}</p>}
-        <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 8 }}>Runner totals include these agents’ work in other projects. Downloads count REST response bytes.</p>
-        <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 8 }}>This tab downloaded about {mb(tabBytes)} from the database since it opened.</p>
-      </section>
-      {usageError ? (
-        <p role="alert" style={{ fontSize: 14, color: "var(--danger)" }}>
-          {usageError}
-        </p>
+        </>
       ) : (
-        r && runs && <UsageSection ws={ws} u={usage(ws, runs, period, now)} />
+        <>
+          {usageError ? (
+            <p role="alert" style={{ fontSize: 15, color: "var(--danger)" }}>
+              {usageError}
+            </p>
+          ) : r && runs ? (
+            <UsageSection ws={ws} u={usage(ws, runs, period, now)} />
+          ) : (
+            <Skeleton lines={3} />
+          )}
+          <details aria-label="AutoKolab traffic" style={note}>
+            <summary style={{ cursor: "pointer" }}>AutoKolab traffic</summary>
+            {efficiencyError ? <p role="alert" style={{ color: "var(--danger)", marginTop: 8 }}>{efficiencyError}</p>
+              : efficiencyDays === null ? <Skeleton lines={1} />
+                : <p style={{ lineHeight: 1.5, marginTop: 8 }}>{efficiencyLine(efficiencyDays, now)}</p>}
+            <p style={{ marginTop: 8 }}>Runner totals include these agents’ work in other projects. Downloads count REST response bytes.</p>
+            <p style={{ marginTop: 8 }}>This tab downloaded about {mb(tabBytes)} from the database since it opened.</p>
+          </details>
+        </>
       )}
     </div>
   );
@@ -173,118 +200,126 @@ export function Results({ ws, at }: { ws: Workspace; /** Tests only: the moment 
 /** Where the usage went (AK-92): building against reviewing, agents talking and questions, from what each run's tool reported. */
 function UsageSection({ ws, u }: { ws: Workspace; u: Usage }) {
   const empty = usageEmptyText(u);
+  if (empty) {
+    return (
+      <section aria-labelledby="usage-heading" style={{ ...card, display: "flex", flexDirection: "column", gap: 8 }}>
+        <h3 id="usage-heading" style={heading}>
+          Where the usage went
+        </h3>
+        <p style={note}>{empty}</p>
+      </section>
+    );
+  }
   const missing = missingText(u);
-  const onTop = onTopText(u);
-  const row: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, fontSize: 14 };
-  const figure: CSSProperties = { fontFamily: "var(--font-mono)", color: "var(--text-secondary)", whiteSpace: "nowrap" };
+  // "22% on top of building": the share is the figure, the rest says what it is a share of.
+  const onTop = /^(\S+)\s+(.*)$/.exec(onTopText(u) ?? "");
+  const most = Math.max(1, ...u.top.map((t) => t.tokens));
+  const row: CSSProperties = { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, fontSize: 15 };
+  const figure: CSSProperties = { fontWeight: 600, whiteSpace: "nowrap" };
+  const track: CSSProperties = { height: 6, borderRadius: 999, background: "var(--track)" };
+  const fill = (percent: number): CSSProperties => ({ display: "block", height: "100%", width: `${percent}%`, borderRadius: 999, background: "var(--text)" });
   return (
-    <section aria-labelledby="usage-heading" style={{ ...card, display: "flex", flexDirection: "column", gap: 20 }}>
-      <h3 id="usage-heading" style={heading}>
-        Where the usage went
-      </h3>
-      {empty ? (
-        <p style={{ fontSize: 14, color: "var(--muted)" }}>{empty}</p>
-      ) : (
-        <>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <p style={{ fontSize: 18, lineHeight: 1.35, maxWidth: 820 }}>{usageHeadline(u)}</p>
-            {missing && <p style={{ fontSize: 13, color: "var(--muted)" }}>{missing}</p>}
-          </div>
+    <>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <h2 style={headline2}>{usageHeadline(u)}</h2>
+        {missing && <p style={note}>{missing}</p>}
+      </div>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "20px 32px" }}>
-            <div role="img" aria-label={sharesText(u)} style={{ display: "grid", gap: 14, flex: "2 1 320px", minWidth: 0, alignContent: "start" }}>
-              {u.kinds.map((k) => (
-                <div key={k.kind} aria-hidden="true" title={`${k.label}: ${tokens(k.tokens)} tokens over ${runsText(k.runs)}`} style={{ display: "grid", gap: 6 }}>
+      <div style={tiles}>
+        <Tile label="All usage" value={`${tokens(u.total)} tokens`} caption="as each agent's tool reported it" how={HOW.usage} />
+        {u.perMerged !== null && <Tile label="Per merged ticket" value={`${tokens(u.perMerged)} tokens`} caption="all usage, coordination included" how={HOW.perMerged} />}
+        {onTop && <Tile label="Coordination" value={onTop[1]} caption={onTop[2]} how={HOW.onTop} />}
+        {u.costUsd !== null && <Tile label="Cost, as the engine reports it" value={dollars(u.costUsd)} caption="an estimate at API prices" how={HOW.cost} />}
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "stretch" }}>
+        <section aria-labelledby="usage-heading" style={{ ...card, flex: "2 1 420px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <h3 id="usage-heading" style={heading}>
+            Where the usage went
+          </h3>
+          <div role="img" aria-label={sharesText(u)} style={{ display: "grid", gap: 16 }}>
+            {u.kinds.map((k) => (
+              <div key={k.kind} aria-hidden="true" title={`${k.label}: ${tokens(k.tokens)} tokens over ${runsText(k.runs)}`} style={{ display: "grid", gap: 6 }}>
+                <span style={row}>
+                  {k.label}
+                  <span style={figure}>
+                    {k.percent}% · {runsText(k.runs)}
+                  </span>
+                </span>
+                <span style={track}>
+                  <span style={fill(k.percent)} />
+                </span>
+                {k.paths.length > 0 && (
+                  <span title={HOW.paths} style={{ display: "grid", gap: 4, paddingLeft: 14 }}>
+                    {k.paths.map((p) => (
+                      <span key={p.path ?? "none"} style={{ ...row, color: "var(--text-muted)" }}>
+                        {p.label}
+                        <span style={{ whiteSpace: "nowrap" }}>{pathText(p)}</span>
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+        {u.top.length > 0 && (
+          <section style={{ ...card, flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 16 }}>
+            <h3 style={heading}>Most usage went on</h3>
+            <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 14 }}>
+              {u.top.map((t) => (
+                <li key={t.ticket.id} style={{ display: "grid", gap: 6 }}>
                   <span style={row}>
-                    {k.label}
-                    <span style={figure}>
-                      {k.percent}% · {runsText(k.runs)}
-                    </span>
-                  </span>
-                  <span style={{ height: 6, borderRadius: 999, background: "var(--track)" }}>
-                    <span style={{ display: "block", height: "100%", width: `${k.percent}%`, borderRadius: 999, background: "var(--muted)" }} />
-                  </span>
-                  {k.paths.length > 0 && (
-                    <span title={HOW.paths} style={{ display: "grid", gap: 4, paddingLeft: 12 }}>
-                      {k.paths.map((p) => (
-                        <span key={p.path ?? "none"} style={{ ...row, fontSize: 13, color: "var(--muted)" }}>
-                          {p.label}
-                          <span style={{ ...figure, color: "var(--muted)" }}>{pathText(p)}</span>
-                        </span>
-                      ))}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <dl style={{ display: "grid", gap: 14, margin: 0, flex: "1 1 240px", minWidth: 0, alignContent: "start" }}>
-              {onTop && <Fact name="Coordination" value={onTop} how={HOW.onTop} />}
-              {u.perMerged !== null && <Fact name="Per merged ticket" value={`${tokens(u.perMerged)} tokens`} how={HOW.perMerged} />}
-              <Fact name="All usage" value={`${tokens(u.total)} tokens`} how={HOW.usage} />
-              {u.costUsd !== null && <Fact name="Cost, as the engine reports it" value={dollars(u.costUsd)} how={HOW.cost} />}
-            </dl>
-          </div>
-
-          {u.top.length > 0 && (
-            <div style={{ display: "grid", gap: 8 }}>
-              <h4 style={{ fontSize: 13, fontWeight: 500, color: "var(--muted)" }}>Most usage went on</h4>
-              <ol style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
-                {u.top.map((t) => (
-                  <li key={t.ticket.id} style={row}>
                     <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{t.name}</span>
                     <span style={figure}>{tokens(t.tokens)}</span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          )}
-
-          <UsageAgents ws={ws} u={u} />
-
-          <details style={{ fontSize: 13, color: "var(--muted)" }}>
-            <summary style={{ cursor: "pointer" }}>How usage is counted</summary>
-            <dl style={{ display: "grid", gap: 8, margin: "12px 0 0", lineHeight: 1.5, maxWidth: 720 }}>
-              {(
-                [
-                  ["Usage", HOW.usage],
-                  ["Coordination", HOW.onTop],
-                  ["Review paths", HOW.paths],
-                  ["Per merged ticket", HOW.perMerged],
-                  ["Cost", HOW.cost],
-                ] as const
-              ).map(([name, how]) => (
-                <div key={name}>
-                  <dt style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{name}</dt>
-                  <dd style={{ margin: 0 }}>{how}</dd>
-                </div>
+                  </span>
+                  <span aria-hidden="true" style={track}>
+                    <span style={fill((t.tokens / most) * 100)} />
+                  </span>
+                </li>
               ))}
-            </dl>
-          </details>
-        </>
-      )}
-    </section>
-  );
-}
+            </ol>
+          </section>
+        )}
+      </div>
 
-function Fact({ name, value, how }: { name: string; value: string; how: string }) {
-  return (
-    <div title={how} style={{ display: "grid", gap: 2 }}>
-      <dt style={{ fontSize: 13, color: "var(--muted)" }}>{name}</dt>
-      <dd style={{ margin: 0, fontSize: 18, fontWeight: 500 }}>{value}</dd>
-    </div>
+      <section style={{ ...card, padding: 0 }}>
+        <h3 style={{ ...heading, padding: "16px 20px" }}>Usage by agent</h3>
+        <UsageAgents ws={ws} u={u} />
+      </section>
+
+      <details style={note}>
+        <summary style={{ cursor: "pointer" }}>How usage is counted</summary>
+        <dl style={{ display: "grid", gap: 8, margin: "12px 0 0", lineHeight: 1.5, maxWidth: 720 }}>
+          {(
+            [
+              ["Usage", HOW.usage],
+              ["Coordination", HOW.onTop],
+              ["Review paths", HOW.paths],
+              ["Per merged ticket", HOW.perMerged],
+              ["Cost", HOW.cost],
+            ] as const
+          ).map(([name, how]) => (
+            <div key={name}>
+              <dt style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{name}</dt>
+              <dd style={{ margin: 0 }}>{how}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
+    </>
   );
 }
 
 function UsageAgents({ ws, u }: { ws: Workspace; u: Usage }) {
-  const th: CSSProperties = { textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--muted)", padding: "8px 8px 8px 0", verticalAlign: "bottom" };
-  const td: CSSProperties = { fontSize: 14, padding: "10px 8px 10px 0", borderTop: "1px solid var(--line-soft)", verticalAlign: "middle" };
+  const th: CSSProperties = { textAlign: "left", fontSize: 14, fontWeight: 500, color: "var(--text-muted)", padding: "10px 8px", verticalAlign: "bottom" };
+  const td: CSSProperties = { fontSize: 15, padding: "12px 8px", borderTop: "1px solid var(--line-soft)", verticalAlign: "middle" };
+  const edge = { paddingLeft: 20 };
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-      <caption className="sr-only">Usage by agent</caption>
       <thead>
         <tr>
-          <th scope="col" style={{ ...th, width: "50%" }}>
+          <th scope="col" style={{ ...th, ...edge, width: "40%" }}>
             Agent
           </th>
           <th scope="col" style={th}>
@@ -299,7 +334,7 @@ function UsageAgents({ ws, u }: { ws: Workspace; u: Usage }) {
       <tbody>
         {u.agents.map((a) => (
           <tr key={a.id}>
-            <th scope="row" style={{ ...td, fontWeight: 400, textAlign: "left", overflow: "hidden" }}>
+            <th scope="row" style={{ ...td, ...edge, fontWeight: 400, textAlign: "left", overflow: "hidden" }}>
               <Who ws={ws} id={a.id} />
             </th>
             <td style={td}>{a.runs}</td>
@@ -317,7 +352,7 @@ function UsageAgents({ ws, u }: { ws: Workspace; u: Usage }) {
 function Body({ ws, r }: { ws: Workspace; r: Numbers }) {
   return (
     <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+      <div style={tiles}>
         <Tile label="Merged" value={r.merged.length} caption={checkedText(r)} how={HOW.merged} />
         {r.medianMs !== null && <Tile label="Time to merge" value={duration(r.medianMs)} caption="median, start to done" how={HOW.time} />}
         <Tile label="Times you were asked" value={r.asked.total} caption="a ticket needed a person" how={HOW.asked} />
@@ -344,7 +379,7 @@ function Body({ ws, r }: { ws: Workspace; r: Numbers }) {
         </section>
       )}
 
-      <details style={{ fontSize: 13, color: "var(--muted)" }}>
+      <details style={note}>
         <summary style={{ cursor: "pointer" }}>How these are counted</summary>
         <dl style={{ display: "grid", gap: 8, margin: "12px 0 0", lineHeight: 1.5, maxWidth: 720 }}>
           {(
@@ -369,9 +404,9 @@ function Body({ ws, r }: { ws: Workspace; r: Numbers }) {
 function Tile({ label, value, caption, how }: { label: string; value: ReactNode; caption: string; how: string }) {
   return (
     <div title={how} style={{ ...card, display: "flex", flexDirection: "column", gap: 6 }}>
-      <span style={{ fontSize: 13, color: "var(--muted)" }}>{label}</span>
-      <span style={{ fontSize: 30, lineHeight: 1.15, fontWeight: 500, letterSpacing: "var(--tracking-tight)" }}>{value}</span>
-      <span style={{ fontSize: 13, color: "var(--faint)" }}>{caption}</span>
+      <span style={{ fontSize: 15, fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: 34, lineHeight: 1.15, fontWeight: 700, letterSpacing: "-0.03em", marginTop: 4 }}>{value}</span>
+      <span style={note}>{caption}</span>
     </div>
   );
 }
@@ -384,10 +419,10 @@ function Bars({ r }: { r: Numbers }) {
       {r.bars.map((b) => (
         <div key={b.name} aria-hidden="true" title={`${b.name}: ${b.count} merged`} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
           <div style={{ flex: 1, width: "100%", maxWidth: 72, display: "flex", flexDirection: "column", justifyContent: "flex-end", alignItems: "center", gap: 6, borderBottom: "1px solid var(--line)" }}>
-            <span style={{ font: "12px var(--font-mono)", color: "var(--text-secondary)" }}>{b.count}</span>
-            <div style={{ width: "100%", height: `${(b.count / max) * 82}%`, background: "var(--green)", borderRadius: "6px 6px 2px 2px" }} />
+            <span style={{ fontSize: 15, fontWeight: 600 }}>{b.count}</span>
+            <div style={{ width: "100%", height: `${(b.count / max) * 82}%`, background: "var(--text)", borderRadius: "6px 6px 2px 2px" }} />
           </div>
-          <span style={{ fontSize: 12, color: "var(--muted)", whiteSpace: "nowrap" }}>{b.label}</span>
+          <span style={{ fontSize: 14, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{b.label}</span>
         </div>
       ))}
     </div>
@@ -400,12 +435,12 @@ function Asked({ r }: { r: Numbers }) {
     <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 14 }}>
       {r.asked.kinds.map((k) => (
         <li key={k.kind} style={{ display: "grid", gap: 6 }}>
-          <span style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 14 }}>
+          <span style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 15 }}>
             {k.label}
-            <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-secondary)" }}>{k.count}</span>
+            <span style={{ fontWeight: 600 }}>{k.count}</span>
           </span>
           <span aria-hidden="true" style={{ height: 6, borderRadius: 999, background: "var(--track)" }}>
-            <span style={{ display: "block", height: "100%", width: `${(k.count / max) * 100}%`, borderRadius: 999, background: "var(--amber)" }} />
+            <span style={{ display: "block", height: "100%", width: `${(k.count / max) * 100}%`, borderRadius: 999, background: "var(--text)" }} />
           </span>
         </li>
       ))}
@@ -414,8 +449,8 @@ function Asked({ r }: { r: Numbers }) {
 }
 
 function Agents({ ws, r }: { ws: Workspace; r: Numbers }) {
-  const th: CSSProperties = { textAlign: "left", fontSize: 12, fontWeight: 500, color: "var(--muted)", padding: "10px 8px", verticalAlign: "bottom" };
-  const td: CSSProperties = { fontSize: 14, padding: "12px 8px", borderTop: "1px solid var(--line-soft)", verticalAlign: "middle" };
+  const th: CSSProperties = { textAlign: "left", fontSize: 14, fontWeight: 500, color: "var(--text-muted)", padding: "10px 8px", verticalAlign: "bottom" };
+  const td: CSSProperties = { fontSize: 15, padding: "12px 8px", borderTop: "1px solid var(--line-soft)", verticalAlign: "middle" };
   const edge = { paddingLeft: 20 };
   return (
     <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
@@ -457,9 +492,4 @@ function Agents({ ws, r }: { ws: Workspace; r: Numbers }) {
   );
 }
 
-const Dash = () => (
-  <span style={{ color: "var(--faint)" }}>
-    <span aria-hidden="true">—</span>
-    <span className="sr-only">Not counted</span>
-  </span>
-);
+const Dash = () => <span style={{ color: "var(--text-muted)" }}>Not counted</span>;

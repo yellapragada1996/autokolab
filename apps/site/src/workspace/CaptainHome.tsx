@@ -35,7 +35,6 @@ import {
 import { ApproveChange } from "./ApproveChange";
 import { EvidencePanel } from "./EvidencePanel";
 import { agentDot } from "./People";
-import { captainLine, type CaptainLine } from "./glance";
 import { withTicketLinks } from "./Room";
 import { planKey, replyKey, type Answered, type CaptainRoom, type ReplyTarget } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
@@ -65,7 +64,6 @@ export function CaptainHome({ ws, cr, me }: { ws: Workspace; cr: CaptainRoom; me
 
   return (
     <div style={{ flex: 1, width: "100%", maxWidth: 860, display: "flex", flexDirection: "column", gap: 28 }}>
-      <CaptainHeader ws={ws} />
       <NeedsCard ws={ws} cr={cr} me={me} pulse={pulse} />
       <Conversation ws={ws} cr={cr} me={me} pulse={pulse} onTarget={toCard} />
     </div>
@@ -74,27 +72,8 @@ export function CaptainHome({ ws, cr, me }: { ws: Workspace; cr: CaptainRoom; me
 
 // ------------------------------------------------------------------ what Captain is doing, and what waits on you
 
-const TONE: Record<CaptainLine["tone"], string> = { live: "var(--blue)", quiet: "var(--text-dim)", problem: "var(--coral)" };
 const cardBox: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)" };
 
-/** The page title and one card saying what Captain is doing right now. */
-function CaptainHeader({ ws }: { ws: Workspace }) {
-  const line = captainLine(ws, new Date());
-  return (
-    <header style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {line && (
-        <div role="status" style={{ ...cardBox, display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px 20px", padding: "14px 18px", fontSize: 14 }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 600 }}>
-            <span aria-hidden="true" className={line.tone === "live" ? "ak-live" : undefined} style={{ width: 8, height: 8, borderRadius: "50%", background: TONE[line.tone], flex: "none" }} />
-            {line.state}
-          </span>
-          <span style={{ color: "var(--text-secondary)" }}>{line.text}</span>
-          {line.where && <span style={{ marginLeft: "auto", fontSize: 13, color: "var(--text-muted)" }}>{line.where}</span>}
-        </div>
-      )}
-    </header>
-  );
-}
 
 /** Inside the "Needs you" card a message is a row: what it's about in bold, how long it has waited, then the question and its buttons. */
 const NeedRow = createContext<{ title: string; meta: string } | null>(null);

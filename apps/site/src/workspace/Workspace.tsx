@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { Project, Status, TicketEvent } from "../lib/data";
 import { go, href, onNav, type ProjectView, type Route } from "../lib/router";
 import type { Profile } from "../lib/session";
-import { AgentAvatar, Button, FullLogo, Icon, Svg } from "../ui";
+import { AgentAvatar, FullLogo, Icon, Svg } from "../ui";
 import { CommandPalette, useCommandPalette, type Command } from "../ui/CommandPalette";
 import { workHeadline } from "./work";
 import { Backlog } from "./Backlog";
@@ -14,7 +14,6 @@ import { Room } from "./Room";
 import { GuidePage } from "./GuidePage";
 import { ListView } from "./ListView";
 import { LookFirst } from "./LookFirst";
-import { NewTicket } from "./NewTicket";
 import { Overview } from "./Overview";
 import { People } from "./People";
 import { PlanPage } from "./PlanPage";
@@ -26,14 +25,14 @@ import { useDecisionNotifications } from "./useDecisionNotifications";
 import { useWorkspace, type Workspace as WS } from "./useWorkspace";
 
 // The project workspace (AK-43, 02-information-architecture.md): the AppShell with its sidebar
-// (Captain · Overview · Work · Room · People, then Decisions · Results · Settings) and the current page.
+// (Captain · Overview · Tickets · Room · People, then Decisions · Results · Settings) and the current page.
 
 interface NavItem {
   id: ProjectView;
   label: string;
   icon: React.ReactNode;
   sub: string;
-  /** "G then W": shown in the item's tooltip and ⌘K, never printed on the item. */
+  /** "G then T": shown in the item's tooltip and ⌘K, never printed on the item. */
   key?: string;
   /** The views that live under this item. */
   under: (ProjectView | "ticket" | "plan")[];
@@ -45,7 +44,7 @@ const NAV_MAIN: NavItem[] = [
   { id: "people", label: "Team", icon: Icon.people, sub: "People and agents working on this project", key: "P", under: ["people", "connect"] },
 ];
 const NAV_RECORDS: NavItem[] = [
-  { id: "board", label: "Work", icon: Icon.board, sub: "All work and goals", key: "W", under: ["board", "goals", "backlog", "list", "ticket"] },
+  { id: "board", label: "Tickets", icon: Icon.board, sub: "All work and goals", key: "T", under: ["board", "goals", "backlog", "list", "ticket"] },
   { id: "room", label: "Room", icon: Icon.chat, sub: "What the agents say to each other. You only need Captain", key: "R", under: ["room"] },
   { id: "decisions", label: "Guide", icon: Icon.decisions, sub: "What every agent reads first: the project guide and the decisions in force", key: "D", under: ["decisions", "guide"] },
   { id: "results", label: "Results", icon: Icon.results, sub: "Whether it's working", key: "S", under: ["results"] },
@@ -53,7 +52,7 @@ const NAV_RECORDS: NavItem[] = [
 ];
 const NAV = [...NAV_MAIN, ...NAV_RECORDS];
 
-/** The views inside Work and Decisions, as tabs. */
+/** The views inside Tickets and Decisions, as tabs. */
 const WORK_TABS: { id: ProjectView; label: string }[] = [
   { id: "board", label: "By agent" },
   { id: "goals", label: "By feature" },
@@ -97,11 +96,10 @@ export function Workspace({
   const captain = useCaptainRoom(project, ws, profile.id, demoRoom);
   const notifications = useDecisionNotifications(profile.id, project.id, project.slug, captain.actionable, !!ws && captain.room !== undefined);
   const [addAgent, setAddAgent] = useState(false);
-  const [newTicket, setNewTicket] = useState<{ status?: Status } | null>(null);
   const [paletteOpen, setPaletteOpen] = useCommandPalette();
   const me = profile.id;
 
-  // C: new ticket (like Linear); G then O / W / R / P / D / S: go to that page. Not while typing.
+  // G then O / T / R / P / D / S: go to that page. Not while typing.
   useEffect(() => {
     let g = 0;
     const onKey = (e: KeyboardEvent) => {
@@ -118,10 +116,6 @@ export function Workspace({
         return;
       }
       if (k === "G") g = Date.now();
-      else if (k === "C") {
-        e.preventDefault();
-        setNewTicket({});
-      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -138,11 +132,10 @@ export function Workspace({
   const commands = useMemo<Command[]>(() => {
     const c: Command[] = [
       { id: "add-agent", label: "Add an agent", run: () => setAddAgent(true) },
-      { id: "new", label: "New ticket", hint: "C", run: () => setNewTicket({}) },
       ...NAV.map((n) => ({ id: `go-${n.id}`, label: `Go to ${n.label}`, hint: n.key && `G then ${n.key}`, run: () => go({ view: n.id, project: project.slug }) })),
       ...[...WORK_TABS, ...DECISION_TABS]
         .filter((t) => !NAV.some((n) => n.id === t.id))
-        .map((t) => ({ id: `go-${t.id}`, label: `Go to ${t.id === "guide" ? "the Project Guide" : `Work · ${t.label}`}`, run: () => go({ view: t.id, project: project.slug }) })),
+        .map((t) => ({ id: `go-${t.id}`, label: `Go to ${t.id === "guide" ? "the Project Guide" : `Tickets · ${t.label}`}`, run: () => go({ view: t.id, project: project.slug }) })),
       ...(ws?.tickets ?? []).map((t) => ({ id: `t-${t.id}`, label: `${t.key} ${t.title}`, hint: t.status.replace("_", " "), run: () => go({ view: "ticket", project: project.slug, key: t.key }) })),
       ...projects.filter((p) => p.id !== project.id).map((p) => ({ id: `p-${p.id}`, label: `Switch to ${p.name}`, run: () => go({ view: "captain", project: p.slug }) })),
       { id: "new-project", label: "New project", run: () => go({ view: "new-project" }) },
@@ -174,14 +167,6 @@ export function Workspace({
               <span style={{ fontSize: 15, color: "var(--text-muted)" }}>{section?.id === "board" && ws && route.view !== "ticket" ? workHeadline(ws) : title.sub}</span>
             </div>
           )}
-          <div className="ak-header-actions" style={{ display: "flex", gap: 8, alignItems: "center", marginLeft: "auto" }}>
-            <Button variant="secondary" size="sm" className="ak-tap" onClick={() => setPaletteOpen(true)} title="Search and jump anywhere (⌘K)" aria-keyshortcuts="Meta+K Control+K">
-              <Svg size={15} width={2}>
-                {Icon.search}
-              </Svg>
-              Search
-            </Button>
-          </div>
         </header>}
         <div className={route.view === "overview" ? "ak-page ak-overview-page" : "ak-page"} style={{ flex: 1, padding: route.view === "overview" ? 0 : route.view === "ticket" ? "8px 48px 48px" : route.view === "captain" ? "20px 48px 0" : "24px 48px 56px", minWidth: 0, display: "flex", flexDirection: "column", gap: tabs ? 16 : 0 }}>
           {tabs && <Tabs label={`${section!.label} views`} tabs={tabs} current={route.view} project={project.slug} />}
@@ -199,15 +184,15 @@ export function Workspace({
           ) : route.view === "room" ? (
             <Room ws={ws} profile={profile} demo={demoRoom} />
           ) : route.view === "board" || route.view === "goals" ? (
-            <Board ws={ws} me={me} needs={captain.needs} groupBy={route.view === "goals" ? "epic" : "assignee"} onNew={(status) => setNewTicket({ status })} />
+            <Board ws={ws} me={me} needs={captain.needs} groupBy={route.view === "goals" ? "epic" : "assignee"} />
           ) : route.view === "settings" ? (
             <Settings ws={ws} me={me} notifications={notifications} onProjectChanged={onProjectChanged} />
           ) : route.view === "results" ? (
             <Results ws={ws} />
           ) : route.view === "backlog" ? (
-            <Backlog ws={ws} me={me} onNew={() => setNewTicket({ status: "backlog" })} />
+            <Backlog ws={ws} me={me} />
           ) : route.view === "list" ? (
-            <ListView ws={ws} me={me} onNew={() => setNewTicket({})} />
+            <ListView ws={ws} me={me} />
           ) : route.view === "guide" ? (
             <GuidePage ws={ws} />
           ) : route.view === "decisions" ? (
@@ -220,17 +205,6 @@ export function Workspace({
         </div>
       </main>
 
-      {ws && newTicket && (
-        <NewTicket
-          ws={ws}
-          initialStatus={newTicket.status}
-          onClose={() => setNewTicket(null)}
-          onCreated={(t) => {
-            setNewTicket(null);
-            go({ view: "ticket", project: project.slug, key: t.key });
-          }}
-        />
-      )}
       {ws && addAgent && <ConnectAgents ws={ws} me={me} onClose={() => setAddAgent(false)} />}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
       {ws && route.view === "captain" && route.look &&<LookFirst ws={ws} cr={captain} me={me} ticketKey={route.look} covered={!!route.show} />}
@@ -240,6 +214,8 @@ export function Workspace({
 }
 
 // ------------------------------------------------------------------ sidebar
+
+const NAV_COLLAPSED = "ak-nav-collapsed";
 
 export function Sidebar({ needs, project, projects, route, onSignOut }: {
   needs: number; project: Project; projects: Project[];
@@ -259,9 +235,24 @@ export function Sidebar({ needs, project, projects, route, onSignOut }: {
     return <li key={view}><a href={href(to)} onClick={onNav(to)}>{label}</a></li>;
   };
   const by = (id: string) => NAV.find((n) => n.id === id)!;
+  // Collapsed, the sidebar is a narrow rail of icons. The choice is remembered on this device.
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(NAV_COLLAPSED) === "1"; } catch { return false; } });
+  const toggle = () => setCollapsed((was) => { try { localStorage.setItem(NAV_COLLAPSED, was ? "0" : "1"); } catch { /* private mode: the choice lasts for this visit */ } return !was; });
   // One list, every page once. On a phone the first three are the tab bar and the rest sit in Menu.
-  return <aside className="ak-nav ak-shell-nav" aria-label="Project navigation">
-    <div className="ak-shell-brand">AutoKolab</div>
+  return <aside className={`ak-nav ak-shell-nav${collapsed ? " is-collapsed" : ""}`} aria-label="Project navigation">
+    <div className="ak-shell-brand">
+      <svg className="ak-shell-mark" viewBox="4 4 56 56" aria-hidden="true">
+        <defs><clipPath id="ak-mark-clip"><rect x="6" y="6" width="52" height="52" rx="14" /></clipPath></defs>
+        <g clipPath="url(#ak-mark-clip)">
+          <circle cx="6" cy="58" r="14" /><circle cx="6" cy="58" r="28" /><circle cx="6" cy="58" r="42" />
+          <g className="ak-shell-mark-2"><circle cx="58" cy="6" r="14" /><circle cx="58" cy="6" r="28" /><circle cx="58" cy="6" r="42" /></g>
+        </g>
+      </svg>
+      <span className="ak-shell-word"><span className="ak-shell-brand-auto">Auto</span>Kolab</span>
+      <button type="button" className="ak-shell-toggle" onClick={toggle} aria-expanded={!collapsed} aria-label={collapsed ? "Expand navigation" : "Collapse navigation"} title={collapsed ? "Expand navigation" : "Collapse navigation"}>
+        <Svg size={16} width={1.7}><rect x="3" y="4" width="18" height="16" rx="3" /><path d="M9 4v16" /></Svg>
+      </button>
+    </div>
     <label className="ak-shell-project">
       <span>{project.name}</span><span aria-hidden="true">⌄</span>
       <select aria-label="Switch project" value={project.slug} onChange={(e) => e.target.value === "__new" ? go({ view: "new-project" }) : go({ view: "captain", project: e.target.value })}>
@@ -277,7 +268,7 @@ export function Sidebar({ needs, project, projects, route, onSignOut }: {
       <button type="button" className="ak-shell-nav-item" onClick={onSignOut}><Svg size={16} width={1.7}><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10" /></Svg><span>Sign out</span></button>
     </div>
     <details className="ak-shell-project-menu"><summary>Menu</summary><ul>
-      {item("board", "Work")}{item("results", "Results")}{item("room", "Room")}{item("guide", "Guide")}{item("settings", "Settings")}
+      {item("board", "Tickets")}{item("results", "Results")}{item("room", "Room")}{item("guide", "Guide")}{item("settings", "Settings")}
       <li><button type="button" onClick={onSignOut}>Sign out</button></li>
     </ul></details>
   </aside>;

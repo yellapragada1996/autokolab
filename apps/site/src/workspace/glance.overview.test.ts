@@ -3,7 +3,6 @@ import { agent, at, BIRCH, CAPTAIN, FJORD, ticket, workspace } from "./fixtures"
 import { captainLine, overviewAgents, overviewGlance, overviewHeadings, waitingOn } from "./glance";
 import { canAct } from "./captain";
 import { needsYou, type Need, type Plan } from "./captain";
-import { progressCounts } from "./overview-parts/GoalProgress";
 
 const now = new Date(at("12:00"));
 function setup() {
@@ -71,7 +70,6 @@ describe("Overview data from project records", () => {
   it("orders the five segment shapes with matching counts and no zero legend entries", () => {
     const result = view();
     expect(result.goals[0].tickets.map(t => t.segment)).toEqual(["d", "u", "w", "x", "t"]);
-    expect(progressCounts(result.goals[0]).map(x => `${x.count} ${x.word}`)).toEqual(["1 done", "1 in progress", "1 waiting on you", "1 run failed", "1 to go"]);
     expect(result.goals[0].tickets[1].detail).toBe("In progress · Birch · step 2 of 3");
     expect(result.goals[0].tickets[3].description).toContain("GitHub couldn't be reached");
     expect(result.requests).toHaveLength(1);
@@ -232,8 +230,8 @@ describe("Overview status evidence", () => {
     const ws = setup(); const a = ws.agentOf(BIRCH)!;
     Object.assign(a, { status: "idle", waiting_until: at("13:00") });
     ws.byKey.get("SH-6")!.checks = { state: "failure", passed: 0, total: 1 };
-    expect(progressCounts(view(ws).goals[0]).filter(x => x.segment === "x").map(x => `${x.count} ${x.word}`))
-      .toEqual(["1 checks failed", "1 limit reached", "1 run failed"]);
+    expect(view(ws).goals[0].tickets.filter(t => t.segment === "x").map(t => t.problem?.toLowerCase()).sort())
+      .toEqual(["checks failed", "limit reached", "run failed"]);
   });
 });
 

@@ -189,9 +189,6 @@ export function Room({ ws, profile, demo }: { ws: Workspace; profile: Profile; d
             );
           })}
         </section>
-        <p style={{ fontSize: 12, color: "var(--faint)", lineHeight: 1.5 }}>
-          Start a message with <span className="mono">@name</span> to send it to someone. Agents read every message here; the ones that take instructions treat yours as work.
-        </p>
         <Button size="sm" variant="ghost" onClick={() => go({ view: "board", project: ws.project.slug })} style={{ alignSelf: "flex-start" }}>
           Open the board
         </Button>
@@ -431,7 +428,7 @@ function Composer({ room, replyTo, thread, onClearReply, onPosted }: { room: Roo
           Send
         </Button>
       </div>
-      <span style={{ fontSize: 12, color: err ? "var(--danger)" : "var(--faint)" }}>{err || "Enter to send · Shift+Enter for a new line"}</span>
+      {err && <span style={{ fontSize: 12, color: "var(--danger)" }}>{err}</span>}
     </div>
   );
 }

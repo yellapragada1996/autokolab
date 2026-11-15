@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { PRIORITIES, STATUSES, type Ticket } from "../lib/data";
 import { onNav } from "../lib/router";
-import { Button } from "../ui";
 import { applyFilter, emptyFilter, Filters, type FilterState } from "./Board";
 import { ago, EpicLozenge, KeyText, Label, PriorityIcon, StatusLozenge, Who } from "./bits";
 import { cardLine } from "./work";
@@ -14,7 +13,7 @@ type SortKey = "key" | "title" | "status" | "priority" | "assignee" | "updated";
 const statusRank = Object.fromEntries([...STATUSES.map((s, i) => [s.id, i]), ["canceled", 9]]);
 const priorityRank = Object.fromEntries(PRIORITIES.map((p, i) => [p.id, i]));
 
-export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: () => void }) {
+export function ListView({ ws, me }: { ws: Workspace; me: string }) {
   const [f, setF] = useState<FilterState>(emptyFilter);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "status", dir: 1 });
   const [showDone, setShowDone] = useState(false);
@@ -61,9 +60,6 @@ export function ListView({ ws, me, onNew }: { ws: Workspace; me: string; onNew: 
           <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, color: "var(--muted)" }}>
             <input type="checkbox" checked={showDone} onChange={(e) => setShowDone(e.target.checked)} /> Show shipped
           </label>
-          <Button variant="primary" onClick={onNew}>
-            New ticket
-          </Button>
         </div>
       </div>
       <div style={{ overflowX: "auto", borderRadius: 12, border: "1px solid var(--line-soft)" }}>

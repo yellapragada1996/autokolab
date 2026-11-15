@@ -14,7 +14,6 @@ function sentence(text: string, view: OverviewGlance) {
 
 export function Heading({ view }: { view: OverviewGlance }) {
   return <div className="head">
-    {view.croc && <img className={`croc ${view.croc}`} src="/brand/autokolab-croc.svg" alt="" aria-hidden="true" />}
     <p className="headline">{view.headings.map((line, index) => <span className={`sent ${line.tone ?? ""}`} key={index}>
       {line.link ? <><OverviewLink to={{ view: line.link.to, project: view.slug }}>{line.link.text}</OverviewLink>{line.text.slice(line.link.text.length)}</> : sentence(line.text, view)}
     </span>)}</p>

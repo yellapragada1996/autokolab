@@ -55,8 +55,16 @@
   --coral-border: #D99A8C;
 
   /* Type */
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-display: 'Newsreader', Georgia, serif;  /* page titles and headlines */
+  /* The ink sidebar: its own small set, because the rest of the app is dark text on light paper. */
+  --nav-bg: #17181C;
+  --nav-text: #C9C6BE;
+  --nav-strong: #F5F4F0;
+  --nav-dim: #8E8A81;
+  --nav-hover: #212329;
+  --nav-active: #2A2C32;
+  --nav-line: #2A2C32;
+  --font-sans: 'Schibsted Grotesk', system-ui, sans-serif;
+  --font-display: 'Schibsted Grotesk', system-ui, sans-serif;  /* page titles and headlines */
   --font-mono: 'Geist Mono', ui-monospace, monospace;
   --text-12: 12px;  /* minimum anywhere */
   --text-13: 13px;

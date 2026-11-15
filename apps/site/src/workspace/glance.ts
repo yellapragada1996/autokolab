@@ -2,7 +2,7 @@ import { PERSON_ONLINE_MS } from "../lib/presence";
 import { statusHere } from "./agentStatus";
 export { statusHere } from "./agentStatus";
 import { areaWaits } from "../lib/areas";
-import { MERGE_OK_PREFIX, type Agent, type RunUsage, type Step, type Ticket, type TicketEvent } from "../lib/data";
+import { MERGE_OK_PREFIX, type Agent, type Step, type Ticket, type TicketEvent } from "../lib/data";
 import { localTime } from "../lib/place";
 import { awayText, catchUpItems, clock, goalName, named, RUNNER_PROBLEM, type CatchUp, type Need, type Plan } from "./captain";
 import { agentDot, agentOnline, epicOf, plural } from "./story";
@@ -838,8 +838,7 @@ export function crew(t: Team, rows: AgentRow[]): CrewRow[] {
 // Overview v5. This projection has no timers, fetching, or changes to the board's older helpers.
 export type OverviewAgentState = "working" | "reviewing" | "waiting" | "failed" | "blocked" | "limit" | "paused" | "idle" | "offline";
 export type OverviewSegment = "d" | "u" | "r" | "w" | "x" | "t";
-export const SEGMENT_ORDER: OverviewSegment[] = ["d", "u", "r", "w", "x", "t"];
-export const SEGMENT_WORD: Record<OverviewSegment, string> = { d: "done", u: "in progress", r: "in review", w: "waiting on you", x: "blocked", t: "to go" };
+const SEGMENT_ORDER: OverviewSegment[] = ["d", "u", "r", "w", "x", "t"];
 export interface OverviewAgent {
   id: string;
   name: string;
@@ -877,7 +876,6 @@ export interface OverviewGlance {
   projectId: string;
   slug: string;
   headings: OverviewSentence[];
-  croc: "new" | "calm" | null;
   requests: { key: string; text: string; meta: string; action: string }[];
   /** Work that waits on something other than the person: a blocker, the same files, a review, a limit, a computer. */
   waits: WaitRow[];
@@ -946,7 +944,6 @@ export interface WaitRow {
   /** It waits on the person: the row links to Captain, where the answer goes. */
   you?: string;
 }
-export const MAX_WAITS = 8;
 
 /**
  * What is held up by something other than the person (their own items are "Needs you" above), from
@@ -1112,7 +1109,7 @@ export function overviewGlance(ws: Workspace, needs: Need[], plans: Plan[], now:
       action: n.kind === "plan" ? "Review the plan in Captain" : ["risky_merge", "approval"].includes(n.kind) ? "Review in Captain" : "Answer in Captain" };
   });
   return { projectId: ws.project.id, slug: ws.project.slug, team, goals, requests, waits: waitingOn(ws, needs, team, now),
-    headings: overviewHeadings(team, goals, setup, allDone), croc: setup ? "new" : allDone && !requests.length && team.every(a => ["idle", "offline", "paused"].includes(a.state)) ? "calm" : null };
+    headings: overviewHeadings(team, goals, setup, allDone) };
 }
 
 // ------------------------------------------------------------------ Overview: stuck, the day, the spend
@@ -1161,73 +1158,4 @@ export function stuckRows(ws: Workspace, events: TicketEvent[], team: OverviewAg
       tag: n >= 2 ? `Sent back ${n} times` : offline ? "Agent not responding" : t.needs_human ? "Waiting on a person" : null, tone: n >= 2 ? "problem" : "quiet", ratio: here / usual });
   }
   return out.sort((a, b) => b.ratio - a.ratio).slice(0, 4).map(({ ratio: _ratio, ...r }) => r);
-}
-
-export type LaneKind = "build" | "review" | "talk" | "waiting" | "offline";
-export interface LaneBlock { kind: LaneKind; from: number; to: number; label: string }
-export interface Lane { id: string; name: string; blocks: LaneBlock[]; said: string }
-export interface DayLanes { from: number; to: number; hours: string[]; lanes: Lane[] }
-const startOfDay = (now: Date) => new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-
-/**
- * Today, one lane an agent. Run blocks come from what each run recorded (it ended at created_at
- * and took `seconds`). The only gaps drawn are the ones the records hold right now: an agent
- * waiting on the person since its question, or offline since it was last seen. Earlier gaps are
- * left empty, because the app keeps no history of an agent's state.
- */
-export function dayLanes(ws: Workspace, usage: RunUsage[], team: OverviewAgent[], needs: Need[], now: Date): DayLanes | null {
-  const day = startOfDay(now);
-  const end = now.getTime();
-  const rows = usage.filter(u => Date.parse(u.created_at) >= day && Date.parse(u.created_at) <= end);
-  const lanes: Lane[] = [];
-  let first = end;
-  for (const a of team) {
-    const blocks: LaneBlock[] = rows.filter(u => u.agent_id === a.id).map(u => {
-      const to = Date.parse(u.created_at);
-      const kind: LaneKind = u.kind === "build" ? "build" : u.kind === "review" ? "review" : "talk";
-      return { kind, from: Math.max(day, to - u.seconds * 1000), to, label: u.ticket_id ? ws.byId.get(u.ticket_id)?.key ?? "" : "" };
-    });
-    const raw = ws.people.agents.get(a.id);
-    const need = a.state === "waiting" ? needs.find(n => n.ticket?.assignee_id === a.id) : undefined;
-    if (need) blocks.push({ kind: "waiting", from: Math.max(day, Date.parse(need.since)), to: end, label: "waiting on you" });
-    if (a.state === "offline" && raw?.last_seen_at && (blocks.length || a.waiting)) blocks.push({ kind: "offline", from: Math.max(day, Date.parse(raw.last_seen_at)), to: end, label: "offline" });
-    if (!blocks.length) continue;
-    blocks.sort((x, y) => x.from - y.from);
-    first = Math.min(first, blocks[0].from);
-    const words: Record<LaneKind, string> = { build: "building", review: "reviewing", talk: "talking", waiting: "waiting on you", offline: "offline" };
-    lanes.push({ id: a.id, name: a.name, blocks, said: `${a.name}: ${blocks.map(b => `${words[b.kind]}${b.label && b.kind !== "waiting" && b.kind !== "offline" ? ` ${b.label}` : ""}`).join(", ")}` });
-  }
-  if (!lanes.length) return null;
-  const HOUR = 3600_000;
-  const from = Math.min(Math.floor(first / HOUR) * HOUR, end - 6 * HOUR);
-  const to = Math.ceil(end / HOUR) * HOUR;
-  const step = Math.max(1, Math.round((to - from) / HOUR / 6));
-  const hours: string[] = [];
-  for (let t = from; t <= to; t += step * HOUR) hours.push(String(new Date(t).getHours()).padStart(2, "0"));
-  return { from: Math.max(from, day), to, hours, lanes };
-}
-
-export interface SpendRow { id: string; name: string; build: number; review: number; talk: number; cost: number | null }
-export interface Spend { rows: SpendRow[]; sentence: string; max: number; estimated: boolean }
-
-/** Today's usage by agent, split into building, reviewing and talking, in weighted tokens; dollars only where the tool reported them. */
-export function spendToday(ws: Workspace, usage: RunUsage[], team: OverviewAgent[], now: Date): Spend | null {
-  const day = startOfDay(now);
-  const weigh = (u: RunUsage) => (u.input_tokens ?? 0) + (u.cache_write_tokens ?? 0) + (u.output_tokens ?? 0) + (u.cache_read_tokens ?? 0) * 0.1;
-  const rows: SpendRow[] = [];
-  for (const a of team) {
-    const mine = usage.filter(u => u.agent_id === a.id && Date.parse(u.created_at) >= day);
-    if (!mine.length) continue;
-    const sum = (kinds: string[]) => mine.filter(u => kinds.includes(u.kind)).reduce((n, u) => n + weigh(u), 0);
-    const priced = mine.filter(u => u.cost_usd != null);
-    rows.push({ id: a.id, name: a.name, build: sum(["build"]), review: sum(["review"]), talk: sum(["reply", "question"]), cost: priced.length ? priced.reduce((n, u) => n + Number(u.cost_usd), 0) : null });
-  }
-  if (!rows.length) return null;
-  const build = rows.reduce((n, r) => n + r.build, 0);
-  const all = rows.reduce((n, r) => n + r.build + r.review + r.talk, 0);
-  if (!all) return null;
-  const share = Math.round((build / all) * 100);
-  rows.sort((x, y) => (y.build + y.review + y.talk) - (x.build + x.review + x.talk));
-  return { rows, max: Math.max(...rows.map(r => r.build + r.review + r.talk)), estimated: [...ws.people.agents.values()].some(a => a.vendor !== "opencode"),
-    sentence: `${share}% went into building, ${100 - share}% into coordination.` };
 }

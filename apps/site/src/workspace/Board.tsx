@@ -1,8 +1,8 @@
 import { reportError } from "../lib/errors";
 import { useEffect, useMemo, useState } from "react";
-import { updateTicket, type Status, type Ticket, type TicketPatch } from "../lib/data";
+import { updateTicket, type Ticket, type TicketPatch } from "../lib/data";
 import { go, href, onNav } from "../lib/router";
-import { AgentAvatar, Button, Icon, PersonAvatar, Svg } from "../ui";
+import { AgentAvatar, Icon, PersonAvatar, Svg } from "../ui";
 import { LeadBadge } from "./bits";
 import { goalName, needsYou, type Need } from "./captain";
 import { crew, team } from "./glance";
@@ -122,7 +122,7 @@ export function useStored<T extends string>(key: string, initial: T): [T, (v: T)
 }
 
 /** The board under Work: lanes by agent (and person), or by feature. */
-export function Board({ ws, me, onNew, groupBy, needs }: { ws: Workspace; me: string; onNew: (status?: Status) => void; groupBy: GroupBy; needs: Need[] }) {
+export function Board({ ws, me, groupBy, needs }: { ws: Workspace; me: string; groupBy: GroupBy; needs: Need[] }) {
   const [f, setF] = useState<FilterState>(emptyFilter);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dragging, setDragging] = useState<string | null>(null);
@@ -219,11 +219,6 @@ export function Board({ ws, me, onNew, groupBy, needs }: { ws: Workspace; me: st
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0, flex: 1 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
         <Filters ws={ws} me={me} f={f} setF={setF} />
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <Button variant="primary" size="sm" onClick={() => onNew("ready")}>
-            New ticket <kbd style={{ font: "500 12px var(--mono)", opacity: 0.7 }}>C</kbd>
-          </Button>
-        </div>
       </div>
       {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
 
@@ -310,7 +305,6 @@ export function Board({ ws, me, onNew, groupBy, needs }: { ws: Workspace; me: st
           )}
         </div>
       </div>
-      {hidden.length > 0 && <p style={{ color: "var(--text-muted)", fontSize: 12 }}>Hidden while empty: {hidden.map((c) => c.label).join(", ")}</p>}
     </div>
   );
 }
