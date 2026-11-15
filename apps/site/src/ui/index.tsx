@@ -15,7 +15,7 @@ const buttonBase: CSSProperties = {
   justifyContent: "center",
   gap: 8,
   border: 0,
-  borderRadius: 10,
+  borderRadius: 8,
   fontFamily: "var(--sans)",
   fontWeight: 600,
   cursor: "pointer",
@@ -23,12 +23,12 @@ const buttonBase: CSSProperties = {
 };
 const buttonVariants: Record<ButtonVariant, CSSProperties> = {
   primary: { background: "var(--primary)", color: "var(--on-primary)" },
-  secondary: { background: "var(--surface-2)", color: "var(--text)", border: "1px solid var(--line-strong)", fontWeight: 500 },
+  secondary: { background: "var(--surface)", color: "var(--text)", border: "1px solid var(--line-strong)", fontWeight: 500 },
   ghost: { background: "transparent", color: "var(--text-2)", fontWeight: 500 },
   danger: { background: "transparent", color: "var(--danger)", fontWeight: 500 },
 };
 const buttonSizes = {
-  sm: { height: 32, padding: "0 12px", fontSize: 13 },
+  sm: { height: 36, padding: "0 14px", fontSize: 13 },
   md: { height: 40, padding: "0 18px", fontSize: 14 },
   lg: { height: 48, padding: "0 26px", fontSize: 15, borderRadius: 11 },
 };
@@ -49,7 +49,7 @@ export function Button({
         ...buttonBase,
         ...buttonVariants[variant],
         ...buttonSizes[size],
-        ...(rest.disabled ? { background: "var(--line)", color: "var(--faint)", cursor: "not-allowed", border: 0 } : {}),
+        ...(rest.disabled ? { background: "var(--surface-sunken)", color: "var(--faint)", cursor: "not-allowed", border: "1px solid var(--border)" } : {}),
         ...style,
       }}
     />
@@ -146,7 +146,7 @@ export const Icon = {
   settings: (
     <>
       <circle cx="12" cy="12" r="3" />
-      <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </>
   ),
 };
@@ -160,14 +160,27 @@ export function Svg({ children, size = 18, width = 1.8 }: { children: ReactNode;
 }
 
 /**
- * The croc mark (brand/svg/autokolab-croc-square.svg, served unchanged), drawn straight on the
- * page with nothing behind it. `alt` is empty when the name is written next to it.
+ * The ripple mark: three rings from each of two corners, crossing. Ink and one warm grey, drawn
+ * straight on the page. `alt` is empty when the name is written next to it.
  */
 export function Logo({ size = 28, alt = "" }: { size?: number; alt?: string }) {
-  return <img src="/brand/autokolab-croc.svg" alt={alt} width={size} height={size} style={{ display: "block", flex: "none" }} />;
+  return (
+    <svg width={size} height={size} viewBox="4 4 56 56" fill="none" stroke="currentColor" strokeWidth={3.4} strokeLinecap="round" role={alt ? "img" : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true} style={{ display: "block", flex: "none", color: "var(--text)" }}>
+      <defs><clipPath id="ak-logo-clip"><rect x="6" y="6" width="52" height="52" rx="14" /></clipPath></defs>
+      <g clipPath="url(#ak-logo-clip)">
+        <circle cx="6" cy="58" r="14" /><circle cx="6" cy="58" r="28" /><circle cx="6" cy="58" r="42" />
+        <g stroke="var(--border-strong)"><circle cx="58" cy="6" r="14" /><circle cx="58" cy="6" r="28" /><circle cx="58" cy="6" r="42" /></g>
+      </g>
+    </svg>
+  );
 }
 
-/** The full logo, croc and wordmark, straight on the page. */
+/** The full logo, mark and two-tone wordmark, straight on the page. */
 export function FullLogo({ height = 44 }: { height?: number }) {
-  return <img src="/brand/autokolab-logo.svg" alt="AutoKolab" height={height} style={{ display: "block", height, width: "auto", flex: "none", alignSelf: "flex-start" }} />;
+  return (
+    <span role="img" aria-label="AutoKolab" style={{ display: "inline-flex", alignItems: "center", gap: height * 0.2, alignSelf: "flex-start", flex: "none", fontFamily: "'Geist', var(--font-sans)", fontWeight: 600, fontSize: height * 0.62, lineHeight: 1, letterSpacing: "-0.035em", color: "var(--text)" }}>
+      <Logo size={height * 0.75} />
+      <span aria-hidden="true"><span style={{ color: "var(--border-strong)" }}>Auto</span>Kolab</span>
+    </span>
+  );
 }

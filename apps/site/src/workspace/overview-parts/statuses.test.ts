@@ -24,12 +24,9 @@ describe("Overview problem cues", () => {
       expect(contrast(red, background)).toBeGreaterThanOrEqual(3);
       expect(contrast(text, background)).toBeGreaterThanOrEqual(4.5);
     }
-    // A regression to the old middle cut would defeat the ticket's primary visual requirement.
-    expect(css).not.toMatch(/(?:mask|clip-path)\s*:/);
-    expect(css.match(/\.gs\.x\s*\{([^}]+)\}/)?.[1]).toBe(" background: var(--problem-red); box-shadow: none; ");
   });
 
-  it("pairs the red bar, ring, heading and expanded ticket swatch with specific words", () => {
+  it("pairs the red heading and the agent line with specific words", () => {
     const task = ticket({ key: "SH-1", title: "Saved cards", status: "in_progress", assignee_id: BIRCH, needs_human: "I stopped: the run failed." });
     const ws = workspace([task]);
     Object.assign(ws.agentOf(BIRCH)!, { status: "blocked", current_ticket_id: task.id, last_seen_at: at("11:59") });
@@ -37,11 +34,7 @@ describe("Overview problem cues", () => {
     const html = renderToStaticMarkup(createElement(OverviewContent, { snapshot: { view: overviewGlance(ws, [], [], now), at: now } }));
     expect(html).toContain('class="sent problem"');
     expect(html).toContain("Birch&#x27;s run failed.");
-    expect(html).toContain('class="av s-stop"');
-    expect(html).toContain('class="a-state">Failed');
-    expect(html).toContain('class="lg x"');
-    expect(html).toContain("1 run failed");
-    expect(html).toContain('class="t-meta x">Run failed · Birch');
+    expect(html).toContain('<span class="b-stop"> Failed</span>');
     expect(html).not.toContain("Stopped");
   });
 });

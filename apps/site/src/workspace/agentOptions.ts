@@ -1,3 +1,4 @@
+import { AGENT_ONLINE_MS } from "../lib/presence";
 /**
  * Suggestions, not a fixed catalogue. Provider ids match the helper and OpenCode, and every model is
  * one OpenCode accepts (pinned by opencodeModels.snapshot.ts, AK-143).
@@ -106,7 +107,7 @@ export function newConnectedAgent(
       a.owner_profile_id === owner &&
       a.status !== "offline" &&
       !!a.last_seen_at &&
-      now - Date.parse(a.last_seen_at) < 5 * 60_000 &&
+      now - Date.parse(a.last_seen_at) < AGENT_ONLINE_MS &&
       (setup
         ? a.vendor === "opencode" &&
           a.display_name === setup.name &&

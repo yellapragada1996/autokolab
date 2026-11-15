@@ -3,7 +3,7 @@ import { reportError } from "../lib/errors";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addComment, allowMerge, approveTicket, lastCaughtUp, markCaughtUp, updateTicket, type Agent, type Project, type Ticket } from "../lib/data";
 import { postToRoom, roomFor, roomFeed, mergeRoomMember, watchRoom, type Room as RoomData, type RoomMember, type RoomMessage } from "../lib/room";
-import { catchUp, closingAnswers, closingReply, conversation, needsYou, NO_ANSWER_NEEDED, OK_START, plans as plansOf, settledWithoutYou, type Answer, type CatchUp, type Need, type Plan, type Turn } from "./captain";
+import { canAct, catchUp, closingAnswers, closingReply, conversation, needsYou, NO_ANSWER_NEEDED, OK_START, plans as plansOf, settledWithoutYou, type Answer, type CatchUp, type Need, type Plan, type Turn } from "./captain";
 import { agentDot, agentOnline } from "./People";
 import type { Workspace } from "./useWorkspace";
 
@@ -44,6 +44,8 @@ export interface CaptainRoom {
   turns: Turn[];
   /** Everything still waiting on the person, after the answers given on this visit. */
   needs: Need[];
+  /** The needs this person can act on right now (canAct): what the badge, Overview and the pinned list count. */
+  actionable: Need[];
   /** Captain's questions settled without the person, by message id: what happened (AK-100). */
   settled: Map<number, string>;
   /** Captain's answers that closed its own questions: shown under the question, not again on their own. */
@@ -168,6 +170,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
   const closers = useMemo(() => closingAnswers(turns), [turns]);
   // An answer hides the card it answered, not a newer question on the same ticket.
   const needs = useMemo(() => raw.filter((n) => settled.get(n.key)?.since !== n.since), [raw, settled]);
+  const actionable = useMemo(() => needs.filter((n) => canAct(n, profileId)), [needs, profileId]);
   const okd = useMemo(() => [...settled.values()].filter((s) => s.ok && s.answer === "yes").map((s) => s.need), [settled]);
   // A newer question on the same ticket is its own need; the old answer stays with the old message.
   const answered = useMemo(() => [...settled.values()].filter((s) => !needs.some((n) => n.key === s.need.key)).map(({ need, answer, at }) => ({ need, answer, at })), [settled, needs]);
@@ -345,6 +348,7 @@ export function useCaptainRoom(project: Project, ws: Workspace | null, profileId
     turns,
     plans,
     needs,
+    actionable,
     settled: settledQs,
     closers,
     okd,

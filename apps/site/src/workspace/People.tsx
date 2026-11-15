@@ -79,23 +79,11 @@ export function People({ ws, me, onProjectChanged, onAddAgent }: { ws: Workspace
             </div>
           );
         })}
-        {isOwner && (
-          <p style={{ fontSize: 13, color: "var(--faint)" }}>
-            The invite link is in{" "}
-            <a href={href({ view: "settings", project: ws.project.slug })} onClick={onNav({ view: "settings", project: ws.project.slug })}>
-              Settings
-            </a>
-            .
-          </p>
-        )}
         {isOwner && <AddPerson ws={ws} />}
       </section>
 
       <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         <h2 style={{ fontSize: 16, fontWeight: 600 }}>Agents · {agents.length}</h2>
-        <p style={{ fontSize: 14, color: "var(--muted)" }}>
-          <strong style={{ color: "var(--text)" }}>Captain</strong> is the agent you talk to (in Claude Code, for example). It turns what you ask for into complete tickets and assigns them to the other agents, who pick them up and do them.
-        </p>
         {costError && <p role="alert" style={{ color: "var(--coral)", fontSize: 13 }}>{costError}</p>}
         {leadErr && <p style={{ color: "var(--danger)", fontSize: 14 }}>{leadErr}</p>}
         <div>
@@ -376,9 +364,6 @@ function AgentModel({ ws, agent: a, mine }: { ws: Workspace; agent: Agent; mine:
         </span>
       )}
       {runNote}
-      <span style={{ fontSize: 12, color: "var(--faint)" }}>
-        Applies from its next run. Your machine can ignore this: set <code style={{ fontFamily: "var(--mono)" }}>model_locked = true</code> in this agent's runner settings.{a.vendor !== "opencode" && <> Sessions you open yourself in {VENDOR_LABEL[a.vendor]} use whatever you pick there.</>}
-      </span>
     </span>
   );
 }
@@ -503,16 +488,14 @@ function AddPerson({ ws }: { ws: Workspace }) {
   };
   return (
     <form onSubmit={add} style={{ display: "flex", flexDirection: "column", gap: 8, padding: "12px 14px", borderRadius: 12, border: "1px dashed var(--line)" }}>
-      <span style={{ fontSize: 14, fontWeight: 500 }}>Or add someone who already signed in</span>
+      <span style={{ fontSize: 14, fontWeight: 500 }}>Add someone who has signed in</span>
       <span style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <input value={login} onChange={(e) => setLogin(e.target.value)} placeholder="GitHub username" aria-label="GitHub username" style={{ flex: "1 1 220px", height: 36, padding: "0 12px", borderRadius: 9, border: "1px solid var(--line)", background: "var(--bg)", fontSize: 14 }} />
         <Button type="submit" size="sm" variant="primary" disabled={busy || !login.trim()} style={{ height: 36 }}>
           Add
         </Button>
       </span>
-      <span style={{ fontSize: 13, color: msg ? (msg.ok ? "var(--ok)" : "var(--danger)") : "var(--faint)" }}>
-        {msg?.text ?? `They need to have signed in at ${location.host} once.`}
-      </span>
+      {msg && <span style={{ fontSize: 13, color: msg.ok ? "var(--ok)" : "var(--danger)" }}>{msg.text}</span>}
     </form>
   );
 }

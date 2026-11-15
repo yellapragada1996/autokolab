@@ -1,7 +1,7 @@
 import { statusHere } from "./agentStatus";
 import { LEAD_BUILT_QUESTION, MERGE_OK_PREFIX, waitsForMergeOk, type Decision, type Ticket } from "../lib/data";
 import { isBookkeeping, problemOf, type RoomMessage } from "../lib/room";
-import { waitsForApproval } from "./approve";
+import { approveState, waitsForApproval } from "./approve";
 import { agentDot, epicOf, goals as storyGoals, headline, plural } from "./story";
 import type { Workspace } from "./useWorkspace";
 
@@ -403,6 +403,13 @@ export function needsYou(ws: Workspace, turns: Turn[]): Need[] {
   for (const qs of about.values()) out.push(qs[qs.length - 1]);
   return out.sort((a, b) => Date.parse(a.since) - Date.parse(b.since));
 }
+
+/**
+ * Can this person do anything about it now? An approval whose tests are still running, or that the
+ * person can't give because they worked on the change, still shows where Captain said it, but it
+ * isn't counted or pinned: "Needs you" means there is something to press.
+ */
+export const canAct = (n: Need, me: string): boolean => n.kind !== "approval" || !n.ticket || approveState(n.ticket, me).kind === "ready";
 
 /** Every request, before de-duplication. */
 function gatherNeeds(ws: Workspace, turns: Turn[]): Need[] {

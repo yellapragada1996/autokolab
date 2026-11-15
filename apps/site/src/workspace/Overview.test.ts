@@ -11,7 +11,7 @@ import type { Need } from "./captain";
 
 const now = new Date(at("12:00"));
 const goal = () => ticket({ key: "SH-1", type: "epic", title: "Checkout: cards", status: "in_progress" });
-const room = { room: null, needs: [], plans: [], loadError: "" } as unknown as CaptainRoom;
+const room = { room: null, needs: [], actionable: [], plans: [], loadError: "" } as unknown as CaptainRoom;
 function scene() {
   const g = goal();
   const t = ticket({ key: "SH-2", title: "Saved cards", parent_id: g.id, status: "in_progress", assignee_id: BIRCH, assignee_type: "agent", summary: "adding saved cards to checkout" });
@@ -25,65 +25,57 @@ const plain = (html: string) => html.replace(/<[^>]*>/g, "").replace(/\u00a0/g, 
 const render = (value: OverviewSnapshot | null, failed = false) => renderToStaticMarkup(createElement(OverviewContent, { snapshot: value, failed }));
 
 describe("Overview v5 composition", () => {
-  it("shows a heading, goal, real agent steps and all idle agents without old summaries", () => {
+  it("shows the headline and one line per goal an agent is on, and nothing about idle agents", () => {
     const html = render(snapshot());
     expect(plain(html)).toContain("Birch is working on Checkout.");
+    expect(html).toContain("Being built now</h2>");
     expect(html).toContain("adding saved cards to checkout");
-    expect(html).toContain("step 3 of 5");
-    expect(html).toContain("Not working right now");
-    expect(html).toContain(">Captain</span>");
-    expect(html).toContain(">Fjord</span>");
-    for (const old of ["Next from Captain", "Delivered today", "Updated just now", "See the team", "Needs you</h2>"]) expect(html).not.toContain(old);
+    expect(html).toContain('aria-label="0 of 1 tickets done"');
+    for (const idle of ["Captain", "Fjord"]) expect(html).not.toContain(`>${idle}</b>`);
+    for (const old of ["Not working right now", "Other agents", "step 3 of 5", "Spend today", "Today, by agent", "Updated just now", "Needs attention</h2>"]) expect(html).not.toContain(old);
     expect(html).toContain('href="/p/shop/work/SH-2"');
     expect(html).toContain('href="/p/shop/work?group=goal"');
-    expect(html).toContain('href="/p/shop/people"');
   });
 
-  it("puts three newest requests before the headline and links overflow to the oldest", () => {
+  it("leaves the person's own items to Captain: no count, no link, no table", () => {
     const needs: Need[] = Array.from({ length: 5 }, (_, i) => ({ key: `ask:${i}`, kind: "captain_question", action: "Answer", question: `Question ${i}?`, ticket: null, turnId: i, since: at(`11:0${i}`) }));
     const html = render(snapshot(scene(), needs));
-    expect(html.indexOf("Needs you</h2>")).toBeLessThan(html.indexOf('class="headline"'));
-    expect(html.indexOf("Question 4?")).toBeLessThan(html.indexOf("Question 3?"));
-    expect(html).toContain("Question 2?");
-    expect(html).not.toContain("Question 1?");
-    expect(html).toContain('href="/p/shop#need-ask%3A0">and 2 more in Captain →');
-    expect(html).toContain("Answer in Captain →");
-    expect(html).toContain("Captain is asking · 56 min");
-    expect((html.match(/class="row need"/g) ?? [])).toHaveLength(3);
-    expect(html).not.toContain("<button class=\"row need\"");
+    expect(html).toContain('class="headline"');
+    for (const gone of ["in Captain", "waiting on you.", "Who is waiting on whom", "Question 0?", ">You</span>"]) expect(html).not.toContain(gone);
   });
 
-  it("hides empty sections and shows the new-project croc and connection link", () => {
+  it("lists only real stops under Needs attention, and no card when there are none", () => {
+    const ws = scene();
+    const stopped = ticket({ key: "SH-3", title: "Receipts", parent_id: ws.tickets[0].id, status: "in_progress", assignee_id: FJORD, assignee_type: "agent", needs_human: "I couldn't start: the build is broken." });
+    const queued = ticket({ key: "SH-4", title: "Refunds", parent_id: ws.tickets[0].id, status: "review", assignee_id: BIRCH, assignee_type: "agent" });
+    const busy = workspace([...ws.tickets, stopped, queued], { steps: { "SH-2": ["done", "done", "now", "todo", "todo"] } });
+    for (const a of busy.people.agents.values()) a.last_seen_at = at("11:59");
+    const html = render(snapshot(busy));
+    expect(html).toContain("Needs attention</h2>");
+    expect(plain(html)).toContain("is waiting on someone at its computer.");
+    expect(html).not.toContain("next in line for review");
+    expect(render(snapshot())).not.toContain("Needs attention</h2>");
+  });
+
+  it("hides empty sections and shows the connection link", () => {
     const ws = workspace([]);
     ws.people.agents.clear(); ws.project.lead_agent_id = null;
     const html = render(snapshot(ws));
     expect(html).toContain("Nothing is connected yet.");
     expect(html).toContain('href="/p/shop/people">Connect your computer</a> to bring in Captain.');
-    expect(html).toContain('class="croc new"');
-    for (const empty of ['class="needs"', 'class="cards"', 'class="free', 'class="part"']) expect(html).not.toContain(empty);
+    expect(html).not.toContain('class="croc');
+    for (const empty of ['class="b-card"', 'class="cards"', 'class="free', 'class="part"']) expect(html).not.toContain(empty);
   });
 
-  it("shows the calm croc without cards for goals finished before today", () => {
+  it("shows no cards for goals finished before today", () => {
     const ws = scene();
     ws.tickets[1].status = "done"; ws.tickets[1].completed_at = "2026-10-09T12:00:00Z";
     Object.assign(ws.agentOf(BIRCH)!, { status: "idle", current_ticket_id: null });
     const html = render(snapshot(ws));
     expect(html).toContain("All 1 goal is done.");
     expect(html).toContain("No agents are working right now.");
-    expect(html).toContain('class="croc calm"');
-    expect(html).not.toContain('class="cards"');
-  });
-
-  it("uses one native disclosure per goal with matching ids and ticket links", () => {
-    const html = render(snapshot());
-    const id = /aria-controls="([^"]+)"/.exec(html)?.[1];
-    expect(id).toBeTruthy();
-    expect(html).toContain(`id="${id}" hidden=""`);
-    expect(html).toContain('aria-expanded="false"');
-    expect(html).toContain("Checkout: 1 in progress. Show its 1 ticket.");
-    expect(html).toContain('class="gs u"');
-    expect(html).toContain('class="t-meta u">In progress · Birch · step 3 of 5');
-    expect(html).toContain('aria-hidden="true"');
+    expect(html).not.toContain('class="croc');
+    expect(html).not.toContain('class="b-card"');
   });
 
   it("retains long user names and titles in accessible text and title attributes", () => {
@@ -94,7 +86,6 @@ describe("Overview v5 composition", () => {
     ws.tickets[1].title = "A very long ticket title for saved cards, including fallback payment methods";
     const html = render(snapshot(ws));
     expect(html).toContain(`title="${name}"`);
-    expect(html).toContain(`title="${ws.tickets[1].title}"`);
     expect(html).toContain(`title="${ws.tickets[0].title}"`);
   });
 });
@@ -142,17 +133,21 @@ describe("Overview loading and refresh stability", () => {
   });
 });
 describe("project navigation", () => {
-  it("shows Captain, Overview, Team and Project in that order, with the old destinations in the menu", () => {
+  it("lists every page once, in one flat list", () => {
     const ws = workspace([]);
     const html = renderToStaticMarkup(createElement(Sidebar, {
       needs: 0, project: ws.project, projects: [ws.project],
       route: { view: "overview", project: "shop" },
       onSignOut: () => undefined,
     }));
-    expect(html.indexOf('>Captain</a>')).toBeLessThan(html.indexOf('>Overview</a>'));
-    expect(html.indexOf('>Overview</a>')).toBeLessThan(html.indexOf('>Team</a>'));
-    expect(html.indexOf('>Team</a>')).toBeLessThan(html.indexOf('<summary>Project</summary>'));
-    for (const path of ["/p/shop/work", "/p/shop/room", "/p/shop/decisions", "/p/shop/decisions?tab=guide", "/p/shop/results", "/p/shop/settings", "/p/shop/people"]) {
+    const at = (label: string) => html.indexOf(`<span>${label}</span>`);
+    for (const [first, next] of [["Captain", "Overview"], ["Overview", "Team"], ["Team", "Tickets"], ["Tickets", "Results"], ["Results", "Room"], ["Room", "Guide"], ["Guide", "Settings"], ["Settings", "Sign out"]]) {
+      expect(at(first)).toBeGreaterThan(-1);
+      expect(at(first)).toBeLessThan(at(next));
+    }
+    // Every page is in the list once; nothing hides behind "More".
+    expect(html).not.toContain("<summary>More</summary>");
+    for (const path of ["/p/shop/work", "/p/shop/room", "/p/shop/decisions?tab=guide", "/p/shop/results", "/p/shop/settings", "/p/shop/people"]) {
       expect(html).toContain(`href="${path}"`);
     }
   });

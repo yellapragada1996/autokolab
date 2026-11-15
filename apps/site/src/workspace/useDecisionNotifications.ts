@@ -28,7 +28,8 @@ export function useDecisionNotifications(profileId: string, projectId: string, p
 
   useEffect(() => {
     const title = document.title.replace(/^\(\d+\)\s*/, "");
-    document.title = decisionsToNotify(needs).length ? `(${decisionsToNotify(needs).length}) ${title}` : title;
+    // The same number as the Captain badge: everything the person can act on.
+    document.title = needs.length ? `(${needs.length}) ${title}` : title;
     return () => { document.title = title; };
   }, [needs]);
 

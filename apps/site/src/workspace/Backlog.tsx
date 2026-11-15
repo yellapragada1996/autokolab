@@ -1,8 +1,7 @@
 import { reportError } from "../lib/errors";
 import { useMemo, useState } from "react";
-import { createTicket, STATUSES, updateTicket, type Status, type Ticket } from "../lib/data";
+import { STATUSES, updateTicket, type Status, type Ticket } from "../lib/data";
 import { onNav } from "../lib/router";
-import { Button } from "../ui";
 import { applyFilter, emptyFilter, Filters, WhoMark, type FilterState } from "./Board";
 import { EpicLozenge, KeyText, PriorityIcon, StatusLozenge } from "./bits";
 import { cardLine, workStatus } from "./work";
@@ -14,7 +13,7 @@ import type { Workspace } from "./useWorkspace";
 
 const ON_BOARD: Status[] = ["ready", "in_progress", "review"];
 
-export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: () => void }) {
+export function Backlog({ ws, me }: { ws: Workspace; me: string }) {
   const [f, setF] = useState<FilterState>(emptyFilter);
   const [epic, setEpic] = useState("");
   const [dragging, setDragging] = useState<string | null>(null);
@@ -88,7 +87,6 @@ export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (
         {over?.section === id && over.index === list.length && dragging && <div style={{ height: 2, background: "var(--primary)" }} />}
         {!list.length && <div style={{ padding: "14px 10px", fontSize: 13, color: "var(--faint)" }}>{id === "board" ? "Nothing on the board. Drag tickets up from Later." : "Later is empty."}</div>}
       </div>
-      {id === "backlog" && <InlineCreate ws={ws} />}
     </section>
   );
 
@@ -108,9 +106,6 @@ export function Backlog({ ws, me, onNew }: { ws: Workspace; me: string; onNew: (
             </select>
           )}
         </div>
-        <Button variant="primary" size="sm" onClick={onNew}>
-          New ticket <kbd style={{ font: "500 12px var(--mono)", opacity: 0.7 }}>C</kbd>
-        </Button>
       </div>
       {err && <p style={{ color: "var(--danger)", fontSize: 14 }}>{err}</p>}
       {section("board", "Board", "To do, Building and In review", board)}
@@ -149,48 +144,6 @@ function Row({ ws, t, me, needs, dragging, onDragStart, onDragEnd, onStatus }: {
       </label>
       <PriorityIcon priority={t.priority} />
       <WhoMark ws={ws} id={t.assignee_id} me={me} />
-    </div>
-  );
-}
-
-function InlineCreate({ ws }: { ws: Workspace }) {
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [err, setErr] = useState("");
-  const create = async () => {
-    if (!title.trim()) return setOpen(false);
-    try {
-      setErr("");
-      await createTicket(ws.project.id, { title: title.trim(), status: "backlog" });
-      setTitle("");
-      await ws.reload();
-    } catch (e) {
-      setErr(reportError(e, "save the ticket"));
-    }
-  };
-  if (!open) {
-    return (
-      <button type="button" onClick={() => setOpen(true)} style={{ marginTop: 6, width: "100%", padding: "8px 10px", border: 0, borderRadius: 6, background: "transparent", color: "var(--muted)", fontSize: 13, textAlign: "left", cursor: "pointer" }}>
-        + New ticket
-      </button>
-    );
-  }
-  return (
-    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
-      <input
-        autoFocus
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") void create();
-          if (e.key === "Escape") (setTitle(""), setOpen(false));
-        }}
-        onBlur={() => !title.trim() && setOpen(false)}
-        placeholder="What needs to be done? Enter to create"
-        aria-label="New ticket title"
-        style={{ height: 38, padding: "0 10px", borderRadius: 6, border: "1px solid var(--primary)", background: "var(--bg)", fontSize: 14 }}
-      />
-      {err && <span style={{ fontSize: 13, color: "var(--danger)" }}>{err}</span>}
     </div>
   );
 }

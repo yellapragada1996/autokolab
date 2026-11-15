@@ -1,5 +1,7 @@
+import { PERSON_ONLINE_MS } from "../lib/presence";
 import { statusHere } from "./agentStatus";
 export { statusHere } from "./agentStatus";
+import { areaWaits } from "../lib/areas";
 import { MERGE_OK_PREFIX, type Agent, type Step, type Ticket, type TicketEvent } from "../lib/data";
 import { localTime } from "../lib/place";
 import { awayText, catchUpItems, clock, goalName, named, RUNNER_PROBLEM, type CatchUp, type Need, type Plan } from "./captain";
@@ -17,7 +19,7 @@ export type State = "working" | "waiting" | "paused" | "idle";
 export const STATE_WORD: Record<State, string> = { working: "Working", waiting: "Waiting on you", paused: "Paused", idle: "Idle" };
 
 /** A person counts as online if they were seen within the last five minutes, like an agent. */
-const ONLINE_MS = 5 * 60_000;
+const ONLINE_MS = PERSON_ONLINE_MS;
 
 /** The name of the card for work that belongs to no feature. */
 export const FIXES = "Fixes and upkeep";
@@ -836,8 +838,7 @@ export function crew(t: Team, rows: AgentRow[]): CrewRow[] {
 // Overview v5. This projection has no timers, fetching, or changes to the board's older helpers.
 export type OverviewAgentState = "working" | "reviewing" | "waiting" | "failed" | "blocked" | "limit" | "paused" | "idle" | "offline";
 export type OverviewSegment = "d" | "u" | "r" | "w" | "x" | "t";
-export const SEGMENT_ORDER: OverviewSegment[] = ["d", "u", "r", "w", "x", "t"];
-export const SEGMENT_WORD: Record<OverviewSegment, string> = { d: "done", u: "in progress", r: "in review", w: "waiting on you", x: "blocked", t: "to go" };
+const SEGMENT_ORDER: OverviewSegment[] = ["d", "u", "r", "w", "x", "t"];
 export interface OverviewAgent {
   id: string;
   name: string;
@@ -875,8 +876,9 @@ export interface OverviewGlance {
   projectId: string;
   slug: string;
   headings: OverviewSentence[];
-  croc: "new" | "calm" | null;
   requests: { key: string; text: string; meta: string; action: string }[];
+  /** Work that waits on something other than the person: a blocker, the same files, a review, a limit, a computer. */
+  waits: WaitRow[];
   team: OverviewAgent[];
   goals: OverviewGoal[];
 }
@@ -927,6 +929,94 @@ export function overviewAgents(ws: Workspace, now: Date): OverviewAgent[] {
       key: t?.key ?? null, goalId: t && !["idle", "offline"].includes(state) ? epicOf(ws, t)?.id ?? "fixes" : null,
       steps, step: at < 0 ? null : at + 1, waiting: assigned.filter(t => t.status === "ready" || t.status === "in_progress").length };
   });
+}
+
+/** One line of "Waiting on each other": who or what waits, on whom or what, and why. */
+export interface WaitRow {
+  key: string;
+  who: string;
+  on: string;
+  why: string;
+  /** The ticket to open, when the row is about one. */
+  ticketKey: string | null;
+  /** How long, "28 min"; empty when the records don't say. */
+  age: string;
+  /** It waits on the person: the row links to Captain, where the answer goes. */
+  you?: string;
+}
+
+/**
+ * What is held up by something other than the person (their own items are "Needs you" above), from
+ * records only: an agent that reported a problem, a ticket behind a blocker or behind the same
+ * files, a change waiting for Captain's review, an agent at its limit, an agent whose computer is
+ * gone with work assigned. Longest list first is not the point; the most fixable come first.
+ */
+export function waitingOn(ws: Workspace, needs: Need[], team: OverviewAgent[], now: Date): WaitRow[] {
+  const out: WaitRow[] = [];
+  const open = ws.tickets.filter(t => isWork(t) && isOpen(t));
+  // The person's own items come first, longest-waiting first: they are what unblocks the most.
+  for (const n of [...needs].filter(x => x.kind !== "problem").sort((a, b) => Date.parse(a.since) - Date.parse(b.since))) {
+    const t = n.ticket;
+    const why = n.kind === "plan" ? "Captain's plan is ready to start" : n.kind === "risky_merge" ? "Risky merge needs your OK" : n.kind === "approval" ? "Needs your approval"
+      : `${t ? `${t.key} asks: ` : ""}${withoutKeys(ws, firstSentence(n.said || n.question, 70))}`;
+    out.push({ key: `you:${n.key}`, who: t ? (n.kind === "ticket_question" && t.assignee_id ? whoName(ws, t.assignee_id) : `${t.key} · ${t.title}`) : "Captain", on: "You", why, ticketKey: t?.key ?? null, age: overviewAge(n.since, now), you: n.key });
+  }
+  const asked = new Set(needs.filter(n => n.kind !== "problem" && n.ticket).map(n => n.ticket!.id));
+  const who = (t: Ticket) => (t.assignee_id ? whoName(ws, t.assignee_id) : "Nobody yet");
+  for (const a of team) {
+    if (a.state === "offline" && a.waiting) out.push({ key: `offline:${a.id}`, who: plural(a.waiting, "ticket"), on: `${a.name}'s computer`, why: "Offline", ticketKey: null, age: a.word.replace(/^Offline · /, "") });
+    if (a.state === "limit") out.push({ key: `limit:${a.id}`, who: a.name, on: "its usage limit", why: a.doing || "Limit reached", ticketKey: a.key, age: "" });
+  }
+  for (const t of open) {
+    if (overviewProblem(t)) out.push({ key: `problem:${t.id}`, who: who(t), on: "someone at its computer", why: `${t.key} · ${withoutKeys(ws, stopReason(t.needs_human!))}`, ticketKey: t.key, age: overviewAge(t.updated_at, now) });
+  }
+  for (const t of open) {
+    if (t.status !== "review" || t.approved_sha || t.needs_human || asked.has(t.id)) continue;
+    const reviewer = ws.project.lead_agent_id === t.assignee_id ? "another agent" : "Captain";
+    out.push({ key: `review:${t.id}`, who: who(t), on: reviewer, why: `${t.key} is next in line for review`, ticketKey: t.key, age: overviewAge(t.updated_at, now) });
+  }
+  for (const t of open) {
+    // One row a ticket: a stopped run already says why it isn't moving.
+    if (t.status !== "ready" || out.some(r => r.ticketKey === t.key)) continue;
+    const blockers = ws.blockersOf(t.id).filter(b => b.id !== t.id && isOpen(b));
+    const files = blockers.length ? [] : areaWaits(t, ws.tickets);
+    if (blockers.length) out.push({ key: `blocked:${t.id}`, who: `${t.key} · ${t.title}`, on: blockers.map(b => b.key).join(", "), why: "Needs it finished first", ticketKey: t.key, age: overviewAge(t.updated_at, now) });
+    else if (files.length) out.push({ key: `files:${t.id}`, who: `${t.key} · ${t.title}`, on: files.map(b => b.key).join(", "), why: "Both change the same files", ticketKey: t.key, age: overviewAge(t.updated_at, now) });
+  }
+  return out;
+}
+
+/** What Captain is doing, for the top of its page, so nobody has to ask "are you there?". */
+export interface CaptainLine {
+  tone: "live" | "quiet" | "problem";
+  /** In bold: "Reviewing SH-10", "Offline for 1 h". */
+  state: string;
+  /** What that means for the person's next message. */
+  text: string;
+  /** "On ana-mbp · 1 h 10 of 3 h used today", when the runner has reported them. */
+  where: string | null;
+}
+export function captainLine(ws: Workspace, now: Date): CaptainLine | null {
+  const id = ws.project.lead_agent_id;
+  const a = id ? overviewAgents(ws, now).find(x => x.id === id) : undefined;
+  if (!a) return null;
+  const raw = ws.people.agents.get(a.id);
+  const usage = raw ? usageOf(ws, raw, now) : null;
+  const where = [raw?.machine ? `On ${raw.machine}` : null, usage ? `${usage.text.replace(/ today$/, "")} used today` : null].filter(Boolean).join(" · ") || null;
+  const line = (tone: CaptainLine["tone"], state: string, text: string): CaptainLine => ({ tone, state, text, where });
+  if (a.state === "offline") return raw?.last_seen_at
+    ? line("problem", `Offline for ${overviewAge(raw.last_seen_at, now)}`, "Your messages wait until its computer is back.")
+    : line("problem", "Not connected yet", "Your messages wait until its computer connects.");
+  if (a.state === "paused") return line("problem", "Paused by its owner", "Your messages wait until it's resumed.");
+  if (a.state === "limit") {
+    const until = raw?.waiting_until ? `It resumes about ${new Date(raw.waiting_until).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}. ` : "";
+    return line("problem", "Usage limit reached", `${until}Your messages wait until then.`);
+  }
+  if (a.state === "working" || a.state === "reviewing") {
+    if (a.elsewhere) return line("live", "Busy in another project", "It answers here after that.");
+    return line("live", a.doing ? a.doing[0].toUpperCase() + a.doing.slice(1) : "Working", "Your next message is answered after this.");
+  }
+  return line("quiet", "Online and free", "It answers your next message right away.");
 }
 
 /** Per-ticket shape and words, with no inference that failed checks mean failed test cases. */
@@ -1018,6 +1108,54 @@ export function overviewGlance(ws: Workspace, needs: Need[], plans: Plan[], now:
     return { key: n.key, text: n.said || n.question, meta: [...meta, overviewAge(n.since, now)].filter(Boolean).join(" · "),
       action: n.kind === "plan" ? "Review the plan in Captain" : ["risky_merge", "approval"].includes(n.kind) ? "Review in Captain" : "Answer in Captain" };
   });
-  return { projectId: ws.project.id, slug: ws.project.slug, team, goals, requests,
-    headings: overviewHeadings(team, goals, setup, allDone), croc: setup ? "new" : allDone && !requests.length && team.every(a => ["idle", "offline", "paused"].includes(a.state)) ? "calm" : null };
+  return { projectId: ws.project.id, slug: ws.project.slug, team, goals, requests, waits: waitingOn(ws, needs, team, now),
+    headings: overviewHeadings(team, goals, setup, allDone) };
+}
+
+// ------------------------------------------------------------------ Overview: stuck, the day, the spend
+
+/** A ticket that has been in its stage at least twice as long as tickets usually are. */
+export interface StuckRow {
+  key: string;
+  title: string;
+  /** "In review 3 h · usual is 25 min" */
+  text: string;
+  tag: string | null;
+  tone: "problem" | "quiet";
+}
+const STAGE_WORD: Record<string, string> = { in_progress: "Building", review: "In review" };
+const span = (ms: number) => overviewAge(new Date(Date.now() - ms).toISOString(), new Date());
+
+/**
+ * From the ticket history only: how long each ticket has been in its current stage, against the
+ * median of the stays that already ended in that stage. Nothing is flagged without at least two
+ * finished stays to compare with.
+ */
+export function stuckRows(ws: Workspace, events: TicketEvent[], team: OverviewAgent[], now: Date): StuckRow[] {
+  const moves = events.filter(e => e.kind === "status").sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+  const entered = new Map<string, { stage: string; at: number }>();
+  const stays: Record<string, number[]> = {};
+  const backs = new Map<string, number>();
+  for (const e of moves) {
+    const at = Date.parse(e.created_at);
+    const was = entered.get(e.ticket_id);
+    if (was && was.stage === e.data.from) (stays[was.stage] ??= []).push(at - was.at);
+    if (e.data.from === "review" && e.data.to === "in_progress") backs.set(e.ticket_id, (backs.get(e.ticket_id) ?? 0) + 1);
+    entered.set(e.ticket_id, { stage: String(e.data.to), at });
+  }
+  const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+  const out: (StuckRow & { ratio: number })[] = [];
+  for (const t of ws.tickets) {
+    if (!isWork(t) || !STAGE_WORD[t.status]) continue;
+    const usual = (stays[t.status] ?? []).length >= 2 ? median(stays[t.status]) : null;
+    const since = entered.get(t.id)?.stage === t.status ? entered.get(t.id)!.at : null;
+    if (!usual || !since) continue;
+    const here = now.getTime() - since;
+    if (here < usual * 2) continue;
+    const n = backs.get(t.id) ?? 0;
+    const offline = team.find(a => a.id === t.assignee_id)?.state === "offline";
+    out.push({ key: t.key, title: t.title, text: `${STAGE_WORD[t.status]} ${span(here)} · usual is ${span(usual)}`,
+      tag: n >= 2 ? `Sent back ${n} times` : offline ? "Agent not responding" : t.needs_human ? "Waiting on a person" : null, tone: n >= 2 ? "problem" : "quiet", ratio: here / usual });
+  }
+  return out.sort((a, b) => b.ratio - a.ratio).slice(0, 4).map(({ ratio: _ratio, ...r }) => r);
 }

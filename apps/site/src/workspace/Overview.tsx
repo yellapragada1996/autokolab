@@ -1,10 +1,13 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
+import { eventsAfter, eventsBetween, type TicketEvent } from "../lib/data";
+import { EVENTS_WINDOW_MS, useHistoryWindow } from "./useHistory";
+import { stuckRows } from "./glance";
+import { NotResponding } from "./overview-parts/Flow";
+import { BeingBuilt, NeedsAttention } from "./overview-parts/Brief";
 import { overviewGlance, type OverviewGlance } from "./glance";
 import type { CaptainRoom } from "./useCaptainRoom";
 import type { Workspace } from "./useWorkspace";
-import { Goals } from "./overview-parts/Goals";
 import { Heading } from "./overview-parts/Heading";
-import { NeedsYou } from "./overview-parts/NeedsYou";
 import "./overview-parts/overview.css";
 
 export interface OverviewSnapshot { view: OverviewGlance; at: Date }
@@ -15,7 +18,7 @@ export function keepOverviewSnapshot(previous: OverviewSnapshot | null, next: Ov
   return previous && (!projectId || previous.view.projectId === projectId) ? previous : null;
 }
 
-export function OverviewContent({ snapshot, failed = false }: { snapshot: OverviewSnapshot | null; failed?: boolean }) {
+export function OverviewContent({ snapshot, failed = false, flow }: { snapshot: OverviewSnapshot | null; failed?: boolean; flow?: ReactNode }) {
   const view = snapshot?.view;
   return <div className="ak-overview-scope"><div className={`ov${view && failed ? " stale" : ""}`} aria-busy={!view && !failed ? true : undefined}>
     <h1 className="sr-only">Overview</h1>
@@ -31,20 +34,40 @@ export function OverviewContent({ snapshot, failed = false }: { snapshot: Overvi
       </span>)}</div></div>
     </> : <>
       {failed && <p className="problem-line stale-line" role="alert"><span className="dot coral" aria-hidden="true" /><span>Couldn’t refresh. This is how things were at {snapshot.at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.</span></p>}
-      <NeedsYou view={view} /><Heading view={view} /><Goals view={view} />
+      <Heading view={view} />
+      <div className="b-stack"><BeingBuilt view={view} />{flow ?? <NeedsAttention waits={view.waits} stuck={[]} slug={view.slug} />}</div>
     </>}
   </div></div>;
 }
 
 export function Overview({ ws, cr, error }: { ws: Workspace | null; me: string; cr: CaptainRoom; error?: string }) {
   const failed = !!(error || cr.loadError);
-  // No history query is needed for this view. Recompute only when source data changes, never on a timer.
+  // Recompute only when source data changes, never on a timer.
   const calculated = useMemo<OverviewSnapshot | null>(() => {
     if (!ws || cr.room === undefined || failed) return null;
     const at = new Date();
-    return { view: overviewGlance(ws, cr.needs, cr.plans, at), at };
-  }, [ws, cr.room, cr.needs, cr.plans, failed]);
+    return { view: overviewGlance(ws, cr.actionable, cr.plans, at), at };
+  }, [ws, cr.room, cr.actionable, cr.plans, failed]);
   const held = useRef<OverviewSnapshot | null>(null);
   held.current = keepOverviewSnapshot(held.current, calculated, ws?.project.id);
-  return <OverviewContent snapshot={held.current} failed={failed} />;
+
+  const snap = held.current;
+  // "Needs attention" reads the ticket history itself (Attention), so this component stays a pure calculation.
+  const flow = ws && snap && !failed ? <Attention ws={ws} snapshot={snap} /> : undefined;
+  return <OverviewContent snapshot={snap} failed={failed} flow={flow} />;
+}
+
+/** "Taking longer than usual" needs the ticket history: read once, then only what changed (useHistoryWindow). Preview has its own. */
+function Attention({ ws, snapshot }: { ws: Workspace; snapshot: OverviewSnapshot }) {
+  const projectId = ws.project.id;
+  const events = useHistoryWindow<TicketEvent>(ws.demoEvents ? undefined : projectId, EVENTS_WINDOW_MS, {
+    read: (from, to) => eventsBetween(projectId, from, to),
+    readAfter: (afterId, from) => eventsAfter(projectId, afterId, from),
+  });
+  const { view, at: now } = snapshot;
+  const gone = view.team.find((a) => a.state === "offline" && a.waiting > 0 && a.id !== ws.project.lead_agent_id);
+  return <>
+    <NotResponding agent={gone} slug={view.slug} projectId={projectId} />
+    <NeedsAttention waits={gone ? view.waits.filter((r) => r.key !== `offline:${gone.id}`) : view.waits} stuck={stuckRows(ws, ws.demoEvents ?? events.rows, view.team, now)} slug={view.slug} />
+  </>;
 }

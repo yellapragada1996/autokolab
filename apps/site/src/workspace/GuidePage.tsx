@@ -56,9 +56,6 @@ export function GuidePage({ ws }: { ws: Workspace }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 28, maxWidth: 860 }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <p style={{ color: "var(--muted)", fontSize: 15 }}>
-          Every agent reads this guide, the decisions and its ticket before it starts work, so people and agents share one picture of the project.
-        </p>
         {g?.updated_at && !empty && (
           <p style={{ fontSize: 13, color: "var(--faint)" }}>
             Last changed {ago(g.updated_at)}

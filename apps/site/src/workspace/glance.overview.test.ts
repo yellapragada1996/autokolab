@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { agent, at, BIRCH, CAPTAIN, FJORD, ticket, workspace } from "./fixtures";
-import { overviewAgents, overviewGlance, overviewHeadings } from "./glance";
+import { captainLine, overviewAgents, overviewGlance, overviewHeadings, waitingOn } from "./glance";
+import { canAct } from "./captain";
 import { needsYou, type Need, type Plan } from "./captain";
-import { progressCounts } from "./overview-parts/GoalProgress";
 
 const now = new Date(at("12:00"));
 function setup() {
@@ -70,7 +70,6 @@ describe("Overview data from project records", () => {
   it("orders the five segment shapes with matching counts and no zero legend entries", () => {
     const result = view();
     expect(result.goals[0].tickets.map(t => t.segment)).toEqual(["d", "u", "w", "x", "t"]);
-    expect(progressCounts(result.goals[0]).map(x => `${x.count} ${x.word}`)).toEqual(["1 done", "1 in progress", "1 waiting on you", "1 run failed", "1 to go"]);
     expect(result.goals[0].tickets[1].detail).toBe("In progress · Birch · step 2 of 3");
     expect(result.goals[0].tickets[3].description).toContain("GitHub couldn't be reached");
     expect(result.requests).toHaveLength(1);
@@ -231,7 +230,61 @@ describe("Overview status evidence", () => {
     const ws = setup(); const a = ws.agentOf(BIRCH)!;
     Object.assign(a, { status: "idle", waiting_until: at("13:00") });
     ws.byKey.get("SH-6")!.checks = { state: "failure", passed: 0, total: 1 };
-    expect(progressCounts(view(ws).goals[0]).filter(x => x.segment === "x").map(x => `${x.count} ${x.word}`))
-      .toEqual(["1 checks failed", "1 limit reached", "1 run failed"]);
+    expect(view(ws).goals[0].tickets.filter(t => t.segment === "x").map(t => t.problem?.toLowerCase()).sort())
+      .toEqual(["checks failed", "limit reached", "run failed"]);
+  });
+});
+
+describe("what Captain is doing, in one sentence", () => {
+  it("says when Captain's computer is gone, paused or free, and nothing for a project without one", () => {
+    const ws = setup();
+    expect(captainLine(ws, now)).toMatchObject({ tone: "quiet", state: "Online and free" });
+    ws.agentOf(CAPTAIN)!.last_seen_at = at("11:00");
+    expect(captainLine(ws, now)).toMatchObject({ tone: "problem", state: "Offline for 1 h", text: "Your messages wait until its computer is back." });
+    Object.assign(ws.agentOf(CAPTAIN)!, { last_seen_at: at("11:59"), status: "paused" });
+    expect(captainLine(ws, now)).toMatchObject({ state: "Paused by its owner", text: "Your messages wait until it's resumed." });
+    ws.project.lead_agent_id = null;
+    expect(captainLine(ws, now)).toBeNull();
+  });
+  it("treats an agent as offline after two minutes without a check-in", () => {
+    const ws = setup();
+    ws.agentOf(BIRCH)!.last_seen_at = "2026-10-10T11:58:30Z";
+    expect(overviewAgents(ws, now).find(a => a.id === BIRCH)!.state).toBe("working");
+    ws.agentOf(BIRCH)!.last_seen_at = "2026-10-10T11:57:30Z";
+    expect(overviewAgents(ws, now).find(a => a.id === BIRCH)!.state).toBe("offline");
+  });
+});
+
+describe("waiting on each other", () => {
+  it("lists the person's own items first, then a run that stopped and work behind a blocker", () => {
+    const ws = setup();
+    const blocked = ws.byKey.get("SH-6")!;
+    const blocker = ws.byKey.get("SH-3")!;
+    ws.blockersOf = (id: string) => (id === blocked.id ? [blocker] : []);
+    const rows = waitingOn(ws, needsYou(ws, []), overviewAgents(ws, now), now);
+    expect(rows.map(r => r.key)).toEqual([`you:ticket:${ws.byKey.get("SH-4")!.id}`, `problem:${ws.byKey.get("SH-5")!.id}`, `blocked:${blocked.id}`]);
+    expect(rows[0]).toMatchObject({ who: "Fjord", on: "You", why: "SH-4 asks: Save guest cards?", you: `ticket:${ws.byKey.get("SH-4")!.id}` });
+    expect(rows[2]).toMatchObject({ who: "SH-6 · Discounts", on: "SH-3", why: "Needs it finished first", ticketKey: "SH-6" });
+    expect(view(ws).waits).toHaveLength(3);
+  });
+  it("says whose computer is gone when an offline agent has work", () => {
+    const ws = setup();
+    ws.agentOf(BIRCH)!.last_seen_at = at("09:00");
+    const rows = waitingOn(ws, [], overviewAgents(ws, now), now);
+    expect(rows[0]).toMatchObject({ who: "1 ticket", on: "Birch's computer", why: "Offline", age: "3 h" });
+  });
+});
+
+describe("only what the person can act on counts", () => {
+  const need = (kind: Need["kind"], t: ReturnType<typeof ticket> | null): Need => ({ key: "k", kind, action: "", question: "", ticket: t, turnId: null, since: at("11:00") });
+  it("leaves out an approval whose tests are still running or that the person built", () => {
+    const sha = "a".repeat(40);
+    const ready = ticket({ key: "SH-8", status: "review", pr_facts: { sha, checks: { passed: 4, total: 4, state: "success" } } as never });
+    const running = ticket({ key: "SH-9", status: "review", pr_facts: { sha, checks: { passed: 1, total: 4, state: "pending" } } as never });
+    expect(canAct(need("approval", ready), "me")).toBe(true);
+    expect(canAct(need("approval", running), "me")).toBe(false);
+    expect(canAct(need("approval", { ...ready, built_by: ["me"] }), "me")).toBe(false);
+    expect(canAct(need("ticket_question", running), "me")).toBe(true);
+    expect(canAct(need("plan", null), "me")).toBe(true);
   });
 });
